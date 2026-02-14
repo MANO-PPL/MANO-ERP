@@ -1,0 +1,86 @@
+# Logs
+logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+lerna-debug.log*
+.pnpm-debug.log*
+
+# Diagnostic reports
+report.[0-9]*.[0-9]*.[0-9]*.[0-9]*.json
+
+# Runtime data
+pids
+*.pid
+*.seed
+*.pid.lock
+
+# Coverage
+coverage/
+*.lcov
+.nyc_output
+
+# Dependency dirs
+node_modules/
+jspm_packages/
+web_modules/
+
+# Build outputs
+# Vite build output
+dist/
+.client/
+# Next.js (if used later)
+.next/
+out/
+# Nuxt
+.nuxt/
+
+# TypeScript
+*.tsbuildinfo
+
+# Caches
+.npm
+.eslintcache
+.stylelintcache
+.parcel-cache
+.cache
+.rpt2_cache*/
+.rts2_cache*/
+
+# Env files
+.env
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
+
+# OS generated
+.DS_Store
+Thumbs.db
+
+# Editor directories
+/.vscode/*
+!/.vscode/extensions.json
+/.vscode/settings.json
+!/Mano
+# IDE-specific
+.idea/
+.vscode-test
+.tern-port
+
+# Knex/MySQL
+knex_migrations/
+*.sql.dump
+
+# Docker
+Dockerfile.*.local
+docker-compose.*.yml.local
+
+# Testing
+/coverage
+
+# Project-specific ignores
+/server/node_modules/
+/client/node_modules/
+
