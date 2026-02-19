@@ -7,6 +7,9 @@ import './config.js';
 
 import AppError from './utils/AppError.js';
 import errorHandler from './middleware/errorHandler.js';
+import Login from './routers/Authentication/Login.js';
+import Admin from './routers/Admin/Admin.js';
+import { authenticateJWT } from './middleware/auth.js';
 
 
 const app = express();
@@ -38,7 +41,13 @@ app.use(cors({
     credentials: true
 }));
 
+
+
 app.use(express.json());
+
+// Register Auth Routes
+app.use("/api/auth", Login);
+app.use("/admin", Admin);
 
 // Routes Placeholder
 app.get('/', (req, res) => {
@@ -80,3 +89,5 @@ io.on('connection', (socket) => {
 server.listen(PORT, '0.0.0.0', () => {
     console.log(`Backend server running on http://localhost:${PORT}`);
 });
+
+
