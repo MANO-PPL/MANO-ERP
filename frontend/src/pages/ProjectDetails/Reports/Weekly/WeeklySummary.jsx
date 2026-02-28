@@ -81,7 +81,7 @@ const WeeklySummary = ({ filters, setSubBreadcrumb, view, setView }) => {
                             setSelectedReport(w);
                             setShowDrawer(true);
                         }}
-                        className="bg-white dark:bg-gray-50 dark:bg-[#161b22] p-8 rounded-2xl border border-gray-100 dark:border-white/5 shadow-sm hover:shadow-md hover:border-blue-500/30 transition-all cursor-pointer relative group/card overflow-visible"
+                        className="bg-white dark:bg-[#161b22] p-8 rounded-2xl border border-gray-100 dark:border-white/5 shadow-sm hover:shadow-md hover:border-blue-500/30 transition-all cursor-pointer relative group/card overflow-visible"
                     >
                         <div className="flex justify-between items-center mb-8">
                             <span className="text-[13px] font-medium text-gray-900 dark:text-white tracking-tight">{w.week}</span>

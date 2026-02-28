@@ -71,7 +71,7 @@ const TeamContribution = () => {
         <div className="space-y-4 anim-fade-in text-left w-full">
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
                 {employees.map(emp => (
-                    <div key={emp.id} className="p-8 bg-white dark:bg-gray-50 dark:bg-[#161b22] rounded-2xl border border-gray-100 dark:border-white/5 hover:border-blue-500/30 transition-all group shadow-sm hover:shadow-md">
+                    <div key={emp.id} className="p-8 bg-white dark:bg-[#161b22] rounded-2xl border border-gray-100 dark:border-white/5 hover:border-blue-500/30 transition-all group shadow-sm hover:shadow-md">
                         <div className="flex items-center mb-8">
                             <div className={`w-14 h-14 rounded-2xl bg-gradient-to-br ${emp.color} flex items-center justify-center text-white text-base font-medium shadow-lg shadow-blue-500/20`}>
                                 {emp.initials || emp.name.split(' ').map(n => n[0]).join('')}
@@ -193,7 +193,7 @@ const TeamContribution = () => {
                                                     {item.date}
                                                 </div>
                                             </div>
-                                            <h4 className="text-sm font-bold text-gray-800 dark:text-gray-800 dark:text-gray-200 leading-tight mb-2">{item.name}</h4>
+                                            <h4 className="text-sm font-bold text-gray-800 dark:text-gray-200 leading-tight mb-2">{item.name}</h4>
                                             <div className="flex items-center space-x-2">
                                                 <span className="bg-blue-50 dark:bg-blue-900/20 text-blue-600 dark:text-blue-400 text-[9px] font-bold px-2 py-0.5 rounded-md uppercase tracking-wider">
                                                     Impact: {item.impact}

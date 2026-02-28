@@ -83,7 +83,7 @@ const MonthlyArchive = ({ filters, setSubBreadcrumb, view, setView }) => {
                             setSelectedReport(m);
                             setShowDrawer(true);
                         }}
-                        className="group p-8 rounded-2xl bg-white dark:bg-gray-50 dark:bg-[#161b22] border border-gray-100 dark:border-white/5 hover:border-blue-500/30 transition-all flex flex-col justify-between gap-8 cursor-pointer shadow-sm hover:shadow-md relative overflow-visible"
+                        className="group p-8 rounded-2xl bg-white dark:bg-[#161b22] border border-gray-100 dark:border-white/5 hover:border-blue-500/30 transition-all flex flex-col justify-between gap-8 cursor-pointer shadow-sm hover:shadow-md relative overflow-visible"
                     >
                         <div className="flex justify-between items-start">
                             <div className="flex items-center">

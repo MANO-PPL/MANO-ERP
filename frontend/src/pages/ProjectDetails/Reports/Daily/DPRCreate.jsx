@@ -149,7 +149,7 @@ const DPRCreate = ({ onBack, initialData = null, isReadOnly = false }) => {
                             ].map((item, idx) => (
                                 <div key={idx} className={item.fullWidth ? "col-span-full" : ""}>
                                     <p className="text-[10px] font-bold text-gray-500 uppercase tracking-widest mb-2">{item.label}</p>
-                                    <p className="text-sm font-medium text-gray-800 dark:text-gray-200 leading-relaxed">{item.value}</p>
+                                    <p className="text-sm font-medium text-gray-800 dark:text-white leading-relaxed">{item.value}</p>
                                 </div>
                             ))}
                         </div>
@@ -162,7 +162,7 @@ const DPRCreate = ({ onBack, initialData = null, isReadOnly = false }) => {
                             ].map((item, idx) => (
                                 <div key={idx}>
                                     <p className="text-[10px] font-bold text-gray-500 uppercase tracking-widest mb-2">{item.label}</p>
-                                    <p className="text-sm font-medium text-gray-800 dark:text-gray-200">{item.value}</p>
+                                    <p className="text-sm font-medium text-gray-800 dark:text-white">{item.value}</p>
                                 </div>
                             ))}
                         </div>
@@ -351,7 +351,7 @@ const DPRCreate = ({ onBack, initialData = null, isReadOnly = false }) => {
                                         </div>
                                     </div>
                                     {isReadOnly ? (
-                                        <p className="text-xs text-gray-500 font-normal leading-relaxed">{item.remarks}</p>
+                                        <p className="text-xs text-gray-500 dark:text-gray-400 font-normal leading-relaxed">{item.remarks}</p>
                                     ) : (
                                         <textarea className="bg-transparent w-full text-xs text-gray-500 outline-none" rows={1} defaultValue={item.remarks} placeholder="Progress remarks..." />
                                     )}
@@ -400,7 +400,7 @@ const DPRCreate = ({ onBack, initialData = null, isReadOnly = false }) => {
                                         </div>
                                     </div>
                                     {isReadOnly ? (
-                                        <p className="text-xs text-gray-500 font-normal leading-relaxed">{item.remarks}</p>
+                                        <p className="text-xs text-gray-500 dark:text-gray-400 font-normal leading-relaxed">{item.remarks}</p>
                                     ) : (
                                         <textarea className="bg-transparent w-full text-xs text-gray-500 outline-none" rows={1} defaultValue={item.remarks} placeholder="Resource requirements..." />
                                     )}

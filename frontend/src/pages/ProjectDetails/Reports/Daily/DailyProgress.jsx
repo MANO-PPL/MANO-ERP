@@ -248,7 +248,7 @@ const DailyProgress = ({ filters, setSubBreadcrumb, view, setView }) => {
                             setSelectedReport(report);
                             setView('details');
                         }}
-                        className="group bg-white dark:bg-gray-50 dark:bg-[#161b22] p-8 rounded-2xl border border-gray-100 dark:border-white/5 shadow-sm hover:shadow-md hover:border-blue-500/30 transition-all cursor-pointer flex flex-col justify-between relative overflow-visible"
+                        className="group bg-white dark:bg-[#161b22] p-8 rounded-2xl border border-gray-100 dark:border-white/5 shadow-sm hover:shadow-md hover:border-blue-500/30 transition-all cursor-pointer flex flex-col justify-between relative overflow-visible"
                     >
                         <div className="flex justify-between items-start mb-8">
                             <div className="flex items-center space-x-5">
