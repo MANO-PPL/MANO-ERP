@@ -11,6 +11,7 @@ import AgendaList from './pages/Agenda/AgendaList';
 import AgendaDetail from './pages/Agenda/AgendaDetail';
 import MoMList from './pages/MinutesOfMeeting/MoMList';
 import MoMDetail from './pages/MinutesOfMeeting/MoMDetail';
+import VendorsList from './pages/Vendors';
 
 import './index.css';
 
@@ -30,6 +31,7 @@ function App() {
           <Route path="dashboard/agenda/:id" element={<AgendaDetail />} />
           <Route path="dashboard/mom" element={<MoMList />} />
           <Route path="dashboard/mom/:id" element={<MoMDetail />} />
+          <Route path="vendors" element={<VendorsList />} />
           {/* Redirect unknown routes to dashboard */}
           <Route path="*" element={<Navigate to="/" replace />} />
         </Route>
