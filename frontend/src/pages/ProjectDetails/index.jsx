@@ -15,6 +15,7 @@ import Quality from './Quality/index';
 import Safety from './Safety/index';
 import Billing from './Billing/index';
 import MaterialManagement from './MaterialManagement/index';
+import Approvals from './Approvals/index';
 
 const ProjectDetails = () => {
     const { id } = useParams();
@@ -28,7 +29,7 @@ const ProjectDetails = () => {
     };
 
     const [extraBreadcrumbs, setExtraBreadcrumbs] = useState([]); // Array of { label, onClick }
-    const tabs = ['Dashboard', 'Tasks', 'WIP', 'Reports', 'General Documents', 'Drawings', 'Planning', 'Contracts', 'Quality', 'Safety', 'Billing', 'Material Management'];
+    const tabs = ['Dashboard', 'Tasks', 'WIP', 'Reports', 'General Documents', 'Drawings', 'Planning', 'Contracts', 'Quality', 'Safety', 'Billing', 'Material Management', 'Approvals'];
 
     const renderTabContent = () => {
         const props = { setExtraBreadcrumbs };
@@ -57,6 +58,8 @@ const ProjectDetails = () => {
                 return <Billing {...props} />;
             case 'Material Management':
                 return <MaterialManagement {...props} />;
+            case 'Approvals':
+                return <Approvals {...props} />;
             default:
                 return <Tasks {...props} />;
         }

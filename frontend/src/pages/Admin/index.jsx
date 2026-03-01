@@ -32,6 +32,7 @@ const PAGE_TREE = [
             { id: 'projects.safety', label: 'Safety' },
             { id: 'projects.billing', label: 'Billing' },
             { id: 'projects.materials', label: 'Material Management' },
+            { id: 'projects.approvals', label: 'Approvals' },
         ]
     },
     {
