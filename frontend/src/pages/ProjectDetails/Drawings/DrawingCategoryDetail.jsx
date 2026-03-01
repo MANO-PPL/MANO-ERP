@@ -449,24 +449,24 @@ const DrawingCategoryDetail = ({ category, onBack, setExtraBreadcrumbs }) => {
             {/* Local Tab Switcher & Global Filters */}
             <div className="flex flex-col bg-white dark:bg-[#0d1117] border-b border-gray-200 dark:border-white/5 z-20">
                 <div className="px-5 mx-1 py-4">
-                    <div className="flex p-1 bg-gray-100 dark:bg-white/5 rounded-full space-x-1 border border-gray-200 dark:border-white/10 w-fit">
+                    <div className="inline-flex p-1 bg-gray-100 dark:bg-white/5 border border-gray-200 dark:border-white/10 rounded-full">
                         {[
-                            { id: 'management', label: 'Drawing Management', count: 4 },
-                            { id: 'planned', label: 'Drawing Planned vs Achieved', count: 4 }
+                            { id: 'management', label: 'Drawing Management', count: managementDrawings.length },
+                            { id: 'planned', label: 'Drawing Planned vs Achieved', count: plannedDrawings.length }
                         ].map((tab) => (
                             <button
                                 key={tab.id}
                                 onClick={() => setActiveTab(tab.id)}
-                                className={`flex items-center space-x-2 px-4 py-1.5 text-xs font-semibold rounded-full transition-all duration-200 ${activeTab === tab.id
-                                    ? 'bg-white text-blue-600 shadow-sm dark:bg-[#161b22] dark:text-blue-400 dark:border dark:border-white/10'
-                                    : 'bg-transparent text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200'
+                                className={`flex items-center space-x-2 px-6 py-2 text-sm font-medium rounded-full transition-all duration-200 ${activeTab === tab.id
+                                    ? 'bg-white dark:bg-white/10 text-blue-600 dark:text-blue-400 shadow-sm'
+                                    : 'text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200'
                                     }`}
                             >
                                 <span>{tab.label}</span>
                                 {tab.count > 0 && (
-                                    <span className={`flex items-center justify-center w-[16px] h-[16px] text-[9px] font-bold rounded-full ml-1 ${activeTab === tab.id
+                                    <span className={`flex items-center justify-center min-w-[20px] h-5 px-1.5 text-[10px] font-bold rounded-full ml-1 ${activeTab === tab.id
                                         ? 'bg-blue-100 text-blue-600 dark:bg-blue-900/30 dark:text-blue-400'
-                                        : 'bg-gray-200 text-gray-600 dark:bg-white/10 dark:text-gray-400'
+                                        : 'bg-red-500 text-white'
                                         }`}>
                                         {tab.count}
                                     </span>

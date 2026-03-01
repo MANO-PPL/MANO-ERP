@@ -28,18 +28,16 @@ const Reports = ({ setExtraBreadcrumbs }) => {
     const subView = searchParams.get('view') || 'list';
     const [subBreadcrumb, setSubBreadcrumb] = useState('');
 
-    const setActiveTab = (tabId) => {
+    const navigateTo = (type, view = 'list') => {
         const newParams = new URLSearchParams(searchParams);
-        newParams.set('type', tabId);
-        newParams.delete('view'); // Reset view on type change
+        if (type) newParams.set('type', type);
+        if (view) newParams.set('view', view);
+        else newParams.delete('view');
         setSearchParams(newParams);
     };
 
-    const setSubView = (view) => {
-        const newParams = new URLSearchParams(searchParams);
-        newParams.set('view', view);
-        setSearchParams(newParams);
-    };
+    const setActiveTab = (type) => navigateTo(type, 'list');
+    const setSubView = (view) => navigateTo(activeTab, view);
 
     // Filter States
     const [filters, setFilters] = useState({
@@ -72,7 +70,7 @@ const Reports = ({ setExtraBreadcrumbs }) => {
 
         bcs.push({
             label: cat.label,
-            onClick: handleBack
+            onClick: () => navigateTo(type, 'list')
         });
 
         if (view === 'create') {
@@ -99,7 +97,7 @@ const Reports = ({ setExtraBreadcrumbs }) => {
             <div className="flex items-center space-x-3 anim-fade-in">
                 {(activeTab === 'daily' || activeTab === 'weekly' || activeTab === 'monthly') && subView === 'list' && (
                     <button
-                        onClick={() => setSubView('create')}
+                        onClick={() => navigateTo(activeTab, 'create')}
                         className="flex items-center space-x-2 px-5 py-2.5 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-sm font-medium shadow-lg shadow-blue-500/20 transition-all active:scale-95"
                     >
                         <Plus size={16} />
@@ -172,9 +170,8 @@ const Reports = ({ setExtraBreadcrumbs }) => {
                             <button
                                 key={tab.id}
                                 onClick={() => {
-                                    setActiveTab(tab.id);
+                                    navigateTo(tab.id, 'list');
                                     setSubBreadcrumb('');
-                                    setSubView('list');
                                 }}
                                 className={`w-full group flex items-center px-4 py-3 transition-all duration-200 rounded-lg ${activeTab === tab.id
                                     ? 'bg-blue-50/80 text-blue-600 border-r-4 border-blue-600 dark:bg-blue-900/20 dark:text-blue-400 dark:border-blue-500'

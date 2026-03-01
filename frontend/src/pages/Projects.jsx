@@ -57,12 +57,14 @@ const Projects = () => {
         },
     ];
 
-    const activeCount = projectData.filter(p => !p.status.toLowerCase().includes('complete')).length;
-    const completedCount = projectData.filter(p => p.status.toLowerCase().includes('complete')).length;
+    const activeProjects = projectData.filter(p => !p.status.toLowerCase().includes('complete'));
+    const completedProjects = projectData.filter(p => p.status.toLowerCase().includes('complete'));
+
+    const filteredProjects = activeTab === 'Completed Projects' ? completedProjects : activeProjects;
 
     const tabs = [
-        { id: 'Active Projects', label: 'Active Projects', count: activeCount },
-        { id: 'Completed Projects', label: 'Completed Projects', count: completedCount }
+        { id: 'Active Projects', label: 'Active Projects', count: activeProjects.length },
+        { id: 'Completed Projects', label: 'Completed Projects', count: completedProjects.length }
     ];
 
     return (
@@ -70,19 +72,19 @@ const Projects = () => {
             {/* Top Sub-navigation & Toolbar Area */}
             <div className="flex justify-between items-center px-6 pt-6 pb-4 overflow-x-auto no-scrollbar bg-white dark:bg-[#0d1117]">
                 {/* Left side: Tabs */}
-                <div className="flex p-1 bg-gray-100 dark:bg-white/5 rounded-full space-x-1 border border-gray-200 dark:border-white/10">
+                <div className="inline-flex p-1 bg-gray-100 dark:bg-white/5 border border-gray-200 dark:border-white/10 rounded-full">
                     {tabs.map((tab) => (
                         <button
                             key={tab.id}
                             onClick={() => setActiveTab(tab.id)}
-                            className={`flex items-center space-x-2 px-4 py-1.5 text-xs font-semibold rounded-full transition-all duration-200 ${activeTab === tab.id
-                                ? 'bg-white text-blue-600 shadow-sm dark:bg-[#161b22] dark:text-blue-400 dark:border dark:border-white/10'
-                                : 'bg-transparent text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200'
+                            className={`flex items-center space-x-2 px-6 py-2 text-sm font-medium rounded-full transition-all duration-200 ${activeTab === tab.id
+                                ? 'bg-white dark:bg-white/10 text-blue-600 dark:text-blue-400 shadow-sm'
+                                : 'text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200'
                                 }`}
                         >
                             <span>{tab.label}</span>
                             {tab.count > 0 && (
-                                <span className={`flex items-center justify-center w-[16px] h-[16px] text-[9px] font-bold rounded-full ml-1 ${activeTab === tab.id
+                                <span className={`flex items-center justify-center min-w-[20px] h-5 px-1.5 text-[10px] font-bold rounded-full ml-1 ${activeTab === tab.id
                                     ? 'bg-blue-100 text-blue-600 dark:bg-blue-900/30 dark:text-blue-400'
                                     : 'bg-red-500 text-white'
                                     }`}>
@@ -148,7 +150,7 @@ const Projects = () => {
                         </tr>
                     </thead>
                     <tbody className="divide-y divide-gray-100 dark:divide-white/5 text-[13px]">
-                        {projectData.map((project, index) => (
+                        {filteredProjects.map((project, index) => (
                             <tr key={index} className="hover:bg-blue-50/50 dark:hover:bg-white/[0.02] transition-colors group">
                                 <td className="px-6 py-4 text-gray-500 dark:text-gray-400 font-mono">{project.id}</td>
                                 <td className="px-6 py-4">

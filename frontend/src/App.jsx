@@ -8,6 +8,7 @@ import Dashboard from './pages/Dashboard';
 import Projects from './pages/Projects';
 import ProjectDetails from './pages/ProjectDetails/index';
 import VendorsList from './pages/Vendors';
+import CollaborationPage from './pages/Collaboration/index';
 
 import './index.css';
 
@@ -20,8 +21,10 @@ function App() {
           <Route path="projects" element={<Projects />} />
           <Route path="projects/:id" element={<ProjectDetails />} />
           <Route path="vendors" element={<VendorsList />} />
-          {/* Redirect unknown routes to dashboard */}
-          <Route path="*" element={<Navigate to="/" replace />} />
+          <Route path="collaboration" element={<CollaborationPage />} />
+          <Route path="clients" element={
+            <div className="p-8 text-gray-500 dark:text-gray-400 text-sm">Clients page coming soon.</div>
+          } />
         </Route>
       </Routes>
     </Router>

@@ -12,6 +12,7 @@ import {
     ShieldCheck,
     Box,
     MessageSquare,
+    MessageCircle,
     GitPullRequest,
     BarChart3,
     Settings,
@@ -26,6 +27,7 @@ const Sidebar = () => {
         { icon: Briefcase, label: 'Projects', path: '/projects' },
         { icon: Map, label: 'Vendors', path: '/vendors' },
         { icon: Users, label: 'Clients', path: '/clients' },
+        { icon: MessageCircle, label: 'Collaboration', path: '/collaboration' },
     ];
 
     return (
@@ -45,6 +47,7 @@ const Sidebar = () => {
                         <NavLink
                             key={item.path}
                             to={item.path}
+                            end={item.path === '/'}
                             className={({ isActive }) =>
                                 `flex items-center px-6 py-2.5 text-sm font-medium transition-colors ${isActive
                                     ? 'bg-blue-50 text-blue-600 border-r-4 border-blue-600 dark:bg-blue-900/20 dark:text-blue-400 dark:border-blue-500'
