@@ -208,6 +208,13 @@ const NodeCard = React.memo(({ node, onSelect, onEdit, onDelete, selectedNodeId,
 
 // --- Main Container Component ---
 const OrganisationChart = ({ onBack, setExtraBreadcrumbs }) => {
+    useEffect(() => {
+        setExtraBreadcrumbs([
+            { label: 'General Documents', onClick: onBack },
+            { label: 'Organisation Chart' }
+        ]);
+    }, [onBack, setExtraBreadcrumbs]);
+
     const [data, setData] = useState(INITIAL_DATA);
     const [zoom, setZoom] = useState(1);
     const [selectedNodeId, setSelectedNodeId] = useState('root');
@@ -485,7 +492,7 @@ const OrganisationChart = ({ onBack, setExtraBreadcrumbs }) => {
                         animate={{ x: 0, opacity: 1 }}
                         exit={{ x: '100%', opacity: 0 }}
                         transition={{ type: 'spring', damping: 20 }}
-                        className="absolute right-0 top-0 bottom-0 w-96 bg-white dark:bg-[#0d1117] border-l border-gray-200 dark:border-white/5 shadow-[-20px_0px_50px_rgba(0,0,0,0.5)] z-50 p-8 flex flex-col"
+                        className="absolute right-0 top-0 bottom-0 w-96 bg-white dark:bg-[#0d1117] border-l border-gray-200 dark:border-white/5 z-50 p-8 flex flex-col"
                     >
                         <div className="flex justify-between items-center mb-10">
                             <div>

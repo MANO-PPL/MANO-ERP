@@ -1,15 +1,34 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { Users, User, Briefcase, CheckCircle, Clock, AlertCircle, Plus, ChevronRight, Search, Layout, Filter, MoreVertical, Check, X, Info, Calendar, Tag, Flag, AlignLeft, Zap } from 'lucide-react';
 
-const WIP = () => {
+const WIP = ({ setExtraBreadcrumbs }) => {
+    const [searchParams, setSearchParams] = useSearchParams();
+    const selectedEmployeeId = parseInt(searchParams.get('emp')) || 2;
+
+    const setSelectedEmployeeId = React.useCallback((id) => {
+        const newParams = new URLSearchParams(searchParams);
+        newParams.set('emp', id);
+        setSearchParams(newParams);
+    }, [searchParams, setSearchParams]);
     // Mock Data for Employees
-    const [employees] = useState([
+    const [employees] = React.useState([
         { id: 1, name: 'Nice Bike', role: 'Full Stack Developer', initials: 'NB', color: 'bg-blue-500' },
         { id: 2, name: 'Mano Bharathii', role: 'Project Manager', initials: 'MB', color: 'bg-purple-500' },
         { id: 3, name: 'John Doe', role: 'Frontend Engineer', initials: 'JD', color: 'bg-green-500' },
         { id: 4, name: 'Jane Smith', role: 'UI/UX Designer', initials: 'JS', color: 'bg-pink-500' },
         { id: 5, name: 'Alex Johnson', role: 'QA Engineer', initials: 'AJ', color: 'bg-orange-500' },
     ]);
+
+    useEffect(() => {
+        const emp = employees.find(e => e.id === selectedEmployeeId);
+        if (emp) {
+            setExtraBreadcrumbs([
+                { label: 'Work in Progress' },
+                { label: emp.name }
+            ]);
+        }
+    }, [selectedEmployeeId, setExtraBreadcrumbs, employees]);
 
     // Mock Data for Tasks
     const [tasks, setTasks] = useState([
@@ -23,12 +42,13 @@ const WIP = () => {
         { id: 'TASK-8', name: 'Performance Optimization', status: 'To Do', priority: 'Medium', assigneeIds: [], description: 'Optimize slow queries and front-end bundle sizes.', startDate: '2026-03-15', dueDate: '2026-03-25' },
     ]);
 
-    const [selectedEmployeeId, setSelectedEmployeeId] = useState(1);
     const [searchTerm, setSearchTerm] = useState('');
     const [isAssigning, setIsAssigning] = useState(false);
     const [selectedTaskForDetails, setSelectedTaskForDetails] = useState(null);
 
-    const selectedEmployee = employees.find(e => e.id === selectedEmployeeId);
+
+
+    const selectedEmployee = employees.find(e => e.id === selectedEmployeeId) || employees[0];
     const employeeTasks = tasks.filter(t => t.assigneeIds.includes(selectedEmployeeId));
     const unassignedTasks = tasks.filter(t => t.assigneeIds.length === 0);
 
@@ -78,7 +98,7 @@ const WIP = () => {
     return (
         <div className="flex-1 flex flex-col md:flex-row bg-white dark:bg-[#0d1117] h-full overflow-hidden">
             {/* Sidebar - Employee List */}
-            <div className="w-full md:w-80 border-r border-gray-200 dark:border-gh-border flex flex-col bg-[#f6f8fa] dark:bg-gray-50 dark:bg-[#161b22]">
+            <div className="w-full md:w-80 border-r border-gray-200 dark:border-gh-border flex flex-col bg-[#f6f8fa] dark:bg-[#161b22]">
                 <div className="p-4 border-b border-gray-200 dark:border-gh-border">
                     <div className="relative">
                         <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" size={14} />
@@ -166,7 +186,7 @@ const WIP = () => {
                                     <div
                                         key={task.id}
                                         onClick={() => setSelectedTaskForDetails(task)}
-                                        className="group relative bg-[#f9fafb] dark:bg-gray-50 dark:bg-[#161b22] border border-gray-200 dark:border-gh-border p-5 rounded-xl hover:shadow-xl hover:border-blue-400/50 dark:hover:border-blue-500/50 transition-all duration-300 cursor-pointer"
+                                        className="group relative bg-[#f9fafb] dark:bg-[#161b22] border border-gray-200 dark:border-gh-border p-5 rounded-xl hover:shadow-xl hover:border-blue-400/50 dark:hover:border-blue-500/50 transition-all duration-300 cursor-pointer"
                                     >
                                         <div className="flex justify-between items-start mb-3">
                                             <span className="text-[10px] font-mono text-gray-400 dark:text-gray-500">{task.id}</span>
@@ -217,7 +237,6 @@ const WIP = () => {
                                                     <span>{task.status}</span>
                                                 </span>
                                             </div>
-
                                         </div>
                                     </div>
                                 ))}
@@ -256,7 +275,7 @@ const WIP = () => {
 
                             <div className="flex-1 overflow-y-auto p-6 space-y-4 custom-scrollbar text-left">
                                 {unassignedTasks.length > 0 ? unassignedTasks.map(task => (
-                                    <div key={task.id} className="p-4 border border-gray-100 dark:border-gh-border rounded-xl bg-[#f9fafb] dark:bg-gray-50 dark:bg-[#161b22] hover:border-blue-500 transition-all cursor-pointer group shadow-sm text-left">
+                                    <div key={task.id} className="p-4 border border-gray-100 dark:border-gh-border rounded-xl bg-[#f9fafb] dark:bg-[#161b22] hover:border-blue-500 transition-all cursor-pointer group shadow-sm text-left">
                                         <div className="flex justify-between items-start mb-2">
                                             <span className="text-[10px] font-mono text-gray-400">{task.id}</span>
                                             <span className={`text-[10px] font-extrabold ${task.priority === 'High' ? 'text-red-500' : 'text-orange-500'}`}>{task.priority}</span>

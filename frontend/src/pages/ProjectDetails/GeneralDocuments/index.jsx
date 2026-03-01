@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { FileText, FileSpreadsheet, FileImage, FileStack, ChevronRight } from 'lucide-react';
-import { useNavigate, useParams } from 'react-router-dom';
+import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import ProjectVendorList from './ProjectVendorList';
 import ProjectDirectory from './ProjectDirectory';
 import StaffRoles from './StaffRoles';
@@ -9,7 +9,18 @@ import OrganisationChart from './OrganisationChart';
 
 const GeneralDocumentsIndex = ({ setExtraBreadcrumbs }) => {
     const { id } = useParams();
-    const [currentView, setCurrentView] = useState('grid'); // 'grid' or 'vendor-list' etc
+    const [searchParams, setSearchParams] = useSearchParams();
+    const currentView = searchParams.get('view') || 'grid';
+
+    const setCurrentView = React.useCallback((view) => {
+        const newParams = new URLSearchParams(searchParams);
+        if (view === 'grid') newParams.delete('view');
+        else newParams.set('view', view);
+        setSearchParams(newParams);
+    }, [searchParams, setSearchParams]);
+
+    const handleBack = React.useCallback(() => setCurrentView('grid'), [setCurrentView]);
+
     const navigate = useNavigate();
 
     React.useEffect(() => {
@@ -19,19 +30,19 @@ const GeneralDocumentsIndex = ({ setExtraBreadcrumbs }) => {
     }, [currentView, setExtraBreadcrumbs]);
 
     if (currentView === 'vendor-list') {
-        return <ProjectVendorList onBack={() => setCurrentView('grid')} setExtraBreadcrumbs={setExtraBreadcrumbs} />;
+        return <ProjectVendorList onBack={handleBack} setExtraBreadcrumbs={setExtraBreadcrumbs} />;
     }
     if (currentView === 'directory') {
-        return <ProjectDirectory onBack={() => setCurrentView('grid')} setExtraBreadcrumbs={setExtraBreadcrumbs} />;
+        return <ProjectDirectory onBack={handleBack} setExtraBreadcrumbs={setExtraBreadcrumbs} />;
     }
     if (currentView === 'staff-roles') {
-        return <StaffRoles onBack={() => setCurrentView('grid')} setExtraBreadcrumbs={setExtraBreadcrumbs} />;
+        return <StaffRoles onBack={handleBack} setExtraBreadcrumbs={setExtraBreadcrumbs} />;
     }
     if (currentView === 'project-summary') {
-        return <ProjectSummary onBack={() => setCurrentView('grid')} setExtraBreadcrumbs={setExtraBreadcrumbs} />;
+        return <ProjectSummary onBack={handleBack} setExtraBreadcrumbs={setExtraBreadcrumbs} />;
     }
     if (currentView === 'org-chart') {
-        return <OrganisationChart onBack={() => setCurrentView('grid')} setExtraBreadcrumbs={setExtraBreadcrumbs} />;
+        return <OrganisationChart onBack={handleBack} setExtraBreadcrumbs={setExtraBreadcrumbs} />;
     }
 
     const categories = [

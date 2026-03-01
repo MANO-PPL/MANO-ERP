@@ -1,8 +1,17 @@
-import React, { useState, useEffect } from 'react';
+import React, { useEffect } from 'react';
+import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { FileText, FileSpreadsheet, FileImage, FileStack, ChevronRight, Calendar, BarChart3, ClipboardList, Package } from 'lucide-react';
 
 const PlanningIndex = ({ setExtraBreadcrumbs }) => {
-    const [currentView, setCurrentView] = useState('grid');
+    const [searchParams, setSearchParams] = useSearchParams();
+    const currentView = searchParams.get('view') || 'grid';
+
+    const setCurrentView = (view) => {
+        const newParams = new URLSearchParams(searchParams);
+        if (view === 'grid') newParams.delete('view');
+        else newParams.set('view', view);
+        setSearchParams(newParams);
+    };
 
     useEffect(() => {
         if (currentView === 'grid') {

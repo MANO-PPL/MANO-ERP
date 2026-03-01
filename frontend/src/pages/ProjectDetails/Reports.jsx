@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import {
     Clock,
     Calendar,
@@ -22,9 +23,23 @@ import CustomDatePicker from '../../components/CustomDatePicker';
 import CustomSelect from '../../components/CustomSelect';
 
 const Reports = ({ setExtraBreadcrumbs }) => {
-    const [activeTab, setActiveTab] = useState('daily');
+    const [searchParams, setSearchParams] = useSearchParams();
+    const activeTab = searchParams.get('type') || 'daily';
+    const subView = searchParams.get('view') || 'list';
     const [subBreadcrumb, setSubBreadcrumb] = useState('');
-    const [subView, setSubView] = useState('list'); // shared sub-view state for modules
+
+    const setActiveTab = (tabId) => {
+        const newParams = new URLSearchParams(searchParams);
+        newParams.set('type', tabId);
+        newParams.delete('view'); // Reset view on type change
+        setSearchParams(newParams);
+    };
+
+    const setSubView = (view) => {
+        const newParams = new URLSearchParams(searchParams);
+        newParams.set('view', view);
+        setSearchParams(newParams);
+    };
 
     // Filter States
     const [filters, setFilters] = useState({
@@ -40,38 +55,44 @@ const Reports = ({ setExtraBreadcrumbs }) => {
         { id: 'employee', label: 'Team Contribution', icon: Users, desc: 'Worker impact' },
     ];
 
-    const activeCategory = categories.find(t => t.id === activeTab);
+    const handleBack = React.useCallback(() => {
+        const newParams = new URLSearchParams(searchParams);
+        newParams.delete('view');
+        setSearchParams(newParams);
+    }, [searchParams, setSearchParams]);
 
-    // Reset sub-view when tab changes
+    const activeCategory = categories.find(t => t.id === activeTab) || categories[0];
+
     useEffect(() => {
-        setSubView('list');
-        setSubBreadcrumb('');
-    }, [activeTab]);
+        const bcs = [];
+        const type = searchParams.get('type') || 'daily';
+        const view = searchParams.get('view') || 'list';
 
-    // Sync breadcrumbs with the parent index.jsx
-    useEffect(() => {
-        const bcs = [
-            {
-                label: activeCategory.label,
-                onClick: () => {
-                    setSubView('list');
-                    setSubBreadcrumb('');
-                }
-            }
-        ];
+        const cat = categories.find(c => c.id === type) || categories[0];
 
-        if (subBreadcrumb) {
-            bcs.push({
-                label: subBreadcrumb,
-                onClick: null
-            });
+        bcs.push({
+            label: cat.label,
+            onClick: handleBack
+        });
+
+        if (view === 'create') {
+            bcs.push({ label: 'Create New Report' });
+        } else if (view === 'details') {
+            bcs.push({ label: 'Report Details' });
         }
 
         setExtraBreadcrumbs(bcs);
+    }, [searchParams.get('type'), searchParams.get('view'), setExtraBreadcrumbs, handleBack]);
 
-        // Cleanup on unmount
-        return () => setExtraBreadcrumbs([]);
-    }, [activeTab, subBreadcrumb, setExtraBreadcrumbs, activeCategory.label, subView]);
+    // Reset sub-view when tab changes
+    useEffect(() => {
+        // Only reset if we are not already on list
+        if (searchParams.get('view') && searchParams.get('view') !== 'list') {
+            // But wait, we might WANT deep linking. Let's only reset if it's a fresh tab change from UI
+            // Actually, the user asked for URL synchronization, so we should RESPECT the URL.
+            // Removing the auto-reset to 'list' might be better for deep linking.
+        }
+    }, [activeTab]);
 
     const renderHeaderActions = () => {
         return (

@@ -20,7 +20,13 @@ const ProjectDetails = () => {
     const { id } = useParams();
     const navigate = useNavigate();
     const [searchParams, setSearchParams] = useSearchParams();
-    const [activeTab, setActiveTab] = useState(searchParams.get('tab') || 'Dashboard');
+    const activeTab = searchParams.get('tab') || 'Dashboard';
+
+    const setActiveTab = (tab) => {
+        setSearchParams({ tab });
+        setExtraBreadcrumbs([]); // Clear on tab switch
+    };
+
     const [extraBreadcrumbs, setExtraBreadcrumbs] = useState([]); // Array of { label, onClick }
     const tabs = ['Dashboard', 'Tasks', 'WIP', 'Reports', 'General Documents', 'Drawings', 'Planning', 'Contracts', 'Quality', 'Safety', 'Billing', 'Material Management'];
 
@@ -69,7 +75,10 @@ const ProjectDetails = () => {
                         Projects
                     </button>
                     <ChevronRight size={14} className="text-gray-400 dark:text-gray-500" />
-                    <span className={`transition-colors ${extraBreadcrumbs.length > 0 ? 'text-blue-600 dark:text-blue-400 font-medium cursor-pointer' : 'text-gray-900 dark:text-white font-semibold'}`}>
+                    <span
+                        className={`transition-colors ${extraBreadcrumbs.length > 0 ? 'text-blue-600 dark:text-blue-400 font-medium cursor-pointer' : 'text-gray-900 dark:text-white font-semibold'}`}
+                        onClick={() => extraBreadcrumbs.length > 0 && setActiveTab('Dashboard')}
+                    >
                         {id} Explore Zoho Projects!
                     </span>
                     {extraBreadcrumbs.map((bc, index) => (
@@ -94,11 +103,7 @@ const ProjectDetails = () => {
                 {tabs.map((tab) => (
                     <button
                         key={tab}
-                        onClick={() => {
-                            setActiveTab(tab);
-                            setSearchParams({ tab });
-                            setExtraBreadcrumbs([]); // Clear on tab switch
-                        }}
+                        onClick={() => setActiveTab(tab)}
                         className={`pb-2.5 px-4 text-sm font-medium border-b-2 transition-colors duration-200 ${activeTab === tab
                             ? 'border-blue-600 text-blue-600 dark:border-blue-500 dark:text-blue-400'
                             : 'border-transparent text-gray-500 dark:text-gray-400 hover:text-gray-800 dark:hover:text-gray-200 hover:border-gray-300 dark:hover:border-gray-500'

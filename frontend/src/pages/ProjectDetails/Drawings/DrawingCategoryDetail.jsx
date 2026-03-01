@@ -574,7 +574,7 @@ const DrawingCategoryDetail = ({ category, onBack, setExtraBreadcrumbs }) => {
                                                         </div>
                                                         <span className="text-xs text-gray-500">Ref: {selectedDrawingVersion?.number || 'EXT-DOC-001'}</span>
                                                     </div>
-                                                    
+
                                                     <div className="border-t border-gray-200 dark:border-white/10 pt-4 space-y-2">
                                                         <div className="flex items-center space-x-3 text-sm text-gray-700 dark:text-gray-300">
                                                             <Clock size={16} className="text-gray-500 shrink-0" />
@@ -593,8 +593,8 @@ const DrawingCategoryDetail = ({ category, onBack, setExtraBreadcrumbs }) => {
                                                 <label className="text-[10px] text-gray-500 font-bold uppercase tracking-[0.2em] block mb-4">Revision History</label>
                                                 <div className="space-y-4 relative">
                                                     {drawerLogs.map((log, i) => (
-                                                        <div 
-                                                            key={i} 
+                                                        <div
+                                                            key={i}
                                                             onClick={(e) => { e.stopPropagation(); setActiveLogIndex(i); }}
                                                             className="flex relative pl-6 group cursor-pointer"
                                                         >
@@ -602,7 +602,7 @@ const DrawingCategoryDetail = ({ category, onBack, setExtraBreadcrumbs }) => {
                                                             <div className="absolute left-1.5 top-2.5 bottom-[-24px] w-[2px] bg-gray-200 dark:bg-white/10 group-last:hidden" />
                                                             {/* Timeline Dot */}
                                                             <div className={`absolute left-[-2px] top-1.5 w-[16px] h-[16px] rounded-full border-[3px] border-white dark:border-[#0d1117] shadow-sm transition-all duration-300 z-10 ${activeLogIndex === i ? 'bg-blue-500 scale-110' : (log.type === 'Current' ? 'bg-blue-400' : 'bg-gray-400 dark:bg-gray-600')}`} />
-                                                            
+
                                                             <div className={`flex-1 pb-6 transition-all duration-300 ${activeLogIndex === i ? 'scale-[1.01] origin-left opacity-100' : 'opacity-60 group-hover:opacity-100'}`}>
                                                                 <div className="flex items-center justify-between mb-1">
                                                                     <span className={`text-xs font-bold ${log.type === 'Current' ? 'text-blue-600 dark:text-blue-400' : 'text-gray-900 dark:text-gray-300'}`}>{log.rev} {log.type === 'Current' && '(Latest)'}</span>

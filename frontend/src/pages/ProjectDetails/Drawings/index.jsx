@@ -1,21 +1,36 @@
-import React, { useState, useEffect } from 'react';
-import { FileText, FileSpreadsheet, FileImage, FileStack, ChevronRight, PenTool, Layers, Droplets, Zap, Flame } from 'lucide-react';
+import React, { useEffect } from 'react';
+import { ChevronRight, PenTool, Layers, Droplets, Zap, Flame } from 'lucide-react';
+import { useSearchParams } from 'react-router-dom';
 
 import DrawingsDetail from './DrawingCategoryDetail';
 
+const categories = [
+    { id: 'civil', name: 'Civil / Architectural Drawings', icon: <PenTool size={24} />, color: 'blue' },
+    { id: 'electrical', name: 'Electrical Drawings', icon: <Zap size={24} />, color: 'yellow' },
+    { id: 'plumbing', name: 'Plumbing Drawings', icon: <Droplets size={24} />, color: 'cyan' },
+    { id: 'hvac', name: 'HVAC Drawings', icon: <Layers size={24} />, color: 'emerald' },
+    { id: 'fire', name: 'Fire Fighting Drawings', icon: <Flame size={24} />, color: 'red' },
+];
+
 const DrawingsIndex = ({ setExtraBreadcrumbs }) => {
-    const [currentView, setCurrentView] = useState('grid');
-    const [selectedCategory, setSelectedCategory] = useState(null);
+    const [searchParams, setSearchParams] = useSearchParams();
+    const currentView = searchParams.get('view') || 'grid';
+    const catId = searchParams.get('cat');
+    const selectedCategory = categories.find(c => c.id === catId);
 
     const handleCategoryClick = (cat) => {
-        setSelectedCategory(cat);
-        setCurrentView('detail');
+        const newParams = new URLSearchParams(searchParams);
+        newParams.set('view', 'detail');
+        newParams.set('cat', cat.id);
+        setSearchParams(newParams);
     };
 
-    const handleBack = () => {
-        setCurrentView('grid');
-        setSelectedCategory(null);
-    };
+    const handleBack = React.useCallback(() => {
+        const newParams = new URLSearchParams(searchParams);
+        newParams.delete('view');
+        newParams.delete('cat');
+        setSearchParams(newParams);
+    }, [searchParams, setSearchParams]);
 
     useEffect(() => {
         if (currentView === 'grid') {
@@ -33,13 +48,7 @@ const DrawingsIndex = ({ setExtraBreadcrumbs }) => {
         );
     }
 
-    const categories = [
-        { id: 'civil', name: 'Civil / Architectural Drawings', icon: <PenTool size={24} />, color: 'blue' },
-        { id: 'electrical', name: 'Electrical Drawings', icon: <Zap size={24} />, color: 'yellow' },
-        { id: 'plumbing', name: 'Plumbing Drawings', icon: <Droplets size={24} />, color: 'cyan' },
-        { id: 'hvac', name: 'HVAC Drawings', icon: <Layers size={24} />, color: 'emerald' },
-        { id: 'fire', name: 'Fire Fighting Drawings', icon: <Flame size={24} />, color: 'red' },
-    ];
+
 
     return (
         <div className="flex-1 flex flex-col h-full bg-white dark:bg-[#0d1117] overflow-hidden anim-fade-in Poppins text-left">

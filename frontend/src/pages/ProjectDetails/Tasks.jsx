@@ -1,16 +1,36 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { ChevronDown, ChevronRight, AlignLeft, Zap, Filter, Search, Plus, Pencil, Trash2, X, Check, GripVertical } from 'lucide-react';
 import CustomDatePicker from '../../components/CustomDatePicker';
 
-const Tasks = () => {
+const Tasks = ({ setExtraBreadcrumbs }) => {
+    useEffect(() => {
+        setExtraBreadcrumbs([{ label: 'Tasks' }]);
+    }, [setExtraBreadcrumbs]);
+    const [searchParams, setSearchParams] = useSearchParams();
+    const statusFilter = searchParams.get('status') || 'All';
+    const priorityFilter = searchParams.get('priority') || 'All';
+
+    const setStatusFilter = (status) => {
+        const newParams = new URLSearchParams(searchParams);
+        if (status === 'All') newParams.delete('status');
+        else newParams.set('status', status);
+        setSearchParams(newParams);
+    };
+
+    const setPriorityFilter = (priority) => {
+        const newParams = new URLSearchParams(searchParams);
+        if (priority === 'All') newParams.delete('priority');
+        else newParams.set('priority', priority);
+        setSearchParams(newParams);
+    };
+
     // Initialize all as expanded by default as requested
     const [expandedLists, setExpandedLists] = useState({
         'A quick way to get started! (2)': true,
         'ok': true,
         'Basics of Tasks and Milestones (12)': true
     });
-    const [statusFilter, setStatusFilter] = useState('All');
-    const [priorityFilter, setPriorityFilter] = useState('All');
     const [addingTaskInList, setAddingTaskInList] = useState(null);
     const [activeToolbarDropdown, setActiveToolbarDropdown] = useState(null);
     const [activeDropdown, setActiveDropdown] = useState(null);
@@ -159,7 +179,7 @@ const Tasks = () => {
                     {/* Status Filter */}
                     <div className="relative">
                         <div
-                            className={`flex items-center space-x-1.5 px-3 py-1.5 rounded-md border ${activeToolbarDropdown === 'statusFilter' ? 'border-blue-500 ring-2 ring-blue-500/20' : 'border-gray-200 dark:border-gh-border'} bg-white dark:bg-gray-50 dark:bg-[#161b22] text-[12px] font-semibold text-gray-700 dark:text-gray-300 cursor-pointer hover:border-gray-300 dark:hover:border-gh-border-hover transition-all`}
+                            className={`flex items-center space-x-1.5 px-3 py-1.5 rounded-md border ${activeToolbarDropdown === 'statusFilter' ? 'border-blue-500 ring-2 ring-blue-500/20' : 'border-gray-200 dark:border-gh-border'} bg-white dark:bg-[#161b22] text-[12px] font-semibold text-gray-700 dark:text-gray-300 cursor-pointer hover:border-gray-300 dark:hover:border-gh-border-hover transition-all`}
                             onClick={() => setActiveToolbarDropdown(activeToolbarDropdown === 'statusFilter' ? null : 'statusFilter')}
                         >
                             <span className="text-gray-500 dark:text-gray-400">Status:</span>
@@ -167,7 +187,7 @@ const Tasks = () => {
                             <ChevronDown size={14} className={`text-gray-400 transition-transform ${activeToolbarDropdown === 'statusFilter' ? 'rotate-180 text-blue-500' : ''}`} />
                         </div>
                         {activeToolbarDropdown === 'statusFilter' && (
-                            <div className="absolute top-full left-0 mt-1 w-40 bg-white dark:bg-gray-50 dark:bg-[#161b22] border border-gray-200 dark:border-gray-700 rounded-md shadow-2xl py-1 z-[110] anim-fade-in flex flex-col overflow-hidden divide-y divide-gray-100 dark:divide-gray-800">
+                            <div className="absolute top-full left-0 mt-1 w-40 bg-white dark:bg-[#161b22] border border-gray-200 dark:border-gray-700 rounded-md shadow-2xl py-1 z-[110] anim-fade-in flex flex-col overflow-hidden divide-y divide-gray-100 dark:divide-gray-800">
                                 <div className={`px-3 py-2 text-[12px] font-semibold cursor-pointer transition-colors ${statusFilter === 'All' ? 'bg-blue-50 dark:bg-blue-600/20 text-blue-600 dark:text-blue-400' : 'text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-white/5 hover:text-blue-600 dark:hover:text-white'}`} onClick={() => { setStatusFilter('All'); setActiveToolbarDropdown(null); }}>All</div>
                                 {statusOptions.map(opt => (
                                     <div key={opt.label} className={`px-3 py-2 text-[12px] font-semibold cursor-pointer transition-colors ${statusFilter === opt.label ? 'bg-blue-50 dark:bg-blue-600/20 text-blue-600 dark:text-blue-400' : 'text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-white/5 hover:text-blue-600 dark:hover:text-white'}`} onClick={() => { setStatusFilter(opt.label); setActiveToolbarDropdown(null); }}>
@@ -181,7 +201,7 @@ const Tasks = () => {
                     {/* Priority Filter */}
                     <div className="relative">
                         <div
-                            className={`flex items-center space-x-1.5 px-3 py-1.5 rounded-md border ${activeToolbarDropdown === 'priorityFilter' ? 'border-blue-500 ring-2 ring-blue-500/20' : 'border-gray-200 dark:border-gh-border'} bg-white dark:bg-gray-50 dark:bg-[#161b22] text-[12px] font-semibold text-gray-700 dark:text-gray-300 cursor-pointer hover:border-gray-300 dark:hover:border-gh-border-hover transition-all`}
+                            className={`flex items-center space-x-1.5 px-3 py-1.5 rounded-md border ${activeToolbarDropdown === 'priorityFilter' ? 'border-blue-500 ring-2 ring-blue-500/20' : 'border-gray-200 dark:border-gh-border'} bg-white dark:bg-[#161b22] text-[12px] font-semibold text-gray-700 dark:text-gray-300 cursor-pointer hover:border-gray-300 dark:hover:border-gh-border-hover transition-all`}
                             onClick={() => setActiveToolbarDropdown(activeToolbarDropdown === 'priorityFilter' ? null : 'priorityFilter')}
                         >
                             <span className="text-gray-500 dark:text-gray-400">Priority:</span>
@@ -189,7 +209,7 @@ const Tasks = () => {
                             <ChevronDown size={14} className={`text-gray-400 transition-transform ${activeToolbarDropdown === 'priorityFilter' ? 'rotate-180 text-blue-500' : ''}`} />
                         </div>
                         {activeToolbarDropdown === 'priorityFilter' && (
-                            <div className="absolute top-full left-0 mt-1 w-40 bg-white dark:bg-gray-50 dark:bg-[#161b22] border border-gray-200 dark:border-gray-700 rounded-md shadow-2xl py-1 z-[110] anim-fade-in flex flex-col overflow-hidden divide-y divide-gray-100 dark:divide-gray-800">
+                            <div className="absolute top-full left-0 mt-1 w-40 bg-white dark:bg-[#161b22] border border-gray-200 dark:border-gray-700 rounded-md shadow-2xl py-1 z-[110] anim-fade-in flex flex-col overflow-hidden divide-y divide-gray-100 dark:divide-gray-800">
                                 <div className={`px-3 py-2 text-[12px] font-semibold cursor-pointer transition-colors ${priorityFilter === 'All' ? 'bg-blue-50 dark:bg-blue-600/20 text-blue-600 dark:text-blue-400' : 'text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-white/5 hover:text-blue-600 dark:hover:text-white'}`} onClick={() => { setPriorityFilter('All'); setActiveToolbarDropdown(null); }}>All</div>
                                 {priorityOptions.map(opt => (
                                     <div key={opt.label} className={`px-3 py-2 text-[12px] font-semibold cursor-pointer transition-colors ${priorityFilter === opt.label ? 'bg-blue-50 dark:bg-blue-600/20 text-blue-600 dark:text-blue-400' : 'text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-white/5 hover:text-blue-600 dark:hover:text-white'}`} onClick={() => { setPriorityFilter(opt.label); setActiveToolbarDropdown(null); }}>
@@ -214,7 +234,7 @@ const Tasks = () => {
             {/* Table View */}
             <div className="flex-1 overflow-auto">
                 <table className="w-full text-left whitespace-nowrap text-[13px] border-collapse bg-white dark:bg-[#0d1117]">
-                    <thead className="bg-[#f9fafb] dark:bg-gray-50 dark:bg-[#161b22] text-gray-500 dark:text-gray-400 sticky top-0 z-10 border-b border-gray-200 dark:border-gh-border tracking-wide">
+                    <thead className="bg-[#f9fafb] dark:bg-[#161b22] text-gray-500 dark:text-gray-400 sticky top-0 z-10 border-b border-gray-200 dark:border-gh-border tracking-wide">
                         <tr>
                             <th className="px-3 py-2 w-6"></th>
                             <th className="px-4 py-3 font-semibold uppercase text-xs">ID</th>
@@ -233,7 +253,7 @@ const Tasks = () => {
                         {filteredTaskData.map((group, groupIdx) => (
                             <React.Fragment key={groupIdx}>
                                 {/* Group Header */}
-                                <tr className={`border-b border-gray-200 dark:border-gh-border transition-colors ${expandedLists[group.listName] ? 'bg-blue-50/10 dark:bg-gh-bg' : 'bg-[#fcfcfc] dark:bg-gray-50 dark:bg-[#161b22]/50'}`}>
+                                <tr className={`border-b border-gray-200 dark:border-gh-border transition-colors ${expandedLists[group.listName] ? 'bg-blue-50/10 dark:bg-gh-bg' : 'bg-[#fcfcfc] dark:bg-[#161b22]/50'}`}>
                                     <td colSpan={11} className="py-2 px-4">
                                         <div
                                             className="flex items-center justify-between group cursor-pointer text-gray-700 dark:text-gray-300 hover:text-gray-900 dark:hover:text-white"
@@ -279,7 +299,7 @@ const Tasks = () => {
                                                 type="text"
                                                 autoFocus
                                                 placeholder="What needs to be done?"
-                                                className="w-full bg-white dark:bg-gray-50 dark:bg-[#161b22] border border-blue-300 dark:border-blue-700 rounded-md px-2 py-1.5 text-sm focus:ring-2 focus:ring-blue-500 outline-none shadow-sm dark:text-white transition-all placeholder:text-gray-500"
+                                                className="w-full bg-white dark:bg-[#161b22] border border-blue-300 dark:border-blue-700 rounded-md px-2 py-1.5 text-sm focus:ring-2 focus:ring-blue-500 outline-none shadow-sm dark:text-white transition-all placeholder:text-gray-500"
                                                 value={newTask.name}
                                                 onChange={(e) => setNewTask({ ...newTask, name: e.target.value })}
                                             />
@@ -295,7 +315,7 @@ const Tasks = () => {
                                         <td className="px-4 py-3">
                                             <div className="relative">
                                                 <div
-                                                    className={`flex items-center justify-between bg-white dark:bg-gray-50 dark:bg-[#161b22] border ${activeDropdown === 'status' ? 'border-blue-500 ring-2 ring-blue-500/20 shadow-lg shadow-blue-500/10' : 'border-gray-200 dark:border-gh-border'} rounded-md px-3 py-1.5 text-[11px] font-bold cursor-pointer transition-all duration-200 hover:border-gray-300 dark:hover:border-gh-border-hover w-28 group`}
+                                                    className={`flex items-center justify-between bg-white dark:bg-[#161b22] border ${activeDropdown === 'status' ? 'border-blue-500 ring-2 ring-blue-500/20 shadow-lg shadow-blue-500/10' : 'border-gray-200 dark:border-gh-border'} rounded-md px-3 py-1.5 text-[11px] font-bold cursor-pointer transition-all duration-200 hover:border-gray-300 dark:hover:border-gh-border-hover w-28 group`}
                                                     onClick={(e) => { e.stopPropagation(); setActiveDropdown(activeDropdown === 'status' ? null : 'status'); }}
                                                 >
                                                     <span className="text-gray-900 dark:text-white capitalize">{newTask.status}</span>
@@ -303,7 +323,7 @@ const Tasks = () => {
                                                 </div>
 
                                                 {activeDropdown === 'status' && (
-                                                    <div className="absolute top-full left-0 mt-1.5 w-full bg-white dark:bg-gray-50 dark:bg-[#161b22] border border-gray-200 dark:border-gray-700 rounded-md shadow-2xl py-1 z-[100] anim-fade-in divide-y divide-gray-100 dark:divide-gray-800 overflow-hidden">
+                                                    <div className="absolute top-full left-0 mt-1.5 w-full bg-white dark:bg-[#161b22] border border-gray-200 dark:border-gray-700 rounded-md shadow-2xl py-1 z-[100] anim-fade-in divide-y divide-gray-100 dark:divide-gray-800 overflow-hidden">
                                                         {statusOptions.map(opt => (
                                                             <div
                                                                 key={opt.label}
@@ -340,7 +360,7 @@ const Tasks = () => {
                                             <div className="flex items-center space-x-3">
                                                 <div className="relative">
                                                     <div
-                                                        className={`flex items-center justify-between bg-white dark:bg-gray-50 dark:bg-[#161b22] border ${activeDropdown === 'priority' ? 'border-blue-500 ring-2 ring-blue-500/20' : 'border-gray-200 dark:border-gh-border'} rounded-md px-2 py-1.5 text-[11px] font-semibold w-24 cursor-pointer transition-all duration-200 hover:border-gray-300 dark:hover:border-gh-border-hover`}
+                                                        className={`flex items-center justify-between bg-white dark:bg-[#161b22] border ${activeDropdown === 'priority' ? 'border-blue-500 ring-2 ring-blue-500/20' : 'border-gray-200 dark:border-gh-border'} rounded-md px-2 py-1.5 text-[11px] font-semibold w-24 cursor-pointer transition-all duration-200 hover:border-gray-300 dark:hover:border-gh-border-hover`}
                                                         onClick={(e) => { e.stopPropagation(); setActiveDropdown(activeDropdown === 'priority' ? null : 'priority'); }}
                                                     >
                                                         <div className="flex items-center space-x-1.5">
@@ -351,7 +371,7 @@ const Tasks = () => {
                                                     </div>
 
                                                     {activeDropdown === 'priority' && (
-                                                        <div className="absolute top-full mt-1.5 left-0 w-28 bg-white dark:bg-gray-50 dark:bg-[#161b22] border border-gray-200 dark:border-gray-700 rounded-md shadow-2xl py-1 z-[100] anim-fade-in flex flex-col overflow-hidden divide-y divide-gray-100 dark:divide-gray-800">
+                                                        <div className="absolute top-full mt-1.5 left-0 w-28 bg-white dark:bg-[#161b22] border border-gray-200 dark:border-gray-700 rounded-md shadow-2xl py-1 z-[100] anim-fade-in flex flex-col overflow-hidden divide-y divide-gray-100 dark:divide-gray-800">
                                                             {priorityOptions.map(opt => (
                                                                 <div
                                                                     key={opt.label}
@@ -400,14 +420,14 @@ const Tasks = () => {
                                                         <input
                                                             type="text"
                                                             autoFocus
-                                                            className="w-full bg-white dark:bg-gray-50 dark:bg-[#161b22] border border-blue-500 ring-1 ring-blue-500/20 rounded-md px-2 py-1 text-sm outline-none shadow-sm dark:text-white transition-all"
+                                                            className="w-full bg-[#f6f8fa] dark:bg-[#161b22] border border-blue-500 ring-1 ring-blue-500/20 rounded-md px-2 py-1 text-sm outline-none shadow-sm dark:text-white transition-all"
                                                             value={editingTask.name}
                                                             onChange={(e) => setEditingTask({ ...editingTask, name: e.target.value })}
                                                             onKeyDown={(e) => e.key === 'Enter' && handleUpdateTask()}
                                                         />
                                                     ) : (
                                                         <div
-                                                            className="px-2 py-1 rounded-md bg-[#f6f8fa] dark:bg-gray-50 dark:bg-[#161b22] border border-gray-200 dark:border-gh-border shadow-sm cursor-pointer truncate max-w-[400px] text-gray-900 dark:text-gray-200 font-medium"
+                                                            className="px-2 py-1 rounded-md bg-[#f6f8fa] dark:bg-[#161b22] border border-gray-200 dark:border-gh-border shadow-sm cursor-pointer truncate max-w-[400px] text-gray-900 dark:text-gray-200 font-medium"
                                                             onClick={() => setActiveDropdown('name')}
                                                         >
                                                             {editingTask.name}
@@ -422,7 +442,7 @@ const Tasks = () => {
                                                 </td>
                                                 <td className="px-4 py-2 relative">
                                                     <div
-                                                        className={`px-1.5 py-0.5 rounded-md transition-all cursor-pointer bg-[#f6f8fa] dark:bg-gray-50 dark:bg-[#161b22] border border-gray-200 dark:border-gh-border shadow-sm w-fit`}
+                                                        className={`px-1.5 py-0.5 rounded-md transition-all cursor-pointer bg-[#f6f8fa] dark:bg-[#161b22] border border-gray-200 dark:border-gh-border shadow-sm w-fit`}
                                                         onClick={(e) => { e.stopPropagation(); setActiveDropdown(activeDropdown === 'status' ? null : 'status'); }}
                                                     >
                                                         <span className={`px-2.5 py-0.5 rounded-full text-[11px] font-semibold min-w-[90px] inline-block text-center shadow-sm ${editingTask.statusColor}`}>
@@ -430,7 +450,7 @@ const Tasks = () => {
                                                         </span>
                                                     </div>
                                                     {activeDropdown === 'status' && (
-                                                        <div className="absolute top-full left-0 mt-1 w-40 bg-white dark:bg-gray-50 dark:bg-[#161b22] border border-gray-200 dark:border-gray-700 rounded-md shadow-2xl py-1 z-50 anim-fade-in flex flex-col overflow-hidden divide-y divide-gray-100 dark:divide-gray-800">
+                                                        <div className="absolute top-full left-0 mt-1 w-40 bg-white dark:bg-[#161b22] border border-gray-200 dark:border-gray-700 rounded-md shadow-2xl py-1 z-50 anim-fade-in flex flex-col overflow-hidden divide-y divide-gray-100 dark:divide-gray-800">
                                                             {statusOptions.map(opt => (
                                                                 <div
                                                                     key={opt.label}
@@ -447,7 +467,7 @@ const Tasks = () => {
                                                 <td className="px-4 py-2 text-gray-400 dark:text-gray-500">-</td>
                                                 <td className="px-4 py-2 relative">
                                                     <div
-                                                        className={`px-2 py-1 rounded-md bg-[#f6f8fa] dark:bg-gray-50 dark:bg-[#161b22] border border-gray-200 dark:border-gh-border shadow-sm cursor-pointer w-fit`}
+                                                        className={`px-2 py-1 rounded-md bg-[#f6f8fa] dark:bg-[#161b22] border border-gray-200 dark:border-gh-border shadow-sm cursor-pointer w-fit`}
                                                         onClick={() => setActiveDropdown(activeDropdown === 'startDate' ? null : 'startDate')}
                                                     >
                                                         <span className="text-gray-600 dark:text-gray-400">{editingTask.startDate}</span>
@@ -467,7 +487,7 @@ const Tasks = () => {
                                                 </td>
                                                 <td className="px-4 py-2 relative">
                                                     <div
-                                                        className={`px-2 py-1 rounded-md bg-[#f6f8fa] dark:bg-gray-50 dark:bg-[#161b22] border border-gray-200 dark:border-gh-border shadow-sm cursor-pointer w-fit`}
+                                                        className={`px-2 py-1 rounded-md bg-[#f6f8fa] dark:bg-[#161b22] border border-gray-200 dark:border-gh-border shadow-sm cursor-pointer w-fit`}
                                                         onClick={() => setActiveDropdown(activeDropdown === 'dueDate' ? null : 'dueDate')}
                                                     >
                                                         <div className="flex items-center space-x-2">
@@ -491,14 +511,14 @@ const Tasks = () => {
                                                 <td className="px-4 py-2 text-gray-600 dark:text-gray-400">{editingTask.duration}</td>
                                                 <td className={`px-4 py-2 relative ${editingTask.priorityColor} font-semibold`}>
                                                     <div
-                                                        className={`flex items-center space-x-1 px-2 py-1 rounded-md bg-[#f6f8fa] dark:bg-gray-50 dark:bg-[#161b22] border border-gray-200 dark:border-gh-border shadow-sm cursor-pointer w-fit`}
+                                                        className={`flex items-center space-x-1 px-2 py-1 rounded-md bg-[#f6f8fa] dark:bg-[#161b22] border border-gray-200 dark:border-gh-border shadow-sm cursor-pointer w-fit`}
                                                         onClick={() => setActiveDropdown(activeDropdown === 'priority' ? null : 'priority')}
                                                     >
                                                         {editingTask.priority !== 'None' && <span className="font-bold">!</span>}
                                                         <span className="ml-1">{editingTask.priority}</span>
                                                     </div>
                                                     {activeDropdown === 'priority' && (
-                                                        <div className="absolute top-full left-0 mt-1 w-40 bg-white dark:bg-gray-50 dark:bg-[#161b22] border border-gray-200 dark:border-gray-700 rounded-md shadow-2xl py-1 z-50 anim-fade-in flex flex-col overflow-hidden divide-y divide-gray-100 dark:divide-gray-800">
+                                                        <div className="absolute top-full left-0 mt-1 w-40 bg-white dark:bg-[#161b22] border border-gray-200 dark:border-gray-700 rounded-md shadow-2xl py-1 z-50 anim-fade-in flex flex-col overflow-hidden divide-y divide-gray-100 dark:divide-gray-800">
                                                             {priorityOptions.map(opt => (
                                                                 <div
                                                                     key={opt.label}
@@ -547,7 +567,7 @@ const Tasks = () => {
                                             <td className="px-4 py-2 font-mono text-gray-500 dark:text-gray-400">{task.id}</td>
                                             <td className="px-2 py-1 text-gray-900 dark:text-gray-200 font-medium">
                                                 <div
-                                                    className={`group/name flex items-center justify-between border border-transparent rounded-md px-2 py-1.5 transition-all duration-200 ${isHovered ? 'bg-[#f6f8fa] dark:bg-gray-50 dark:bg-[#161b22] border-gray-200 dark:border-gh-border shadow-sm' : ''}`}
+                                                    className={`group/name flex items-center justify-between border border-transparent rounded-md px-2 py-1.5 transition-all duration-200 ${isHovered ? 'bg-[#f6f8fa] dark:bg-[#161b22] border-gray-200 dark:border-gh-border shadow-sm' : ''}`}
                                                     onClick={() => handleEditClick(groupIdx, taskIdx, task, 'name')}
                                                 >
                                                     <div className="truncate max-w-[400px] cursor-pointer">
@@ -563,7 +583,7 @@ const Tasks = () => {
                                             </td>
                                             <td className="px-4 py-2 relative">
                                                 <div
-                                                    className={`px-2 py-1 rounded-md transition-all cursor-pointer ${isHovered ? 'bg-[#f6f8fa] dark:bg-gray-50 dark:bg-[#161b22] border border-gray-200 dark:border-gh-border shadow-sm' : 'border border-transparent'}`}
+                                                    className={`px-2 py-1 rounded-md transition-all cursor-pointer ${isHovered ? 'bg-[#f6f8fa] dark:bg-[#161b22] border border-gray-200 dark:border-gh-border shadow-sm' : 'border border-transparent'}`}
                                                     onClick={() => handleEditClick(groupIdx, taskIdx, task, 'status')}
                                                 >
                                                     <span className={`px-2.5 py-0.5 rounded-full text-[11px] font-semibold min-w-[90px] inline-block text-center shadow-sm ${task.statusColor}`}>
@@ -574,7 +594,7 @@ const Tasks = () => {
                                             <td className="px-4 py-2 text-gray-400 dark:text-gray-500">-</td>
                                             <td className="px-4 py-2 relative">
                                                 <div
-                                                    className={`px-2 py-1 rounded-md transition-all cursor-pointer ${isHovered ? 'bg-[#f6f8fa] dark:bg-gray-50 dark:bg-[#161b22] border border-gray-200 dark:border-gh-border shadow-sm' : 'border border-transparent'}`}
+                                                    className={`px-2 py-1 rounded-md transition-all cursor-pointer ${isHovered ? 'bg-[#f6f8fa] dark:bg-[#161b22] border border-gray-200 dark:border-gh-border shadow-sm' : 'border border-transparent'}`}
                                                     onClick={() => handleEditClick(groupIdx, taskIdx, task, 'startDate')}
                                                 >
                                                     <span className="text-gray-600 dark:text-gray-400">{task.startDate}</span>
@@ -582,7 +602,7 @@ const Tasks = () => {
                                             </td>
                                             <td className="px-4 py-2 relative">
                                                 <div
-                                                    className={`px-2 py-1 rounded-md transition-all cursor-pointer ${isHovered ? 'bg-[#f6f8fa] dark:bg-gray-50 dark:bg-[#161b22] border border-gray-200 dark:border-gh-border shadow-sm' : 'border border-transparent'}`}
+                                                    className={`px-2 py-1 rounded-md transition-all cursor-pointer ${isHovered ? 'bg-[#f6f8fa] dark:bg-[#161b22] border border-gray-200 dark:border-gh-border shadow-sm' : 'border border-transparent'}`}
                                                     onClick={() => handleEditClick(groupIdx, taskIdx, task, 'dueDate')}
                                                 >
                                                     <div className="flex items-center space-x-2">
@@ -594,7 +614,7 @@ const Tasks = () => {
                                             <td className="px-4 py-2 text-gray-600 dark:text-gray-400">{task.duration}</td>
                                             <td className={`px-4 py-2 relative ${task.priorityColor} font-semibold`}>
                                                 <div
-                                                    className={`flex items-center space-x-1 px-2 py-1 rounded-md transition-all cursor-pointer ${isHovered ? 'bg-[#f6f8fa] dark:bg-gray-50 dark:bg-[#161b22] border border-gray-200 dark:border-gh-border shadow-sm' : 'border border-transparent'}`}
+                                                    className={`flex items-center space-x-1 px-2 py-1 rounded-md transition-all cursor-pointer ${isHovered ? 'bg-[#f6f8fa] dark:bg-[#161b22] border border-gray-200 dark:border-gh-border shadow-sm' : 'border border-transparent'}`}
                                                     onClick={() => handleEditClick(groupIdx, taskIdx, task, 'priority')}
                                                 >
                                                     {task.priority !== 'None' && <span className="font-bold">!</span>}

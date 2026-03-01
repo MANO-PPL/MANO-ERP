@@ -7,7 +7,6 @@ import {
     Map,
     FileText,
     HardHat,
-    CalendarClock,
     Calculator,
     Receipt,
     ShieldCheck,
@@ -25,7 +24,6 @@ const Sidebar = () => {
     const navItems = [
         { icon: LayoutDashboard, label: 'Dashboard', path: '/' },
         { icon: Briefcase, label: 'Projects', path: '/projects' },
-        { icon: CalendarClock, label: 'Agenda', path: '/dashboard/agenda' },
         { icon: Map, label: 'Vendors', path: '/vendors' },
         { icon: Users, label: 'Clients', path: '/clients' },
     ];
