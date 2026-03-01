@@ -86,12 +86,7 @@ const VendorsList = () => {
     return (
         <div className="flex-1 flex flex-col overflow-hidden bg-white dark:bg-[#0d1117] transition-colors h-full">
             {/* Header Area */}
-            <div className="px-8 py-8 flex flex-col gap-6 lg:flex-row lg:justify-between lg:items-end border-b border-gray-200 dark:border-white/5 shrink-0 relative overflow-visible z-20">
-                <div>
-                    <h1 className="text-3xl font-extrabold text-gray-900 dark:text-white tracking-tight mb-2">Vendor List</h1>
-                    <p className="text-sm font-medium text-gray-500 dark:text-gray-400">A continuous list of all project-related vendors and contacts.</p>
-                </div>
-
+            <div className="px-8 py-3 flex items-center justify-end gap-3 border-b border-gray-200 dark:border-white/5 shrink-0 relative overflow-visible z-20">
                 <div className="flex flex-wrap items-center gap-3">
                     <div className="flex space-x-2">
                         <div className="relative">

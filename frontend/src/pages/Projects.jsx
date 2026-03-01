@@ -70,7 +70,7 @@ const Projects = () => {
     return (
         <div className="flex flex-col h-[calc(100vh-8vh)] w-full text-gray-900 dark:text-gh-text transition-colors overflow-hidden bg-[#fafafa] dark:bg-[#0d1117] relative">
             {/* Top Sub-navigation & Toolbar Area */}
-            <div className="flex justify-between items-center px-6 pt-6 pb-4 overflow-x-auto no-scrollbar bg-white dark:bg-[#0d1117]">
+            <div className="flex justify-between items-center px-6 py-3 overflow-x-auto no-scrollbar bg-white dark:bg-[#0d1117] border-b border-gray-200 dark:border-white/5">
                 {/* Left side: Tabs */}
                 <div className="inline-flex p-1 bg-gray-100 dark:bg-white/5 border border-gray-200 dark:border-white/10 rounded-full">
                     {tabs.map((tab) => (
@@ -97,11 +97,6 @@ const Projects = () => {
 
                 {/* Right side: Actions */}
                 <div className="flex items-center space-x-3 text-sm">
-                    <button className="flex items-center space-x-1 px-4 py-2 font-medium text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-white/5 rounded-lg transition-colors border border-gray-200 dark:border-white/10">
-                        <List size={16} />
-                        <span>List</span>
-                        <ChevronDown size={14} className="ml-1 opacity-60" />
-                    </button>
                     <button
                         onClick={() => setIsNewProjectOpen(true)}
                         className="flex items-center space-x-2 px-5 py-2 font-semibold bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition-colors shadow-sm"
@@ -221,17 +216,7 @@ const Projects = () => {
                 </table>
             </div>
 
-            {/* Footer Area / Pagination */}
-            <div className="flex justify-between items-center px-6 py-3 border-t border-gray-200 dark:border-white/5 bg-white dark:bg-[#161b22] text-xs text-gray-500 dark:text-gray-400">
-                <div>Here is your Smart Chat (Ctrl+Space)</div>
-                <div className="flex items-center space-x-4">
-                    <span>Total Count: {projectData.length}</span>
-                    <div className="flex items-center space-x-2 border-l border-gray-300 dark:border-white/10 pl-4">
-                        <span className="px-2 py-1 bg-green-100 dark:bg-green-900/40 text-green-700 dark:text-green-400 font-semibold rounded">50%</span>
-                        <button className="px-3 py-1 bg-blue-600 hover:bg-blue-700 text-white font-medium rounded transition-colors shadow-sm">Live Chat</button>
-                    </div>
-                </div>
-            </div>
+
 
             <NewProjectSlideOut
                 isOpen={isNewProjectOpen}

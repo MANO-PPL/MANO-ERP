@@ -9,6 +9,7 @@ import Projects from './pages/Projects';
 import ProjectDetails from './pages/ProjectDetails/index';
 import VendorsList from './pages/Vendors';
 import CollaborationPage from './pages/Collaboration/index';
+import AdminPage from './pages/Admin/index';
 
 import './index.css';
 
@@ -22,6 +23,7 @@ function App() {
           <Route path="projects/:id" element={<ProjectDetails />} />
           <Route path="vendors" element={<VendorsList />} />
           <Route path="collaboration" element={<CollaborationPage />} />
+          <Route path="admin" element={<AdminPage />} />
           <Route path="clients" element={
             <div className="p-8 text-gray-500 dark:text-gray-400 text-sm">Clients page coming soon.</div>
           } />

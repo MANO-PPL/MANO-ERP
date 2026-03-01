@@ -79,15 +79,7 @@ export default function Chat({ activeTab, setActiveTab }) {
                 </div>
 
                 <div className="flex-1 overflow-y-auto px-6 py-4 custom-scrollbar space-y-5">
-                    {!activeDM && (
-                        <div className="pb-5 border-b border-gray-100 dark:border-white/5 mb-4">
-                            <div className="w-10 h-10 rounded-xl bg-blue-50 dark:bg-blue-500/10 flex items-center justify-center mb-2">
-                                <Hash size={20} className="text-blue-500" />
-                            </div>
-                            <h2 className="text-lg font-bold text-gray-900 dark:text-white mb-1">#{activeChannel?.name}</h2>
-                            <p className="text-sm text-gray-500">{activeChannel?.description}. This is the start of the channel.</p>
-                        </div>
-                    )}
+
                     {messages.map((msg) => (
                         <div key={msg.id} className="flex items-start gap-3 group">
                             <div className={`w-8 h-8 rounded-xl bg-gradient-to-br ${msg.color} flex-shrink-0 flex items-center justify-center text-xs font-bold text-white`}>{msg.initials}</div>

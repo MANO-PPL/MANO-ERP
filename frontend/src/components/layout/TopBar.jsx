@@ -19,6 +19,8 @@ const TopBar = () => {
       return hash === 'calendar' ? 'Calendar' : 'Chat';
     }
 
+    if (location.pathname === '/admin') return 'Admin Console';
+
     switch (location.pathname) {
       case '/': return 'Dashboard';
       case '/projects': return 'Projects';
@@ -38,7 +40,7 @@ const TopBar = () => {
       </div>
 
       {/* Center: Global Search */}
-      {(location.pathname !== '/' && !location.pathname.startsWith('/projects/') && location.pathname !== '/collaboration') ? (
+      {(location.pathname !== '/' && !location.pathname.startsWith('/projects/') && location.pathname !== '/projects' && location.pathname !== '/collaboration' && location.pathname !== '/admin' && location.pathname !== '/vendors') ? (
         <div className="flex-1 w-[40%] mx-8">
           <div className="relative w-full">
             <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 dark:text-gh-muted" size={18} />

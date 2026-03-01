@@ -18,7 +18,8 @@ import {
     Settings,
     Users,
     ChevronDown,
-    Search
+    Search,
+    Shield
 } from 'lucide-react';
 
 const Sidebar = () => {
@@ -28,6 +29,7 @@ const Sidebar = () => {
         { icon: Map, label: 'Vendors', path: '/vendors' },
         { icon: Users, label: 'Clients', path: '/clients' },
         { icon: MessageCircle, label: 'Collaboration', path: '/collaboration' },
+        { icon: Shield, label: 'Admin', path: '/admin' },
     ];
 
     return (
@@ -83,10 +85,7 @@ const Sidebar = () => {
                 </div>
             </div>
 
-            {/* Footer / Version */}
-            <div className="p-4 border-t border-gray-200 dark:border-gh-border text-xs text-gray-400 dark:text-gh-muted text-center transition-colors">
-                v2.0.0 &copy; 2026
-            </div>
+
         </div>
     );
 };
