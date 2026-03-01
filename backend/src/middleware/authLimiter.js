@@ -25,4 +25,3 @@ export const authLimiter = rateLimit({
         message: 'Too many login attempts, please try again after 15 minutes',
     },
 });
-
