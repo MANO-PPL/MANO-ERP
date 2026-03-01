@@ -39,9 +39,8 @@ const ResizableTextarea = ({ value, onChange, placeholder = "", className = "" }
 );
 
 
-const MoMDetail = () => {
-    const { projectId, id } = useParams();
-    const navigate = useNavigate();
+const MoMDetail = ({ onBack, setExtraBreadcrumbs, momId: id }) => {
+    const { id: projectId } = useParams();
 
     // Form State
     const [details, setDetails] = useState({
@@ -76,9 +75,17 @@ const MoMDetail = () => {
         }
     }, [id]);
 
+    useEffect(() => {
+        setExtraBreadcrumbs([
+            { label: 'General Documents', onClick: onBack },
+            { label: 'Minutes of Meeting', onClick: onBack },
+            { label: id === 'new' ? 'New MoM' : details.subject || 'Edit MoM' }
+        ]);
+    }, [onBack, setExtraBreadcrumbs, id, details.subject]);
+
     const handleSave = () => {
         // Save logic here
-        navigate(projectId ? `/projects/${projectId}/mom` : '/dashboard/mom');
+        onBack();
     };
 
     // --- Participants Actions ---
@@ -136,72 +143,11 @@ const MoMDetail = () => {
     };
 
     return (
-        <div className="flex-1 flex flex-col h-[calc(100vh-8vh)] bg-[#fafafa] dark:bg-[#0d1117] font-sans text-gray-900 dark:text-gray-700 dark:text-gray-300 transition-colors">
-            {/* Minimal Header - Project Breadcrumbs Format */}
-            <div className="flex justify-between items-center px-5 py-3 border-b border-gray-200 dark:border-gh-border bg-[#f9fafb] dark:bg-gh-bg transition-colors w-full">
-                <div className="flex items-center space-x-2 text-xs">
-                    {projectId ? (
-                        <>
-                            <button
-                                onClick={() => navigate('/projects')}
-                                className="text-blue-600 dark:text-blue-400 hover:text-blue-800 dark:hover:text-blue-300 transition-colors font-medium cursor-pointer"
-                            >
-                                Projects
-                            </button>
-                            <ChevronRight size={14} className="text-gray-600 dark:text-gray-400 dark:text-gray-500" />
-                            <span
-                                onClick={() => navigate(`/projects/${projectId}?tab=Dashboard`)}
-                                className="text-blue-600 dark:text-blue-400 hover:text-blue-800 dark:hover:text-blue-300 transition-colors font-medium cursor-pointer"
-                            >
-                                {projectId} Explore Zoho Projects!
-                            </span>
-                            <ChevronRight size={14} className="text-gray-600 dark:text-gray-400 dark:text-gray-500" />
-                            <span
-                                onClick={() => navigate(`/projects/${projectId}?tab=General Documents`)}
-                                className="text-blue-600 dark:text-blue-400 hover:text-blue-800 dark:hover:text-blue-300 transition-colors font-medium cursor-pointer"
-                            >
-                                General Documents
-                            </span>
-                            <ChevronRight size={14} className="text-gray-600 dark:text-gray-400 dark:text-gray-500" />
-                            <span
-                                onClick={() => navigate(`/projects/${projectId}/mom`)}
-                                className="text-blue-600 dark:text-blue-400 hover:text-blue-800 dark:hover:text-blue-300 transition-colors font-medium cursor-pointer"
-                            >
-                                Minutes of Meeting
-                            </span>
-                            <ChevronRight size={14} className="text-gray-600 dark:text-gray-400 dark:text-gray-500" />
-                            <span className="text-gray-900 dark:text-gray-200 font-semibold cursor-default">
-                                {id === 'new' ? 'New MoM' : details.subject || 'Edit MoM'}
-                            </span>
-                        </>
-                    ) : (
-                        <>
-                            <button
-                                onClick={() => navigate('/')}
-                                className="text-blue-600 dark:text-blue-400 hover:text-blue-800 dark:hover:text-blue-300 transition-colors font-medium cursor-pointer"
-                            >
-                                Dashboard
-                            </button>
-                            <ChevronRight size={14} className="text-gray-600 dark:text-gray-400 dark:text-gray-500" />
-                            <span
-                                onClick={() => navigate('/dashboard/mom')}
-                                className="text-blue-600 dark:text-blue-400 hover:text-blue-800 dark:hover:text-blue-300 transition-colors font-medium cursor-pointer"
-                            >
-                                Minutes of Meeting
-                            </span>
-                            <ChevronRight size={14} className="text-gray-600 dark:text-gray-400 dark:text-gray-500" />
-                            <span className="text-gray-900 dark:text-gray-200 font-semibold cursor-default">
-                                {id === 'new' ? 'New MoM' : details.subject || 'Edit MoM'}
-                            </span>
-                        </>
-                    )}
-                </div>
-            </div>
-
+        <div className="flex-1 flex flex-col bg-[#fafafa] dark:bg-[#0d1117] font-sans text-gray-900 dark:text-gray-700 dark:text-gray-300 transition-colors overflow-hidden">
             {/* Top Bar */}
             <div className="flex justify-between items-center px-6 py-4 border-b border-gray-200 dark:border-white/10 bg-white dark:bg-[#0d1117] sticky top-0 z-10 w-full">
                 <button
-                    onClick={() => navigate(projectId ? `/projects/${projectId}/mom` : '/dashboard/mom')}
+                    onClick={onBack}
                     className="flex items-center space-x-2 text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:text-white transition-colors text-sm font-medium px-2 py-1.5"
                 >
                     <X size={16} />

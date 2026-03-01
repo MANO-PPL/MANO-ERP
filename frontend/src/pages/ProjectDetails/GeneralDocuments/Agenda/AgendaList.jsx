@@ -10,62 +10,21 @@ const defaultAgendas = [
     { id: 13, title: 'Gundu Mali', meetingNo: '12', venue: 'Residency Sarovar Portico', date: '12 December 2022' },
 ];
 
-const AgendaList = () => {
-    const navigate = useNavigate();
-    const { projectId } = useParams();
+const AgendaList = ({ onBack, setExtraBreadcrumbs, onSelect }) => {
+    const { id: projectId } = useParams();
     const [agendas, setAgendas] = useState(defaultAgendas);
     const [infoDrawerOpen, setInfoDrawerOpen] = useState(false);
     const [selectedAgenda, setSelectedAgenda] = useState(null);
 
-    return (
-        <div className="flex-1 flex flex-col h-[calc(100vh-8vh)] bg-[#fafafa] dark:bg-[#0d1117] font-sans text-gray-900 dark:text-gray-700 dark:text-gray-300 transition-colors">
-            {/* Minimal Header - Project Breadcrumbs Format */}
-            <div className="flex justify-between items-center px-5 py-3 border-b border-gray-200 dark:border-gh-border bg-[#f9fafb] dark:bg-gh-bg transition-colors w-full">
-                <div className="flex items-center space-x-2 text-xs">
-                    {projectId ? (
-                        <>
-                            <button
-                                onClick={() => navigate('/projects')}
-                                className="text-blue-600 dark:text-blue-400 hover:text-blue-800 dark:hover:text-blue-300 transition-colors font-medium cursor-pointer"
-                            >
-                                Projects
-                            </button>
-                            <ChevronRight size={14} className="text-gray-600 dark:text-gray-400 dark:text-gray-500" />
-                            <span
-                                onClick={() => navigate(`/projects/${projectId}`)}
-                                className="text-blue-600 dark:text-blue-400 hover:text-blue-800 dark:hover:text-blue-300 transition-colors font-medium cursor-pointer"
-                            >
-                                {projectId} Explore Zoho Projects!
-                            </span>
-                            <ChevronRight size={14} className="text-gray-600 dark:text-gray-400 dark:text-gray-500" />
-                            <span
-                                onClick={() => navigate(`/projects/${projectId}?tab=General Documents`)} // Navigate to Project Details (General Documents tab will need to be active there, which is default if we used state, but for now navigate to the project dashboard)
-                                className="text-blue-600 dark:text-blue-400 hover:text-blue-800 dark:hover:text-blue-300 transition-colors font-medium cursor-pointer"
-                            >
-                                General Documents
-                            </span>
-                            <ChevronRight size={14} className="text-gray-600 dark:text-gray-400 dark:text-gray-500" />
-                            <span className="text-gray-900 dark:text-gray-200 font-semibold cursor-default">
-                                Agenda of Meeting
-                            </span>
-                        </>
-                    ) : (
-                        <>
-                            <button
-                                onClick={() => navigate('/')}
-                                className="text-blue-600 dark:text-blue-400 hover:text-blue-800 dark:hover:text-blue-300 transition-colors font-medium cursor-pointer"
-                            >
-                                Dashboard
-                            </button>
-                            <ChevronRight size={14} className="text-gray-600 dark:text-gray-400 dark:text-gray-500" />
-                            <span className="text-gray-900 dark:text-gray-800 dark:text-gray-200 font-semibold cursor-default">
-                                Agenda of Meeting
-                            </span>
-                        </>
-                    )}
-                </div>
-            </div>
+    React.useEffect(() => {
+        setExtraBreadcrumbs([
+            { label: 'General Documents', onClick: onBack },
+            { label: 'Agenda of Meeting' }
+        ]);
+    }, [onBack, setExtraBreadcrumbs]);
 
+    return (
+        <div className="flex-1 flex flex-col bg-[#fafafa] dark:bg-[#0d1117] font-sans text-gray-900 dark:text-gray-700 dark:text-gray-300 transition-colors overflow-hidden">
             {/* Header */}
             <div className="flex justify-between items-center px-6 py-5 border-b border-gray-200 dark:border-white/10">
                 <div>
@@ -73,7 +32,7 @@ const AgendaList = () => {
                     <p className="text-xs text-gray-500 mt-1">Upcoming meetings and their planned agendas.</p>
                 </div>
                 <button
-                    onClick={() => navigate(projectId ? `/projects/${projectId}/agenda/new` : '/dashboard/agenda/new')}
+                    onClick={() => onSelect('new')}
                     className="flex items-center space-x-2 bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-md font-medium text-sm transition-colors shadow-sm"
                 >
                     <Plus size={18} />
@@ -90,7 +49,7 @@ const AgendaList = () => {
                             animate={{ opacity: 1, y: 0 }}
                             transition={{ delay: i * 0.05 }}
                             key={agenda.id}
-                            onClick={() => navigate(projectId ? `/projects/${projectId}/agenda/${agenda.id}` : `/dashboard/agenda/${agenda.id}`)}
+                            onClick={() => onSelect(agenda.id)}
                             className="group flex flex-col p-6 bg-gray-50 dark:bg-[#161b22] border border-gray-200 dark:border-white/10 hover:border-blue-500/50 rounded-xl cursor-pointer transition-all duration-300 shadow-sm hover:shadow-lg hover:shadow-blue-900/10 min-h-[160px]"
                         >
                             <div className="flex items-start justify-between">

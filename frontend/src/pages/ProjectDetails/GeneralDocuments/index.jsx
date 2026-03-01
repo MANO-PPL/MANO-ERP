@@ -6,6 +6,10 @@ import ProjectDirectory from './ProjectDirectory';
 import StaffRoles from './StaffRoles';
 import ProjectSummary from './ProjectSummary';
 import OrganisationChart from './OrganisationChart';
+import AgendaList from './Agenda/AgendaList';
+import AgendaDetail from './Agenda/AgendaDetail';
+import MoMList from './MinutesOfMeeting/MoMList';
+import MoMDetail from './MinutesOfMeeting/MoMDetail';
 
 const GeneralDocumentsIndex = ({ setExtraBreadcrumbs }) => {
     const { id } = useParams();
@@ -44,14 +48,36 @@ const GeneralDocumentsIndex = ({ setExtraBreadcrumbs }) => {
     if (currentView === 'org-chart') {
         return <OrganisationChart onBack={handleBack} setExtraBreadcrumbs={setExtraBreadcrumbs} />;
     }
+    if (currentView === 'agenda-list') {
+        return <AgendaList onBack={handleBack} setExtraBreadcrumbs={setExtraBreadcrumbs} onSelect={(aid) => {
+            const newParams = new URLSearchParams(searchParams);
+            newParams.set('view', 'agenda-detail');
+            newParams.set('aid', aid);
+            setSearchParams(newParams);
+        }} />;
+    }
+    if (currentView === 'agenda-detail') {
+        return <AgendaDetail onBack={() => setCurrentView('agenda-list')} setExtraBreadcrumbs={setExtraBreadcrumbs} agendaId={searchParams.get('aid')} />;
+    }
+    if (currentView === 'mom-list') {
+        return <MoMList onBack={handleBack} setExtraBreadcrumbs={setExtraBreadcrumbs} onSelect={(mid) => {
+            const newParams = new URLSearchParams(searchParams);
+            newParams.set('view', 'mom-detail');
+            newParams.set('mid', mid);
+            setSearchParams(newParams);
+        }} />;
+    }
+    if (currentView === 'mom-detail') {
+        return <MoMDetail onBack={() => setCurrentView('mom-list')} setExtraBreadcrumbs={setExtraBreadcrumbs} momId={searchParams.get('mid')} />;
+    }
 
     const categories = [
         { name: 'Project Vendor List', icon: <FileSpreadsheet size={24} />, view: 'vendor-list' },
         { name: 'Project Directory', icon: <FileText size={24} />, view: 'directory' },
         { name: "MANO's Staff Role & Responsibilities", icon: <FileStack size={24} />, view: 'staff-roles' },
         { name: 'Project Summary', icon: <FileText size={24} />, view: 'project-summary' },
-        { name: 'Agenda of Meeting', icon: <FileText size={24} />, path: `/projects/${id}/agenda` },
-        { name: 'Minutes of Meeting', icon: <FileText size={24} />, path: `/projects/${id}/mom` },
+        { name: 'Agenda of Meeting', icon: <FileText size={24} />, view: 'agenda-list' },
+        { name: 'Minutes of Meeting', icon: <FileText size={24} />, view: 'mom-list' },
         { name: 'Organisation Chart', icon: <FileImage size={24} />, view: 'org-chart' },
     ];
 
