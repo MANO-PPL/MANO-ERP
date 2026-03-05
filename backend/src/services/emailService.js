@@ -1,14 +1,17 @@
 import nodemailer from 'nodemailer';
-import dotenv from 'dotenv';
 import AppError from '../utils/AppError.js';
-
-dotenv.config();
 
 class EmailService {
     constructor() {
         this.transporter = nodemailer.createTransport({
             service: process.env.EMAIL_SERVICE || 'gmail', // e.g., 'gmail', 'SendGrid'
-            auth: {
+            auth: process.env.EMAIL_CLIENT_ID ? {
+                type: 'OAuth2',
+                user: process.env.EMAIL_USER,
+                clientId: process.env.EMAIL_CLIENT_ID,
+                clientSecret: process.env.EMAIL_CLIENT_SECRET,
+                refreshToken: process.env.EMAIL_REFRESH_TOKEN,
+            } : {
                 user: process.env.EMAIL_USER,
                 pass: process.env.EMAIL_PASS,
             },
