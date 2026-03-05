@@ -331,7 +331,7 @@ const Approvals = ({ setExtraBreadcrumbs }) => {
         sum + cfg.reporters.length + cfg.approvalLevels.reduce((s, l) => s + l.approvers.length, 0), 0);
 
     return (
-        <div className="flex flex-col h-full bg-gray-50 dark:bg-[#0d1117]">
+        <div className="flex-1 flex flex-col h-full bg-white dark:bg-[#0d1117] overflow-hidden anim-fade-in Poppins text-left">
             {/* Page header */}
             <div className="px-6 py-4 flex items-center justify-between border-b border-gray-200 dark:border-white/5 bg-white dark:bg-[#0d1117] shrink-0">
                 <div className="flex items-center gap-3">
@@ -356,7 +356,7 @@ const Approvals = ({ setExtraBreadcrumbs }) => {
             </div>
 
             {/* Section cards */}
-            <div className="flex-1 overflow-y-auto p-6">
+            <div className="flex-1 overflow-y-auto p-6 md:p-10 custom-scrollbar bg-gray-50/20 dark:bg-transparent">
                 <div className="grid grid-cols-2 gap-4">
                     {SECTIONS.map(section => (
                         <SectionCard
