@@ -48,3 +48,12 @@ export const authenticateJWT = catchAsync(async (req, res, next) => {
         return res.status(403).json({ message: "Forbidden: Invalid or expired token" });
     }
 });
+
+export const restrictTo = (...roles) => {
+    return (req, res, next) => {
+        if (!req.user || !roles.includes(req.user.user_type)) {
+            return res.status(403).json({ success: false, message: 'You do not have permission to perform this action' });
+        }
+        next();
+    };
+};
