@@ -20,13 +20,10 @@ export async function getUsersByOrg(orgId) {
             'u.profile_image_url',
             'u.user_code',
             'u.system_permissions',
-            'u.status',
-            'u.deleted_at',
             'u.created_at',
             'u.updated_at'
         )
-        .where('u.org_id', orgId)
-        .andWhereNot('u.status', 'deleted'); // Exclude marked for deletion by default
+        .where('u.org_id', orgId);
 }
 
 // Retrieve single user by id within an org
@@ -46,8 +43,6 @@ export async function getUserById(orgId, userId) {
             'u.profile_image_url',
             'u.user_code',
             'u.system_permissions',
-            'u.status',
-            'u.deleted_at',
             'u.created_at',
             'u.updated_at',
             'd.desg_name',
@@ -117,7 +112,6 @@ export async function createUser(org_id, userData) {
             user_type: user_type || 'new_user',
             org_id: org_id,
             user_code: userCode,
-            status: 'active',
             profile_image_url,
             system_permissions: system_permissions ? JSON.stringify(system_permissions) : null
         });
@@ -128,27 +122,15 @@ export async function createUser(org_id, userData) {
 }
 
 export async function setActive(orgId, userId) {
-    const affected = await db('users')
-        .where({ user_id: userId, org_id: orgId })
-        .update({ status: 'active', deleted_at: null });
-    if (affected === 0) throw new AppError('User not found', 404);
-    return true;
+    throw new AppError('status tracking not yet configured in DB', 501);
 }
 
 export async function setInactive(orgId, userId) {
-    const affected = await db('users')
-        .where({ user_id: userId, org_id: orgId })
-        .update({ status: 'inactive' });
-    if (affected === 0) throw new AppError('User not found', 404);
-    return true;
+    throw new AppError('status tracking not yet configured in DB', 501);
 }
 
 export async function markForDelete(orgId, userId) {
-    const affected = await db('users')
-        .where({ user_id: userId, org_id: orgId })
-        .update({ status: 'deleted', deleted_at: db.fn.now() });
-    if (affected === 0) throw new AppError('User not found', 404);
-    return true;
+    throw new AppError('status tracking not yet configured in DB', 501);
 }
 
 export async function forceDelete(orgId, userId) {
@@ -356,8 +338,7 @@ export async function bulkInsertUsers(orgId, users) {
                     user_password: hashedPassword,
                     user_type: type,
                     dept_id: deptId,
-                    desg_id: desgId,
-                    status: 'active'
+                    desg_id: desgId
                 });
                 results.success_count++;
             } catch (err) {

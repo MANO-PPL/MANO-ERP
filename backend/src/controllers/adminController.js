@@ -38,7 +38,7 @@ export const createDesignation = catchAsync(async (req, res) => {
 });
 
 export const createUser = catchAsync(async (req, res) => {
-    const newUserId = await userService.createUser(req.user, req.body);
+    const newUserId = await userService.createUser(req.user.org_id, req.body);
     res.status(201).json({ success: true, message: 'User created', user_id: newUserId });
 });
 
