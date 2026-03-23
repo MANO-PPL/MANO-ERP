@@ -1,5 +1,5 @@
-import { db } from '../config/database.js';
-import AppError from '../utils/AppError.js';
+import { db } from '../../config/database.js';
+import AppError from '../../utils/AppError.js';
 
 export async function getTemplates(orgId, type) {
     let query = db('permission_templates').where('org_id', orgId);

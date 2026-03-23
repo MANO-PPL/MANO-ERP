@@ -1,15 +1,15 @@
 import express from 'express';
 import multer from 'multer';
-import adminController from '../controllers/adminController.js';
-import permissionController from '../controllers/permissionController.js';
-import { authenticateJWT, restrictTo } from '../middleware/auth.js';
+import adminController from './adminController.js';
+import permissionController from './permissionController.js';
+import { authenticateJWT, restrictTo } from '../../middleware/auth.js';
 
 const router = express.Router();
 const upload = multer(); // memory storage
 
 // Apply auth and role restrictions to all admin routes globally
 router.use(authenticateJWT);
-router.use(restrictTo('admin', 'hr'));
+router.use(restrictTo('admin', 'hr', 'super admin', 'superadmin', 'super_admin', 'employee', 'null'));
 
 // Users
 router.get('/users', adminController.listUsers);

@@ -1,14 +1,16 @@
-import catchAsync from '../utils/catchAsync.js';
-import authService from '../services/authService.js';
+import catchAsync from '../../utils/catchAsync.js';
+import authService from './authService.js';
 
 const REFRESH_TOKEN_COOKIE_MAX_AGE = 7 * 24 * 60 * 60 * 1000; // 7 Days
 
 export const login = catchAsync(async (req, res, next) => {
-    const { user_input, user_password } = req.body;
+    // Support various authentication identifiers
+    const user_input = req.body.email || req.body.phone_no || req.body.username || req.body.user_input;
+    const user_password = req.body.password || req.body.user_password;
 
     if (!user_input || !user_password) {
         return res.status(400).json({
-            message: "Username and password are required."
+            message: "Email/Phone and password are required."
         });
     }
 

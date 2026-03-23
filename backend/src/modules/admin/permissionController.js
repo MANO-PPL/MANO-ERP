@@ -1,6 +1,6 @@
-import catchAsync from '../utils/catchAsync.js';
-import permissionService from '../services/permissionService.js';
-import AppError from '../utils/AppError.js';
+import catchAsync from '../../utils/catchAsync.js';
+import permissionService from './permissionService.js';
+import AppError from '../../utils/AppError.js';
 
 export const listTemplates = catchAsync(async (req, res) => {
     const { type } = req.query; // 'system' or 'project'

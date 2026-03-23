@@ -1,6 +1,6 @@
 import express from 'express';
-import projectController from '../controllers/projectController.js';
-import { authenticateJWT, restrictTo } from '../middleware/auth.js';
+import projectController from './projectController.js';
+import { authenticateJWT, restrictTo } from '../../middleware/auth.js';
 
 const router = express.Router();
 

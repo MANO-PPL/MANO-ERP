@@ -9,8 +9,10 @@ const Dashboard = lazy(() => import('./pages/Dashboard'));
 const Projects = lazy(() => import('./pages/Projects'));
 const ProjectDetails = lazy(() => import('./pages/ProjectDetails/index'));
 const VendorsList = lazy(() => import('./pages/Vendors'));
+const ResourcesList = lazy(() => import('./pages/Resources/index'));
 const CollaborationPage = lazy(() => import('./pages/Collaboration/index'));
 const AdminPage = lazy(() => import('./pages/Admin/index'));
+const Login = lazy(() => import('./pages/Auth/Login'));
 
 import './index.css';
 
@@ -28,6 +30,11 @@ function App() {
   return (
     <Router>
       <Routes>
+        <Route path="/login" element={
+          <Suspense fallback={<PageSkeleton variant="grid" />}>
+            <Login />
+          </Suspense>
+        } />
         <Route path="/" element={<MainLayout />}>
           <Route index element={
             <Suspense fallback={<PageSkeleton variant="grid" />}>
@@ -47,6 +54,11 @@ function App() {
           <Route path="vendors" element={
             <Suspense fallback={<PageSkeleton variant="table" />}>
               <VendorsList />
+            </Suspense>
+          } />
+          <Route path="resources" element={
+            <Suspense fallback={<PageSkeleton variant="table" />}>
+              <ResourcesList />
             </Suspense>
           } />
           <Route path="collaboration" element={

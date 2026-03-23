@@ -1,35 +1,26 @@
-
 import React from 'react';
 import { NavLink } from 'react-router-dom';
 import {
     LayoutDashboard,
     Briefcase,
     Map,
-    FileText,
-    HardHat,
-    Calculator,
-    Receipt,
-    ShieldCheck,
     Box,
-    MessageSquare,
     MessageCircle,
-    GitPullRequest,
-    BarChart3,
-    Settings,
     Users,
-    ChevronDown,
     Search,
-    Shield
+    Shield,
+    Package
 } from 'lucide-react';
 
 const Sidebar = () => {
     const navItems = [
-        { icon: LayoutDashboard, label: 'Dashboard', path: '/' },
-        { icon: Briefcase, label: 'Projects', path: '/projects' },
-        { icon: Map, label: 'Vendors', path: '/vendors' },
-        { icon: Users, label: 'Clients', path: '/clients' },
-        { icon: MessageCircle, label: 'Collaboration', path: '/collaboration' },
-        { icon: Shield, label: 'Admin', path: '/admin' },
+        { icon: LayoutDashboard, label: 'Dashboard',     path: '/' },
+        { icon: Briefcase,       label: 'Projects',      path: '/projects' },
+        { icon: Map,             label: 'Vendors',       path: '/vendors' },
+        { icon: Users,           label: 'Clients',       path: '/clients' },
+        { icon: Package,         label: 'Resources',     path: '/resources' },
+        { icon: MessageCircle,   label: 'Collaboration', path: '/collaboration' },
+        { icon: Shield,          label: 'Admin',         path: '/admin' },
     ];
 
     return (
@@ -84,8 +75,6 @@ const Sidebar = () => {
                     </div>
                 </div>
             </div>
-
-
         </div>
     );
 };

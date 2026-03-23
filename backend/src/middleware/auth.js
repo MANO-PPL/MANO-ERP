@@ -51,8 +51,11 @@ export const authenticateJWT = catchAsync(async (req, res, next) => {
 
 export const restrictTo = (...roles) => {
     return (req, res, next) => {
+        console.log(`[AUTH] Path: ${req.path} | Allowed roles:`, roles);
+        console.log(`[AUTH] Current user user_type:`, req.user?.user_type, `| Full user:`, req.user);
         if (!req.user || !roles.includes(req.user.user_type)) {
-            return res.status(403).json({ success: false, message: 'You do not have permission to perform this action' });
+            console.log(`[AUTH] access denied!`);
+            return res.status(403).json({ success: false, message: `Forbidden: role '${req.user?.user_type}' not in [${roles.join(',')}]` });
         }
         next();
     };

@@ -1,5 +1,5 @@
 import crypto from 'crypto';
-import { db } from '../config/database.js';
+import { db } from '../../config/database.js';
 
 /**
  * Generate a cryptographically strong random token

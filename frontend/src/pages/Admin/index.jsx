@@ -1,11 +1,13 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
     UserPlus, Search, MoreHorizontal, Filter, Download,
     Mail, Shield, Calendar, X, Upload, FileText,
     CheckCircle2, AlertCircle, FileCode, Check, Lock,
     ChevronRight, Eye, Edit3, Trash2, Info, Users,
-    LayoutDashboard, Briefcase, Map, MessageSquare, Settings, ChevronDown
+    LayoutDashboard, Briefcase, Map, MessageSquare, Settings, ChevronDown, Loader2
 } from 'lucide-react';
+import { toast } from 'react-toastify';
+import { adminApi } from '../../services/adminApi';
 
 // ─── Full App Page Tree ───────────────────────────────────────────────────────
 const PAGE_TREE = [
@@ -76,13 +78,7 @@ const defaultPermissions = () => {
     return p;
 };
 
-const INITIAL_USERS = [
-    { id: 1, name: 'Madhavan S', email: 'madhavan@mano.co.in', role: 'Super Admin', department: 'Engineering', status: 'Active', joined: 'Jan 15, 2026', permissions: { ...defaultPermissions(), dashboard: 3, projects: 3, 'projects.dashboard': 3, 'projects.tasks': 3, 'projects.wip': 3, 'projects.reports': 3, 'projects.reports.daily': 3, 'projects.reports.weekly': 3, 'projects.reports.monthly': 3, 'projects.reports.team': 3, 'projects.documents': 3, 'projects.drawings': 3, 'projects.planning': 3, 'projects.contracts': 3, 'projects.quality': 3, 'projects.safety': 3, 'projects.billing': 3, 'projects.materials': 3, vendors: 3, clients: 3, 'collaboration': 3, 'collaboration.chat': 3, 'collaboration.calendar': 3, admin: 3 } },
-    { id: 2, name: 'Sathish Kumar', email: 'sathish@mano.co.in', role: 'Project Manager', department: 'Operations', status: 'Active', joined: 'Feb 10, 2026', permissions: { ...defaultPermissions(), dashboard: 2, projects: 3, 'projects.dashboard': 2, 'projects.tasks': 3, 'projects.wip': 3, 'projects.reports': 3, 'projects.reports.daily': 3, 'projects.reports.weekly': 2, 'projects.reports.monthly': 2, 'projects.reports.team': 3, 'projects.documents': 2, 'projects.drawings': 1, 'projects.planning': 2, 'projects.contracts': 1, 'projects.quality': 2, 'projects.safety': 2, 'projects.billing': 1, 'projects.materials': 2, vendors: 1, clients: 1, 'collaboration': 2, 'collaboration.chat': 3, 'collaboration.calendar': 2, admin: 0 } },
-    { id: 3, name: 'Mano Kakoos', email: 'mano@mano.co.in', role: 'Site Lead', department: 'Operations', status: 'Away', joined: 'Dec 05, 2025', permissions: { ...defaultPermissions(), dashboard: 1, projects: 2, 'projects.tasks': 2, 'projects.wip': 2, 'projects.reports': 1, 'projects.reports.daily': 2, 'projects.safety': 3, 'projects.quality': 2, 'collaboration': 2, 'collaboration.chat': 2 } },
-    { id: 4, name: 'Harish R', email: 'harish@mano.co.in', role: 'Viewer', department: 'Design', status: 'Offline', joined: 'Jan 20, 2026', permissions: { ...defaultPermissions(), dashboard: 1, projects: 1, 'projects.dashboard': 1, 'projects.drawings': 1, 'collaboration': 1, 'collaboration.calendar': 1 } },
-    { id: 5, name: 'Admin User', email: 'admin@mano.co.in', role: 'Admin', department: 'IT', status: 'Active', joined: 'Nov 12, 2025', permissions: { ...defaultPermissions(), dashboard: 3, projects: 3, 'projects.dashboard': 3, 'projects.tasks': 3, 'projects.wip': 3, 'projects.reports': 3, 'projects.reports.daily': 3, 'projects.reports.weekly': 3, 'projects.reports.monthly': 3, 'projects.reports.team': 3, 'projects.documents': 3, 'projects.drawings': 3, 'projects.planning': 3, 'projects.contracts': 3, 'projects.quality': 3, 'projects.safety': 3, 'projects.billing': 3, 'projects.materials': 3, vendors: 3, clients: 3, 'collaboration': 3, 'collaboration.chat': 3, 'collaboration.calendar': 3, admin: 2 } },
-];
+// INITIAL_USERS removed. Fetching live from DB.
 
 // ─── Status Badge ─────────────────────────────────────────────────────────────
 const StatusBadge = ({ status }) => {
@@ -119,13 +115,25 @@ const AddUserDrawer = ({ open, onClose, onAdd }) => {
     const handleDrag = (e) => { e.preventDefault(); setDragging(e.type === 'dragenter' || e.type === 'dragover'); };
     const handleDrop = (e) => { e.preventDefault(); setDragging(false); if (e.dataTransfer.files?.[0]) setFile(e.dataTransfer.files[0]); };
 
-    const handleAdd = () => {
-        if (!form.name || !form.email) return;
-        onAdd({ ...form, id: Date.now(), status: 'Active', joined: new Date().toLocaleDateString('en-US', { month: 'short', day: '2-digit', year: 'numeric' }), permissions });
-        setForm({ name: '', email: '', role: 'Viewer', department: '', password: '' });
-        setPermissions(defaultPermissions());
-        setShowPerms(false);
-        onClose();
+    const [isSubmitting, setIsSubmitting] = useState(false);
+
+    const handleAdd = async () => {
+        if (!form.name || !form.email || !form.password) {
+            toast.error("Name, email and password are required.");
+            return;
+        }
+        setIsSubmitting(true);
+        try {
+            await onAdd({ ...form, id: Date.now(), status: 'Active', joined: new Date().toLocaleDateString('en-US', { month: 'short', day: '2-digit', year: 'numeric' }), permissions });
+            setForm({ name: '', email: '', role: 'Viewer', department: '', password: '' });
+            setPermissions(defaultPermissions());
+            setShowPerms(false);
+            onClose();
+        } catch (e) {
+            // Handled by parent
+        } finally {
+            setIsSubmitting(false);
+        }
     };
 
     return (
@@ -324,8 +332,8 @@ const AddUserDrawer = ({ open, onClose, onAdd }) => {
                         <button onClick={onClose} className="flex-1 py-2.5 border border-gray-200 dark:border-white/10 rounded-xl text-sm font-semibold text-gray-600 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-white/5 transition-all">
                             Cancel
                         </button>
-                        <button onClick={handleAdd} className="flex-1 py-2.5 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-sm font-bold transition-all active:scale-95 shadow-lg shadow-blue-500/20">
-                            Add User
+                        <button onClick={handleAdd} disabled={isSubmitting} className="flex-1 py-2.5 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-sm font-bold transition-all active:scale-95 shadow-lg shadow-blue-500/20 disabled:opacity-50">
+                            {isSubmitting ? 'Adding...' : 'Add User'}
                         </button>
                     </div>
                 )}
@@ -337,6 +345,7 @@ const AddUserDrawer = ({ open, onClose, onAdd }) => {
 // ─── User Detail Drawer ───────────────────────────────────────────────────────
 const UserDetailDrawer = ({ user, open, onClose, onUpdate, initialEditing = false }) => {
     const [editing, setEditing] = useState(false);
+    const [isSaving, setIsSaving] = useState(false);
     const [localUser, setLocalUser] = useState(null);
     const [expanded, setExpanded] = useState({ projects: true, collaboration: true });
 
@@ -469,9 +478,16 @@ const UserDetailDrawer = ({ user, open, onClose, onUpdate, initialEditing = fals
                             className="flex-1 py-2.5 border border-gray-200 dark:border-white/10 rounded-xl text-sm font-semibold text-gray-600 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-white/5 transition-all">
                             Discard
                         </button>
-                        <button onClick={() => { onUpdate(localUser); setEditing(false); }}
-                            className="flex-1 py-2.5 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-sm font-bold transition-all active:scale-95 shadow-lg shadow-blue-500/20">
-                            Save Changes
+                        <button onClick={async () => {
+                                setIsSaving(true);
+                                try {
+                                    await onUpdate(localUser);
+                                    setEditing(false);
+                                } catch(e) {} finally { setIsSaving(false); }
+                            }}
+                            disabled={isSaving}
+                            className="flex-1 py-2.5 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-sm font-bold transition-all active:scale-95 shadow-lg shadow-blue-500/20 disabled:opacity-50">
+                            {isSaving ? 'Saving...' : 'Save Changes'}
                         </button>
                     </div>
                 )}
@@ -482,11 +498,42 @@ const UserDetailDrawer = ({ user, open, onClose, onUpdate, initialEditing = fals
 
 // ─── Main Admin Page ──────────────────────────────────────────────────────────
 const AdminPage = () => {
-    const [users, setUsers] = useState(INITIAL_USERS);
+    const [users, setUsers] = useState([]);
+    const [isLoading, setIsLoading] = useState(true);
     const [search, setSearch] = useState('');
     const [addOpen, setAddOpen] = useState(false);
     const [selectedUser, setSelectedUser] = useState(null);
     const [editMode, setEditMode] = useState(false);
+
+    const fetchUsers = async () => {
+        setIsLoading(true);
+        try {
+            const res = await adminApi.getUsers();
+            if (res.success && res.users) {
+                const mappedUsers = res.users.map(u => ({
+                    ...u,
+                    id: u.user_id || u.id,
+                    name: u.user_name || u.name,
+                    email: u.email_id || u.email,
+                    role: u.roleName || u.role || 'Viewer',
+                    department: u.departmentName || u.department || '-',
+                    status: u.user_status || u.status || 'Active',
+                    joined: u.created_at ? new Date(u.created_at).toLocaleDateString('en-US', {month: 'short', day: '2-digit', year: 'numeric'}) : '-',
+                    permissions: defaultPermissions() // Currently defaulting permissions
+                }));
+                setUsers(mappedUsers);
+            }
+        } catch (error) {
+            console.error(error);
+            toast.error('Failed to fetch users');
+        } finally {
+            setIsLoading(false);
+        }
+    };
+
+    useEffect(() => {
+        fetchUsers();
+    }, []);
 
     const openView = (user) => { setSelectedUser(user); setEditMode(false); };
     const openEdit = (user) => { setSelectedUser(user); setEditMode(true); };
@@ -497,8 +544,56 @@ const AdminPage = () => {
         u.role.toLowerCase().includes(search.toLowerCase())
     );
 
-    const handleAddUser = (user) => setUsers(u => [...u, user]);
-    const handleUpdateUser = (updated) => setUsers(u => u.map(x => x.id === updated.id ? updated : x));
+    const handleAddUser = async (user) => {
+        try {
+            await adminApi.createUser({
+                name: user.name,
+                email: user.email,
+                password: user.password,
+                role: user.role,
+                department: user.department,
+                status: user.status
+            });
+            toast.success('User created successfully');
+            fetchUsers();
+        } catch (error) {
+            console.error(error);
+            const msg = error.response?.data?.message || 'Failed to create user';
+            toast.error(msg);
+            throw error; // Rethrow to stop drawer from closing immediately
+        }
+    };
+
+    const handleUpdateUser = async (updated) => {
+        try {
+            await adminApi.updateUser(updated.id, {
+                name: updated.name,
+                email: updated.email,
+                role: updated.role,
+                department: updated.department,
+                status: updated.status
+            });
+            toast.success('User updated successfully');
+            fetchUsers();
+        } catch (error) {
+            console.error(error);
+            toast.error('Failed to update user');
+            throw error;
+        }
+    };
+
+    const handleDeleteUser = async (e, user) => {
+        e.stopPropagation();
+        if (!window.confirm(`Are you sure you want to delete ${user.name}? This action cannot be undone.`)) return;
+        try {
+            await adminApi.deleteUser(user.id);
+            toast.success('User deleted successfully');
+            fetchUsers();
+        } catch (error) {
+            console.error(error);
+            toast.error('Failed to delete user');
+        }
+    };
 
     return (
         <div className="flex flex-col h-full bg-white dark:bg-[#0d1117] text-gray-900 dark:text-gray-100 overflow-hidden">
@@ -570,7 +665,7 @@ const AdminPage = () => {
                                                 <Edit3 size={16} />
                                             </button>
                                             <button
-                                                onClick={e => { e.stopPropagation(); setUsers(u => u.filter(x => x.id !== user.id)); }}
+                                                onClick={(e) => handleDeleteUser(e, user)}
                                                 className="p-2 text-gray-400 hover:text-red-600 dark:hover:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-xl transition-all active:scale-90"
                                                 title="Delete user">
                                                 <Trash2 size={16} />
@@ -582,12 +677,17 @@ const AdminPage = () => {
                         </tbody>
                     </table>
 
-                    {filtered.length === 0 && (
+                    {isLoading ? (
+                        <div className="py-16 text-center">
+                            <Loader2 size={32} className="mx-auto text-blue-500 animate-spin mb-3" />
+                            <p className="text-sm text-gray-400">Loading users...</p>
+                        </div>
+                    ) : filtered.length === 0 ? (
                         <div className="py-16 text-center">
                             <Users size={32} className="mx-auto text-gray-300 dark:text-gray-600 mb-3" />
                             <p className="text-sm text-gray-400">No users found matching your search.</p>
                         </div>
-                    )}
+                    ) : null}
                 </div>
 
                 {/* Pagination */}

@@ -1,9 +1,9 @@
-import catchAsync from '../utils/catchAsync.js';
-import userService from '../services/userService.js';
-import departmentService from '../services/departmentService.js';
-import designationService from '../services/designationService.js';
-import AppError from '../utils/AppError.js';
-import S3Service from '../services/s3Service.js';
+import catchAsync from '../../utils/catchAsync.js';
+import userService from './userService.js';
+import departmentService from './departmentService.js';
+import designationService from './designationService.js';
+import AppError from '../../utils/AppError.js';
+import S3Service from '../shared/s3Service.js';
 import ExcelJS from 'exceljs';
 import { PassThrough } from 'stream';
 

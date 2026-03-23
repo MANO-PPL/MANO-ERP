@@ -1,10 +1,10 @@
 import bcrypt from 'bcrypt';
 import jwt from 'jsonwebtoken';
-import { db } from '../config/database.js';
+import { db } from '../../config/database.js';
 import * as TokenService from './tokenService.js';
-import EventBus from '../utils/EventBus.js';
-import { getEventSource } from '../utils/clientInfo.js';
-import AppError from '../utils/AppError.js';
+import EventBus from '../../utils/EventBus.js';
+import { getEventSource } from '../../utils/clientInfo.js';
+import AppError from '../../utils/AppError.js';
 
 const ACCESS_TOKEN_EXPIRY = '15m';
 

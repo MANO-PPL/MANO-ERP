@@ -1,12 +1,31 @@
 
-import React from 'react';
-import { Search, Bell, ChevronDown, Moon, Sun } from 'lucide-react';
+import React, { useState } from 'react';
+import { Search, Bell, ChevronDown, Moon, Sun, LogOut } from 'lucide-react';
 import { useTheme } from 'next-themes';
-import { useLocation } from 'react-router-dom';
+import { useLocation, useNavigate } from 'react-router-dom';
+import { authApi } from '../../services/authApi';
+import { setAccessToken } from '../../services/api';
+import { toast } from 'react-toastify';
 
 const TopBar = () => {
   const { theme, setTheme } = useTheme();
   const location = useLocation();
+  const navigate = useNavigate();
+  const [isProfileOpen, setIsProfileOpen] = useState(false);
+
+  const handleLogout = async () => {
+      try {
+          await authApi.logout();
+          setAccessToken(null);
+          toast.success('Logged out successfully');
+          navigate('/login');
+      } catch (err) {
+          console.error(err);
+          // Even on failure, clear local state and force redirect
+          setAccessToken(null);
+          navigate('/login');
+      }
+  };
 
   const getPageTitle = () => {
     if (location.pathname.startsWith('/projects/')) {
@@ -69,14 +88,35 @@ const TopBar = () => {
           <span className="absolute -top-1 -right-1 w-2 h-2 bg-red-500 rounded-full"></span>
         </button>
 
-        <div className="flex items-center space-x-3 cursor-pointer border-l pl-4 border-gray-200 dark:border-gh-border transition-colors">
-          <div className="text-right hidden md:block">
-            <p className="text-sm font-semibold text-gray-800 dark:text-gh-text whitespace-nowrap">Admin User</p>
-            <p className="text-xs text-gray-500 dark:text-gh-muted whitespace-nowrap">PM</p>
-          </div>
-          <div className="w-8 h-8 rounded-full bg-blue-100 dark:bg-blue-900/30 flex items-center justify-center text-blue-600 dark:text-blue-400 font-bold border border-blue-200 dark:border-blue-800 text-sm transition-colors">
-            AU
-          </div>
+        <div className="relative">
+            <div 
+                className="flex items-center space-x-3 cursor-pointer border-l pl-4 border-gray-200 dark:border-gh-border transition-colors hover:opacity-80"
+                onClick={() => setIsProfileOpen(!isProfileOpen)}
+            >
+              <div className="text-right hidden md:block">
+                <p className="text-sm font-semibold text-gray-800 dark:text-gh-text whitespace-nowrap">Admin User</p>
+                <p className="text-xs text-gray-500 dark:text-gh-muted whitespace-nowrap">PM</p>
+              </div>
+              <div className="w-8 h-8 rounded-full bg-blue-100 dark:bg-blue-900/30 flex items-center justify-center text-blue-600 dark:text-blue-400 font-bold border border-blue-200 dark:border-blue-800 text-sm transition-colors shadow-sm">
+                AU
+              </div>
+            </div>
+
+            {/* Profile Dropdown */}
+            {isProfileOpen && (
+                <>
+                    <div className="fixed inset-0 z-40" onClick={() => setIsProfileOpen(false)}></div>
+                    <div className="absolute right-0 mt-3 w-48 bg-white dark:bg-[#161b22] border border-gray-200 dark:border-white/10 rounded-xl shadow-2xl py-1 z-50 anim-fade-in origin-top-right">
+                        <button 
+                            onClick={handleLogout}
+                            className="w-full text-left px-4 py-2.5 text-sm text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20 flex items-center gap-2 transition-colors font-bold"
+                        >
+                            <LogOut size={16} />
+                            Log out
+                        </button>
+                    </div>
+                </>
+            )}
         </div>
       </div>
     </div>

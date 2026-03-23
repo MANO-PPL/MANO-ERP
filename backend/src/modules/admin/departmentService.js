@@ -1,5 +1,5 @@
-import { db } from '../config/database.js';
-import AppError from '../utils/AppError.js';
+import { db } from '../../config/database.js';
+import AppError from '../../utils/AppError.js';
 
 export async function getDepartments(orgId) {
     return await db('departments').where('org_id', orgId).select('*');

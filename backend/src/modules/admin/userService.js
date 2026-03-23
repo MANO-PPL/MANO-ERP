@@ -1,6 +1,6 @@
 import bcrypt from 'bcrypt';
-import AppError from '../utils/AppError.js';
-import { db } from '../config/database.js';
+import AppError from '../../utils/AppError.js';
+import { db } from '../../config/database.js';
 
 // Retrieve all users for an organization
 export async function getUsersByOrg(orgId) {
