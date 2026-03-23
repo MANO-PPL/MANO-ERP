@@ -11,7 +11,17 @@ export async function createDepartment(orgId, dept_name) {
     return newId;
 }
 
+export async function deleteDepartment(orgId, deptId) {
+    if (!deptId) throw new AppError('Department ID is required', 400);
+    // Check if in use
+    const inUse = await db('users').where({ org_id: orgId, dept_id: deptId }).first();
+    if (inUse) throw new AppError('Cannot delete: This Department is currently assigned to one or more users.', 400);
+
+    return await db('departments').where({ org_id: orgId, dept_id: deptId }).delete();
+}
+
 export default {
     getDepartments,
-    createDepartment
+    createDepartment,
+    deleteDepartment
 };

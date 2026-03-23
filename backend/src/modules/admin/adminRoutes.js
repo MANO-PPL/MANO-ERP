@@ -26,10 +26,22 @@ router.post('/users/bulk-json', adminController.bulkJson);
 // Departments
 router.get('/departments', adminController.listDepartments);
 router.post('/departments', adminController.createDepartment);
+router.delete('/departments/:id', adminController.deleteDepartment);
 
 // Designations
 router.get('/designations', adminController.listDesignations);
 router.post('/designations', adminController.createDesignation);
+router.delete('/designations/:id', adminController.deleteDesignation);
+
+// Sectors
+router.get('/sectors', adminController.listSectors);
+router.post('/sectors', adminController.createSector);
+router.delete('/sectors/:id', adminController.deleteSector);
+
+// Job Natures
+router.get('/job-natures', adminController.listJobNatures);
+router.post('/job-natures', adminController.createJobNature);
+router.delete('/job-natures/:id', adminController.deleteJobNature);
 
 // Permission Templates
 router.get('/permission-templates', permissionController.listTemplates);

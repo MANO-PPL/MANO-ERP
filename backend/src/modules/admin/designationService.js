@@ -15,7 +15,17 @@ export async function createDesignation(orgId, desg_name) {
     return newId;
 }
 
+export async function deleteDesignation(orgId, desgId) {
+    if (!desgId) throw new AppError('Designation ID is required', 400);
+    // Check if in use
+    const inUse = await db('users').where({ org_id: orgId, desg_id: desgId }).first();
+    if (inUse) throw new AppError('Cannot delete: This Designation is currently assigned to one or more users.', 400);
+
+    return await db('designations').where({ org_id: orgId, desg_id: desgId }).delete();
+}
+
 export default {
     getDesignations,
-    createDesignation
+    createDesignation,
+    deleteDesignation
 };

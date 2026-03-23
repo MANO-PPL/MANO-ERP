@@ -2,6 +2,8 @@ import catchAsync from '../../utils/catchAsync.js';
 import userService from './userService.js';
 import departmentService from './departmentService.js';
 import designationService from './designationService.js';
+import sectorService from '../shared/sectorService.js';
+import jobNatureService from '../shared/jobNatureService.js';
 import AppError from '../../utils/AppError.js';
 import S3Service from '../shared/s3Service.js';
 import ExcelJS from 'exceljs';
@@ -35,6 +37,52 @@ export const createDepartment = catchAsync(async (req, res) => {
 export const createDesignation = catchAsync(async (req, res) => {
     const newId = await designationService.createDesignation(req.user.org_id, req.body.desg_name);
     res.status(201).json({ success: true, message: 'Designation created', desg_id: newId });
+});
+
+// Sectors
+export const listSectors = catchAsync(async (req, res) => {
+    const data = await sectorService.getSectors();
+    res.json({ success: true, sectors: data });
+});
+
+export const createSector = catchAsync(async (req, res) => {
+    const newId = await sectorService.createSector(req.body.sector_name);
+    res.status(201).json({ success: true, message: 'Sector created', sector_id: newId });
+});
+
+// Job Natures
+export const listJobNatures = catchAsync(async (req, res) => {
+    const data = await jobNatureService.getJobNatures();
+    res.json({ success: true, job_natures: data });
+});
+
+export const createJobNature = catchAsync(async (req, res) => {
+    const newId = await jobNatureService.createJobNature(req.body.job_name);
+    res.status(201).json({ success: true, message: 'Job Nature created', job_id: newId });
+});
+
+export const deleteSector = catchAsync(async (req, res) => {
+    const { id } = req.params;
+    await sectorService.deleteSector(id);
+    res.json({ success: true, message: 'Sector deleted successfully' });
+});
+
+export const deleteJobNature = catchAsync(async (req, res) => {
+    const { id } = req.params;
+    await jobNatureService.deleteJobNature(id);
+    res.json({ success: true, message: 'Job Nature deleted successfully' });
+});
+
+export const deleteDepartment = catchAsync(async (req, res) => {
+    const { id } = req.params;
+    await departmentService.deleteDepartment(req.user.org_id, id);
+    res.json({ success: true, message: 'Department deleted successfully' });
+});
+
+export const deleteDesignation = catchAsync(async (req, res) => {
+    const { id } = req.params;
+    await designationService.deleteDesignation(req.user.org_id, id);
+    res.json({ success: true, message: 'Designation deleted successfully' });
 });
 
 export const createUser = catchAsync(async (req, res) => {
@@ -148,8 +196,16 @@ export default {
     getUser,
     listDepartments,
     listDesignations,
+    listSectors,
+    listJobNatures,
     createDepartment,
     createDesignation,
+    createSector,
+    createJobNature,
+    deleteSector,
+    deleteJobNature,
+    deleteDepartment,
+    deleteDesignation,
     createUser,
     updateUser,
     deleteUser,
