@@ -6,14 +6,14 @@ const VendorDetails = ({ isOpen, onClose, vendor }) => {
 
     const handleCopy = () => {
         const detailsText = `
-Company: ${vendor.company}
+Company: ${vendor.name}
 Category: ${vendor.category}
-Contact Person: ${vendor.person}
-Nature of Job: ${vendor.jobNature}
+Contact Person: ${vendor.contact_person}
+Nature of Job: ${vendor.job_name}
 Mobile: ${vendor.mobile}
 Email: ${vendor.email}
 Telephone: ${vendor.telephone || '-'}
-GST No: ${vendor.gst || 'NA'}
+GST No: ${vendor.gst_no || 'NA'}
 Location: ${vendor.location || '-'}
 Website: ${vendor.website || 'NA'}
 Address: ${vendor.address}
@@ -37,7 +37,7 @@ Reference: ${vendor.reference || '-'}
                 {/* Header */}
                 <div className="px-6 py-5 border-b border-gray-100 dark:border-white/5 flex justify-between items-start">
                     <div>
-                        <h2 className="text-xl font-bold text-gray-900 dark:text-white mb-1">{vendor.company}</h2>
+                        <h2 className="text-xl font-bold text-gray-900 dark:text-white mb-1">{vendor.name}</h2>
                         <span className="text-xs font-bold text-blue-600 dark:text-blue-500 uppercase tracking-wider">{vendor.category || 'VENDOR'}</span>
                     </div>
                     <button
@@ -53,11 +53,11 @@ Reference: ${vendor.reference || '-'}
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                         <div>
                             <p className="text-[10px] uppercase tracking-widest text-gray-400 font-bold mb-1">Contact Person</p>
-                            <p className="text-sm font-medium text-gray-900 dark:text-gray-200">{vendor.person || '-'}</p>
+                            <p className="text-sm font-medium text-gray-900 dark:text-gray-200">{vendor.contact_person || '-'}</p>
                         </div>
                         <div>
                             <p className="text-[10px] uppercase tracking-widest text-gray-400 font-bold mb-1">Nature of Job</p>
-                            <p className="text-sm font-medium text-gray-900 dark:text-gray-200">{vendor.jobNature || '-'}</p>
+                            <p className="text-sm font-medium text-gray-900 dark:text-gray-200">{vendor.job_name || '-'}</p>
                         </div>
 
                         <div>
@@ -75,7 +75,7 @@ Reference: ${vendor.reference || '-'}
                         </div>
                         <div>
                             <p className="text-[10px] uppercase tracking-widest text-gray-400 font-bold mb-1">GST NO</p>
-                            <p className="text-sm font-medium text-gray-900 dark:text-gray-200">{vendor.gst || 'NA'}</p>
+                            <p className="text-sm font-medium text-gray-900 dark:text-gray-200">{vendor.gst_no || 'NA'}</p>
                         </div>
 
                         <div>

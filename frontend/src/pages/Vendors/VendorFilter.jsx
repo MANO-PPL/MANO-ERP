@@ -16,7 +16,7 @@ const VendorFilter = ({ isOpen, onClose, onApply, currentFilters, availableJobs 
 
     if (!isOpen) return null;
 
-    const categories = ['Contractor', 'Consultants', 'Supplier'];
+    const categories = ['contractor', 'consultants', 'supplier', 'Other'];
 
     const filteredJobs = availableJobs.filter(job =>
         jobSearch === '' || job.toLowerCase().includes(jobSearch.toLowerCase())
@@ -102,7 +102,7 @@ const VendorFilter = ({ isOpen, onClose, onApply, currentFilters, availableJobs 
                                         onChange={() => toggleCategory(cat)}
                                         className="w-4 h-4 rounded border-gray-300 dark:border-gray-600 text-blue-600 focus:ring-blue-500 dark:bg-transparent dark:checked:bg-blue-500"
                                     />
-                                    <span className="text-sm text-gray-700 dark:text-gray-300 group-hover:text-gray-900 dark:group-hover:text-white transition-colors">{cat}</span>
+                                    <span className="text-sm text-gray-700 dark:text-gray-300 group-hover:text-gray-900 dark:group-hover:text-white transition-colors capitalize">{cat}</span>
                                 </label>
                             ))}
                         </div>
