@@ -10,6 +10,9 @@ const Projects = lazy(() => import('./pages/Projects'));
 const ProjectDetails = lazy(() => import('./pages/ProjectDetails/index'));
 const VendorsList = lazy(() => import('./pages/Vendors'));
 const ResourcesList = lazy(() => import('./pages/Resources/index'));
+const VendorBulkUpload = lazy(() => import('./pages/Vendors/VendorBulkUpload'));
+const ClientsList = lazy(() => import('./pages/Clients'));
+const ClientBulkUpload = lazy(() => import('./pages/Clients/ClientBulkUpload'));
 const CollaborationPage = lazy(() => import('./pages/Collaboration/index'));
 const AdminPage = lazy(() => import('./pages/Admin/index'));
 const Login = lazy(() => import('./pages/Auth/Login'));
@@ -56,6 +59,11 @@ function App() {
               <VendorsList />
             </Suspense>
           } />
+          <Route path="vendors/bulk-upload" element={
+            <Suspense fallback={<PageSkeleton variant="table" />}>
+              <VendorBulkUpload />
+            </Suspense>
+          } />
           <Route path="resources" element={
             <Suspense fallback={<PageSkeleton variant="table" />}>
               <ResourcesList />
@@ -72,7 +80,14 @@ function App() {
             </Suspense>
           } />
           <Route path="clients" element={
-            <div className="p-8 text-gray-500 dark:text-gray-400 text-sm">Clients page coming soon.</div>
+            <Suspense fallback={<PageSkeleton variant="table" />}>
+              <ClientsList />
+            </Suspense>
+          } />
+          <Route path="clients/bulk-upload" element={
+            <Suspense fallback={<PageSkeleton variant="table" />}>
+              <ClientBulkUpload />
+            </Suspense>
           } />
         </Route>
       </Routes>
