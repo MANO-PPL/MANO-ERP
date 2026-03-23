@@ -1,4 +1,15 @@
 const errorHandler = (err, req, res, next) => {
+    if (err.name === 'MulterError') {
+        if (err.code === 'LIMIT_UNEXPECTED_FILE') {
+            err.statusCode = 400;
+            err.message = `Unexpected file upload field: '${err.field}'. Please use the correct field name (e.g., 'file').`;
+            err.isOperational = true;
+        } else {
+            err.statusCode = 400;
+            err.isOperational = true;
+        }
+    }
+
     err.statusCode = err.statusCode || 500;
     err.status = err.status || 'error';
 
