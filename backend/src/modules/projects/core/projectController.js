@@ -1,6 +1,6 @@
-import catchAsync from '../../utils/catchAsync.js';
+import catchAsync from '../../../utils/catchAsync.js';
 import projectService from './projectService.js';
-import AppError from '../../utils/AppError.js';
+import AppError from '../../../utils/AppError.js';
 
 export const listProjects = catchAsync(async (req, res) => {
     const projects = await projectService.getProjects(req.user.org_id);

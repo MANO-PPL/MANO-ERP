@@ -1,5 +1,5 @@
-import { db } from '../../config/database.js';
-import AppError from '../../utils/AppError.js';
+import { db } from '../../../config/database.js';
+import AppError from '../../../utils/AppError.js';
 
 export async function createProject(orgId, { name, location, status = 'active', project_code, start_date, end_date, metadata }) {
     if (!name) throw new AppError('Project name is required', 400);
