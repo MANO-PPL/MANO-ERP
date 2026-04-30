@@ -1,61 +1,46 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Filter, Plus, List, Zap, MoreHorizontal, ArrowUpDown, ChevronDown, Box } from 'lucide-react';
 import NewProjectSlideOut from '../components/NewProjectSlideOut';
+import { projectApi } from '../services/projectApi';
 
 const Projects = () => {
     const navigate = useNavigate();
     const [activeTab, setActiveTab] = useState('Active Projects');
     const [isNewProjectOpen, setIsNewProjectOpen] = useState(false);
 
-    const projectData = [
-        {
-            id: 'HM-1',
-            name: 'Explore Zoho Projects!',
-            completion: 17,
-            owner: 'Nice Bike',
-            status: 'Active',
-            statusColor: 'bg-teal-500 text-white',
-            tasks: { count: 3, percentage: 17, total: 14 },
-            phases: { count: 0, percentage: 0, total: 1 },
-            issues: 'Notes',
-            startDate: '02 19 2026',
-            endDate: '02 19 2026',
-            daysAlert: '7 days a',
-            tags: []
-        },
-        // Add more dummy data as needed to fill the UI
-        {
-            id: 'HM-2',
-            name: 'Website Redesign',
-            completion: 45,
-            owner: 'Admin User',
-            status: 'In Progress',
-            statusColor: 'bg-blue-600 text-white',
-            tasks: { count: 12, percentage: 45, total: 26 },
-            phases: { count: 1, percentage: 50, total: 2 },
-            issues: '2 Open',
-            startDate: '01 10 2026',
-            endDate: '03 15 2026',
-            daysAlert: '',
-            tags: []
-        },
-        {
-            id: 'HM-3',
-            name: 'Q1 Marketing Campaign',
-            completion: 90,
-            owner: 'Jane Doe',
-            status: 'Review',
-            statusColor: 'bg-yellow-500 text-white',
-            tasks: { count: 45, percentage: 90, total: 50 },
-            phases: { count: 3, percentage: 100, total: 3 },
-            issues: 'None',
-            startDate: '01 05 2026',
-            endDate: '02 28 2026',
-            daysAlert: '',
-            tags: []
-        },
-    ];
+    const [projectData, setProjectData] = useState([]);
+
+    const fetchProjects = async () => {
+        try {
+            const res = await projectApi.listProjects();
+            if (res.success) {
+                const mappedProjects = res.projects.map(p => ({
+                    id: p.project_code || p.id.toString(),
+                    dbId: p.id,
+                    name: p.name,
+                    completion: 0, // Mock
+                    owner: 'System', // Mock
+                    status: p.status.charAt(0).toUpperCase() + p.status.slice(1),
+                    statusColor: p.status.toLowerCase() === 'active' ? 'bg-teal-500 text-white' : 'bg-blue-600 text-white',
+                    tasks: { count: 0, percentage: 0, total: 10 },
+                    phases: { count: 0, percentage: 0, total: 2 },
+                    issues: 'None',
+                    startDate: new Date(p.start_date).toLocaleDateString('en-US', {month: '2-digit', day: '2-digit', year: 'numeric'}).replace(/\//g, ' '),
+                    endDate: p.end_date ? new Date(p.end_date).toLocaleDateString('en-US', {month: '2-digit', day: '2-digit', year: 'numeric'}).replace(/\//g, ' ') : 'N/A',
+                    daysAlert: '',
+                    tags: []
+                }));
+                setProjectData(mappedProjects);
+            }
+        } catch (error) {
+            console.error("Failed to fetch projects", error);
+        }
+    };
+
+    useEffect(() => {
+        fetchProjects();
+    }, []);
 
     const activeProjects = projectData.filter(p => !p.status.toLowerCase().includes('complete'));
     const completedProjects = projectData.filter(p => p.status.toLowerCase().includes('complete'));
@@ -152,7 +137,7 @@ const Projects = () => {
                                     <div className="flex items-center space-x-3">
                                         <span className="font-semibold text-gray-900 dark:text-gray-100">{project.name}</span>
                                         <button
-                                            onClick={(e) => { e.stopPropagation(); navigate(`/projects/${project.id}`); }}
+                                            onClick={(e) => { e.stopPropagation(); navigate(`/projects/${project.dbId}`); }}
                                             className="opacity-0 group-hover:opacity-100 transition-opacity flex items-center space-x-1.5 px-3 py-1 bg-transparent border border-blue-600 dark:border-blue-500/50 text-blue-600 dark:text-blue-400 rounded-md text-xs font-semibold hover:bg-blue-50 dark:hover:bg-blue-500/10 whitespace-nowrap"
                                         >
                                             <Box size={14} />
@@ -221,6 +206,10 @@ const Projects = () => {
             <NewProjectSlideOut
                 isOpen={isNewProjectOpen}
                 onClose={() => setIsNewProjectOpen(false)}
+                onProjectCreated={() => {
+                    setIsNewProjectOpen(false);
+                    fetchProjects();
+                }}
             />
         </div>
     );

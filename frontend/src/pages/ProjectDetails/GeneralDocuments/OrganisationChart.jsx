@@ -1,6 +1,8 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { Plus, Edit2, Trash2, ZoomIn, ZoomOut, Maximize, Save, X, User, Briefcase, Building, Info, Clock } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
+import { useParams } from 'react-router-dom';
+import { generalDocsApi } from '../../../services/generalDocsApi';
 
 // --- Default Hierarchy Data ---
 const INITIAL_DATA = {
@@ -208,14 +210,16 @@ const NodeCard = React.memo(({ node, onSelect, onEdit, onDelete, selectedNodeId,
 
 // --- Main Container Component ---
 const OrganisationChart = ({ onBack, setExtraBreadcrumbs }) => {
+    const { id: projectId } = useParams();
+
     useEffect(() => {
         setExtraBreadcrumbs([
             { label: 'General Documents', onClick: onBack },
             { label: 'Organisation Chart' }
         ]);
-    }, [onBack, setExtraBreadcrumbs]);
+    }, [onBack, setExtraBreadcrumbs, projectId]);
 
-    const [data, setData] = useState(INITIAL_DATA);
+    const [data, setData] = useState(null);
     const [zoom, setZoom] = useState(1);
     const [selectedNodeId, setSelectedNodeId] = useState('root');
     const [isEditing, setIsEditing] = useState(false);
@@ -224,19 +228,106 @@ const OrganisationChart = ({ onBack, setExtraBreadcrumbs }) => {
     const [editForm, setEditForm] = useState({ name: '', role: '', type: 'staff' });
 
     const auditTrail = [
-        { id: 1, action: "Created Org Chart", user: "Admin User", timestamp: "Feb 24, 2026 • 09:15 AM", type: "create" },
-        { id: 2, action: "Added Glowmex LLP department", user: "Madhavan", timestamp: "Feb 25, 2026 • 11:00 AM", type: "update" },
-        { id: 3, action: "Modified site location", user: "Mano Kakkus", timestamp: "Feb 26, 2026 • 03:30 PM", type: "update" },
+        { id: 1, action: "API Connected Session", user: "Auto Generator", timestamp: new Date().toLocaleString(), type: "update" },
     ];
     const containerRef = useRef(null);
 
+    const mapOrgApiToTree = useCallback((apiData) => {
+        const { client_name, project_name, project_location, vendors = [], directory = [] } = apiData;
+
+        // Group directory by vendor tracking ID
+        const dirByVendor = {};
+        const standaloneDir = [];
+        
+        directory.forEach(d => {
+            if (d.vendor_id) {
+                if (!dirByVendor[d.vendor_id]) dirByVendor[d.vendor_id] = [];
+                dirByVendor[d.vendor_id].push(d);
+            } else {
+                standaloneDir.push(d);
+            }
+        });
+
+        const clientChildren = [];
+
+        vendors.forEach(v => {
+            const vendorNode = {
+                id: `vendor-${v.pv_id || v.vendor_id}`,
+                name: v.company_name || 'Unknown Vendor',
+                role: v.job_nature || 'Contractor',
+                type: 'company',
+                children: []
+            };
+            
+            // Add its directory members underneath
+            const associatedDir = dirByVendor[v.pv_id || v.vendor_id] || dirByVendor[v.vendor_id] || [];
+            associatedDir.forEach(d => {
+                vendorNode.children.push({
+                    id: `dir-${d.pd_id}`,
+                    name: d.contact_person || 'N/A',
+                    role: d.designation || 'Staff',
+                    type: 'staff',
+                    subRole: d.mobile_no || ''
+                });
+            });
+
+            clientChildren.push(vendorNode);
+        });
+
+        // Standalone directories as their own
+        standaloneDir.forEach(d => {
+            clientChildren.push({
+                id: `dir-solo-${d.pd_id}`,
+                name: d.company_name || d.contact_person || 'Unknown',
+                role: d.job_nature || d.designation || 'Entity',
+                type: 'department',
+                children: [
+                    {
+                        id: `dir-child-${d.pd_id}`,
+                        name: d.contact_person || 'N/A',
+                        role: d.designation || 'Staff',
+                        type: 'staff',
+                        subRole: d.mobile_no || ''
+                    }
+                ]
+            });
+        });
+
+        const clientNode = {
+            id: 'client',
+            name: client_name || 'Client',
+            role: 'CLIENT',
+            type: 'company',
+            children: clientChildren
+        };
+
+        return {
+            id: 'root',
+            name: project_name || 'Project Name',
+            role: 'PROJECT LOCATION',
+            location: project_location || 'Location',
+            type: 'project',
+            children: [clientNode]
+        };
+    }, []);
+
+    const fetchOrgChart = useCallback(async () => {
+        try {
+            const response = await generalDocsApi.getOrgChart(projectId);
+            if (response && response.success) {
+                const tree = mapOrgApiToTree(response);
+                setData(tree);
+                setSelectedNodeId('root');
+            }
+        } catch(err) {
+            console.error("Failed to fetch Org Chart API, falling back to dummy", err);
+            setData(INITIAL_DATA);
+        }
+    }, [projectId, mapOrgApiToTree]);
+
     useEffect(() => {
-        setExtraBreadcrumbs([
-            { label: 'General Documents', onClick: onBack },
-            { label: 'Organisation Chart' }
-        ]);
-        if (!selectedNodeId && data) setSelectedNodeId(data.id);
-    }, [onBack, setExtraBreadcrumbs, data, selectedNodeId]);
+        fetchOrgChart();
+    }, [fetchOrgChart]);
 
     // Helpers for Tree Mutation
     const findNode = (nodes, id) => {

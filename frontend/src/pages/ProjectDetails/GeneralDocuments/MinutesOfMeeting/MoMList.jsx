@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { FileText, Plus, ChevronRight, Calendar, ArrowLeft, Info, X, Clock, User, ClipboardCheck } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
+import { generalDocsApi } from '../../../../services/generalDocsApi';
 
 const defaultMoMs = [
     { id: 10, title: 'kakooos', meetingNo: '23', venue: 'con room', date: '12 January 2026' },
@@ -12,16 +13,42 @@ const defaultMoMs = [
 
 const MoMList = ({ onBack, setExtraBreadcrumbs, onSelect }) => {
     const { id: projectId } = useParams();
-    const [moms, setMoms] = useState(defaultMoMs);
+    const [moms, setMoms] = useState([]);
     const [infoDrawerOpen, setInfoDrawerOpen] = useState(false);
     const [selectedMoM, setSelectedMoM] = useState(null);
+    const [loading, setLoading] = useState(true);
 
     React.useEffect(() => {
         setExtraBreadcrumbs([
             { label: 'General Documents', onClick: onBack },
             { label: 'Minutes of Meeting' }
         ]);
-    }, [onBack, setExtraBreadcrumbs]);
+
+        const fetchMoMs = async () => {
+            try {
+                setLoading(true);
+                const data = await generalDocsApi.getMoms(projectId);
+                if (data && data.moms) {
+                    const mappedMoms = data.moms.map(m => ({
+                        id: m.mom_id,
+                        title: m.subject,
+                        meeting_no: m.meeting_no,
+                        venue: m.venue,
+                        date: m.date
+                    }));
+                    setMoms(mappedMoms);
+                } else {
+                    setMoms([]);
+                }
+            } catch (err) {
+                console.error(err);
+                setMoms(defaultMoMs); // Fallback on UI error
+            } finally {
+                setLoading(false);
+            }
+        };
+        fetchMoMs();
+    }, [onBack, setExtraBreadcrumbs, projectId]);
 
     return (
         <div className="flex-1 flex flex-col bg-[#fafafa] dark:bg-[#0d1117] font-sans text-gray-900 dark:text-gray-700 dark:text-gray-300 transition-colors overflow-hidden">
@@ -59,7 +86,7 @@ const MoMList = ({ onBack, setExtraBreadcrumbs, onSelect }) => {
                                 <div className="flex items-center space-x-2">
                                     <div className="flex items-center space-x-2 text-xs bg-gray-50 dark:bg-gray-800/30 px-2 py-1.5 rounded-md border border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-500 dark:text-gray-400 group-hover:text-gray-900 dark:group-hover:text-gray-800 dark:text-gray-200 transition-colors">
                                         <Calendar size={13} />
-                                        <span>{mom.date}</span>
+                                        <span>{mom.date ? mom.date.split('T')[0] : 'No date'}</span>
                                     </div>
                                     <button
                                         onClick={(e) => {
@@ -82,7 +109,7 @@ const MoMList = ({ onBack, setExtraBreadcrumbs, onSelect }) => {
 
                             <div className="mt-4 pt-4 border-t border-gray-200 dark:border-white/10/50 flex flex-wrap gap-2 text-xs text-gray-600 dark:text-gray-400">
                                 <span className="bg-white dark:bg-[#0d1117] px-2 py-1 rounded border border-gray-200 dark:border-white/10 whitespace-nowrap">
-                                    No: {mom.meetingNo}
+                                    No: {mom.meeting_no || mom.meetingNo}
                                 </span>
                                 <span className="bg-white dark:bg-[#0d1117] px-2 py-1 rounded border border-gray-200 dark:border-white/10 line-clamp-1 text-ellipsis flex-1 w-0 min-w-[80px]">
                                     {mom.venue}
@@ -91,8 +118,11 @@ const MoMList = ({ onBack, setExtraBreadcrumbs, onSelect }) => {
                         </motion.div>
                     ))}
 
-                    {moms.length === 0 && (
-                        <div className="text-center py-20 text-gray-500">
+                    {loading && (
+                        <div className="col-span-full text-center py-20 text-gray-500">Loading MoMs...</div>
+                    )}
+                    {!loading && moms.length === 0 && (
+                        <div className="col-span-full text-center py-20 text-gray-500">
                             No MoMs found. Create a new one to get started.
                         </div>
                     )}

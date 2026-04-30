@@ -42,9 +42,8 @@ export async function fetchMoMById(projectId, momId) {
     // Fetch participants correctly referencing contacts
     const participants = await db('project_mom_participants as pmp')
         .leftJoin('project_directory as pd', 'pmp.pd_id', 'pd.pd_id')
-        .leftJoin('contacts as c', function () {
-            this.on('pd.vendor_id', 'c.id').andOn('c.type', db.raw("'vendor'"));
-        })
+        .leftJoin('project_vendors as pv', 'pd.pv_id', 'pv.pv_id')
+        .leftJoin('contacts as c', 'pv.vendors_id', 'c.id')
         .where('pmp.mom_id', momId)
         .select([
             'pmp.pmp_id',

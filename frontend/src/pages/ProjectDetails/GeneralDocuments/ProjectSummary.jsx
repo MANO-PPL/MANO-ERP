@@ -1,6 +1,8 @@
 import React, { useEffect, useState } from 'react';
 import { Plus, Edit2, GripVertical, Trash2, Info, X, Clock, ArrowLeft } from 'lucide-react';
 import { Reorder, AnimatePresence, motion } from 'framer-motion';
+import { useParams } from 'react-router-dom';
+import { generalDocsApi } from '../../../services/generalDocsApi';
 
 const ResizableInput = ({ value, onChange, autoFocus, className = "", minW = "50px" }) => (
     <div className="inline-grid w-fit max-w-full items-center align-middle relative">
@@ -10,17 +12,16 @@ const ResizableInput = ({ value, onChange, autoFocus, className = "", minW = "50
         <input
             autoFocus={autoFocus}
             className={`absolute inset-0 w-full h-full bg-white dark:bg-[#161b22] border border-blue-500/50 focus:border-blue-500 focus:ring-1 focus:ring-blue-500/20 rounded outline-none shadow-sm dark:text-white transition-all ${className}`}
-            value={value}
+            value={value || ''}
             onChange={onChange}
         />
     </div>
 );
 
 const ProjectSummary = ({ onBack, setExtraBreadcrumbs }) => {
-    const [milestones, setMilestones] = useState([
-        { id: 1, activity: 'Project Initialization', date: '2026-01-01', status: 'Completed', remarks: 'First phase done' },
-        { id: 2, activity: 'Design Phase', date: '2026-02-15', status: 'In Progress', remarks: 'Awaiting client feedback' },
-    ]);
+    const { id: projectId } = useParams();
+    const [milestones, setMilestones] = useState([]);
+    const [loading, setLoading] = useState(true);
 
     const [editingId, setEditingId] = useState(null);
     const [editData, setEditData] = useState(null);
@@ -28,9 +29,7 @@ const ProjectSummary = ({ onBack, setExtraBreadcrumbs }) => {
     const [isInfoOpen, setIsInfoOpen] = useState(false);
 
     const auditTrail = [
-        { id: 1, action: "Created Project Summary", user: "Admin User", timestamp: "Feb 24, 2026 • 08:30 AM", type: "create" },
-        { id: 2, action: "Updated Design Phase status", user: "Madhavan", timestamp: "Feb 26, 2026 • 11:45 AM", type: "update" },
-        { id: 3, action: "Added Initialization remarks", user: "Mano Kakkus", timestamp: "Feb 27, 2026 • 03:20 PM", type: "update" },
+        { id: 1, action: "API Connected Session", user: "Active User", timestamp: new Date().toLocaleString(), type: "update" },
     ];
 
     useEffect(() => {
@@ -38,26 +37,91 @@ const ProjectSummary = ({ onBack, setExtraBreadcrumbs }) => {
             { label: 'General Documents', onClick: onBack },
             { label: 'Project Summary' }
         ]);
-    }, [onBack, setExtraBreadcrumbs]);
+        fetchSummaries();
+    }, [onBack, setExtraBreadcrumbs, projectId]);
+
+    const fetchSummaries = async () => {
+        try {
+            setLoading(true);
+            const data = await generalDocsApi.getSummaries(projectId);
+            if (data && data.summaries) {
+                const mappedSummaries = data.summaries.map(s => ({
+                    id: s.id,
+                    activity: s.title,
+                    date: s.date,
+                    status: s.status,
+                    remarks: s.details
+                }));
+                setMilestones(mappedSummaries);
+            }
+        } catch (error) {
+            console.error("Failed to fetch summaries:", error);
+        } finally {
+            setLoading(false);
+        }
+    };
+
+    const handleAdd = () => {
+        const newRecord = {
+            id: `new-${Date.now()}`,
+            activity: '',
+            date: '',
+            status: 'pending',
+            remarks: '',
+            isNew: true
+        };
+        setMilestones([...milestones, newRecord]);
+        setEditingId(newRecord.id);
+        setEditData(newRecord);
+    };
 
     const handleEdit = (milestone) => {
         setEditingId(milestone.id);
         setEditData({ ...milestone });
     };
 
-    const handleSave = () => {
-        setMilestones(prev => prev.map(m => m.id === editingId ? editData : m));
-        setEditingId(null);
-        setEditData(null);
+    const handleSave = async () => {
+        try {
+            let formattedDate = editData.date ? editData.date.split('T')[0] : null;
+            if (editData.isNew) {
+                await generalDocsApi.addSummaries(projectId, [{
+                    title: editData.activity,
+                    date: formattedDate,
+                    status: editData.status,
+                    details: editData.remarks
+                }]);
+            } else {
+                await generalDocsApi.updateSummaries(projectId, [{
+                    id: editData.id,
+                    title: editData.activity,
+                    date: formattedDate,
+                    status: editData.status,
+                    details: editData.remarks
+                }]);
+            }
+            await fetchSummaries();
+            setEditingId(null);
+            setEditData(null);
+        } catch (error) {
+            console.error("Failed to save summary:", error);
+        }
     };
 
     const handleCancel = () => {
+        if (editData?.isNew) {
+            setMilestones(prev => prev.filter(m => m.id !== editData.id));
+        }
         setEditingId(null);
         setEditData(null);
     };
 
-    const handleDelete = (id) => {
-        setMilestones(prev => prev.filter(m => m.id !== id));
+    const handleDelete = async (id) => {
+        try {
+            await generalDocsApi.deleteSummaries(projectId, [id]);
+            await fetchSummaries();
+        } catch (error) {
+            console.error("Failed to delete summary:", error);
+        }
     };
 
     return (
@@ -82,7 +146,7 @@ const ProjectSummary = ({ onBack, setExtraBreadcrumbs }) => {
                         <Edit2 size={16} />
                         <span>Edit</span>
                     </button>
-                    <button className="flex items-center space-x-2 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-md text-[12px] font-medium shadow-lg shadow-blue-500/20 transition-all active:scale-95">
+                    <button onClick={handleAdd} className="flex items-center space-x-2 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-md text-[12px] font-medium shadow-lg shadow-blue-500/20 transition-all active:scale-95">
                         <Plus size={16} />
                         <span>Add milestone</span>
                     </button>
@@ -98,150 +162,159 @@ const ProjectSummary = ({ onBack, setExtraBreadcrumbs }) => {
 
             {/* List View - Task Theme Style */}
             <div className="flex-1 overflow-auto custom-scrollbar">
-                <div className="min-w-full inline-block align-middle pb-20">
-                    <table className="w-full text-left whitespace-nowrap text-[13px] border-collapse bg-white dark:bg-[#0d1117]">
-                        <thead className="bg-[#f9fafb] dark:bg-[#161b22] text-gray-500 dark:text-gray-400 sticky top-0 z-10 border-b border-gray-200 dark:border-white/5 tracking-wide">
-                            <tr>
-                                <th className="px-3 py-3 w-6 text-center"></th>
-                                <th className="px-4 py-3 font-medium capitalize text-[10px] tracking-widest border-r border-gray-100 dark:border-white/5 w-16 text-center">S. no.</th>
-                                <th className="px-4 py-3 font-medium capitalize text-[10px] tracking-widest border-r border-gray-100 dark:border-white/5">Activity / milestone</th>
-                                <th className="px-4 py-3 font-medium capitalize text-[10px] tracking-widest border-r border-gray-100 dark:border-white/5">Date</th>
-                                <th className="px-4 py-3 font-medium capitalize text-[10px] tracking-widest border-r border-gray-100 dark:border-white/5">Status</th>
-                                <th className="px-4 py-3 font-medium capitalize text-[10px] tracking-widest border-r border-gray-100 dark:border-white/5">Remarks</th>
-                                <th className="px-4 py-3 font-medium capitalize text-[10px] tracking-widest text-center">Actions</th>
-                            </tr>
-                        </thead>
-                        <Reorder.Group axis="y" values={milestones} onReorder={setMilestones} as="tbody" className="divide-y divide-gray-100 dark:divide-white/[0.03]">
-                            <AnimatePresence initial={false}>
-                                {milestones.map((milestone, idx) => {
-                                    const isEditing = editingId === milestone.id;
-                                    return (
-                                        <Reorder.Item
-                                            key={milestone.id}
-                                            value={milestone}
-                                            as="tr"
-                                            onMouseEnter={() => setHoveredRow(milestone.id)}
-                                            onMouseLeave={() => setHoveredRow(null)}
-                                            className={`${isEditing ? 'bg-blue-50/10 dark:bg-blue-900/5' : 'hover:bg-blue-50/10 dark:hover:bg-blue-900/10'} transition-colors group/row h-[52px] cursor-default relative`}
-                                        >
-                                            <td className="px-3 py-2 text-center w-6 min-w-[40px]">
-                                                <div className="flex items-center justify-center">
-                                                    <GripVertical size={14} className="text-gray-300 dark:text-gray-700 group-hover/row:text-blue-500 transition-colors cursor-grab active:cursor-grabbing" />
-                                                </div>
-                                            </td>
-                                            <td className="px-4 py-2 text-gray-500 dark:text-gray-600 font-mono text-[11px] border-r border-gray-100 dark:border-white/[0.03] text-center w-16">
-                                                {String(idx + 1)}
-                                            </td>
-
-                                            {/* Activity Field */}
-                                            <td className="px-4 py-2 border-r border-gray-100 dark:border-white/[0.03]" onClick={() => !isEditing && handleEdit(milestone)}>
-                                                {isEditing ? (
-                                                    <ResizableInput
-                                                        autoFocus
-                                                        className="px-2 py-1 text-xs"
-                                                        value={editData.activity}
-                                                        onChange={(e) => setEditData({ ...editData, activity: e.target.value })}
-                                                    />
-                                                ) : (
-                                                    <span className="text-gray-900 dark:text-gray-200 cursor-pointer font-medium">
-                                                        {milestone.activity || '-'}
-                                                    </span>
-                                                )}
-                                            </td>
-
-                                            {/* Date Field */}
-                                            <td className="px-4 py-2 border-r border-gray-100 dark:border-white/[0.03]" onClick={() => !isEditing && handleEdit(milestone)}>
-                                                {isEditing ? (
-                                                    <input
-                                                        type="date"
-                                                        className="px-2 py-1 text-xs bg-white dark:bg-gray-50 dark:bg-[#161b22] border border-blue-500/50 rounded outline-none text-gray-900 dark:text-white"
-                                                        value={editData.date}
-                                                        onChange={(e) => setEditData({ ...editData, date: e.target.value })}
-                                                    />
-                                                ) : (
-                                                    <span className="text-gray-600 dark:text-gray-400 cursor-pointer">{milestone.date || '-'}</span>
-                                                )}
-                                            </td>
-
-                                            {/* Status Field */}
-                                            <td className="px-4 py-2 border-r border-gray-100 dark:border-white/[0.03]" onClick={() => !isEditing && handleEdit(milestone)}>
-                                                {isEditing ? (
-                                                    <select
-                                                        className="px-2 py-1 text-xs bg-white dark:bg-gray-50 dark:bg-[#161b22] border border-blue-500/50 rounded outline-none text-gray-900 dark:text-white"
-                                                        value={editData.status}
-                                                        onChange={(e) => setEditData({ ...editData, status: e.target.value })}
-                                                    >
-                                                        <option value="Completed">Completed</option>
-                                                        <option value="In Progress">In Progress</option>
-                                                        <option value="Pending">Pending</option>
-                                                    </select>
-                                                ) : (
-                                                    <span className={`px-2 py-0.5 rounded-full text-[10px] font-medium uppercase tracking-wider border ${milestone.status === 'Completed' ? 'bg-green-500/10 text-green-500 border-green-500/20' :
-                                                        milestone.status === 'In Progress' ? 'bg-blue-500/10 text-blue-500 border-blue-500/20' :
-                                                            'bg-gray-500/10 text-gray-500 border-gray-500/20'
-                                                        }`}>
-                                                        {milestone.status || '-'}
-                                                    </span>
-                                                )}
-                                            </td>
-
-                                            {/* Remarks Field */}
-                                            <td className="px-4 py-2 border-r border-gray-100 dark:border-white/[0.03]" onClick={() => !isEditing && handleEdit(milestone)}>
-                                                {isEditing ? (
-                                                    <ResizableInput
-                                                        className="px-2 py-1 text-xs"
-                                                        minW="150px"
-                                                        value={editData.remarks}
-                                                        onChange={(e) => setEditData({ ...editData, remarks: e.target.value })}
-                                                    />
-                                                ) : (
-                                                    <span className="text-gray-600 dark:text-gray-400 cursor-pointer">{milestone.remarks || '-'}</span>
-                                                )}
-                                            </td>
-
-                                            {/* Actions Column */}
-                                            <td className="px-4 py-2 text-center min-w-[120px]">
-                                                {isEditing ? (
-                                                    <div className="flex items-center justify-center space-x-2">
-                                                        <button
-                                                            onClick={(e) => { e.stopPropagation(); handleSave(); }}
-                                                            className="px-2.5 py-1 bg-blue-600 text-white rounded text-[11px] font-medium hover:bg-blue-700 transition-all shadow-md shadow-blue-500/20"
-                                                        >
-                                                            Save
-                                                        </button>
-                                                        <button
-                                                            onClick={(e) => { e.stopPropagation(); handleCancel(); }}
-                                                            className="px-2.5 py-1 bg-gray-100 dark:bg-white/5 text-gray-600 dark:text-gray-400 rounded text-[11px] font-medium hover:bg-gray-200 dark:hover:bg-white/10 transition-all"
-                                                        >
-                                                            Cancel
-                                                        </button>
+                {loading ? (
+                    <div className="flex items-center justify-center h-48 opacity-50 dark:text-white">Loading data...</div>
+                ) : (
+                    <div className="min-w-full inline-block align-middle pb-20">
+                        <table className="w-full text-left whitespace-nowrap text-[13px] border-collapse bg-white dark:bg-[#0d1117]">
+                            <thead className="bg-[#f9fafb] dark:bg-[#161b22] text-gray-500 dark:text-gray-400 sticky top-0 z-10 border-b border-gray-200 dark:border-white/5 tracking-wide">
+                                <tr>
+                                    <th className="px-3 py-3 w-6 text-center"></th>
+                                    <th className="px-4 py-3 font-medium capitalize text-[10px] tracking-widest border-r border-gray-100 dark:border-white/5 w-16 text-center">S. no.</th>
+                                    <th className="px-4 py-3 font-medium capitalize text-[10px] tracking-widest border-r border-gray-100 dark:border-white/5">Activity / milestone</th>
+                                    <th className="px-4 py-3 font-medium capitalize text-[10px] tracking-widest border-r border-gray-100 dark:border-white/5">Date</th>
+                                    <th className="px-4 py-3 font-medium capitalize text-[10px] tracking-widest border-r border-gray-100 dark:border-white/5">Status</th>
+                                    <th className="px-4 py-3 font-medium capitalize text-[10px] tracking-widest border-r border-gray-100 dark:border-white/5">Remarks</th>
+                                    <th className="px-4 py-3 font-medium capitalize text-[10px] tracking-widest text-center">Actions</th>
+                                </tr>
+                            </thead>
+                            <Reorder.Group axis="y" values={milestones} onReorder={setMilestones} as="tbody" className="divide-y divide-gray-100 dark:divide-white/[0.03]">
+                                <AnimatePresence initial={false}>
+                                    {milestones.map((milestone, idx) => {
+                                        const isEditing = editingId === milestone.id;
+                                        // Try to parse the date cleanly for display
+                                        const displayDate = milestone.date ? milestone.date.split('T')[0] : '';
+                                        return (
+                                            <Reorder.Item
+                                                key={milestone.id}
+                                                value={milestone}
+                                                as="tr"
+                                                onMouseEnter={() => setHoveredRow(milestone.id)}
+                                                onMouseLeave={() => setHoveredRow(null)}
+                                                className={`${isEditing ? 'bg-blue-50/10 dark:bg-blue-900/5' : 'hover:bg-blue-50/10 dark:hover:bg-blue-900/10'} transition-colors group/row h-[52px] cursor-default relative`}
+                                            >
+                                                <td className="px-3 py-2 text-center w-6 min-w-[40px]">
+                                                    <div className="flex items-center justify-center">
+                                                        <GripVertical size={14} className="text-gray-300 dark:text-gray-700 group-hover/row:text-blue-500 transition-colors cursor-grab active:cursor-grabbing" />
                                                     </div>
-                                                ) : (
-                                                    <div className={`flex items-center justify-center space-x-3 transition-opacity duration-200 opacity-100`}>
-                                                        <button
-                                                            onClick={(e) => { e.stopPropagation(); handleEdit(milestone); }}
-                                                            className="text-gray-400 hover:text-blue-500 transition-colors p-1"
-                                                            title="Edit"
+                                                </td>
+                                                <td className="px-4 py-2 text-gray-500 dark:text-gray-600 font-mono text-[11px] border-r border-gray-100 dark:border-white/[0.03] text-center w-16">
+                                                    {String(idx + 1)}
+                                                </td>
+
+                                                {/* Activity Field */}
+                                                <td className="px-4 py-2 border-r border-gray-100 dark:border-white/[0.03]" onClick={() => !isEditing && handleEdit(milestone)}>
+                                                    {isEditing ? (
+                                                        <ResizableInput
+                                                            autoFocus
+                                                            className="px-2 py-1 text-xs"
+                                                            value={editData.activity}
+                                                            onChange={(e) => setEditData({ ...editData, activity: e.target.value })}
+                                                        />
+                                                    ) : (
+                                                        <span className="text-gray-900 dark:text-gray-200 cursor-pointer font-medium">
+                                                            {milestone.activity || '-'}
+                                                        </span>
+                                                    )}
+                                                </td>
+
+                                                {/* Date Field */}
+                                                <td className="px-4 py-2 border-r border-gray-100 dark:border-white/[0.03]" onClick={() => !isEditing && handleEdit(milestone)}>
+                                                    {isEditing ? (
+                                                        <input
+                                                            type="date"
+                                                            className="px-2 py-1 text-xs bg-white dark:bg-[#161b22] border border-blue-500/50 rounded outline-none text-gray-900 dark:text-white"
+                                                            value={editData.date ? editData.date.split('T')[0] : ''}
+                                                            onChange={(e) => setEditData({ ...editData, date: e.target.value })}
+                                                        />
+                                                    ) : (
+                                                        <span className="text-gray-600 dark:text-gray-400 cursor-pointer">{displayDate || '-'}</span>
+                                                    )}
+                                                </td>
+
+                                                {/* Status Field */}
+                                                <td className="px-4 py-2 border-r border-gray-100 dark:border-white/[0.03]" onClick={() => !isEditing && handleEdit(milestone)}>
+                                                    {isEditing ? (
+                                                        <select
+                                                            className="px-2 py-1 text-xs bg-white dark:bg-[#161b22] border border-blue-500/50 rounded outline-none text-gray-900 dark:text-white"
+                                                            value={editData.status || 'pending'}
+                                                            onChange={(e) => setEditData({ ...editData, status: e.target.value })}
                                                         >
-                                                            <Edit2 size={14} />
-                                                        </button>
-                                                        <button
-                                                            onClick={(e) => { e.stopPropagation(); handleDelete(milestone.id); }}
-                                                            className="text-gray-400 hover:text-red-500 transition-colors p-1"
-                                                            title="Delete"
-                                                        >
-                                                            <Trash2 size={14} />
-                                                        </button>
-                                                    </div>
-                                                )}
-                                            </td>
-                                        </Reorder.Item>
-                                    );
-                                })}
-                            </AnimatePresence>
-                        </Reorder.Group>
-                    </table>
-                </div>
+                                                            <option value="completed">Completed</option>
+                                                            <option value="in_progress">In Progress</option>
+                                                            <option value="pending">Pending</option>
+                                                        </select>
+                                                    ) : (
+                                                        <span className={`px-2.5 py-1 rounded-md text-[10px] font-bold uppercase tracking-wider border shadow-sm transition-all ${
+                                                            milestone.status === 'completed' 
+                                                                ? 'bg-emerald-500/10 text-emerald-500 border-emerald-500/30' :
+                                                            milestone.status === 'in_progress' 
+                                                                ? 'bg-blue-500/10 text-blue-500 border-blue-500/30' :
+                                                                'bg-amber-500/10 text-amber-500 border-amber-500/30'
+                                                            }`}>
+                                                            {milestone.status?.replace('_', ' ') || '-'}
+                                                        </span>
+                                                    )}
+                                                </td>
+
+                                                {/* Remarks Field */}
+                                                <td className="px-4 py-2 border-r border-gray-100 dark:border-white/[0.03]" onClick={() => !isEditing && handleEdit(milestone)}>
+                                                    {isEditing ? (
+                                                        <ResizableInput
+                                                            className="px-2 py-1 text-xs"
+                                                            minW="150px"
+                                                            value={editData.remarks}
+                                                            onChange={(e) => setEditData({ ...editData, remarks: e.target.value })}
+                                                        />
+                                                    ) : (
+                                                        <span className="text-gray-600 dark:text-gray-400 cursor-pointer">{milestone.remarks || '-'}</span>
+                                                    )}
+                                                </td>
+
+                                                {/* Actions Column */}
+                                                <td className="px-4 py-2 text-center min-w-[120px]">
+                                                    {isEditing ? (
+                                                        <div className="flex items-center justify-center space-x-2">
+                                                            <button
+                                                                onClick={(e) => { e.stopPropagation(); handleSave(); }}
+                                                                className="px-2.5 py-1 bg-blue-600 text-white rounded text-[11px] font-medium hover:bg-blue-700 transition-all shadow-md shadow-blue-500/20"
+                                                            >
+                                                                Save
+                                                            </button>
+                                                            <button
+                                                                onClick={(e) => { e.stopPropagation(); handleCancel(); }}
+                                                                className="px-2.5 py-1 bg-gray-100 dark:bg-white/5 text-gray-600 dark:text-gray-400 rounded text-[11px] font-medium hover:bg-gray-200 dark:hover:bg-white/10 transition-all"
+                                                            >
+                                                                Cancel
+                                                            </button>
+                                                        </div>
+                                                    ) : (
+                                                        <div className={`flex items-center justify-center space-x-3 transition-opacity duration-200 opacity-100`}>
+                                                            <button
+                                                                onClick={(e) => { e.stopPropagation(); handleEdit(milestone); }}
+                                                                className="text-gray-400 hover:text-blue-500 transition-colors p-1"
+                                                                title="Edit"
+                                                            >
+                                                                <Edit2 size={14} />
+                                                            </button>
+                                                            <button
+                                                                onClick={(e) => { e.stopPropagation(); handleDelete(milestone.id); }}
+                                                                className="text-gray-400 hover:text-red-500 transition-colors p-1"
+                                                                title="Delete"
+                                                            >
+                                                                <Trash2 size={14} />
+                                                            </button>
+                                                        </div>
+                                                    )}
+                                                </td>
+                                            </Reorder.Item>
+                                        );
+                                    })}
+                                </AnimatePresence>
+                            </Reorder.Group>
+                        </table>
+                    </div>
+                )}
             </div>
 
             {/* Audit Trail Drawer */}
@@ -280,10 +353,7 @@ const ProjectSummary = ({ onBack, setExtraBreadcrumbs }) => {
                             <div className="flex-1 overflow-y-auto p-6 space-y-6 custom-scrollbar">
                                 {auditTrail.map((log) => (
                                     <div key={log.id} className="relative pl-8 pb-2">
-                                        {/* Activity Line */}
                                         <div className="absolute left-3 top-2 bottom-0 w-[1px] bg-gray-200 dark:bg-white/10" />
-
-                                        {/* Activity Icon */}
                                         <div className={`absolute left-0 top-1.5 w-6 h-6 rounded-full border-4 border-white dark:border-[#0d1117] z-10 flex items-center justify-center ${log.type === 'create' ? 'bg-green-500/20 text-green-400' :
                                             log.type === 'update' ? 'bg-blue-500/20 text-blue-400' :
                                                 'bg-purple-500/20 text-purple-400'

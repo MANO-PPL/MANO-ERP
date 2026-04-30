@@ -8,15 +8,14 @@ export async function fetchProjectDirectory(projectId) {
     if (!projectId) throw new AppError('projectId is required', 400);
 
     const directory = await db('project_directory as pd')
-        .leftJoin('contacts as c', function () {
-            this.on('pd.vendor_id', 'c.id').andOn('c.type', db.raw("'vendor'"));
-        })
+        .leftJoin('project_vendors as pv', 'pd.pv_id', 'pv.pv_id')
+        .leftJoin('contacts as c', 'pv.vendors_id', 'c.id')
         .leftJoin('job_nature as jn', 'c.job_nature_id', 'jn.job_id')
         .where('pd.project_id', projectId)
         .select([
             'pd.pd_id',
             'pd.project_id',
-            'pd.vendor_id',
+            'pd.pv_id',
             'c.name as company_name',
             'jn.job_name as job_nature',
             'pd.contact_person',
@@ -50,7 +49,7 @@ export async function fetchDirectoryCount(projectId = null) {
 export async function insertDirectoryItem(data) {
     const [pd_id] = await db('project_directory').insert({
         project_id: data.project_id,
-        vendor_id: data.vendor_id,
+        pv_id: data.pv_id,
         contact_person: data.contact_person,
         designation: data.designation,
         responsibilities: data.responsibilities,
@@ -70,7 +69,7 @@ export async function insertDirectoryItem(data) {
 export async function updateDirectoryItem(id, data = {}) {
     const updateData = {};
 
-    if (data.vendor_id !== undefined) updateData.vendor_id = data.vendor_id;
+    if (data.pv_id !== undefined) updateData.pv_id = data.pv_id;
     if (data.contact_person !== undefined) updateData.contact_person = data.contact_person;
     if (data.designation !== undefined) updateData.designation = data.designation;
     if (data.responsibilities !== undefined) updateData.responsibilities = data.responsibilities;

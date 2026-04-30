@@ -1,6 +1,8 @@
 import React, { useEffect, useState } from 'react';
 import { Plus, Edit2, GripVertical, Trash2, Info, X, Clock, ArrowLeft } from 'lucide-react';
 import { Reorder, AnimatePresence, motion } from 'framer-motion';
+import { useParams } from 'react-router-dom';
+import { generalDocsApi } from '../../../services/generalDocsApi';
 
 const ResizableInput = ({ value, onChange, autoFocus, className = "", minW = "60px" }) => (
     <div className="inline-grid w-fit max-w-full items-center align-middle relative">
@@ -10,31 +12,30 @@ const ResizableInput = ({ value, onChange, autoFocus, className = "", minW = "60
         <input
             autoFocus={autoFocus}
             className={`absolute inset-0 w-full h-full bg-white dark:bg-[#161b22] border border-blue-500/50 focus:border-blue-500 focus:ring-1 focus:ring-blue-500/20 rounded outline-none shadow-sm dark:text-white transition-all ${className}`}
-            value={value}
+            value={value || ''}
             onChange={onChange}
         />
     </div>
 );
 
 const ResizableTextarea = ({ value, onChange, autoFocus, className = "", minW = "100px", minH = "60px" }) => (
-    <div className="inline-grid w-fit max-w-full align-top">
+    <div className="inline-grid w-fit max-w-full align-top relative">
         <span className={`invisible col-start-1 row-start-1 whitespace-pre-wrap break-words ${className}`} style={{ minWidth: minW, minHeight: minH }}>
             {value ? value + ' ' : ' '}
         </span>
         <textarea
             autoFocus={autoFocus}
-            className={`col-start-1 row-start-1 w-full h-full bg-white dark:bg-[#161b22] border border-blue-500/50 focus:border-blue-500 focus:ring-1 focus:ring-blue-500/20 rounded outline-none shadow-sm dark:text-white resize-none overflow-hidden ${className}`}
-            value={value}
+            className={`absolute inset-0 w-full h-full bg-white dark:bg-[#161b22] border border-blue-500/50 focus:border-blue-500 focus:ring-1 focus:ring-blue-500/20 rounded outline-none shadow-sm dark:text-white resize-none overflow-hidden ${className}`}
+            value={value || ''}
             onChange={onChange}
         />
     </div>
 );
 
 const StaffRoles = ({ onBack, setExtraBreadcrumbs }) => {
-    const [staffs, setStaffs] = useState([
-        { id: 1, name: 'MANO', designation: 'KAKKUS', responsibilities: '1. Mano\n2. Kakkus\n4.timepass', phone: '12345467890', email: 'mano@gmail.com' },
-        { id: 2, name: 'kakkus', designation: 'Kakkus', responsibilities: '1. Task 1\n2. Task 2', phone: '08657352505', email: 'Surya@08032005' },
-    ]);
+    const { id: projectId } = useParams();
+    const [staffs, setStaffs] = useState([]);
+    const [loading, setLoading] = useState(true);
 
     const [editingId, setEditingId] = useState(null);
     const [editData, setEditData] = useState(null);
@@ -42,9 +43,7 @@ const StaffRoles = ({ onBack, setExtraBreadcrumbs }) => {
     const [isInfoOpen, setIsInfoOpen] = useState(false);
 
     const auditTrail = [
-        { id: 1, action: "Created Staff Role", user: "Admin User", timestamp: "Feb 24, 2026 • 10:15 AM", type: "create" },
-        { id: 2, action: "Updated MANO's responsibilities", user: "Madhavan", timestamp: "Feb 25, 2026 • 11:30 AM", type: "update" },
-        { id: 3, action: "Reviewed by Project Manager", user: "Mano Kakkus", timestamp: "Feb 26, 2026 • 02:45 PM", type: "review" },
+        { id: 1, action: "API Connected Session", user: "Active User", timestamp: new Date().toLocaleString(), type: "update" },
     ];
 
     useEffect(() => {
@@ -52,26 +51,89 @@ const StaffRoles = ({ onBack, setExtraBreadcrumbs }) => {
             { label: 'General Documents', onClick: onBack },
             { label: "MANO's Staff Role & Responsibilities" }
         ]);
-    }, [onBack, setExtraBreadcrumbs]);
+        fetchStaff();
+    }, [onBack, setExtraBreadcrumbs, projectId]);
+
+    const fetchStaff = async () => {
+        try {
+            setLoading(true);
+            const data = await generalDocsApi.getStaff(projectId);
+            if (data && data.staff) {
+                const mappedStaff = data.staff.map(s => ({
+                    id: s.psrr_id,
+                    name: s.name,
+                    designation: s.designation,
+                    responsibilities: s.responsibilities,
+                    phone: s.mobile,
+                    email: s.email
+                }));
+                setStaffs(mappedStaff);
+            }
+        } catch (error) {
+            console.error("Failed to fetch staff:", error);
+        } finally {
+            setLoading(false);
+        }
+    };
+
+    const handleAdd = () => {
+        const newRecord = {
+            id: `new-${Date.now()}`,
+            name: '',
+            designation: '',
+            responsibilities: '',
+            phone: '',
+            email: '',
+            isNew: true
+        };
+        setStaffs([...staffs, newRecord]);
+        setEditingId(newRecord.id);
+        setEditData(newRecord);
+    };
 
     const handleEdit = (staff) => {
         setEditingId(staff.id);
         setEditData({ ...staff });
     };
 
-    const handleSave = () => {
-        setStaffs(prev => prev.map(s => s.id === editingId ? editData : s));
-        setEditingId(null);
-        setEditData(null);
+    const handleSave = async () => {
+        try {
+            const payload = {
+                name: editData.name,
+                designation: editData.designation,
+                responsibilities: editData.responsibilities,
+                mobile: editData.phone,
+                email: editData.email
+            };
+            
+            if (editData.isNew) {
+                await generalDocsApi.addStaff(projectId, payload);
+            } else {
+                await generalDocsApi.updateStaff(projectId, editData.id, payload);
+            }
+            await fetchStaff();
+            setEditingId(null);
+            setEditData(null);
+        } catch (error) {
+            console.error("Failed to save staff record:", error);
+        }
     };
 
     const handleCancel = () => {
+        if (editData?.isNew) {
+            setStaffs(prev => prev.filter(s => s.id !== editData.id));
+        }
         setEditingId(null);
         setEditData(null);
     };
 
-    const handleDelete = (id) => {
-        setStaffs(prev => prev.filter(s => s.id !== id));
+    const handleDelete = async (id) => {
+        try {
+            await generalDocsApi.deleteStaff(projectId, id);
+            await fetchStaff();
+        } catch (error) {
+            console.error("Failed to delete staff record:", error);
+        }
     };
 
     return (
@@ -87,8 +149,8 @@ const StaffRoles = ({ onBack, setExtraBreadcrumbs }) => {
                         <ArrowLeft size={18} className="group-hover:-translate-x-0.5 transition-transform" />
                     </button>
                     <div>
-                        <h1 className="text-2xl font-medium text-gray-900 dark:text-white">New Airport Terminal – MANO's Staff Role &amp; Responsibilities</h1>
-                        <p className="text-sm text-gray-500 dark:text-gray-400">Roles and responsibilities of the staff members for New Airport Terminal.</p>
+                        <h1 className="text-2xl font-medium text-gray-900 dark:text-white">MANO's Staff Role &amp; Responsibilities</h1>
+                        <p className="text-sm text-gray-500 dark:text-gray-400">Roles and responsibilities of the staff members.</p>
                     </div>
                 </div>
                 <div className="flex items-center space-x-3">
@@ -96,7 +158,7 @@ const StaffRoles = ({ onBack, setExtraBreadcrumbs }) => {
                         <Edit2 size={16} />
                         <span>Edit</span>
                     </button>
-                    <button className="flex items-center space-x-2 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-md text-[12px] font-medium shadow-lg shadow-blue-500/20 transition-all active:scale-95">
+                    <button onClick={handleAdd} className="flex items-center space-x-2 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-md text-[12px] font-medium shadow-lg shadow-blue-500/20 transition-all active:scale-95">
                         <Plus size={16} />
                         <span>Add staff</span>
                     </button>
@@ -112,155 +174,159 @@ const StaffRoles = ({ onBack, setExtraBreadcrumbs }) => {
 
             {/* List View - Task Theme Style */}
             <div className="flex-1 overflow-auto custom-scrollbar">
-                <div className="min-w-full inline-block align-middle pb-20">
-                    <table className="w-full text-left whitespace-nowrap text-[13px] border-collapse bg-white dark:bg-[#0d1117]">
-                        <thead className="bg-[#f9fafb] dark:bg-[#161b22] text-gray-500 dark:text-gray-400 sticky top-0 z-10 border-b border-gray-200 dark:border-white/5 tracking-wide">
-                            <tr>
-                                <th className="px-3 py-3 w-6 text-center"></th>
-                                <th className="px-4 py-3 font-medium capitalize text-[10px] tracking-widest border-r border-gray-100 dark:border-white/5 w-16 text-center">S. no.</th>
-                                <th className="px-4 py-3 font-medium capitalize text-[10px] tracking-widest border-r border-gray-100 dark:border-white/5">Staff name</th>
-                                <th className="px-4 py-3 font-medium capitalize text-[10px] tracking-widest border-r border-gray-100 dark:border-white/5">Role / Designation</th>
-                                <th className="px-4 py-3 font-medium capitalize text-[10px] tracking-widest border-r border-gray-100 dark:border-white/5 whitespace-normal">Responsibilities</th>
-                                <th className="px-4 py-3 font-medium capitalize text-[10px] tracking-widest border-r border-gray-100 dark:border-white/5">Mobile no</th>
-                                <th className="px-4 py-3 font-medium capitalize text-[10px] tracking-widest border-r border-gray-100 dark:border-white/5">Email id</th>
-                                <th className="px-4 py-3 font-medium capitalize text-[10px] tracking-widest text-center">Actions</th>
-                            </tr>
-                        </thead>
-                        <Reorder.Group axis="y" values={staffs} onReorder={setStaffs} as="tbody" className="divide-y divide-gray-100 dark:divide-white/[0.03]">
-                            <AnimatePresence initial={false}>
-                                {staffs.map((staff, idx) => {
-                                    const isEditing = editingId === staff.id;
-                                    return (
-                                        <Reorder.Item
-                                            key={staff.id}
-                                            value={staff}
-                                            as="tr"
-                                            onMouseEnter={() => setHoveredRow(staff.id)}
-                                            onMouseLeave={() => setHoveredRow(null)}
-                                            className={`${isEditing ? 'bg-blue-50/10 dark:bg-blue-900/5' : 'hover:bg-blue-50/10 dark:hover:bg-blue-900/10'} transition-colors group/row h-[60px] cursor-default relative`}
-                                        >
-                                            <td className="px-3 py-2 text-center w-6 min-w-[40px]">
-                                                <div className="flex items-center justify-center">
-                                                    <GripVertical size={14} className="text-gray-300 dark:text-gray-700 group-hover/row:text-blue-500 transition-colors cursor-grab active:cursor-grabbing" />
-                                                </div>
-                                            </td>
-                                            <td className="px-4 py-2 text-gray-500 dark:text-gray-600 font-mono text-[11px] border-r border-gray-100 dark:border-white/[0.03] text-center w-16">
-                                                {String(idx + 1)}
-                                            </td>
-
-                                            {/* Name of Person Field */}
-                                            <td className="px-4 py-2 border-r border-gray-100 dark:border-white/[0.03]" onClick={() => !isEditing && handleEdit(staff)}>
-                                                {isEditing ? (
-                                                    <ResizableInput
-                                                        autoFocus
-                                                        className="px-2 py-1 text-xs"
-                                                        value={editData.name}
-                                                        onChange={(e) => setEditData({ ...editData, name: e.target.value })}
-                                                    />
-                                                ) : (
-                                                    <span className="text-gray-900 dark:text-gray-200 cursor-pointer font-medium">
-                                                        {staff.name || '-'}
-                                                    </span>
-                                                )}
-                                            </td>
-
-                                            {/* Designation Field */}
-                                            <td className="px-4 py-2 border-r border-gray-100 dark:border-white/[0.03]" onClick={() => !isEditing && handleEdit(staff)}>
-                                                {isEditing ? (
-                                                    <ResizableInput
-                                                        className="px-2 py-1 text-xs"
-                                                        value={editData.designation}
-                                                        onChange={(e) => setEditData({ ...editData, designation: e.target.value })}
-                                                    />
-                                                ) : (
-                                                    <span className="text-gray-600 dark:text-gray-400 cursor-pointer">{staff.designation || '-'}</span>
-                                                )}
-                                            </td>
-
-                                            {/* Responsibilities Field */}
-                                            <td className="px-4 py-2 border-r border-gray-100 dark:border-white/[0.03] whitespace-pre-wrap leading-relaxed" onClick={() => !isEditing && handleEdit(staff)}>
-                                                {isEditing ? (
-                                                    <ResizableTextarea
-                                                        className="px-2 py-1 text-xs"
-                                                        minW="200px"
-                                                        value={editData.responsibilities}
-                                                        onChange={(e) => setEditData({ ...editData, responsibilities: e.target.value })}
-                                                    />
-                                                ) : (
-                                                    <span className="text-gray-600 dark:text-gray-400 cursor-pointer inline-block w-full">{staff.responsibilities || '-'}</span>
-                                                )}
-                                            </td>
-
-                                            {/* Mobile Field */}
-                                            <td className="px-4 py-2 border-r border-gray-100 dark:border-white/[0.03]" onClick={() => !isEditing && handleEdit(staff)}>
-                                                {isEditing ? (
-                                                    <ResizableInput
-                                                        className="px-2 py-1 text-xs"
-                                                        value={editData.phone}
-                                                        onChange={(e) => setEditData({ ...editData, phone: e.target.value })}
-                                                    />
-                                                ) : (
-                                                    <span className="text-gray-600 dark:text-gray-400 cursor-pointer">{staff.phone || '-'}</span>
-                                                )}
-                                            </td>
-
-                                            {/* Email Field */}
-                                            <td className="px-4 py-2 border-r border-gray-100 dark:border-white/[0.03]" onClick={() => !isEditing && handleEdit(staff)}>
-                                                {isEditing ? (
-                                                    <ResizableInput
-                                                        className="px-2 py-1 text-xs"
-                                                        minW="100px"
-                                                        value={editData.email}
-                                                        onChange={(e) => setEditData({ ...editData, email: e.target.value })}
-                                                    />
-                                                ) : (
-                                                    <span className="text-blue-500 hover:underline cursor-pointer">{staff.email === '-' ? '' : staff.email}</span>
-                                                )}
-                                            </td>
-
-                                            {/* Actions Column */}
-                                            <td className="px-4 py-2 text-center min-w-[120px]">
-                                                {isEditing ? (
-                                                    <div className="flex items-center justify-center space-x-2">
-                                                        <button
-                                                            onClick={(e) => { e.stopPropagation(); handleSave(); }}
-                                                            className="px-2.5 py-1 bg-blue-600 text-white rounded text-[11px] font-medium hover:bg-blue-700 transition-all shadow-md shadow-blue-500/20"
-                                                        >
-                                                            Save
-                                                        </button>
-                                                        <button
-                                                            onClick={(e) => { e.stopPropagation(); handleCancel(); }}
-                                                            className="px-2.5 py-1 bg-gray-100 dark:bg-white/5 text-gray-600 dark:text-gray-400 rounded text-[11px] font-medium hover:bg-gray-200 dark:hover:bg-white/10 transition-all"
-                                                        >
-                                                            Cancel
-                                                        </button>
+                {loading ? (
+                    <div className="flex items-center justify-center h-48 opacity-50 dark:text-white">Loading data...</div>
+                ) : (
+                    <div className="min-w-full inline-block align-middle pb-20">
+                        <table className="w-full text-left whitespace-nowrap text-[13px] border-collapse bg-white dark:bg-[#0d1117]">
+                            <thead className="bg-[#f9fafb] dark:bg-[#161b22] text-gray-500 dark:text-gray-400 sticky top-0 z-10 border-b border-gray-200 dark:border-white/5 tracking-wide">
+                                <tr>
+                                    <th className="px-3 py-3 w-6 text-center"></th>
+                                    <th className="px-4 py-3 font-medium capitalize text-[10px] tracking-widest border-r border-gray-100 dark:border-white/5 w-16 text-center">S. no.</th>
+                                    <th className="px-4 py-3 font-medium capitalize text-[10px] tracking-widest border-r border-gray-100 dark:border-white/5">Staff name</th>
+                                    <th className="px-4 py-3 font-medium capitalize text-[10px] tracking-widest border-r border-gray-100 dark:border-white/5">Role / Designation</th>
+                                    <th className="px-4 py-3 font-medium capitalize text-[10px] tracking-widest border-r border-gray-100 dark:border-white/5 whitespace-normal">Responsibilities</th>
+                                    <th className="px-4 py-3 font-medium capitalize text-[10px] tracking-widest border-r border-gray-100 dark:border-white/5">Mobile no</th>
+                                    <th className="px-4 py-3 font-medium capitalize text-[10px] tracking-widest border-r border-gray-100 dark:border-white/5">Email id</th>
+                                    <th className="px-4 py-3 font-medium capitalize text-[10px] tracking-widest text-center">Actions</th>
+                                </tr>
+                            </thead>
+                            <Reorder.Group axis="y" values={staffs} onReorder={setStaffs} as="tbody" className="divide-y divide-gray-100 dark:divide-white/[0.03]">
+                                <AnimatePresence initial={false}>
+                                    {staffs.map((staff, idx) => {
+                                        const isEditing = editingId === staff.id;
+                                        return (
+                                            <Reorder.Item
+                                                key={staff.id}
+                                                value={staff}
+                                                as="tr"
+                                                onMouseEnter={() => setHoveredRow(staff.id)}
+                                                onMouseLeave={() => setHoveredRow(null)}
+                                                className={`${isEditing ? 'bg-blue-50/10 dark:bg-blue-900/5' : 'hover:bg-blue-50/10 dark:hover:bg-blue-900/10'} transition-colors group/row h-[60px] cursor-default relative`}
+                                            >
+                                                <td className="px-3 py-2 text-center w-6 min-w-[40px]">
+                                                    <div className="flex items-center justify-center">
+                                                        <GripVertical size={14} className="text-gray-300 dark:text-gray-700 group-hover/row:text-blue-500 transition-colors cursor-grab active:cursor-grabbing" />
                                                     </div>
-                                                ) : (
-                                                    <div className={`flex items-center justify-center space-x-3 transition-opacity duration-200 opacity-100`}>
-                                                        <button
-                                                            onClick={(e) => { e.stopPropagation(); handleEdit(staff); }}
-                                                            className="text-gray-400 hover:text-blue-500 transition-colors p-1"
-                                                            title="Edit"
-                                                        >
-                                                            <Edit2 size={14} />
-                                                        </button>
-                                                        <button
-                                                            onClick={(e) => { e.stopPropagation(); handleDelete(staff.id); }}
-                                                            className="text-gray-400 hover:text-red-500 transition-colors p-1"
-                                                            title="Delete"
-                                                        >
-                                                            <Trash2 size={14} />
-                                                        </button>
-                                                    </div>
-                                                )}
-                                            </td>
-                                        </Reorder.Item>
-                                    );
-                                })}
-                            </AnimatePresence>
-                        </Reorder.Group>
-                    </table>
-                </div>
+                                                </td>
+                                                <td className="px-4 py-2 text-gray-500 dark:text-gray-600 font-mono text-[11px] border-r border-gray-100 dark:border-white/[0.03] text-center w-16">
+                                                    {String(idx + 1)}
+                                                </td>
+
+                                                {/* Name of Person Field */}
+                                                <td className="px-4 py-2 border-r border-gray-100 dark:border-white/[0.03]" onClick={() => !isEditing && handleEdit(staff)}>
+                                                    {isEditing ? (
+                                                        <ResizableInput
+                                                            autoFocus
+                                                            className="px-2 py-1 text-xs"
+                                                            value={editData.name}
+                                                            onChange={(e) => setEditData({ ...editData, name: e.target.value })}
+                                                        />
+                                                    ) : (
+                                                        <span className="text-gray-900 dark:text-gray-200 cursor-pointer font-medium">
+                                                            {staff.name || '-'}
+                                                        </span>
+                                                    )}
+                                                </td>
+
+                                                {/* Designation Field */}
+                                                <td className="px-4 py-2 border-r border-gray-100 dark:border-white/[0.03]" onClick={() => !isEditing && handleEdit(staff)}>
+                                                    {isEditing ? (
+                                                        <ResizableInput
+                                                            className="px-2 py-1 text-xs"
+                                                            value={editData.designation}
+                                                            onChange={(e) => setEditData({ ...editData, designation: e.target.value })}
+                                                        />
+                                                    ) : (
+                                                        <span className="text-gray-600 dark:text-gray-400 cursor-pointer">{staff.designation || '-'}</span>
+                                                    )}
+                                                </td>
+
+                                                {/* Responsibilities Field */}
+                                                <td className="px-4 py-2 border-r border-gray-100 dark:border-white/[0.03] whitespace-pre-wrap leading-relaxed" onClick={() => !isEditing && handleEdit(staff)}>
+                                                    {isEditing ? (
+                                                        <ResizableTextarea
+                                                            className="px-2 py-1 text-xs"
+                                                            minW="200px"
+                                                            value={editData.responsibilities}
+                                                            onChange={(e) => setEditData({ ...editData, responsibilities: e.target.value })}
+                                                        />
+                                                    ) : (
+                                                        <span className="text-gray-600 dark:text-gray-400 cursor-pointer inline-block w-full">{staff.responsibilities || '-'}</span>
+                                                    )}
+                                                </td>
+
+                                                {/* Mobile Field */}
+                                                <td className="px-4 py-2 border-r border-gray-100 dark:border-white/[0.03]" onClick={() => !isEditing && handleEdit(staff)}>
+                                                    {isEditing ? (
+                                                        <ResizableInput
+                                                            className="px-2 py-1 text-xs"
+                                                            value={editData.phone}
+                                                            onChange={(e) => setEditData({ ...editData, phone: e.target.value })}
+                                                        />
+                                                    ) : (
+                                                        <span className="text-gray-600 dark:text-gray-400 cursor-pointer">{staff.phone || '-'}</span>
+                                                    )}
+                                                </td>
+
+                                                {/* Email Field */}
+                                                <td className="px-4 py-2 border-r border-gray-100 dark:border-white/[0.03]" onClick={() => !isEditing && handleEdit(staff)}>
+                                                    {isEditing ? (
+                                                        <ResizableInput
+                                                            className="px-2 py-1 text-xs"
+                                                            minW="100px"
+                                                            value={editData.email}
+                                                            onChange={(e) => setEditData({ ...editData, email: e.target.value })}
+                                                        />
+                                                    ) : (
+                                                        <span className="text-blue-500 hover:underline cursor-pointer">{!staff.email || staff.email === '-' ? '' : staff.email}</span>
+                                                    )}
+                                                </td>
+
+                                                {/* Actions Column */}
+                                                <td className="px-4 py-2 text-center min-w-[120px]">
+                                                    {isEditing ? (
+                                                        <div className="flex items-center justify-center space-x-2">
+                                                            <button
+                                                                onClick={(e) => { e.stopPropagation(); handleSave(); }}
+                                                                className="px-2.5 py-1 bg-blue-600 text-white rounded text-[11px] font-medium hover:bg-blue-700 transition-all shadow-md shadow-blue-500/20"
+                                                            >
+                                                                Save
+                                                            </button>
+                                                            <button
+                                                                onClick={(e) => { e.stopPropagation(); handleCancel(); }}
+                                                                className="px-2.5 py-1 bg-gray-100 dark:bg-white/5 text-gray-600 dark:text-gray-400 rounded text-[11px] font-medium hover:bg-gray-200 dark:hover:bg-white/10 transition-all"
+                                                            >
+                                                                Cancel
+                                                            </button>
+                                                        </div>
+                                                    ) : (
+                                                        <div className={`flex items-center justify-center space-x-3 transition-opacity duration-200 opacity-100`}>
+                                                            <button
+                                                                onClick={(e) => { e.stopPropagation(); handleEdit(staff); }}
+                                                                className="text-gray-400 hover:text-blue-500 transition-colors p-1"
+                                                                title="Edit"
+                                                            >
+                                                                <Edit2 size={14} />
+                                                            </button>
+                                                            <button
+                                                                onClick={(e) => { e.stopPropagation(); handleDelete(staff.id); }}
+                                                                className="text-gray-400 hover:text-red-500 transition-colors p-1"
+                                                                title="Delete"
+                                                            >
+                                                                <Trash2 size={14} />
+                                                            </button>
+                                                        </div>
+                                                    )}
+                                                </td>
+                                            </Reorder.Item>
+                                        );
+                                    })}
+                                </AnimatePresence>
+                            </Reorder.Group>
+                        </table>
+                    </div>
+                )}
             </div>
 
             {/* Audit Trail Drawer */}
@@ -299,10 +365,7 @@ const StaffRoles = ({ onBack, setExtraBreadcrumbs }) => {
                             <div className="flex-1 overflow-y-auto p-6 space-y-6 custom-scrollbar">
                                 {auditTrail.map((log) => (
                                     <div key={log.id} className="relative pl-8 pb-2">
-                                        {/* Activity Line */}
                                         <div className="absolute left-3 top-2 bottom-0 w-[1px] bg-gray-200 dark:bg-white/10" />
-
-                                        {/* Activity Icon */}
                                         <div className={`absolute left-0 top-1.5 w-6 h-6 rounded-full border-4 border-white dark:border-[#0d1117] z-10 flex items-center justify-center ${log.type === 'create' ? 'bg-green-500/20 text-green-400' :
                                             log.type === 'update' ? 'bg-blue-500/20 text-blue-400' :
                                                 'bg-purple-500/20 text-purple-400'

@@ -43,9 +43,8 @@ export async function fetchAgendaById(projectId, agendaId) {
     // Get participants for this agenda (using contacts table instead of vendors)
     const participants = await db('project_agenda_participants as pap')
         .leftJoin('project_directory as pd', 'pap.pd_id', 'pd.pd_id')
-        .leftJoin('contacts as c', function () {
-            this.on('pd.vendor_id', 'c.id').andOn('c.type', db.raw("'vendor'"));
-        })
+        .leftJoin('project_vendors as pv', 'pd.pv_id', 'pv.pv_id')
+        .leftJoin('contacts as c', 'pv.vendors_id', 'c.id')
         .where('pap.agenda_id', agendaId)
         .select([
             'pap.pap_id',

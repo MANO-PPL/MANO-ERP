@@ -1,36 +1,23 @@
-import React, { useEffect, useState } from 'react';
-import { Plus, Edit2, GripVertical, Trash2, Info, X, Clock, ArrowLeft } from 'lucide-react';
+import React, { useEffect, useState, useRef } from 'react';
+import { Plus, GripVertical, Trash2, Info, X, Clock, ArrowLeft, Search, Check } from 'lucide-react';
 import { Reorder, AnimatePresence, motion } from 'framer-motion';
-
-const ResizableInput = ({ value, onChange, autoFocus, className = "", minW = "50px" }) => (
-    <div className="inline-grid w-fit max-w-full items-center align-middle relative">
-        <span className={`invisible col-start-1 row-start-1 whitespace-pre pointer-events-none min-h-[26px] flex items-center ${className}`} style={{ minWidth: minW }}>
-            {value || ' '}
-        </span>
-        <input
-            autoFocus={autoFocus}
-            className={`absolute inset-0 w-full h-full bg-white dark:bg-[#161b22] border border-blue-500/50 focus:border-blue-500 focus:ring-1 focus:ring-blue-500/20 rounded outline-none shadow-sm dark:text-white transition-all ${className}`}
-            value={value}
-            onChange={onChange}
-        />
-    </div>
-);
+import { useParams } from 'react-router-dom';
+import { generalDocsApi } from '../../../services/generalDocsApi';
 
 const ProjectVendorList = ({ onBack, setExtraBreadcrumbs }) => {
-    const [vendors, setVendors] = useState([
-        { id: 1, name: 'Vendor A', person: 'Latika', phone: '1234567890', email: 'v_a@gmail.com', trade: 'HVAC' },
-        { id: 2, name: 'Vendor B', person: 'Mano', phone: '0987654321', email: 'v_b@gmail.com', trade: 'Plumbing' },
-    ]);
+    const { id: projectId } = useParams();
+    const [vendors, setVendors] = useState([]);
+    const [loading, setLoading] = useState(true);
 
-    const [editingId, setEditingId] = useState(null);
-    const [editData, setEditData] = useState(null);
+    const [isAdding, setIsAdding] = useState(false);
+    const [globalVendors, setGlobalVendors] = useState([]);
+    const [searchTerm, setSearchTerm] = useState('');
     const [hoveredRow, setHoveredRow] = useState(null);
     const [isInfoOpen, setIsInfoOpen] = useState(false);
+    const dropdownRef = useRef(null);
 
     const auditTrail = [
-        { id: 1, action: "Created Vendor List", user: "Admin User", timestamp: "Feb 24, 2026 • 11:00 AM", type: "create" },
-        { id: 2, action: "Added Vendor: Blue Star", user: "Madhavan", timestamp: "Feb 25, 2026 • 02:30 PM", type: "update" },
-        { id: 3, action: "Updated contact for Vendor B", user: "Mano Kakkus", timestamp: "Feb 26, 2026 • 09:15 AM", type: "update" },
+        { id: 1, action: "API Connected Session", user: "Active User", timestamp: new Date().toLocaleString(), type: "update" },
     ];
 
     useEffect(() => {
@@ -38,27 +25,83 @@ const ProjectVendorList = ({ onBack, setExtraBreadcrumbs }) => {
             { label: 'General Documents', onClick: onBack },
             { label: 'Project Vendor List' }
         ]);
-    }, [onBack, setExtraBreadcrumbs]);
+        fetchVendors();
+        fetchGlobalVendors();
+    }, [onBack, setExtraBreadcrumbs, projectId]);
 
-    const handleEdit = (vendor) => {
-        setEditingId(vendor.id);
-        setEditData({ ...vendor });
+    // Handle clicking outside of dropdown to close it
+    useEffect(() => {
+        const handleClickOutside = (event) => {
+            if (dropdownRef.current && !dropdownRef.current.contains(event.target)) {
+                setIsAdding(false);
+            }
+        };
+        document.addEventListener("mousedown", handleClickOutside);
+        return () => document.removeEventListener("mousedown", handleClickOutside);
+    }, []);
+
+    const fetchVendors = async () => {
+        try {
+            setLoading(true);
+            const data = await generalDocsApi.getVendors(projectId);
+            if (data && data.vendors) {
+                const mappedVendors = data.vendors.map(v => ({
+                    id: v.pv_id,
+                    vendors_id: v.vendors_id,
+                    name: v.name,
+                    person: v.contact_person,
+                    phone: v.mobile,
+                    email: v.email,
+                    trade: v.job_nature
+                }));
+                setVendors(mappedVendors);
+            }
+        } catch (error) {
+            console.error("Failed to fetch vendors:", error);
+        } finally {
+            setLoading(false);
+        }
     };
 
-    const handleSave = () => {
-        setVendors(prev => prev.map(v => v.id === editingId ? editData : v));
-        setEditingId(null);
-        setEditData(null);
+    const fetchGlobalVendors = async () => {
+        try {
+            // Fetch with a high limit to ensure all vendors are available for searching
+            const data = await generalDocsApi.getGlobalVendors({ limit: 5000 });
+            if (data && data.vendors) {
+                setGlobalVendors(data.vendors);
+            }
+        } catch (error) {
+            console.error("Failed to fetch global vendors:", error);
+        }
     };
 
-    const handleCancel = () => {
-        setEditingId(null);
-        setEditData(null);
+    const handleAddVendor = async (vendorId) => {
+        try {
+            await generalDocsApi.addVendor(projectId, [vendorId]);
+            await fetchVendors();
+            setIsAdding(false);
+            setSearchTerm('');
+        } catch (error) {
+            console.error("Failed to add vendor to project:", error);
+        }
     };
 
-    const handleDelete = (id) => {
-        setVendors(prev => prev.filter(v => v.id !== id));
+    const handleDelete = async (id) => {
+        try {
+            await generalDocsApi.deleteVendor(projectId, id);
+            await fetchVendors();
+        } catch (error) {
+            console.error("Failed to delete vendor:", error);
+        }
     };
+
+    // Filter global vendors that are NOT already in the project
+    const filteredGlobalVendors = globalVendors.filter(gv => {
+        const alreadyInProject = vendors.some(v => v.vendors_id === gv.id);
+        const matchesSearch = gv.name?.toLowerCase().includes(searchTerm.toLowerCase()) || 
+                             gv.job_nature?.toLowerCase().includes(searchTerm.toLowerCase());
+        return !alreadyInProject && matchesSearch;
+    });
 
     return (
         <div className="flex-1 flex flex-col h-full bg-white dark:bg-[#0d1117] overflow-hidden anim-fade-in Poppins text-left relative">
@@ -74,18 +117,65 @@ const ProjectVendorList = ({ onBack, setExtraBreadcrumbs }) => {
                     </button>
                     <div>
                         <h1 className="text-2xl font-medium text-gray-900 dark:text-white">Project Vendor List</h1>
-                        <p className="text-sm text-gray-500 dark:text-gray-400">Directory of approved vendors and contractors.</p>
+                        <p className="text-sm text-gray-500 dark:text-gray-400">Directory of approved vendors and contractors for this project.</p>
                     </div>
                 </div>
-                <div className="flex items-center space-x-3">
-                    <button className="flex items-center space-x-2 px-4 py-2 bg-gray-100 dark:bg-white/5 hover:bg-gray-200 dark:hover:bg-white/10 text-gray-700 dark:text-gray-300 border border-gray-300 dark:border-white/10 rounded-md text-[12px] font-medium transition-all">
-                        <Edit2 size={16} />
-                        <span>Edit</span>
-                    </button>
-                    <button className="flex items-center space-x-2 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-md text-[12px] font-medium shadow-lg shadow-blue-500/20 transition-all active:scale-95">
+                <div className="flex items-center space-x-3 relative" ref={dropdownRef}>
+                    <button 
+                        onClick={() => setIsAdding(!isAdding)} 
+                        className="flex items-center space-x-2 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-md text-[12px] font-medium shadow-lg shadow-blue-500/20 transition-all active:scale-95"
+                    >
                         <Plus size={16} />
                         <span>Add vendor</span>
                     </button>
+
+                    {/* Searchable Dropdown */}
+                    <AnimatePresence>
+                        {isAdding && (
+                            <motion.div
+                                initial={{ opacity: 0, y: 10 }}
+                                animate={{ opacity: 1, y: 0 }}
+                                exit={{ opacity: 0, y: 10 }}
+                                className="absolute right-0 top-full mt-2 w-80 bg-white dark:bg-[#161b22] border border-gray-200 dark:border-white/10 rounded-xl shadow-2xl z-50 overflow-hidden"
+                            >
+                                <div className="p-3 border-b border-gray-100 dark:border-white/5 bg-gray-50/50 dark:bg-[#0d1117]/50">
+                                    <div className="relative">
+                                        <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
+                                        <input
+                                            autoFocus
+                                            type="text"
+                                            placeholder="Search approved vendors..."
+                                            className="w-full pl-9 pr-4 py-2 bg-white dark:bg-[#1c2128] border border-gray-200 dark:border-white/10 rounded-lg text-xs outline-none focus:border-blue-500 transition-all dark:text-white"
+                                            value={searchTerm}
+                                            onChange={(e) => setSearchTerm(e.target.value)}
+                                        />
+                                    </div>
+                                </div>
+                                <div className="max-h-60 overflow-y-auto custom-scrollbar">
+                                    {filteredGlobalVendors.length > 0 ? (
+                                        filteredGlobalVendors.map(gv => (
+                                            <button
+                                                key={gv.id}
+                                                onClick={() => handleAddVendor(gv.id)}
+                                                className="w-full px-4 py-3 flex flex-col items-start hover:bg-blue-50 dark:hover:bg-blue-900/20 transition-colors border-b border-gray-50 dark:border-white/5 text-left group"
+                                            >
+                                                <div className="flex items-center justify-between w-full">
+                                                    <span className="text-sm font-bold text-gray-900 dark:text-white group-hover:text-blue-600 transition-colors">{gv.name}</span>
+                                                    <Plus size={12} className="text-gray-400 opacity-0 group-hover:opacity-100 transition-opacity" />
+                                                </div>
+                                                <span className="text-[10px] text-gray-500 dark:text-gray-400 mt-0.5">Trade: {gv.job_nature || 'General'}</span>
+                                            </button>
+                                        ))
+                                    ) : (
+                                        <div className="px-4 py-8 text-center text-gray-500 dark:text-gray-400 text-xs">
+                                            {searchTerm ? 'No matching vendors found' : 'No available vendors to add'}
+                                        </div>
+                                    )}
+                                </div>
+                            </motion.div>
+                        )}
+                    </AnimatePresence>
+
                     <button
                         onClick={() => setIsInfoOpen(true)}
                         className="p-2 bg-gray-100 dark:bg-white/5 hover:bg-gray-200 dark:hover:bg-white/10 text-gray-700 dark:text-gray-300 border border-gray-300 dark:border-white/10 rounded-md transition-all active:scale-95"
@@ -98,156 +188,93 @@ const ProjectVendorList = ({ onBack, setExtraBreadcrumbs }) => {
 
             {/* List View - Task Theme Style */}
             <div className="flex-1 overflow-auto custom-scrollbar">
-                <div className="min-w-full inline-block align-middle pb-20">
-                    <table className="w-full text-left whitespace-nowrap text-[13px] border-collapse bg-white dark:bg-[#0d1117]">
-                        <thead className="bg-[#f9fafb] dark:bg-[#161b22] text-gray-500 dark:text-gray-400 sticky top-0 z-10 border-b border-gray-200 dark:border-white/5 tracking-wide">
-                            <tr>
-                                <th className="px-3 py-3 w-6 text-center"></th>
-                                <th className="px-4 py-3 font-medium normal-case text-[10px] tracking-normal border-r border-gray-100 dark:border-white/5 w-16 text-center">S. no.</th>
-                                <th className="px-4 py-3 font-medium normal-case text-[10px] tracking-normal border-r border-gray-100 dark:border-white/5">Vendor name</th>
-                                <th className="px-4 py-3 font-medium normal-case text-[10px] tracking-normal border-r border-gray-100 dark:border-white/5">Contact person</th>
-                                <th className="px-4 py-3 font-medium normal-case text-[10px] tracking-normal border-r border-gray-100 dark:border-white/5">Mobile no</th>
-                                <th className="px-4 py-3 font-medium normal-case text-[10px] tracking-normal border-r border-gray-100 dark:border-white/5">Email id</th>
-                                <th className="px-4 py-3 font-medium normal-case text-[10px] tracking-normal border-r border-gray-100 dark:border-white/5">Trade / service</th>
-                                <th className="px-4 py-3 font-medium normal-case text-[10px] tracking-normal text-center">Actions</th>
-                            </tr>
-                        </thead>
-                        <Reorder.Group axis="y" values={vendors} onReorder={setVendors} as="tbody" className="divide-y divide-gray-100 dark:divide-white/[0.03]">
-                            <AnimatePresence initial={false}>
-                                {vendors.map((vendor, idx) => {
-                                    const isEditing = editingId === vendor.id;
-                                    return (
-                                        <Reorder.Item
-                                            key={vendor.id}
-                                            value={vendor}
-                                            as="tr"
-                                            onMouseEnter={() => setHoveredRow(vendor.id)}
-                                            onMouseLeave={() => setHoveredRow(null)}
-                                            className={`${isEditing ? 'bg-blue-50/10 dark:bg-blue-900/5' : 'hover:bg-blue-50/10 dark:hover:bg-blue-900/10'} transition-colors group/row h-[52px] cursor-default relative`}
-                                        >
-                                            <td className="px-3 py-2 text-center w-6 min-w-[40px]">
-                                                <div className="flex items-center justify-center">
-                                                    <GripVertical size={14} className="text-gray-300 dark:text-gray-700 group-hover/row:text-blue-500 transition-colors cursor-grab active:cursor-grabbing" />
-                                                </div>
-                                            </td>
-                                            <td className="px-4 py-2 text-gray-500 dark:text-gray-600 font-mono text-[11px] border-r border-gray-100 dark:border-white/[0.03] text-center w-16">
-                                                {String(idx + 1)}
-                                            </td>
+                {loading ? (
+                    <div className="flex items-center justify-center h-48 opacity-50 dark:text-white">Loading data...</div>
+                ) : (
+                    <div className="min-w-full inline-block align-middle pb-20">
+                        <table className="w-full text-left whitespace-nowrap text-[13px] border-collapse bg-white dark:bg-[#0d1117]">
+                            <thead className="bg-[#f9fafb] dark:bg-[#161b22] text-gray-500 dark:text-gray-400 sticky top-0 z-10 border-b border-gray-200 dark:border-white/5 tracking-wide">
+                                <tr>
+                                    <th className="px-3 py-3 w-6 text-center"></th>
+                                    <th className="px-4 py-3 font-medium normal-case text-[10px] tracking-normal border-r border-gray-100 dark:border-white/5 w-16 text-center">S. no.</th>
+                                    <th className="px-4 py-3 font-medium normal-case text-[10px] tracking-normal border-r border-gray-100 dark:border-white/5">Vendor name</th>
+                                    <th className="px-4 py-3 font-medium normal-case text-[10px] tracking-normal border-r border-gray-100 dark:border-white/5">Contact person</th>
+                                    <th className="px-4 py-3 font-medium normal-case text-[10px] tracking-normal border-r border-gray-100 dark:border-white/5">Mobile no</th>
+                                    <th className="px-4 py-3 font-medium normal-case text-[10px] tracking-normal border-r border-gray-100 dark:border-white/5">Email id</th>
+                                    <th className="px-4 py-3 font-medium normal-case text-[10px] tracking-normal border-r border-gray-100 dark:border-white/5">Trade / service</th>
+                                    <th className="px-4 py-3 font-medium normal-case text-[10px] tracking-normal text-center">Actions</th>
+                                </tr>
+                            </thead>
+                            <Reorder.Group axis="y" values={vendors} onReorder={setVendors} as="tbody" className="divide-y divide-gray-100 dark:divide-white/[0.03]">
+                                <AnimatePresence initial={false}>
+                                    {vendors.map((vendor, idx) => {
+                                        return (
+                                            <Reorder.Item
+                                                key={vendor.id}
+                                                value={vendor}
+                                                as="tr"
+                                                onMouseEnter={() => setHoveredRow(vendor.id)}
+                                                onMouseLeave={() => setHoveredRow(null)}
+                                                className={`hover:bg-blue-50/10 dark:hover:bg-blue-900/10 transition-colors group/row h-[52px] cursor-default relative`}
+                                            >
+                                                <td className="px-3 py-2 text-center w-6 min-w-[40px]">
+                                                    <div className="flex items-center justify-center">
+                                                        <GripVertical size={14} className="text-gray-300 dark:text-gray-700 group-hover/row:text-blue-500 transition-colors cursor-grab active:cursor-grabbing" />
+                                                    </div>
+                                                </td>
+                                                <td className="px-4 py-2 text-gray-500 dark:text-gray-600 font-mono text-[11px] border-r border-gray-100 dark:border-white/[0.03] text-center w-16">
+                                                    {String(idx + 1)}
+                                                </td>
 
-                                            {/* Vendor Name Field */}
-                                            <td className="px-4 py-2 border-r border-gray-100 dark:border-white/[0.03]" onClick={() => !isEditing && handleEdit(vendor)}>
-                                                {isEditing ? (
-                                                    <ResizableInput
-                                                        autoFocus
-                                                        className="px-2 py-1 text-xs"
-                                                        value={editData.name}
-                                                        onChange={(e) => setEditData({ ...editData, name: e.target.value })}
-                                                    />
-                                                ) : (
-                                                    <span className="text-gray-900 dark:text-gray-200 cursor-pointer font-bold">
+                                                {/* Vendor Name Field */}
+                                                <td className="px-4 py-2 border-r border-gray-100 dark:border-white/[0.03]">
+                                                    <span className="text-gray-900 dark:text-gray-200 font-bold">
                                                         {vendor.name || '-'}
                                                     </span>
-                                                )}
-                                            </td>
+                                                </td>
 
-                                            {/* Contact Person Field */}
-                                            <td className="px-4 py-2 border-r border-gray-100 dark:border-white/[0.03]" onClick={() => !isEditing && handleEdit(vendor)}>
-                                                {isEditing ? (
-                                                    <ResizableInput
-                                                        className="px-2 py-1 text-xs"
-                                                        value={editData.person}
-                                                        onChange={(e) => setEditData({ ...editData, person: e.target.value })}
-                                                    />
-                                                ) : (
-                                                    <span className="text-gray-600 dark:text-gray-400 cursor-pointer">{vendor.person || '-'}</span>
-                                                )}
-                                            </td>
+                                                {/* Contact Person Field */}
+                                                <td className="px-4 py-2 border-r border-gray-100 dark:border-white/[0.03]">
+                                                    <span className="text-gray-600 dark:text-gray-400">{vendor.person || '-'}</span>
+                                                </td>
 
-                                            {/* Mobile Field */}
-                                            <td className="px-4 py-2 border-r border-gray-100 dark:border-white/[0.03]" onClick={() => !isEditing && handleEdit(vendor)}>
-                                                {isEditing ? (
-                                                    <ResizableInput
-                                                        className="px-2 py-1 text-xs"
-                                                        value={editData.phone}
-                                                        onChange={(e) => setEditData({ ...editData, phone: e.target.value })}
-                                                    />
-                                                ) : (
-                                                    <span className="text-gray-600 dark:text-gray-400 cursor-pointer">{vendor.phone || '-'}</span>
-                                                )}
-                                            </td>
+                                                {/* Mobile Field */}
+                                                <td className="px-4 py-2 border-r border-gray-100 dark:border-white/[0.03]">
+                                                    <span className="text-gray-600 dark:text-gray-400">{vendor.phone || '-'}</span>
+                                                </td>
 
-                                            {/* Email Field */}
-                                            <td className="px-4 py-2 border-r border-gray-100 dark:border-white/[0.03]" onClick={() => !isEditing && handleEdit(vendor)}>
-                                                {isEditing ? (
-                                                    <ResizableInput
-                                                        className="px-2 py-1 text-xs"
-                                                        minW="100px"
-                                                        value={editData.email}
-                                                        onChange={(e) => setEditData({ ...editData, email: e.target.value })}
-                                                    />
-                                                ) : (
-                                                    <span className="text-blue-500 hover:underline cursor-pointer">{vendor.email === '-' ? '' : vendor.email}</span>
-                                                )}
-                                            </td>
+                                                {/* Email Field */}
+                                                <td className="px-4 py-2 border-r border-gray-100 dark:border-white/[0.03]">
+                                                    <span className="text-blue-500 hover:underline">{!vendor.email || vendor.email === '-' ? '' : vendor.email}</span>
+                                                </td>
 
-                                            {/* Trade Field */}
-                                            <td className="px-4 py-2 border-r border-gray-100 dark:border-white/[0.03]" onClick={() => !isEditing && handleEdit(vendor)}>
-                                                {isEditing ? (
-                                                    <ResizableInput
-                                                        className="px-2 py-1 text-xs"
-                                                        value={editData.trade}
-                                                        onChange={(e) => setEditData({ ...editData, trade: e.target.value })}
-                                                    />
-                                                ) : (
-                                                    <span className="px-2 py-0.5 rounded-full bg-blue-500/10 text-blue-500 text-[10px] font-bold uppercase tracking-wider border border-blue-500/20">
+                                                {/* Trade Field */}
+                                                <td className="px-4 py-2 border-r border-gray-100 dark:border-white/[0.03]">
+                                                    <span className="px-2.5 py-1 rounded-md text-[10px] font-bold uppercase tracking-wider border shadow-sm bg-blue-500/10 text-blue-500 border-blue-500/30">
                                                         {vendor.trade || '-'}
                                                     </span>
-                                                )}
-                                            </td>
+                                                </td>
 
-                                            {/* Actions Column */}
-                                            <td className="px-4 py-2 text-center min-w-[120px]">
-                                                {isEditing ? (
-                                                    <div className="flex items-center justify-center space-x-2">
-                                                        <button
-                                                            onClick={(e) => { e.stopPropagation(); handleSave(); }}
-                                                            className="px-2.5 py-1 bg-blue-600 text-white rounded text-[11px] font-medium hover:bg-blue-700 transition-all shadow-md shadow-blue-500/20"
-                                                        >
-                                                            Save
-                                                        </button>
-                                                        <button
-                                                            onClick={(e) => { e.stopPropagation(); handleCancel(); }}
-                                                            className="px-2.5 py-1 bg-gray-100 dark:bg-white/5 text-gray-600 dark:text-gray-400 rounded text-[11px] font-medium hover:bg-gray-200 dark:hover:bg-white/10 transition-all"
-                                                        >
-                                                            Cancel
-                                                        </button>
-                                                    </div>
-                                                ) : (
+                                                {/* Actions Column */}
+                                                <td className="px-4 py-2 text-center min-w-[120px]">
                                                     <div className={`flex items-center justify-center space-x-3 transition-opacity duration-200 opacity-100`}>
-                                                        <button
-                                                            onClick={(e) => { e.stopPropagation(); handleEdit(vendor); }}
-                                                            className="text-gray-400 hover:text-blue-500 transition-colors p-1"
-                                                            title="Edit"
-                                                        >
-                                                            <Edit2 size={14} />
-                                                        </button>
                                                         <button
                                                             onClick={(e) => { e.stopPropagation(); handleDelete(vendor.id); }}
                                                             className="text-gray-400 hover:text-red-500 transition-colors p-1"
-                                                            title="Delete"
+                                                            title="Remove from Project"
                                                         >
                                                             <Trash2 size={14} />
                                                         </button>
                                                     </div>
-                                                )}
-                                            </td>
-                                        </Reorder.Item>
-                                    );
-                                })}
-                            </AnimatePresence>
-                        </Reorder.Group>
-                    </table>
-                </div>
+                                                </td>
+                                            </Reorder.Item>
+                                        );
+                                    })}
+                                </AnimatePresence>
+                            </Reorder.Group>
+                        </table>
+                    </div>
+                )}
             </div>
 
             {/* Audit Trail Drawer */}
@@ -286,10 +313,7 @@ const ProjectVendorList = ({ onBack, setExtraBreadcrumbs }) => {
                             <div className="flex-1 overflow-y-auto p-6 space-y-6 custom-scrollbar">
                                 {auditTrail.map((log) => (
                                     <div key={log.id} className="relative pl-8 pb-2">
-                                        {/* Activity Line */}
                                         <div className="absolute left-3 top-2 bottom-0 w-[1px] bg-gray-200 dark:bg-white/10" />
-
-                                        {/* Activity Icon */}
                                         <div className={`absolute left-0 top-1.5 w-6 h-6 rounded-full border-4 border-white dark:border-[#0d1117] z-10 flex items-center justify-center ${log.type === 'create' ? 'bg-green-500/20 text-green-400' :
                                             log.type === 'update' ? 'bg-blue-500/20 text-blue-400' :
                                                 'bg-purple-500/20 text-purple-400'

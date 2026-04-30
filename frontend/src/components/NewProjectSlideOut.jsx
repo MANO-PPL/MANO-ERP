@@ -1,21 +1,64 @@
-import React, { useState } from 'react';
-import { X, Users, UserMinus } from 'lucide-react';
+import React, { useState, useEffect } from 'react';
+import { X, Users, UserMinus, Loader2 } from 'lucide-react';
 import CustomDatePicker from './CustomDatePicker';
 import CustomSelect from './CustomSelect';
 import CustomInput from './CustomInput';
+import { adminApi } from '../services/adminApi';
+import { projectApi } from '../services/projectApi';
 
-const EMPLOYEE_OPTIONS = [
-    { id: 1, name: 'Madhavan S', role: 'Super Admin', initials: 'MS', color: 'from-blue-400 to-indigo-500' },
-    { id: 2, name: 'Sathish Kumar', role: 'Project Manager', initials: 'SK', color: 'from-purple-400 to-pink-500' },
-    { id: 3, name: 'Mano Kakoos', role: 'Site Lead', initials: 'MK', color: 'from-orange-400 to-red-500' },
-    { id: 4, name: 'Harish R', role: 'Viewer', initials: 'HR', color: 'from-teal-400 to-green-500' },
-    { id: 5, name: 'Admin User', role: 'Admin', initials: 'AU', color: 'from-gray-400 to-slate-500' },
-    { id: 6, name: 'Jane Doe', role: 'Designer', initials: 'JD', color: 'from-pink-400 to-rose-500' },
+const COLORS = [
+    'from-blue-400 to-indigo-500',
+    'from-purple-400 to-pink-500',
+    'from-orange-400 to-red-500',
+    'from-teal-400 to-green-500',
+    'from-gray-400 to-slate-500',
+    'from-pink-400 to-rose-500'
 ];
 
-const NewProjectSlideOut = ({ isOpen, onClose }) => {
+const NewProjectSlideOut = ({ isOpen, onClose, onProjectCreated }) => {
     const [selectedEmployees, setSelectedEmployees] = useState([]);
     const [dropdownOpen, setDropdownOpen] = useState(false);
+    const [employeeOptions, setEmployeeOptions] = useState([]);
+
+    const [formData, setFormData] = useState({
+        name: '',
+        projectCode: '',
+        description: '',
+        location: '',
+        employer: '',
+        startDate: '',
+        endDate: '',
+        client: 'Select Client'
+    });
+    const [isSubmitting, setIsSubmitting] = useState(false);
+
+    useEffect(() => {
+        if (isOpen) {
+            fetchEmployees();
+        }
+    }, [isOpen]);
+
+    const fetchEmployees = async () => {
+        try {
+            const res = await adminApi.getUsers();
+            if (res.success) {
+                const mappedUsers = res.users.map((u, idx) => ({
+                    id: u.user_id,
+                    name: u.user_name,
+                    role: u.user_type,
+                    initials: u.user_name.substring(0, 2).toUpperCase(),
+                    color: COLORS[idx % COLORS.length]
+                }));
+                setEmployeeOptions(mappedUsers);
+            }
+        } catch (error) {
+            console.error("Failed to fetch employees", error);
+        }
+    };
+
+    const handleInputChange = (field, value) => {
+        setFormData(prev => ({ ...prev, [field]: value }));
+    };
 
     const toggleEmployee = (emp) => {
         setSelectedEmployees(prev =>
@@ -27,7 +70,50 @@ const NewProjectSlideOut = ({ isOpen, onClose }) => {
 
     const removeEmployee = (id) => setSelectedEmployees(prev => prev.filter(e => e.id !== id));
 
-    const unselected = EMPLOYEE_OPTIONS.filter(e => !selectedEmployees.find(s => s.id === e.id));
+    const handleSubmit = async () => {
+        if (!formData.name) return alert("Project Name is required.");
+        setIsSubmitting(true);
+        try {
+            const payload = {
+                name: formData.name,
+                project_code: formData.projectCode,
+                location: formData.location,
+                start_date: formData.startDate || null,
+                end_date: formData.endDate || null,
+                metadata: {
+                    description: formData.description,
+                    employer: formData.employer,
+                    client: formData.client === 'Select Client' ? '' : formData.client
+                }
+            };
+
+            const res = await projectApi.createProject(payload);
+            if (res.success) {
+                const newProjectId = res.project_id;
+                
+                // Assign employees
+                for (const emp of selectedEmployees) {
+                    await projectApi.assignProjectMember(newProjectId, {
+                        user_id: emp.id,
+                        permissions: { role: emp.role }
+                    });
+                }
+                
+                // Reset form
+                setFormData({
+                    name: '', projectCode: '', description: '', location: '', employer: '', startDate: '', endDate: '', client: 'Select Client'
+                });
+                setSelectedEmployees([]);
+                if (onProjectCreated) onProjectCreated();
+                else onClose();
+            }
+        } catch (error) {
+            console.error("Failed to create project", error);
+            alert("Failed to create project.");
+        } finally {
+            setIsSubmitting(false);
+        }
+    };
 
     return (
         <>
@@ -58,23 +144,23 @@ const NewProjectSlideOut = ({ isOpen, onClose }) => {
                 <div className="flex-1 overflow-y-auto p-6 space-y-6">
                     {/* Row 1: Name and Code */}
                     <div className="grid grid-cols-2 gap-5">
-                        <CustomInput label="Project Name" />
-                        <CustomInput label="Project Code" />
+                        <CustomInput label="Project Name" value={formData.name} onChange={(e) => handleInputChange('name', e.target.value)} />
+                        <CustomInput label="Project Code" value={formData.projectCode} onChange={(e) => handleInputChange('projectCode', e.target.value)} />
                     </div>
 
                     {/* Row 2: Description */}
-                    <CustomInput label="Description" rows={4} />
+                    <CustomInput label="Description" rows={4} value={formData.description} onChange={(e) => handleInputChange('description', e.target.value)} />
 
                     {/* Row 3: Location */}
-                    <CustomInput label="Location" />
+                    <CustomInput label="Location" value={formData.location} onChange={(e) => handleInputChange('location', e.target.value)} />
 
                     {/* Row 4: Employer */}
-                    <CustomInput label="Employer" />
+                    <CustomInput label="Employer" value={formData.employer} onChange={(e) => handleInputChange('employer', e.target.value)} />
 
                     {/* Row 5: Dates */}
                     <div className="grid grid-cols-2 gap-5">
-                        <CustomDatePicker label="Start Date" />
-                        <CustomDatePicker label="End Date" />
+                        <CustomDatePicker label="Start Date" value={formData.startDate} onChange={(val) => handleInputChange('startDate', val)} />
+                        <CustomDatePicker label="End Date" value={formData.endDate} onChange={(val) => handleInputChange('endDate', val)} />
                     </div>
 
                     {/* Row 6: Add Employees */}
@@ -99,8 +185,8 @@ const NewProjectSlideOut = ({ isOpen, onClose }) => {
 
                         {/* Dropdown list */}
                         {dropdownOpen && (
-                            <div className="absolute left-0 right-0 mt-1 bg-white dark:bg-[#1A2235] border border-gray-200 dark:border-[#2A3445] rounded-xl shadow-xl z-50 overflow-hidden">
-                                {EMPLOYEE_OPTIONS.map(emp => {
+                            <div className="absolute left-0 right-0 mt-1 bg-white dark:bg-[#1A2235] border border-gray-200 dark:border-[#2A3445] rounded-xl shadow-xl z-50 overflow-hidden max-h-[300px] overflow-y-auto">
+                                {employeeOptions.map(emp => {
                                     const isSelected = !!selectedEmployees.find(e => e.id === emp.id);
                                     return (
                                         <button
@@ -156,6 +242,8 @@ const NewProjectSlideOut = ({ isOpen, onClose }) => {
                     <div className="pb-4">
                         <CustomSelect
                             label="Clients"
+                            value={formData.client}
+                            onChange={(e) => handleInputChange('client', e.target.value)}
                             options={["Select Client", "Client A", "Client B"]}
                         />
                     </div>
@@ -169,8 +257,16 @@ const NewProjectSlideOut = ({ isOpen, onClose }) => {
                     >
                         Cancel
                     </button>
-                    <button className="px-5 py-2 bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium rounded-md shadow-sm transition-colors flex items-center justify-center gap-2">
-                        <span className="text-lg leading-none mt-[-2px]">+</span>
+                    <button
+                        onClick={handleSubmit}
+                        disabled={isSubmitting}
+                        className="px-5 py-2 bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium rounded-md shadow-sm transition-colors flex items-center justify-center gap-2 disabled:opacity-50"
+                    >
+                        {isSubmitting ? (
+                            <Loader2 size={16} className="animate-spin" />
+                        ) : (
+                            <span className="text-lg leading-none mt-[-2px]">+</span>
+                        )}
                         Create Project
                     </button>
                 </div>

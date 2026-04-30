@@ -1,5 +1,6 @@
 import { db } from '../../../config/database.js';
 import AppError from '../../../utils/AppError.js';
+import { findOrCreateJobNature } from '../../shared/jobNatureService.js';
 
 const FIELD_MAP = {
     name: 'c.name',
