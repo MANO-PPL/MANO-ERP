@@ -7,6 +7,7 @@ import summaryRoutes from './summary/summaryRoutes.js';
 import agendaRoutes from './agenda/agendaRoutes.js';
 import momRoutes from './mom/momRoutes.js';
 import orgRoutes from './org/orgRoutes.js';
+import projectInstanceRoutes from './instances/projectInstanceRoutes.js';
 import { authenticateJWT, restrictTo } from '../../middleware/auth.js';
 
 const router = express.Router();
@@ -47,5 +48,8 @@ router.use('/:id/moms', momRoutes);
 
 // Project Organization Chart
 router.use('/:id/org', orgRoutes);
+
+// Project Document Instances
+router.use('/:id/instances', projectInstanceRoutes);
 
 export default router;

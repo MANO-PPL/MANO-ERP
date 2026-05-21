@@ -1,0 +1,159 @@
+import { db } from '../../config/database.js';
+import AppError from '../../utils/AppError.js';
+
+const CONTENT_TABLES = [
+    { name: 'project_directory', pk: 'pd_id' },
+    { name: 'project_vendors', pk: 'pv_id' },
+    { name: 'project_staff_role_responsible', pk: 'psrr_id' },
+    { name: 'project_summary', pk: 'id' },
+    {
+        name: 'project_mom',
+        pk: 'mom_id',
+        children: [{ name: 'project_mom_participants', fk: 'mom_id', pk: 'pmp_id' }]
+    },
+    {
+        name: 'project_agenda',
+        pk: 'agenda_id',
+        children: [{ name: 'project_agenda_participants', fk: 'agenda_id', pk: 'pap_id' }]
+    }
+];
+
+// Helper to verify user access
+async function verifyAccess(orgId, instanceId, userId) {
+    const instance = await db('document_instances')
+        .where({ instance_id: instanceId, org_id: orgId })
+        .first();
+
+    if (!instance) throw new AppError('Document instance not found', 404);
+
+    const role = await db('document_roles')
+        .where({ document_id: instance.document_id, user_id: userId })
+        .whereIn('role', ['editor', 'approver', 'reporter'])
+        .first();
+
+    if (!role) {
+        throw new AppError('Unauthorized: You do not have access to read this document', 403);
+    }
+
+    return instance;
+}
+
+export async function getApprovedContent(orgId, instanceId, userId, versionIdParam) {
+    const instance = await verifyAccess(orgId, instanceId, userId);
+
+    let targetVersionId = versionIdParam;
+    if (!targetVersionId) {
+        targetVersionId = instance.latest_approved_version_id;
+    }
+
+    if (!targetVersionId) {
+        throw new AppError('Document has not been approved yet.', 404);
+    }
+
+    const versionMeta = await db('document_versions')
+        .select('document_versions.*', 'users.user_name as final_approved_by_name')
+        .leftJoin('users', 'document_versions.final_approved_by', 'users.user_id')
+        .where('document_versions.version_id', targetVersionId)
+        .first();
+
+    if (!versionMeta) throw new AppError('Version not found', 404);
+
+    const contentData = {};
+
+    for (const tableConf of CONTENT_TABLES) {
+        const rows = await db(tableConf.name).where({
+            instance_id: instanceId,
+            version_id: targetVersionId
+        });
+
+        if (rows.length > 0) {
+            if (tableConf.children) {
+                // Fetch and attach child rows
+                for (let row of rows) {
+                    for (const childConf of tableConf.children) {
+                        row[childConf.name] = await db(childConf.name)
+                            .where(childConf.fk, row[tableConf.pk]);
+                    }
+                }
+            }
+            contentData[tableConf.name] = rows;
+        }
+    }
+
+    return {
+        metadata: versionMeta,
+        content: contentData
+    };
+}
+
+export async function getDraftContent(orgId, instanceId, userId) {
+    const instance = await verifyAccess(orgId, instanceId, userId);
+
+    const activeCycle = await db('approval_cycles')
+        .where({ instance_id: instanceId })
+        .whereIn('status', ['drafting', 'revision_requested', 'in_review'])
+        .first();
+
+    if (!activeCycle) {
+        throw new AppError('No active draft cycle exists for this instance', 404);
+    }
+
+    if (activeCycle.current_holder_id !== userId) {
+        throw new AppError('Only the current holder of the cycle can view the draft', 403);
+    }
+
+    const contentData = {};
+
+    for (const tableConf of CONTENT_TABLES) {
+        const rows = await db(tableConf.name)
+            .where({ instance_id: instanceId, cycle_id: activeCycle.cycle_id })
+            .whereNull('version_id');
+
+        if (rows.length > 0) {
+            if (tableConf.children) {
+                for (let row of rows) {
+                    for (const childConf of tableConf.children) {
+                        row[childConf.name] = await db(childConf.name)
+                            .where(childConf.fk, row[tableConf.pk]);
+                    }
+                }
+            }
+            contentData[tableConf.name] = rows;
+        }
+    }
+
+    let parsedDraftContent = null;
+    try {
+        parsedDraftContent = activeCycle.draft_content ? JSON.parse(activeCycle.draft_content) : null;
+    } catch (e) {
+        parsedDraftContent = activeCycle.draft_content;
+    }
+
+    return {
+        cycle_status: activeCycle.status,
+        last_draft_saved: activeCycle.last_draft_saved,
+        draft_content_json: parsedDraftContent,
+        content_tables: contentData
+    };
+}
+
+export async function listVersions(orgId, instanceId, userId) {
+    await verifyAccess(orgId, instanceId, userId);
+
+    return await db('document_versions')
+        .select(
+            'document_versions.version_id',
+            'document_versions.version_number',
+            'document_versions.approved_at',
+            'users.user_name as final_approved_by_name'
+        )
+        .leftJoin('users', 'document_versions.final_approved_by', 'users.user_id')
+        .where('document_versions.instance_id', instanceId)
+        .orderBy('document_versions.version_number', 'desc');
+}
+
+export default {
+    getApprovedContent,
+    getDraftContent,
+    listVersions
+};

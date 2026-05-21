@@ -8,6 +8,9 @@ import resourceRoutes from './inventory/resourceRoutes.js';
 import projectRoutes from './projects/projectRoutes.js';
 import vendorRoutes from './vendors/vendorRoutes.js';
 import clientRoutes from './clients/clientRoutes.js';
+import documentRoutes from './documents/documentRoutes.js';
+import instanceRoutes from './documents/instanceRoutes.js';
+import cycleRoutes from './documents/cycleRoutes.js';
 
 const router = express.Router();
 
@@ -19,5 +22,8 @@ router.use('/units', unitRoutes);
 router.use('/resources', resourceRoutes);
 router.use('/vendors', vendorRoutes);
 router.use('/clients', clientRoutes);
+router.use('/v1/documents', documentRoutes);
+router.use('/v1/instances', instanceRoutes);
+router.use('/v1/cycles', cycleRoutes);
 
 export default router;
