@@ -76,7 +76,6 @@ export async function getResourceById(orgId, id) {
             .join('resources as r2', 'c.component_resource_id', 'r2.id')
             .leftJoin('units as u', 'c.unit_id', 'u.id')
             .where('c.parent_resource_id', id)
-            .andWhere('c.org_id', orgId)
             .select(
                 'c.id',
                 'c.component_resource_id',
@@ -201,7 +200,6 @@ async function _replaceCompositions(orgId, parentResourceId, compositions) {
 
     if (compositions.length > 0) {
         const rows = compositions.map(c => ({
-            org_id: orgId,
             parent_resource_id: parentResourceId,
             component_resource_id: c.component_resource_id,
             quantity: c.quantity,

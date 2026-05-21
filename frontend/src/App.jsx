@@ -10,6 +10,7 @@ const Projects = lazy(() => import('./pages/Projects'));
 const ProjectDetails = lazy(() => import('./pages/ProjectDetails/index'));
 const VendorsList = lazy(() => import('./pages/Vendors'));
 const ResourcesList = lazy(() => import('./pages/Resources/index'));
+const UnitsList = lazy(() => import('./pages/Units/index'));
 const VendorBulkUpload = lazy(() => import('./pages/Vendors/VendorBulkUpload'));
 const ClientsList = lazy(() => import('./pages/Clients'));
 const ClientBulkUpload = lazy(() => import('./pages/Clients/ClientBulkUpload'));
@@ -67,6 +68,11 @@ function App() {
           <Route path="resources" element={
             <Suspense fallback={<PageSkeleton variant="table" />}>
               <ResourcesList />
+            </Suspense>
+          } />
+          <Route path="units" element={
+            <Suspense fallback={<PageSkeleton variant="table" />}>
+              <UnitsList />
             </Suspense>
           } />
           <Route path="collaboration" element={

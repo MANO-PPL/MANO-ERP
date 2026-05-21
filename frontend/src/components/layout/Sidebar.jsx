@@ -9,7 +9,8 @@ import {
     Users,
     Search,
     Shield,
-    Package
+    Package,
+    ArrowLeftRight
 } from 'lucide-react';
 
 const Sidebar = () => {
@@ -19,6 +20,7 @@ const Sidebar = () => {
         { icon: Map,             label: 'Vendors',       path: '/vendors' },
         { icon: Users,           label: 'Clients',       path: '/clients' },
         { icon: Package,         label: 'Resources',     path: '/resources' },
+        { icon: ArrowLeftRight,  label: 'Units',         path: '/units' },
         { icon: MessageCircle,   label: 'Collaboration', path: '/collaboration' },
         { icon: Shield,          label: 'Admin',         path: '/admin' },
     ];
