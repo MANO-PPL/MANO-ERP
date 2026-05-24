@@ -8,6 +8,7 @@ import resourceRoutes from './inventory/resourceRoutes.js';
 import projectRoutes from './projects/projectRoutes.js';
 import vendorRoutes from './vendors/vendorRoutes.js';
 import clientRoutes from './clients/clientRoutes.js';
+import aiRoutes from './ai/aiRoutes.js';
 
 const router = express.Router();
 
@@ -19,5 +20,6 @@ router.use('/units', unitRoutes);
 router.use('/resources', resourceRoutes);
 router.use('/vendors', vendorRoutes);
 router.use('/clients', clientRoutes);
+router.use('/ai', aiRoutes);
 
 export default router;
