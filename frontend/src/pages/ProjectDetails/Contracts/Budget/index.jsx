@@ -9,6 +9,7 @@ import {
 import { BUDGET_SECTIONS, PROJECT_DEFAULTS } from './budgetData';
 import SectionView from './SectionView';
 import Summary from './Summary';
+import api from '../../../../services/api';
 
 const fmt = (n, dec = 2) =>
     n == null || isNaN(n) ? '-' : Number(n).toLocaleString('en-IN', { minimumFractionDigits: dec, maximumFractionDigits: dec });
@@ -201,76 +202,47 @@ const NewPhaseDrawer = ({ open, onClose, onSubmit, nextSrNo, initialData = null 
     );
 };
 
-// ─── AI Dummy Suggestions ──────────────────────────────────────────────────
-const AI_SUGGESTIONS = [
-    {
-        sectionId: 'civil',
-        type: 'warning', icon: AlertTriangle, color: 'text-amber-500', bg: 'bg-amber-50 dark:bg-amber-900/20',
-        title: 'Civil Works cost exceeds benchmark',
-        body: 'Your Civil Works budget (₹2,338 Lacs) is ~18% above the industry benchmark for residential projects of this scale (~₹1,980 Lacs). Consider reviewing Pile Work rates — at ₹94,587/No they are 12% above the market average of ₹83,000/No.',
-    },
-    {
-        sectionId: 'civil',
-        type: 'saving', icon: TrendingDown, color: 'text-green-500', bg: 'bg-green-50 dark:bg-green-900/20',
-        title: 'Waterproofing rate optimisation',
-        body: 'Brickbat waterproofing is quoted at ₹150/Sqft. Three comparable projects in the same city averaged ₹120–135/Sqft. Renegotiating this item could save ₹3.8–7.5 Lacs.',
-    },
-    {
-        sectionId: 'elec',
-        type: 'info', icon: Info, color: 'text-blue-500', bg: 'bg-blue-50 dark:bg-blue-900/20',
-        title: 'Electrification is within range',
-        body: 'At ₹250/Sqft, Electrification is well within the typical range of ₹220–280/Sqft for a premium residential project of 1.4 Lakh Sqft. No action needed.',
-    },
-    {
-        sectionId: 'equip',
-        type: 'suggestion', icon: Lightbulb, color: 'text-purple-500', bg: 'bg-purple-50 dark:bg-purple-900/20',
-        title: 'Equipment: consider leasing DG set',
-        body: 'The DG 550 KVA is budgeted at ₹55 Lacs (purchase). Leasing for 3 years typically costs ₹18–22 Lacs total for a project of this duration, freeing ₹33–37 Lacs of capital.',
-    },
-    {
-        sectionId: 'contingency',
-        type: 'warning', icon: AlertTriangle, color: 'text-amber-500', bg: 'bg-amber-50 dark:bg-amber-900/20',
-        title: 'Contingency appears low',
-        body: 'Your contingency is set to ₹139.75 Lacs (~2.7% of Basic). For a project of this complexity, industry standard recommends 5–10%. Consider increasing to ₹260–525 Lacs to cover unforeseen design changes.',
-    },
-    {
-        sectionId: 'consult',
-        type: 'info', icon: Info, color: 'text-blue-500', bg: 'bg-blue-50 dark:bg-blue-900/20',
-        title: 'Consultancy fees on par',
-        body: 'Combined consultancy (Architect + RCC + MEP + PMC + Liaoning) at ₹118.50/Sqft is close to the typical range of ₹100–130/Sqft for premium projects. PMC fee at ₹50/Sqft is the largest component — ensure scope is well-defined.',
-    },
-    {
-        sectionId: 'plumb',
-        type: 'saving', icon: TrendingDown, color: 'text-green-500', bg: 'bg-green-50 dark:bg-green-900/20',
-        title: 'Plumbing CP Fittings bulk discount',
-        body: 'CP Fittings are quoted at ₹1,75,000/Nos for 308 toilets. Procuring directly from a Tier-1 supplier (Hindware / Parryware) with bulk volume discounts could reduce the rate to ₹1,40,000–1,55,000/Nos, saving ₹60–107 Lacs.',
-    },
-    {
-        sectionId: 'finishes',
-        type: 'suggestion', icon: Lightbulb, color: 'text-purple-500', bg: 'bg-purple-50 dark:bg-purple-900/20',
-        title: 'Painting — review luster rate',
-        body: 'Internal wall luster painting is quoted at ₹35/Sqft which is high. Market rate for luster finish in this city is ₹26–30/Sqft. Revising this item alone could save ₹16–30 Lacs.',
-    },
-    {
-        sectionId: 'facade',
-        type: 'info', icon: Info, color: 'text-blue-500', bg: 'bg-blue-50 dark:bg-blue-900/20',
-        title: 'Glass railing high — verify scope',
-        body: 'Glass railing for balcony is quoted at ₹1,250/Sqft for 3,556 Sqft (₹44.46 Lacs). Verify the specification — frameless 12mm tempered glass at this price is standard, but semi-framed could save 20–25%.',
-    },
-    {
-        sectionId: 'landscape',
-        type: 'suggestion', icon: Lightbulb, color: 'text-purple-500', bg: 'bg-purple-50 dark:bg-purple-900/20',
-        title: 'Landscape: phased execution possible',
-        body: 'Ground floor landscaping (₹17 Lacs) and top terrace (₹12 Lacs) can be executed after possession. Consider deferring to a later phase to reduce upfront capital requirement.',
-    },
-];
+// ─── Dynamic AI Suggestions Panel ─────────────────────────────────────────
+const METADATA_MAP = {
+    warning: { icon: AlertTriangle, color: 'text-amber-500', bg: 'bg-amber-50 dark:bg-amber-900/20' },
+    saving: { icon: TrendingDown, color: 'text-green-500', bg: 'bg-green-50 dark:bg-green-900/20' },
+    info: { icon: Info, color: 'text-blue-500', bg: 'bg-blue-50 dark:bg-blue-900/20' },
+    suggestion: { icon: Lightbulb, color: 'text-purple-500', bg: 'bg-purple-50 dark:bg-purple-900/20' },
+};
 
-const AISuggestionsPanel = ({ sectionId, sections, onClose }) => {
+const AISuggestionsPanel = ({ sectionId, sections, slabArea, gstRate, onClose }) => {
+    const [insights, setInsights] = useState([]);
+    const [loading, setLoading] = useState(false);
+    const [error, setError] = useState(null);
+
     const open = !!sectionId;
     const sec = sectionId && sectionId !== 'all' ? sections.find(s => s.id === sectionId) : null;
-    const filtered = sectionId === 'all'
-        ? AI_SUGGESTIONS
-        : AI_SUGGESTIONS.filter(s => s.sectionId === sectionId);
+
+    useEffect(() => {
+        if (!open) return;
+        
+        const fetchInsights = async () => {
+            setLoading(true);
+            setError(null);
+            try {
+                const res = await api.post('/ai/analyze-budget', {
+                    budgetData: sectionId === 'all' ? sections : sections.filter(s => s.id === sectionId),
+                    slabArea,
+                    gstRate,
+                    sectionId
+                });
+                setInsights(res.data.data.insights || []);
+            } catch (err) {
+                console.error(err);
+                setError('Could not fetch AI Suggestions. Please try again.');
+            } finally {
+                setLoading(false);
+            }
+        };
+
+        fetchInsights();
+    }, [open, sectionId, sections, slabArea, gstRate]);
+
     return (
         <>
             {open && <div className="fixed inset-0 z-[200] bg-black/30 backdrop-blur-sm" onClick={onClose} />}
@@ -279,13 +251,13 @@ const AISuggestionsPanel = ({ sectionId, sections, onClose }) => {
                 <div className="flex items-center justify-between px-6 py-4 border-b border-gray-100 dark:border-white/10 bg-gradient-to-r from-violet-50 to-blue-50 dark:from-violet-900/20 dark:to-blue-900/20">
                     <div className="flex items-center gap-3">
                         <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-violet-500 to-blue-600 flex items-center justify-center shadow-lg">
-                            {sec ? <span className="text-lg">{sec.icon}</span> : <Sparkles size={16} className="text-white" />}
+                            {sec ? <span className="text-lg text-white">{ICON_MAP[sec.iconKey]}</span> : <Sparkles size={16} className="text-white" />}
                         </div>
                         <div>
                             <h3 className="text-sm font-bold text-gray-900 dark:text-white">
                                 {sec ? `AI Insights — ${sec.name}` : 'AI Budget Insights (All Phases)'}
                             </h3>
-                            <p className="text-xs text-gray-500 dark:text-gray-400">{filtered.length} suggestion{filtered.length !== 1 ? 's' : ''} found</p>
+                            {!loading && !error && <p className="text-xs text-gray-500 dark:text-gray-400">{insights.length} suggestion{insights.length !== 1 ? 's' : ''} found</p>}
                         </div>
                     </div>
                     <button onClick={onClose} className="p-1.5 rounded-lg hover:bg-white/60 dark:hover:bg-white/10 text-gray-400 transition-colors">
@@ -296,24 +268,46 @@ const AISuggestionsPanel = ({ sectionId, sections, onClose }) => {
                 <div className="px-5 py-2.5 bg-violet-50/60 dark:bg-violet-900/10 border-b border-violet-100 dark:border-violet-500/10">
                     <p className="text-[10px] text-violet-600 dark:text-violet-400 font-medium">✦ AI suggestions are based on industry benchmarks. Always verify with domain experts before acting.</p>
                 </div>
-                {/* Suggestions */}
+                {/* Content */}
                 <div className="flex-1 overflow-y-auto px-5 py-4 space-y-3">
-                    {filtered.length === 0 ? (
+                    {loading ? (
+                        <div className="flex flex-col items-center justify-center h-full text-center gap-3 opacity-60">
+                            <div className="relative">
+                                <div className="absolute inset-0 bg-blue-500 blur-xl opacity-20 rounded-full animate-pulse" />
+                                <Sparkles size={32} className="text-blue-500 animate-pulse relative z-10" />
+                            </div>
+                            <p className="text-sm text-gray-500 font-medium animate-pulse">Running architectural cost analysis...</p>
+                        </div>
+                    ) : error ? (
+                        <div className="flex flex-col items-center justify-center h-full text-center gap-3">
+                            <AlertTriangle size={32} className="text-red-400" />
+                            <p className="text-sm text-gray-500">{error}</p>
+                            <button onClick={() => { setInsights([]); setError(null); setAiSectionId(null); setTimeout(() => setAiSectionId(sectionId), 0); }} className="mt-2 px-4 py-2 bg-gray-100 dark:bg-white/10 rounded-lg text-xs font-semibold hover:bg-gray-200 dark:hover:bg-white/20 transition-all">Retry</button>
+                        </div>
+                    ) : insights.length === 0 ? (
                         <div className="flex flex-col items-center justify-center h-full text-center gap-3 opacity-50">
                             <Sparkles size={32} className="text-gray-300" />
-                            <p className="text-sm text-gray-400">No specific insights for this phase yet.</p>
+                            <p className="text-sm text-gray-400">No specific insights found for this phase.</p>
                         </div>
-                    ) : filtered.map((s, i) => (
-                        <div key={i} className={`rounded-2xl border border-gray-100 dark:border-white/5 p-4 ${s.bg}`}>
-                            <div className="flex items-start gap-3">
-                                <div className={`mt-0.5 shrink-0 ${s.color}`}><s.icon size={16} /></div>
-                                <div>
-                                    <p className={`text-xs font-bold mb-1 ${s.color}`}>{s.title}</p>
-                                    <p className="text-xs text-gray-600 dark:text-gray-400 leading-relaxed">{s.body}</p>
+                    ) : insights.map((s, i) => {
+                        const meta = METADATA_MAP[s.type] || METADATA_MAP.info;
+                        const IconComponent = meta.icon;
+                        return (
+                            <div key={i} className={`rounded-2xl border border-gray-100 dark:border-white/5 p-4 ${meta.bg}`}>
+                                <div className="flex items-start gap-3">
+                                    <div className={`mt-0.5 shrink-0 ${meta.color}`}><IconComponent size={16} /></div>
+                                    <div className="flex-1 min-w-0">
+                                        <p className={`text-xs font-bold mb-1 ${meta.color}`}>{s.title}</p>
+                                        <div className="flex flex-wrap items-center gap-x-3 gap-y-1 mb-2">
+                                            <span className="text-[10px] font-semibold bg-gray-50 dark:bg-black/20 text-gray-600 dark:text-gray-300 px-2 py-0.5 rounded-md whitespace-nowrap">Total Cost: {s.totalCost}</span>
+                                            <span className="text-[10px] font-semibold bg-gray-50 dark:bg-black/20 text-gray-600 dark:text-gray-300 px-2 py-0.5 rounded-md whitespace-nowrap">Occupied: {s.occupiedCost}</span>
+                                        </div>
+                                        <p className="text-[11.5px] text-gray-600 dark:text-gray-400 leading-relaxed"><strong className="font-semibold text-gray-800 dark:text-gray-200">AI Suggestion:</strong> {s.body}</p>
+                                    </div>
                                 </div>
                             </div>
-                        </div>
-                    ))}
+                        );
+                    })}
                 </div>
                 <div className="px-5 py-3 border-t border-gray-100 dark:border-white/10 flex justify-end">
                     <button onClick={onClose} className="px-5 py-2 text-xs font-semibold text-gray-500 hover:text-gray-700 dark:hover:text-gray-300 transition-colors">Close</button>
@@ -494,6 +488,8 @@ const BudgetIndex = ({ onBack, setExtraBreadcrumbs }) => {
             <AISuggestionsPanel
                 sectionId={aiSectionId}
                 sections={sections}
+                slabArea={slabArea}
+                gstRate={gstRate}
                 onClose={() => setAiSectionId(null)}
             />
 

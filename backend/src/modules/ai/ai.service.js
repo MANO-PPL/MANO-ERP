@@ -11,7 +11,7 @@ const groq = new Groq({
  */
 export const analyzeReport = async (reportData) => {
     const isWeekly = !!reportData.week;
-    
+
     let prompt;
     if (isWeekly) {
         prompt = `Act as a neutral construction expert. Summarize this Weekly Progress Report: ${JSON.stringify(reportData)}
@@ -61,8 +61,9 @@ RULES:
                 content: prompt,
             },
         ],
-        model: 'llama-3.3-70b-versatile',
-        temperature: 0.4,
+        model: 'llama-3.1-8b-instant',
+        temperature: 0.0,
+        seed: 42,
         max_tokens: 1500,
         response_format: { type: 'json_object' },
     });
@@ -76,4 +77,55 @@ RULES:
     // Parse the JSON response
     const parsed = JSON.parse(responseText);
     return parsed;
+};
+
+export const analyzeBudget = async ({ budgetData, slabArea, gstRate, sectionId }) => {
+    try {
+        const response = await fetch('http://127.0.0.1:8000/analyze-budget', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({
+                budgetData,
+                slabArea,
+                gstRate,
+                sectionId
+            })
+        });
+
+        if (!response.ok) {
+            const errorData = await response.text();
+            throw new Error(`Python AI Engine Error: ${errorData}`);
+        }
+
+        const data = await response.json();
+        return data; // Returns { insights: [ ... ] } exactly as the frontend expects
+    } catch (error) {
+        console.error("AI Microservice Error:", error);
+        throw error;
+    }
+};
+
+export const analyzeSchedule = async ({ phases, macro }) => {
+    try {
+        const response = await fetch('http://127.0.0.1:8000/analyze-schedule', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({ phases, macro: !!macro })
+        });
+
+        if (!response.ok) {
+            const errorData = await response.text();
+            throw new Error(`Python AI Engine Error: ${errorData}`);
+        }
+
+        const data = await response.json();
+        return data;
+    } catch (error) {
+        console.error("AI Microservice Error:", error);
+        throw error;
+    }
 };
