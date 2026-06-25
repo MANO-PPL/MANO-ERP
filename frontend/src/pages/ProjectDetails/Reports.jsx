@@ -11,6 +11,7 @@ import {
     Plus,
     Download
 } from 'lucide-react';
+import { TrendingUp, AlertCircle } from 'lucide-react';
 
 // Modular Components
 import DailyProgress from './Reports/Daily/DailyProgress';
@@ -27,6 +28,29 @@ const Reports = ({ setExtraBreadcrumbs }) => {
     const activeTab = searchParams.get('type') || 'daily';
     const subView = searchParams.get('view') || 'list';
     const [subBreadcrumb, setSubBreadcrumb] = useState('');
+    // Project Identity & Context - Dynamic Progress Tracking
+    const projectStartDate = new Date('2026-02-28');
+    const projectEndDate = new Date('2026-07-31');
+    const currentDate = new Date('2026-04-29');
+    
+    const calculateProjectMetrics = () => {
+        const totalDuration = Math.floor((projectEndDate - projectStartDate) / (1000 * 60 * 60 * 24));
+        const daysElapsed = Math.floor((currentDate - projectStartDate) / (1000 * 60 * 60 * 24));
+        const daysRemaining = Math.floor((projectEndDate - currentDate) / (1000 * 60 * 60 * 24));
+        const progressPercentage = Math.round((daysElapsed / totalDuration) * 100);
+        
+        return {
+            totalDuration,
+            daysElapsed,
+            daysRemaining,
+            progressPercentage,
+            startDate: projectStartDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }),
+            endDate: projectEndDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }),
+            currentDate: currentDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
+        };
+    };
+    
+    const projectMetrics = calculateProjectMetrics();
 
     const navigateTo = (type, view = 'list') => {
         const newParams = new URLSearchParams(searchParams);

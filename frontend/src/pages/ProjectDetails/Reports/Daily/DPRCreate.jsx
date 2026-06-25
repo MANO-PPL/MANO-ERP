@@ -29,6 +29,23 @@ import CustomInput from '../../../../components/CustomInput';
 import CustomSelect from '../../../../components/CustomSelect';
 
 const DPRCreate = ({ onBack, initialData = null, isReadOnly = false }) => {
+    const reportDate = initialData?.date ? new Date(initialData.date) : new Date('2026-04-29');
+    const projectStartDate = new Date(initialData?.startDate || '2026-02-01');
+    const projectEndDate = new Date(initialData?.endDate || '2027-01-31');
+
+    const reportMetrics = (() => {
+        const totalDuration = Math.floor((projectEndDate - projectStartDate) / (1000 * 60 * 60 * 24)) + 1;
+        const daysElapsed = Math.max(0, Math.floor((reportDate - projectStartDate) / (1000 * 60 * 60 * 24)));
+        const daysRemaining = Math.max(0, totalDuration - daysElapsed);
+
+        return {
+            total: totalDuration,
+            passed: daysElapsed,
+            balance: daysRemaining,
+            asOn: reportDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
+        };
+    })();
+
     // State for all form fields - Initialize from initialData if editing/viewing
     const [projectData] = useState({
         projectName: initialData?.projectName || 'New Airport Terminal - Phase 1',
@@ -38,11 +55,7 @@ const DPRCreate = ({ onBack, initialData = null, isReadOnly = false }) => {
         startDate: initialData?.startDate || '2026-02-01',
         endDate: initialData?.endDate || '2027-01-31',
         description: initialData?.description || 'Construction of the new International terminal with glass facade and steel roof structure.',
-        metrics: initialData?.metrics || {
-            total: 365,
-            passed: 27,
-            balance: 338
-        }
+        metrics: initialData?.metrics || reportMetrics
     });
 
     const [weather, setWeather] = useState(initialData?.weather || 'sunny');
@@ -65,6 +78,16 @@ const DPRCreate = ({ onBack, initialData = null, isReadOnly = false }) => {
     const [events, setEvents] = useState(initialData?.events || []);
     const [generalRemarks, setGeneralRemarks] = useState(initialData?.generalRemarks || '');
 
+    // Calculate formatted date from initialData
+    const getFormattedDate = () => {
+        const days = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+        const months = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
+        const dayName = days[reportDate.getDay()];
+        const monthName = months[reportDate.getMonth()];
+        const date = reportDate.getDate();
+        const year = reportDate.getFullYear();
+        return `${dayName}, ${date} ${monthName} ${year}`;
+    };
     const addTimeSlot = () => {
         if (isReadOnly) return;
         setTimeSlots([...timeSlots, { id: Date.now(), from: '', to: '' }]);
@@ -94,10 +117,10 @@ const DPRCreate = ({ onBack, initialData = null, isReadOnly = false }) => {
             <div className="sticky top-0 z-30 bg-white/80 dark:bg-[#161b22]/80 backdrop-blur-md border-b border-white/5 px-6 py-4 flex items-center justify-between">
                 <div className="flex items-center space-x-6">
                     <div>
-                        <h2 className="text-xl font-bold text-gray-900 dark:text-white tracking-tight">Daily Progress Report</h2>
+                        <h2 className="text-xl font-bold text-gray-900 dark:text-white tracking-tight">{getFormattedDate()}</h2>
                         <div className="flex items-center space-x-2 mt-0.5 text-[10px] text-gray-500 font-medium uppercase tracking-widest">
                             <Calendar size={12} />
-                            <span>Friday, 27 February 2026</span>
+                            <span>Daily Progress Report</span>
                         </div>
                     </div>
                 </div>
@@ -137,6 +160,7 @@ const DPRCreate = ({ onBack, initialData = null, isReadOnly = false }) => {
                         <Briefcase size={14} className="mr-3" />
                         Project Identity & Context
                     </h3>
+                    <p className="text-[10px] font-semibold text-gray-500 uppercase tracking-[0.2em] -mt-5 mb-8">Report snapshot: {reportMetrics.asOn}</p>
 
                     <div className="grid grid-cols-1 lg:grid-cols-2 gap-y-8 gap-x-12 relative z-10">
                         {/* Details Grid */}
@@ -171,9 +195,9 @@ const DPRCreate = ({ onBack, initialData = null, isReadOnly = false }) => {
                     {/* Performance Metrics Row */}
                     <div className="grid grid-cols-3 gap-6 mt-12 bg-gray-50 dark:bg-[#0d1117]/50 rounded-2xl p-6 border border-white/5">
                         {[
-                            { label: 'Project Duration', value: projectData.metrics.total, sub: 'Total Days', color: 'text-gray-400' },
-                            { label: 'Timeline Progress', value: projectData.metrics.passed, sub: 'Days Elapsed', color: 'text-blue-400' },
-                            { label: 'Remaining Window', value: projectData.metrics.balance, sub: 'Days to Deadline', color: 'text-orange-400' },
+                            { label: 'Project Duration', value: reportMetrics.total, sub: 'Total Days', color: 'text-gray-400' },
+                            { label: 'Timeline Progress', value: reportMetrics.passed, sub: 'Days Elapsed', color: 'text-blue-400' },
+                            { label: 'Remaining Window', value: reportMetrics.balance, sub: 'Days to Deadline', color: 'text-orange-400' },
                         ].map((metric, i) => (
                             <div key={i} className="text-center group/stat">
                                 <p className="text-[10px] font-bold text-gray-500 uppercase tracking-widest mb-3">{metric.label}</p>
@@ -476,3 +500,4 @@ const DPRCreate = ({ onBack, initialData = null, isReadOnly = false }) => {
 };
 
 export default DPRCreate;
+

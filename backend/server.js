@@ -1,7 +1,13 @@
 import { createServer } from 'http';
 import { Server as SocketIO } from 'socket.io';
+import { spawn } from 'child_process';
+import path from 'path';
+import { fileURLToPath } from 'url';
 import './src/config/config.js';
 import app from './src/app.js';
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
 
 const PORT = process.env.PORT || 5001;
 const allowedOrigins = [
@@ -32,4 +38,27 @@ io.on('connection', (socket) => {
 
 server.listen(PORT, '0.0.0.0', () => {
     console.log(`Backend server running on http://localhost:${PORT}`);
+    
+    // Auto-start Python AI Microservice
+    const pythonDir = path.join(__dirname, 'src', 'modules', 'ai', 'python_engine');
+    console.log('Booting Python AI Engine...');
+    
+    const pythonProcess = spawn('cmd.exe', ['/c', 'venv\\Scripts\\uvicorn main:app --port 8000 --reload'], {
+        cwd: pythonDir,
+        stdio: 'inherit' // This streams the Python logs directly into your Node terminal!
+    });
+
+    pythonProcess.on('error', (err) => {
+        console.error('Failed to start Python Microservice:', err);
+    });
+    
+    // Gracefully kill Python when Node shuts down
+    const shutdown = () => {
+        console.log('\nShutting down Python AI Engine...');
+        pythonProcess.kill();
+        process.exit();
+    };
+    
+    process.on('SIGINT', shutdown);
+    process.on('SIGTERM', shutdown);
 });

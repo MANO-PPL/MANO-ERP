@@ -83,4 +83,42 @@ docker-compose.*.yml.local
 # Project-specific ignores
 /server/node_modules/
 /client/node_modules/
+backend/node_modules/
+frontend/node_modules/
 
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+
+# Virtual environments
+venv/
+env/
+ENV/
+env.bak/
+venv.bak/
+.venv/
+
+# Python Tools
+.pytest_cache/
+.coverage
+htmlcov/
+.tox/
+.nox/
+.mypy_cache/
+.pyre/
+.pytype/
+pip-log.txt
+pip-delete-this-directory.txt
+
+# Vite Cache
+.vite/
+
+# Miscellaneous
+*.zip
+*.tar.gz
+*.bak
+*.swp
+*.tmp
+*~

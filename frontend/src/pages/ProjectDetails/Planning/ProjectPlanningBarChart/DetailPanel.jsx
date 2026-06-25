@@ -1,36 +1,46 @@
-import React, { useState } from 'react';
-import { X, Sparkles, TrendingUp, CheckCircle2, AlertTriangle, Clock } from 'lucide-react';
+import React, { useState, useEffect } from 'react';
+import { X, Sparkles, TrendingUp, CheckCircle2, AlertTriangle, Clock, RefreshCw } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
+import api from '../../../../services/api';
 
 const toDate = (s) => new Date(s);
 const daysBetween = (a, b) => Math.round((toDate(b) - toDate(a)) / 86400000);
 const fmt = (d) => toDate(d).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: '2-digit' });
 
 // ─── AI Summary Panel (Right side) ─────────────────────────────────────────────
-export const AISummaryPanel = ({ title, phases, onClose }) => {
+export const AISummaryPanel = ({ title, phases, macro, onClose }) => {
+    const [insights, setInsights] = useState([]);
+    const [loading, setLoading] = useState(true);
+    const [error, setError] = useState(null);
+
     const allActs = phases.flatMap(p => p.activities);
     const total = allActs.length;
     const done = allActs.filter(a => a.progress === 100).length;
-    const inProg = allActs.filter(a => a.progress > 0 && a.progress < 100).length;
-    const notStarted = allActs.filter(a => a.progress === 0).length;
-    const highPri = allActs.filter(a => a.critical).length;
-    const behind = allActs.filter(a => toDate(a.end) > toDate(a.origEnd) && a.progress < 100).length;
     const avgProg = total > 0 ? Math.round(allActs.reduce((s, a) => s + a.progress, 0) / total) : 0;
-    const completedPhases = phases.filter(p => p.activities.length > 0 && p.activities.every(a => a.progress === 100)).length;
 
-    const insights = [
-        { emoji: '📊', label: 'Overall Progress', text: `${avgProg}% complete — ${done} done, ${inProg} in progress, ${notStarted} not started` },
-        { emoji: '⚡', label: 'High Priority Tasks', text: `${highPri} out of ${total} tasks are marked high priority` },
-        behind > 0
-            ? { emoji: '⚠️', label: 'Schedule Alert', text: `${behind} task(s) are running behind the original plan`, alert: true }
-            : { emoji: '✅', label: 'On Track', text: 'All tasks are on or ahead of schedule' },
-        phases.length > 1 ? { emoji: '🏗️', label: 'Phases', text: `${completedPhases}/${phases.length} phases fully complete` } : null,
-        { emoji: '📅', label: 'Recommendation', text: behind > 0 ? 'Focus resources on delayed high-priority tasks to recover schedule.' : avgProg < 50 ? 'Maintain current pace and monitor upcoming high-priority tasks.' : 'Project is progressing well. Continue monitoring key deliverables.' },
-    ].filter(Boolean);
+    const fetchInsights = async () => {
+        setLoading(true);
+        setError(null);
+        try {
+            const res = await api.post('/ai/schedule-insights', { phases, macro: !!macro });
+            setInsights(res.data.data || { taskStatuses: [], overallSuggestion: '' });
+        } catch (err) {
+            console.error('AI Schedule Error:', err);
+            setError('Could not fetch AI insights. Please try again.');
+        } finally {
+            setLoading(false);
+        }
+    };
+
+    useEffect(() => {
+        fetchInsights();
+    }, [title, macro]);
 
     return (
-        <motion.div initial={{ x: 20, opacity: 0 }} animate={{ x: 0, opacity: 1 }} exit={{ x: 20, opacity: 0 }}
-            className="w-[320px] min-w-[320px] bg-white dark:bg-[#161b22] border-l border-gray-200 dark:border-white/5 flex flex-col overflow-hidden">
+        <div className="fixed inset-0 z-50 flex justify-end bg-black/40 backdrop-blur-sm" onClick={onClose}>
+            <motion.div initial={{ x: '100%' }} animate={{ x: 0 }} exit={{ x: '100%' }} transition={{ type: "spring", bounce: 0, duration: 0.4 }}
+                className="w-[550px] max-w-[90vw] h-full bg-white dark:bg-[#161b22] border-l border-gray-200 dark:border-white/10 flex flex-col shadow-[rgba(0,0,0,0.3)_0px_0px_40px]"
+                onClick={e => e.stopPropagation()}>
             <div className="flex items-center justify-between px-4 py-3 border-b border-gray-100 dark:border-white/5 bg-gradient-to-r from-violet-50 to-blue-50 dark:from-violet-900/10 dark:to-blue-900/10">
                 <div className="flex items-center gap-2 min-w-0">
                     <Sparkles size={15} className="text-violet-500 shrink-0" />
@@ -53,23 +63,77 @@ export const AISummaryPanel = ({ title, phases, onClose }) => {
                         <p className="text-[10px] text-gray-400">Tasks Complete</p>
                     </div>
                 </div>
-                {/* Insights */}
-                {insights.map((item, i) => (
-                    <div key={i} className={`rounded-xl p-3 border ${item.alert ? 'bg-orange-50 dark:bg-orange-900/10 border-orange-200 dark:border-orange-500/20' : 'bg-gray-50 dark:bg-[#0d1117] border-gray-100 dark:border-white/5'}`}>
-                        <div className="flex items-center gap-2 mb-1">
-                            <span className="text-sm">{item.emoji}</span>
-                            <span className="text-[10px] font-bold text-gray-600 dark:text-gray-300 uppercase tracking-wider">{item.label}</span>
+
+                {/* Loading State */}
+                {loading && (
+                    <div className="flex flex-col items-center justify-center py-10 gap-3">
+                        <div className="relative">
+                            <div className="w-10 h-10 rounded-full border-2 border-violet-200 dark:border-violet-800" />
+                            <div className="absolute inset-0 w-10 h-10 rounded-full border-2 border-transparent border-t-violet-500 animate-spin" />
                         </div>
-                        <p className="text-[11px] text-gray-700 dark:text-gray-400 leading-relaxed">{item.text}</p>
+                        <p className="text-xs text-gray-400 font-semibold">AI is analyzing your schedule...</p>
+                    </div>
+                )}
+
+                {/* Error State */}
+                {error && !loading && (
+                    <div className="text-center py-6 space-y-3">
+                        <p className="text-xs text-red-400">{error}</p>
+                        <button onClick={fetchInsights}
+                            className="flex items-center gap-1.5 mx-auto px-3 py-1.5 bg-violet-500 hover:bg-violet-600 text-white text-xs font-bold rounded-lg">
+                            <RefreshCw size={12} /> Retry
+                        </button>
+                    </div>
+                )}
+
+                {/* AI Insights: Task Statuses */}
+                {!loading && !error && insights.taskStatuses && insights.taskStatuses.map((item, i) => (
+                    <div key={i} className={`rounded-xl p-3 border ${item.alert ? 'bg-orange-50 dark:bg-orange-900/10 border-orange-200 dark:border-orange-500/20' : 'bg-green-50 dark:bg-green-900/10 border-green-200 dark:border-green-500/20'}`}>
+                        <div className="flex items-center justify-between mb-2">
+                            <span className="text-[11px] font-bold text-gray-800 dark:text-gray-200 truncate pr-2">{item.taskName}</span>
+                            <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded-md whitespace-nowrap ${item.alert ? 'bg-orange-100 text-orange-600 dark:bg-orange-500/20 dark:text-orange-400' : 'bg-green-100 text-green-600 dark:bg-green-500/20 dark:text-green-400'}`}>{item.status}</span>
+                        </div>
+                        <p className="text-[10px] text-gray-600 dark:text-gray-400 mb-1.5">Variance: <strong className="font-semibold text-gray-800 dark:text-gray-300">{item.difference}</strong></p>
+                        
+                        <div className="space-y-1">
+                            {item.impact && (
+                                <p className="text-[10px] text-gray-700 dark:text-gray-300 leading-snug">
+                                    <strong className="font-bold text-gray-900 dark:text-white">Impact:</strong> {item.impact}
+                                </p>
+                            )}
+                            {item.alert && item.action && (
+                                <p className="text-[10px] text-orange-700 dark:text-orange-300 leading-snug">
+                                    <strong className="font-bold">Action:</strong> {item.action}
+                                </p>
+                            )}
+                        </div>
                     </div>
                 ))}
+
+                {/* Global Suggestion */}
+                {!loading && !error && insights.overallSuggestion && (
+                    <div className="mt-4 p-4 rounded-xl bg-violet-50 dark:bg-violet-900/10 border border-violet-200 dark:border-violet-500/20">
+                        <div className="flex gap-3">
+                            <Sparkles className="text-violet-500 shrink-0 mt-0.5" size={16} />
+                            <div>
+                                <h4 className="text-xs font-bold text-violet-900 dark:text-violet-300 mb-1">Architect & Project Manager Assessment</h4>
+                                <p className="text-[11px] text-violet-800 dark:text-violet-200/80 leading-relaxed">{insights.overallSuggestion}</p>
+                            </div>
+                        </div>
+                    </div>
+                )}
+
+                {!loading && !error && (!insights.taskStatuses || insights.taskStatuses.length === 0) && (
+                    <p className="text-sm text-gray-400 text-center py-10">No specific insights generated for this schedule.</p>
+                )}
             </div>
         </motion.div>
+        </div>
     );
 };
 
 // ─── Phase/Task Detail Panel (Right side) ──────────────────────────────────────
-export const DetailPanel = ({ type, phase, activity, onClose }) => {
+export const DetailPanel = ({ type, phase, activity, onClose, showAiPanel }) => {
     if (!type) return null;
 
     if (type === 'phase' && phase) {
@@ -125,8 +189,9 @@ export const DetailPanel = ({ type, phase, activity, onClose }) => {
                     </div>
                     {/* Task list */}
                     <div>
-                        <p className="text-[10px] font-bold text-gray-500 uppercase tracking-widest mb-2">Tasks</p>
-                        <div className="space-y-1.5">
+                        <div className="flex items-center justify-between mb-2">
+                            <p className="text-[10px] font-bold text-gray-500 uppercase tracking-widest">Tasks</p>
+                            {/* Instead of passing showAiPanel down through props, we can just use an event to the parent, but wait, showAiPanel is not a prop. We need to pass it or import it. Wait, DetailPanel is exported and used in index.jsx. It receives `onClose`. Does it receive `showAiPanel`? */}
                             {acts.map(a => (
                                 <div key={a.id} className="flex items-center gap-2 p-2 rounded-lg bg-gray-50 dark:bg-[#0d1117] border border-gray-100 dark:border-white/5">
                                     {a.critical && <span className="w-1.5 h-1.5 rounded-full bg-red-400 shrink-0" />}

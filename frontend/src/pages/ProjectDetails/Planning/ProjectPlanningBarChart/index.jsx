@@ -189,7 +189,7 @@ const ProjectPlanningBarChart = ({ setExtraBreadcrumbs, onBack }) => {
     const showPhaseDetail = (phase) => { setAiPanel(null); setDetailType('phase'); setDetailPhase(phase); setDetailActivity(null); };
     const showTaskDetail = (phase, act) => { setAiPanel(null); setDetailType('task'); setDetailPhase(phase); setDetailActivity(act); };
     const closeDetail = () => { setDetailType(null); setDetailPhase(null); setDetailActivity(null); setAiPanel(null); };
-    const showAiPanel = (title, phs) => { setDetailType(null); setDetailPhase(null); setDetailActivity(null); setAiPanel({ title, phases: phs }); };
+    const showAiPanel = (title, phs, macroFlag = false) => { setDetailType(null); setDetailPhase(null); setDetailActivity(null); setAiPanel({ title, phases: phs, macro: macroFlag }); };
 
     const allActivities = phases.flatMap(p => p.activities);
     const allDates = allActivities.flatMap(a => [a.start, a.end, a.origStart, a.origEnd]);
@@ -242,7 +242,7 @@ const ProjectPlanningBarChart = ({ setExtraBreadcrumbs, onBack }) => {
                     </div>
                 </div>
                 <div className="flex items-center gap-2">
-                    <button onClick={() => showAiPanel('AI Project Summary', phases)}
+                    <button onClick={() => showAiPanel('AI Project Summary', phases, true)}
                         className="flex items-center gap-1.5 px-3 py-1.5 border border-violet-300 dark:border-violet-500/30 bg-violet-50 dark:bg-violet-500/10 hover:bg-violet-100 dark:hover:bg-violet-500/20 text-violet-600 dark:text-violet-400 text-xs font-bold rounded-lg transition-colors">
                         <Sparkles size={13} /> AI Summary
                     </button>
@@ -402,8 +402,8 @@ const ProjectPlanningBarChart = ({ setExtraBreadcrumbs, onBack }) => {
 
                 {/* Detail Panel (right side) */}
                 <AnimatePresence>
-                    {detailType && <DetailPanel type={detailType} phase={detailPhase} activity={detailActivity} onClose={closeDetail} />}
-                    {aiPanel && <AISummaryPanel title={aiPanel.title} phases={aiPanel.phases} onClose={closeDetail} />}
+                    {detailType && <DetailPanel type={detailType} phase={detailPhase} activity={detailActivity} onClose={closeDetail} showAiPanel={showAiPanel} />}
+                    {aiPanel && <AISummaryPanel title={aiPanel.title} phases={aiPanel.phases} macro={aiPanel.macro} onClose={closeDetail} />}
                 </AnimatePresence>
             </div>
         </div>
