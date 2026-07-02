@@ -46,9 +46,16 @@ server.listen(PORT, '0.0.0.0', async () => {
     const pythonDir = path.join(__dirname, 'src', 'modules', 'ai', 'python_engine');
     console.log('Booting Python AI Engine...');
     
-    const pythonProcess = spawn('cmd.exe', ['/c', 'venv\\Scripts\\python -m uvicorn main:app --port 8000 --reload'], {
+    const isWin = process.platform === 'win32';
+    const command = isWin ? 'cmd.exe' : 'venv/bin/uvicorn';
+    const args = isWin 
+        ? ['/c', 'venv\\Scripts\\uvicorn main:app --port 8000 --reload'] 
+        : ['main:app', '--port', '8000', '--reload'];
+
+    const pythonProcess = spawn(command, args, {
         cwd: pythonDir,
-        stdio: 'inherit' // This streams the Python logs directly into your Node terminal!
+        stdio: 'inherit',
+        shell: isWin
     });
 
     pythonProcess.on('error', (err) => {

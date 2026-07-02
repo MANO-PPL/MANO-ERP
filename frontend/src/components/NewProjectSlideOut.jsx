@@ -15,7 +15,7 @@ const COLORS = [
     'from-pink-400 to-rose-500'
 ];
 
-const NewProjectSlideOut = ({ isOpen, onClose, onProjectCreated }) => {
+const NewProjectSlideOut = ({ isOpen, onClose, onProjectCreated, projectToEdit = null }) => {
     const [selectedEmployees, setSelectedEmployees] = useState([]);
     const [dropdownOpen, setDropdownOpen] = useState(false);
     const [employeeOptions, setEmployeeOptions] = useState([]);
@@ -34,9 +34,26 @@ const NewProjectSlideOut = ({ isOpen, onClose, onProjectCreated }) => {
 
     useEffect(() => {
         if (isOpen) {
+            if (projectToEdit) {
+                setFormData({
+                    name: projectToEdit.name || '',
+                    projectCode: projectToEdit.id || '',
+                    description: projectToEdit.metadata?.description || '',
+                    location: projectToEdit.location || '',
+                    employer: projectToEdit.metadata?.employer || '',
+                    startDate: projectToEdit.startDateRaw || '',
+                    endDate: projectToEdit.endDateRaw || '',
+                    client: projectToEdit.metadata?.client || 'Select Client'
+                });
+            } else {
+                setFormData({
+                    name: '', projectCode: '', description: '', location: '', employer: '', startDate: '', endDate: '', client: 'Select Client'
+                });
+                setSelectedEmployees([]);
+            }
             fetchEmployees();
         }
-    }, [isOpen]);
+    }, [isOpen, projectToEdit]);
 
     const fetchEmployees = async () => {
         try {
@@ -50,6 +67,15 @@ const NewProjectSlideOut = ({ isOpen, onClose, onProjectCreated }) => {
                     color: COLORS[idx % COLORS.length]
                 }));
                 setEmployeeOptions(mappedUsers);
+
+                if (projectToEdit) {
+                    const membersRes = await projectApi.getProjectMembers(projectToEdit.dbId);
+                    if (membersRes.success) {
+                        const assignedIds = membersRes.members.map(m => m.user_id);
+                        const assignedEmployees = mappedUsers.filter(u => assignedIds.includes(u.id));
+                        setSelectedEmployees(assignedEmployees);
+                    }
+                }
             }
         } catch (error) {
             console.error("Failed to fetch employees", error);
@@ -81,25 +107,46 @@ const NewProjectSlideOut = ({ isOpen, onClose, onProjectCreated }) => {
                 start_date: formData.startDate || null,
                 end_date: formData.endDate || null,
                 metadata: {
+                    ...(projectToEdit ? projectToEdit.metadata : {}),
                     description: formData.description,
                     employer: formData.employer,
                     client: formData.client === 'Select Client' ? '' : formData.client
                 }
             };
 
-            const res = await projectApi.createProject(payload);
+            let res;
+            if (projectToEdit) {
+                res = await projectApi.updateProject(projectToEdit.dbId, payload);
+            } else {
+                res = await projectApi.createProject(payload);
+            }
+
             if (res.success) {
-                const newProjectId = res.project_id;
+                const projectId = projectToEdit ? projectToEdit.dbId : res.project_id;
                 
-                // Assign employees
-                for (const emp of selectedEmployees) {
-                    await projectApi.assignProjectMember(newProjectId, {
+                let currentMemberIds = [];
+                if (projectToEdit) {
+                    const membersRes = await projectApi.getProjectMembers(projectId);
+                    if (membersRes.success) {
+                        currentMemberIds = membersRes.members.map(m => m.user_id);
+                    }
+                }
+
+                const toAdd = selectedEmployees.filter(e => !currentMemberIds.includes(e.id));
+                const selectedIds = selectedEmployees.map(e => e.id);
+                const toRemove = currentMemberIds.filter(id => !selectedIds.includes(id));
+
+                for (const emp of toAdd) {
+                    await projectApi.assignProjectMember(projectId, {
                         user_id: emp.id,
                         permissions: { role: emp.role }
                     });
                 }
+
+                for (const userId of toRemove) {
+                    await projectApi.removeProjectMember(projectId, userId);
+                }
                 
-                // Reset form
                 setFormData({
                     name: '', projectCode: '', description: '', location: '', employer: '', startDate: '', endDate: '', client: 'Select Client'
                 });
@@ -131,7 +178,7 @@ const NewProjectSlideOut = ({ isOpen, onClose, onProjectCreated }) => {
             >
                 {/* Header */}
                 <div className="flex justify-between items-center px-6 py-5 border-b border-gray-200 dark:border-[#2A3445] bg-white dark:bg-[#151A25]">
-                    <h2 className="text-lg font-bold text-gray-900 dark:text-white">Create New Project</h2>
+                    <h2 className="text-lg font-bold text-gray-900 dark:text-white">{projectToEdit ? 'Edit Project Details' : 'Create New Project'}</h2>
                     <button
                         onClick={onClose}
                         className="p-1.5 text-gray-500 hover:text-gray-900 dark:text-[#7A8AAB] dark:hover:text-white hover:bg-gray-100 dark:hover:bg-[#2A3445] rounded-md transition-colors"
@@ -267,7 +314,7 @@ const NewProjectSlideOut = ({ isOpen, onClose, onProjectCreated }) => {
                         ) : (
                             <span className="text-lg leading-none mt-[-2px]">+</span>
                         )}
-                        Create Project
+                        {projectToEdit ? 'Save Changes' : 'Create Project'}
                     </button>
                 </div>
             </div>
