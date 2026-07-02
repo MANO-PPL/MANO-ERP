@@ -8,7 +8,7 @@ import agendaRoutes from './agenda/agendaRoutes.js';
 import momRoutes from './mom/momRoutes.js';
 import orgRoutes from './org/orgRoutes.js';
 import projectInstanceRoutes from './instances/projectInstanceRoutes.js';
-import { authenticateJWT, restrictTo } from '../../middleware/auth.js';
+import { authenticateJWT, restrictTo, requireProjectPermission, requireProjectAssignment } from '../../middleware/auth.js';
 
 const router = express.Router();
 
@@ -19,37 +19,37 @@ router.use(authenticateJWT);
 router.post('/', restrictTo('admin', 'hr'), projectController.createProject);
 router.put('/:id', restrictTo('admin', 'hr'), projectController.updateProject);
 
-// Everyone can list projects (the frontend logic or later query updates can filter visibility if needed)
+// Everyone can list projects (but viewing details requires assignment/admin bypass)
 router.get('/', projectController.listProjects);
-router.get('/:id', projectController.getProject);
+router.get('/:id', requireProjectAssignment, projectController.getProject);
 
-// Project Member Management (Assigning developers, engineers, and parsing custom permissions)
-router.get('/:id/members', projectController.getProjectMembers);
+// Project Member Management
+router.get('/:id/members', requireProjectAssignment, projectController.getProjectMembers);
 router.post('/:id/members', restrictTo('admin', 'hr'), projectController.assignProjectMember);
 router.delete('/:id/members/:user_id', restrictTo('admin', 'hr'), projectController.removeProjectMember);
 
 // Project Directory (sub-resource under each project)
-router.use('/:id/directory', directoryRoutes);
+router.use('/:id/directory', requireProjectPermission('directory'), directoryRoutes);
 
 // Project Vendors (sub-resource under each project)
-router.use('/:id/vendors', vendorRoutes);
+router.use('/:id/vendors', requireProjectPermission('vendors'), vendorRoutes);
 
 // Project Staff (sub-resource under each project)
-router.use('/:id/staff', staffRoutes);
+router.use('/:id/staff', requireProjectPermission('staff'), staffRoutes);
 
 // Project Summary (sub-resource under each project)
-router.use('/:id/summary', summaryRoutes);
+router.use('/:id/summary', requireProjectPermission('summary'), summaryRoutes);
 
 // Project Agendas (sub-resource under each project)
-router.use('/:id/agendas', agendaRoutes);
+router.use('/:id/agendas', requireProjectPermission('agenda'), agendaRoutes);
 
 // Project Minutes of Meeting (sub-resource under each project)
-router.use('/:id/moms', momRoutes);
+router.use('/:id/moms', requireProjectPermission('mom'), momRoutes);
 
 // Project Organization Chart
-router.use('/:id/org', orgRoutes);
+router.use('/:id/org', requireProjectPermission('org'), orgRoutes);
 
 // Project Document Instances
-router.use('/:id/instances', projectInstanceRoutes);
+router.use('/:id/instances', requireProjectPermission('instances'), projectInstanceRoutes);
 
 export default router;

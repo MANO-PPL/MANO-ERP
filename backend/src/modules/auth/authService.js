@@ -9,6 +9,33 @@ import AppError from '../../utils/AppError.js';
 const ACCESS_TOKEN_EXPIRY = '15m';
 
 /**
+ * Helper to format user response safely and parse permissions
+ */
+function formatUserResponse(user) {
+    let systemPerms = user.system_permissions;
+    if (typeof systemPerms === 'string') {
+        try {
+            systemPerms = JSON.parse(systemPerms);
+        } catch (e) {
+            systemPerms = null;
+        }
+    }
+
+    return {
+        id: user.user_id,
+        user_code: user.user_code,
+        user_name: user.user_name,
+        email: user.email,
+        phone_no: user.phone_no,
+        user_type: user.user_type,
+        profile_image_url: user.profile_image_url,
+        dept_name: user.dept_name || null,
+        desg_name: user.desg_name || null,
+        system_permissions: systemPerms || null
+    };
+}
+
+/**
  * Authenticate user with email/phone and password
  * Returns access token, refresh token and user data
  */
@@ -26,6 +53,7 @@ export async function authenticateUser(userInput, password, req) {
             'users.org_id',
             'users.user_type',
             'users.profile_image_url',
+            'users.system_permissions',
             'departments.dept_name',
             'designations.desg_name'
         )
@@ -70,17 +98,7 @@ export async function authenticateUser(userInput, password, req) {
     return {
         accessToken,
         refreshToken,
-        user: {
-            id: user.user_id,
-            user_code: user.user_code,
-            user_name: user.user_name,
-            email: user.email,
-            phone_no: user.phone_no,
-            user_type: user.user_type,
-            profile_image_url: user.profile_image_url,
-            dept_name: user.dept_name,
-            desg_name: user.desg_name
-        }
+        user: formatUserResponse(user)
     };
 }
 
@@ -116,7 +134,11 @@ export async function refreshAccessToken(refreshToken, req) {
         await TokenService.revokeRefreshToken(refreshToken, newRefreshToken);
     }
 
-    return { accessToken: newAccessToken, refreshToken: newRefreshToken, user };
+    return { 
+        accessToken: newAccessToken, 
+        refreshToken: newRefreshToken, 
+        user: formatUserResponse(user) 
+    };
 }
 
 /**

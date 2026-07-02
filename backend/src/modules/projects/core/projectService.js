@@ -1,6 +1,31 @@
 import { db } from '../../../config/database.js';
 import AppError from '../../../utils/AppError.js';
 
+export function validateProjectPermissions(permissions) {
+    if (!permissions) return null;
+    let parsed = permissions;
+    if (typeof permissions === 'string') {
+        try {
+            parsed = JSON.parse(permissions);
+        } catch (e) {
+            throw new AppError('Invalid project_permissions JSON string format', 400);
+        }
+    }
+    if (typeof parsed !== 'object' || Array.isArray(parsed)) {
+        throw new AppError('project_permissions must be a JSON object', 400);
+    }
+    const ALLOWED_LEVELS = new Set(['none', 'view', 'edit']);
+    const sanitized = {};
+    for (const [module, level] of Object.entries(parsed)) {
+        if (!level || typeof level !== 'string' || !ALLOWED_LEVELS.has(level.toLowerCase())) {
+            throw new AppError(`Invalid permission level '${level}' for module '${module}'. Must be 'none', 'view', or 'edit'.`, 400);
+        }
+        sanitized[module] = level.toLowerCase();
+    }
+    return sanitized;
+}
+
+
 export async function createProject(orgId, { name, location, status = 'active', project_code, start_date, end_date, metadata }) {
     if (!name) throw new AppError('Project name is required', 400);
 
@@ -65,16 +90,18 @@ export async function assignUserToProject(orgId, projectId, userId, permissionsJ
     // MySQL requires insert ... on duplicate key update string literal when not using knex.upsert depending on version, 
     // but knex `.onConflict` is standard for modern MySQL. Knex version >= 2.1 supports it:
 
+    const validatedPerms = permissionsJson ? validateProjectPermissions(permissionsJson) : null;
+
     await db('project_users')
         .insert({
             project_id: projectId,
             user_id: userId,
             org_id: orgId,
-            project_permissions: permissionsJson ? JSON.stringify(permissionsJson) : null
+            project_permissions: validatedPerms ? JSON.stringify(validatedPerms) : null
         })
         .onConflict(['project_id', 'user_id'])
         .merge({
-            project_permissions: permissionsJson ? JSON.stringify(permissionsJson) : null
+            project_permissions: validatedPerms ? JSON.stringify(validatedPerms) : null
         });
 
     return true;

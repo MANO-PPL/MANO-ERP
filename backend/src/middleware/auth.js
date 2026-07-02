@@ -35,7 +35,8 @@ export const authenticateJWT = catchAsync(async (req, res, next) => {
         req.user = {
             ...decoded,
             id: user.user_id || user.id, // standardized ID accessor
-            user_type: user.user_type ? user.user_type.toLowerCase() : 'employee'
+            user_type: user.user_type ? user.user_type.toLowerCase() : 'employee',
+            system_permissions: user.system_permissions
         };
 
         next();
@@ -48,6 +49,134 @@ export const authenticateJWT = catchAsync(async (req, res, next) => {
         return res.status(403).json({ message: "Forbidden: Invalid or expired token" });
     }
 });
+
+const hasAccess = (userRole, requiredLevel) => {
+    if (!userRole || userRole === 'none') return false;
+    if (requiredLevel === 'view') {
+        return userRole === 'view' || userRole === 'edit';
+    }
+    if (requiredLevel === 'edit') {
+        return userRole === 'edit';
+    }
+    return false;
+};
+
+export const requireSystemPermission = (module) => {
+    return (req, res, next) => {
+        const { user_type, system_permissions } = req.user;
+        const requiredLevel = req.method === 'GET' ? 'view' : 'edit';
+
+        // Superadmin bypass
+        if (user_type === 'admin') {
+            return next();
+        }
+
+        let permissions = system_permissions;
+        if (typeof system_permissions === 'string') {
+            try {
+                permissions = JSON.parse(system_permissions);
+            } catch (e) {
+                permissions = {};
+            }
+        }
+
+        const userRole = permissions?.[module] || 'none';
+
+        if (hasAccess(userRole, requiredLevel)) {
+            return next();
+        }
+
+        return res.status(403).json({
+            success: false,
+            message: `Forbidden: You do not have '${requiredLevel}' access to ${module}.`
+        });
+    };
+};
+
+export const requireProjectAssignment = async (req, res, next) => {
+    const { id: user_id, user_type, org_id } = req.user;
+    const projectId = req.params.projectId || req.params.id;
+
+    if (!projectId) {
+        return res.status(400).json({ success: false, message: "Project ID is required" });
+    }
+
+    // Superadmin bypass
+    if (user_type === 'admin') {
+        return next();
+    }
+
+    try {
+        const projectUser = await db('project_users')
+            .where({ project_id: projectId, user_id, org_id })
+            .first();
+
+        if (!projectUser) {
+            return res.status(403).json({
+                success: false,
+                message: "Forbidden: You are not assigned to this project."
+            });
+        }
+
+        next();
+    } catch (error) {
+        console.error("Project Assignment Guard Error:", error);
+        return res.status(500).json({ success: false, message: "Internal server error during project check." });
+    }
+};
+
+export const requireProjectPermission = (module) => {
+    return async (req, res, next) => {
+        const { id: user_id, user_type, org_id } = req.user;
+        const projectId = req.params.projectId || req.params.id;
+        const requiredLevel = req.method === 'GET' ? 'view' : 'edit';
+
+        if (!projectId) {
+            return res.status(400).json({ success: false, message: "Project ID is required" });
+        }
+
+        // Superadmin bypass
+        if (user_type === 'admin') {
+            return next();
+        }
+
+        try {
+            const projectUser = await db('project_users')
+                .where({ project_id: projectId, user_id, org_id })
+                .first();
+
+            if (!projectUser) {
+                return res.status(403).json({
+                    success: false,
+                    message: "Forbidden: You are not assigned to this project."
+                });
+            }
+
+            let projectPerms = projectUser.project_permissions;
+            if (typeof projectPerms === 'string') {
+                try {
+                    projectPerms = JSON.parse(projectPerms);
+                } catch (e) {
+                    projectPerms = {};
+                }
+            }
+
+            const userRole = projectPerms?.[module] || 'none';
+
+            if (hasAccess(userRole, requiredLevel)) {
+                return next();
+            }
+
+            return res.status(403).json({
+                success: false,
+                message: `Forbidden: You do not have '${requiredLevel}' access to ${module} in this project.`
+            });
+        } catch (error) {
+            console.error("Project Permission Guard Error:", error);
+            return res.status(500).json({ success: false, message: "Internal server error during authorization check." });
+        }
+    };
+};
 
 export const restrictTo = (...roles) => {
     return (req, res, next) => {

@@ -1,16 +1,16 @@
 import express from 'express';
 import multer from 'multer';
 import clientController from './clientController.js';
-import { authenticateJWT } from '../../middleware/auth.js';
+import { authenticateJWT, requireSystemPermission } from '../../middleware/auth.js';
 
 const router = express.Router();
 const upload = multer();
 
+// Apply auth and permission checks to all client routes
+router.use(authenticateJWT);
+router.use(requireSystemPermission('clients'));
 
-// Apply auth middleware to all client routes
-// router.use(authenticateJWT);
-
-// Publicly readable for authenticated users
+// Publicly readable/writable based on none/view/edit permission settings
 router.get('/', clientController.listClients);
 router.post('/bulk', upload.single('file'), clientController.bulkUpload);
 router.post('/bulk-validate', clientController.bulkValidate);

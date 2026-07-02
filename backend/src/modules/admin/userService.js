@@ -2,6 +2,30 @@ import bcrypt from 'bcrypt';
 import AppError from '../../utils/AppError.js';
 import { db } from '../../config/database.js';
 
+export function validateSystemPermissions(permissions) {
+    if (!permissions) return null;
+    let parsed = permissions;
+    if (typeof permissions === 'string') {
+        try {
+            parsed = JSON.parse(permissions);
+        } catch (e) {
+            throw new AppError('Invalid system_permissions JSON string format', 400);
+        }
+    }
+    if (typeof parsed !== 'object' || Array.isArray(parsed)) {
+        throw new AppError('system_permissions must be a JSON object', 400);
+    }
+    const ALLOWED_LEVELS = new Set(['none', 'view', 'edit']);
+    const sanitized = {};
+    for (const [module, level] of Object.entries(parsed)) {
+        if (!level || typeof level !== 'string' || !ALLOWED_LEVELS.has(level.toLowerCase())) {
+            throw new AppError(`Invalid permission level '${level}' for module '${module}'. Must be 'none', 'view', or 'edit'.`, 400);
+        }
+        sanitized[module] = level.toLowerCase();
+    }
+    return sanitized;
+}
+
 // Retrieve all users for an organization
 export async function getUsersByOrg(orgId) {
     return await db('users as u')
@@ -102,6 +126,8 @@ export async function createUser(org_id, userData) {
             .where({ org_id: org_id })
             .update({ last_user_number: nextNumber });
 
+        const validatedPerms = system_permissions ? validateSystemPermissions(system_permissions) : null;
+
         const [id] = await trx('users').insert({
             user_name,
             user_password: hashedPassword,
@@ -113,7 +139,7 @@ export async function createUser(org_id, userData) {
             org_id: org_id,
             user_code: userCode,
             profile_image_url,
-            system_permissions: system_permissions ? JSON.stringify(system_permissions) : null
+            system_permissions: validatedPerms ? JSON.stringify(validatedPerms) : null
         });
         newUserId = id;
     });
@@ -178,7 +204,8 @@ export async function updateUser(orgId, userId, updateData) {
                     updates.phone_no = null;
                 }
             } else if (key === 'system_permissions') {
-                updates.system_permissions = updateData.system_permissions ? JSON.stringify(updateData.system_permissions) : null;
+                const validatedPerms = updateData.system_permissions ? validateSystemPermissions(updateData.system_permissions) : null;
+                updates.system_permissions = validatedPerms ? JSON.stringify(validatedPerms) : null;
             } else {
                 if (['desg_id', 'dept_id'].includes(key) && updateData[key] === '') {
                     updates[key] = null;
