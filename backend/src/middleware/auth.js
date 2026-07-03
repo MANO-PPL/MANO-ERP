@@ -66,8 +66,9 @@ export const requireSystemPermission = (module) => {
         const { user_type, system_permissions } = req.user;
         const requiredLevel = req.method === 'GET' ? 'view' : 'edit';
 
-        // Superadmin bypass
-        if (user_type === 'admin') {
+        // Normalized Admin/Superadmin bypass
+        const normRole = (user_type || '').toLowerCase();
+        if (['admin', 'super admin', 'superadmin', 'super_admin'].includes(normRole)) {
             return next();
         }
 
@@ -109,8 +110,9 @@ export const requireProjectAssignment = async (req, res, next) => {
         return res.status(400).json({ success: false, message: "Project ID is required" });
     }
 
-    // Superadmin bypass
-    if (user_type === 'admin') {
+    // Normalized Admin/Superadmin bypass
+    const normRole = (user_type || '').toLowerCase();
+    if (['admin', 'super admin', 'superadmin', 'super_admin'].includes(normRole)) {
         return next();
     }
 
@@ -143,8 +145,9 @@ export const requireProjectPermission = (module) => {
             return res.status(400).json({ success: false, message: "Project ID is required" });
         }
 
-        // Superadmin bypass
-        if (user_type === 'admin') {
+        // Normalized Admin/Superadmin bypass
+        const normRole = (user_type || '').toLowerCase();
+        if (['admin', 'super admin', 'superadmin', 'super_admin'].includes(normRole)) {
             return next();
         }
 
@@ -199,7 +202,11 @@ export const requireProjectPermission = (module) => {
 
 export const restrictTo = (...roles) => {
     return (req, res, next) => {
-        if (!req.user || !roles.includes(req.user.user_type)) {
+        const userRole = req.user?.user_type?.toLowerCase();
+        const allowedRoles = roles.map(r => r.toLowerCase());
+
+        if (!req.user || !allowedRoles.includes(userRole)) {
+            console.warn(`[AUTH] Access Denied: Path ${req.originalUrl} - User role '${userRole}' not in allowed roles [${roles.join(', ')}]`);
             return res.status(403).json({ success: false, message: `Forbidden: role '${req.user?.user_type}' not in [${roles.join(',')}]` });
         }
         next();

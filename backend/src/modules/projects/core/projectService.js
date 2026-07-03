@@ -43,10 +43,20 @@ export async function createProject(orgId, { name, location, status = 'active', 
     return insertId;
 }
 
-export async function getProjects(orgId) {
-    return await db('proj_projects')
-        .where('org_id', orgId)
-        .orderBy('created_at', 'desc');
+export async function getProjects(orgId, userId, userType) {
+    const isUserAdmin = ['admin', 'super admin', 'superadmin', 'super_admin'].includes(userType?.toLowerCase());
+    if (isUserAdmin) {
+        return await db('proj_projects')
+            .where('org_id', orgId)
+            .orderBy('created_at', 'desc');
+    } else {
+        return await db('proj_projects as p')
+            .join('proj_members as pu', 'p.id', 'pu.project_id')
+            .where('p.org_id', orgId)
+            .andWhere('pu.user_id', userId)
+            .select('p.*')
+            .orderBy('p.created_at', 'desc');
+    }
 }
 
 export async function getProjectById(orgId, projectId) {

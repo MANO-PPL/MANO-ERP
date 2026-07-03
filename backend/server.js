@@ -5,6 +5,8 @@ import path from 'path';
 import { fileURLToPath } from 'url';
 import './src/config/config.js';
 import app from './src/app.js';
+import { initializePermissionsSchema } from './src/modules/admin/permissionService.js';
+
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -36,14 +38,15 @@ io.on('connection', (socket) => {
     });
 });
 
-server.listen(PORT, '0.0.0.0', () => {
+server.listen(PORT, '0.0.0.0', async () => {
     console.log(`Backend server running on http://localhost:${PORT}`);
+    await initializePermissionsSchema();
     
     // Auto-start Python AI Microservice
     const pythonDir = path.join(__dirname, 'src', 'modules', 'ai', 'python_engine');
     console.log('Booting Python AI Engine...');
     
-    const pythonProcess = spawn('cmd.exe', ['/c', 'venv\\Scripts\\uvicorn main:app --port 8000 --reload'], {
+    const pythonProcess = spawn('cmd.exe', ['/c', 'venv\\Scripts\\python -m uvicorn main:app --port 8000 --reload'], {
         cwd: pythonDir,
         stdio: 'inherit' // This streams the Python logs directly into your Node terminal!
     });

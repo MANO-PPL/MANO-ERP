@@ -58,4 +58,12 @@ export const logout = catchAsync(async (req, res, next) => {
     res.status(200).json({ success: true, message: 'Logged out successfully' });
 });
 
-export default { login, refresh, logout };
+export const getMe = catchAsync(async (req, res, next) => {
+    const user = await authService.getUserProfile(req.user.user_id || req.user.id);
+    res.status(200).json({
+        success: true,
+        user
+    });
+});
+
+export default { login, refresh, logout, getMe };

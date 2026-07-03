@@ -79,6 +79,13 @@ export async function getUserById(orgId, userId) {
     if (!user) {
         throw new AppError('User not found', 404);
     }
+
+    // Fetch assigned projects
+    const projects = await db('project_users')
+        .where({ user_id: userId, org_id: orgId })
+        .select('project_id');
+    user.assigned_projects = projects.map(p => p.project_id);
+
     return user;
 }
 

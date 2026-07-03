@@ -103,6 +103,45 @@ export async function authenticateUser(userInput, password, req) {
 }
 
 /**
+ * Retrieve user profile including system permissions
+ */
+export async function getUserProfile(userId) {
+    const user = await db('users')
+        .leftJoin('departments', 'users.dept_id', 'departments.dept_id')
+        .leftJoin('designations', 'users.desg_id', 'designations.desg_id')
+        .select(
+            'users.user_id',
+            'users.user_code',
+            'users.user_name',
+            'users.email',
+            'users.phone_no',
+            'users.org_id',
+            'users.user_type',
+            'users.profile_image_url',
+            'users.system_permissions',
+            'departments.dept_name',
+            'designations.desg_name'
+        )
+        .where('users.user_id', userId)
+        .first();
+
+    if (!user) throw new AppError('User not found', 404);
+
+    return {
+        id: user.user_id,
+        user_code: user.user_code,
+        user_name: user.user_name,
+        email: user.email,
+        phone_no: user.phone_no,
+        user_type: user.user_type,
+        profile_image_url: user.profile_image_url,
+        dept_name: user.dept_name,
+        desg_name: user.desg_name,
+        system_permissions: user.system_permissions ? (typeof user.system_permissions === 'string' ? JSON.parse(user.system_permissions) : user.system_permissions) : null
+    };
+}
+
+/**
  * Refresh access token using refresh token from cookie
  */
 export async function refreshAccessToken(refreshToken, req) {
@@ -134,11 +173,8 @@ export async function refreshAccessToken(refreshToken, req) {
         await TokenService.revokeRefreshToken(refreshToken, newRefreshToken);
     }
 
-    return { 
-        accessToken: newAccessToken, 
-        refreshToken: newRefreshToken, 
-        user: formatUserResponse(user) 
-    };
+    const userProfile = await getUserProfile(user.user_id);
+    return { accessToken: newAccessToken, refreshToken: newRefreshToken, user: userProfile };
 }
 
 /**
@@ -148,4 +184,4 @@ export async function logoutUser(refreshToken) {
     if (refreshToken) await TokenService.revokeRefreshToken(refreshToken);
 }
 
-export default { authenticateUser, refreshAccessToken, logoutUser };
+export default { authenticateUser, refreshAccessToken, logoutUser, getUserProfile };

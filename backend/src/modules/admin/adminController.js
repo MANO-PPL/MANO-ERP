@@ -8,6 +8,8 @@ import AppError from '../../utils/AppError.js';
 import S3Service from '../shared/s3Service.js';
 import ExcelJS from 'exceljs';
 import { PassThrough } from 'stream';
+import { db } from '../../config/database.js';
+
 
 export const listUsers = catchAsync(async (req, res) => {
     const users = await userService.getUsersByOrg(req.user.org_id);
@@ -86,7 +88,19 @@ export const deleteDesignation = catchAsync(async (req, res) => {
 });
 
 export const createUser = catchAsync(async (req, res) => {
-    const newUserId = await userService.createUser(req.user.org_id, req.body);
+    const { project_ids, ...userData } = req.body;
+    const newUserId = await userService.createUser(req.user.org_id, userData);
+
+    if (project_ids && Array.isArray(project_ids) && project_ids.length > 0) {
+        const inserts = project_ids.map(pid => ({
+            project_id: pid,
+            user_id: newUserId,
+            org_id: req.user.org_id,
+            project_permissions: JSON.stringify({})
+        }));
+        await db('project_users').insert(inserts);
+    }
+
     res.status(201).json({ success: true, message: 'User created', user_id: newUserId });
 });
 
@@ -96,7 +110,8 @@ export const updateUser = catchAsync(async (req, res) => {
         throw new AppError('Invalid User ID', 400);
     }
 
-    const updatePayload = { ...req.body };
+    const { project_ids, ...userData } = req.body;
+    const updatePayload = { ...userData };
 
     // Handle profile image if uploaded (req.file.buffer)
     if (req.file && req.file.buffer) {
@@ -109,6 +124,34 @@ export const updateUser = catchAsync(async (req, res) => {
     }
 
     await userService.updateUser(req.user.org_id, user_id, updatePayload);
+
+    if (project_ids !== undefined && Array.isArray(project_ids)) {
+        // Sync project_users table
+        const existing = await db('project_users')
+            .where({ user_id: user_id, org_id: req.user.org_id })
+            .select('project_id');
+        const existingIds = existing.map(e => e.project_id);
+
+        const toAdd = project_ids.filter(id => !existingIds.includes(id));
+        const toRemove = existingIds.filter(id => !project_ids.includes(id));
+
+        if (toRemove.length > 0) {
+            await db('project_users')
+                .where({ user_id: user_id, org_id: req.user.org_id })
+                .whereIn('project_id', toRemove)
+                .del();
+        }
+
+        if (toAdd.length > 0) {
+            const inserts = toAdd.map(pid => ({
+                project_id: pid,
+                user_id: user_id,
+                org_id: req.user.org_id,
+                project_permissions: JSON.stringify({})
+            }));
+            await db('project_users').insert(inserts);
+        }
+    }
 
     res.json({ success: true, message: 'User updated successfully' });
 });
