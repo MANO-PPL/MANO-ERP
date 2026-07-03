@@ -1,8 +1,9 @@
 
 import React, { Suspense, lazy } from 'react';
-import { BrowserRouter as Router, Routes, Route } from 'react-router-dom';
+import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
 import MainLayout from './components/layout/MainLayout';
 import PageSkeleton from './components/PageSkeleton';
+import { AuthProvider, useAuth } from './context/AuthContext';
 
 // ─── Lazy-loaded pages ────────────────────────────────────────────────────
 const Dashboard = lazy(() => import('./pages/Dashboard'));
@@ -20,84 +21,119 @@ const Login = lazy(() => import('./pages/Auth/Login'));
 
 import './index.css';
 
-// ─── Pick the right skeleton variant per route ────────────────────────────
-const RouteSkeletonFallback = () => {
-  const path = window.location.pathname;
-  const variant =
-    path.startsWith('/admin') || path.startsWith('/collaboration')
-      ? 'table'
-      : 'grid';
-  return <PageSkeleton variant={variant} />;
+// ─── Protected Route Wrapper ────────────────────────────────────────────────
+const ProtectedRoute = ({ children, pageId, requiredLevel = 1 }) => {
+  const { user, loading, hasPermission } = useAuth();
+
+  if (loading) {
+    return <PageSkeleton variant="grid" />;
+  }
+
+  if (!user) {
+    return <Navigate to="/login" replace />;
+  }
+
+  if (pageId && !hasPermission(pageId, requiredLevel)) {
+    return <Navigate to="/" replace />;
+  }
+
+  return children;
 };
 
 function App() {
   return (
-    <Router>
-      <Routes>
-        <Route path="/login" element={
-          <Suspense fallback={<PageSkeleton variant="grid" />}>
-            <Login />
-          </Suspense>
-        } />
-        <Route path="/" element={<MainLayout />}>
-          <Route index element={
+    <AuthProvider>
+      <Router>
+        <Routes>
+          <Route path="/login" element={
             <Suspense fallback={<PageSkeleton variant="grid" />}>
-              <Dashboard />
+              <Login />
             </Suspense>
           } />
-          <Route path="projects" element={
-            <Suspense fallback={<PageSkeleton variant="grid" />}>
-              <Projects />
-            </Suspense>
-          } />
-          <Route path="projects/:id" element={
-            <Suspense fallback={<PageSkeleton variant="table" />}>
-              <ProjectDetails />
-            </Suspense>
-          } />
-          <Route path="vendors" element={
-            <Suspense fallback={<PageSkeleton variant="table" />}>
-              <VendorsList />
-            </Suspense>
-          } />
-          <Route path="vendors/bulk-upload" element={
-            <Suspense fallback={<PageSkeleton variant="table" />}>
-              <VendorBulkUpload />
-            </Suspense>
-          } />
-          <Route path="resources" element={
-            <Suspense fallback={<PageSkeleton variant="table" />}>
-              <ResourcesList />
-            </Suspense>
-          } />
-          <Route path="units" element={
-            <Suspense fallback={<PageSkeleton variant="table" />}>
-              <UnitsList />
-            </Suspense>
-          } />
-          <Route path="collaboration" element={
-            <Suspense fallback={<PageSkeleton variant="table" />}>
-              <CollaborationPage />
-            </Suspense>
-          } />
-          <Route path="admin" element={
-            <Suspense fallback={<PageSkeleton variant="table" />}>
-              <AdminPage />
-            </Suspense>
-          } />
-          <Route path="clients" element={
-            <Suspense fallback={<PageSkeleton variant="table" />}>
-              <ClientsList />
-            </Suspense>
-          } />
-          <Route path="clients/bulk-upload" element={
-            <Suspense fallback={<PageSkeleton variant="table" />}>
-              <ClientBulkUpload />
-            </Suspense>
-          } />
-        </Route>
-      </Routes>
-    </Router>
+          <Route path="/" element={
+            <ProtectedRoute>
+              <MainLayout />
+            </ProtectedRoute>
+          }>
+            <Route index element={
+              <Suspense fallback={<PageSkeleton variant="grid" />}>
+                <Dashboard />
+              </Suspense>
+            } />
+            <Route path="projects" element={
+              <ProtectedRoute pageId="projects">
+                <Suspense fallback={<PageSkeleton variant="grid" />}>
+                  <Projects />
+                </Suspense>
+              </ProtectedRoute>
+            } />
+            <Route path="projects/:id" element={
+              <ProtectedRoute pageId="projects">
+                <Suspense fallback={<PageSkeleton variant="table" />}>
+                  <ProjectDetails />
+                </Suspense>
+              </ProtectedRoute>
+            } />
+            <Route path="vendors" element={
+              <ProtectedRoute pageId="vendors">
+                <Suspense fallback={<PageSkeleton variant="table" />}>
+                  <VendorsList />
+                </Suspense>
+              </ProtectedRoute>
+            } />
+            <Route path="vendors/bulk-upload" element={
+              <ProtectedRoute pageId="vendors">
+                <Suspense fallback={<PageSkeleton variant="table" />}>
+                  <VendorBulkUpload />
+                </Suspense>
+              </ProtectedRoute>
+            } />
+            <Route path="resources" element={
+              <ProtectedRoute pageId="resources">
+                <Suspense fallback={<PageSkeleton variant="table" />}>
+                  <ResourcesList />
+                </Suspense>
+              </ProtectedRoute>
+            } />
+            <Route path="units" element={
+              <ProtectedRoute pageId="units">
+                <Suspense fallback={<PageSkeleton variant="table" />}>
+                  <UnitsList />
+                </Suspense>
+              </ProtectedRoute>
+            } />
+            <Route path="collaboration" element={
+              <ProtectedRoute pageId="collaboration">
+                <Suspense fallback={<PageSkeleton variant="table" />}>
+                  <CollaborationPage />
+                </Suspense>
+              </ProtectedRoute>
+            } />
+            <Route path="admin" element={
+              <ProtectedRoute pageId="admin">
+                <Suspense fallback={<PageSkeleton variant="table" />}>
+                  <AdminPage />
+                </Suspense>
+              </ProtectedRoute>
+            } />
+            <Route path="clients" element={
+              <ProtectedRoute pageId="clients">
+                <Suspense fallback={<PageSkeleton variant="table" />}>
+                  <ClientsList />
+                </Suspense>
+              </ProtectedRoute>
+            } />
+            <Route path="clients/bulk-upload" element={
+              <ProtectedRoute pageId="clients">
+                <Suspense fallback={<PageSkeleton variant="table" />}>
+                  <ClientBulkUpload />
+                </Suspense>
+              </ProtectedRoute>
+            } />
+          </Route>
+        </Routes>
+      </Router>
+    </AuthProvider>
   );
 }
 

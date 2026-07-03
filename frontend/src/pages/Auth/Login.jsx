@@ -1,13 +1,15 @@
 import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { toast } from 'react-toastify';
-import api, { setAccessToken } from '../../services/api';
+import api from '../../services/api';
+import { useAuth } from '../../context/AuthContext';
 
 export default function Login() {
     const [email, setEmail] = useState('');
     const [password, setPassword] = useState('');
     const [loading, setLoading] = useState(false);
     const navigate = useNavigate();
+    const { login } = useAuth();
 
     const handleSubmit = async (e) => {
         e.preventDefault();
@@ -17,11 +19,7 @@ export default function Login() {
             const res = await api.post('/auth/login', { email, password });
             
             if (res.data.success && res.data.accessToken) {
-                // Set interceptor token so subsequent requests have it
-                setAccessToken(res.data.accessToken);
-                
-                // Also store backup in localStorage if other parts of app rely on it initially
-                localStorage.setItem('token', res.data.accessToken);
+                login(res.data.accessToken, res.data.user);
                 
                 toast.success('Successfully logged in!');
                 navigate('/');
