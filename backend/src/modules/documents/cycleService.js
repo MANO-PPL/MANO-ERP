@@ -434,7 +434,7 @@ export async function cancelCycle(orgId, cycleId, userId, comments) {
         // To be safe and compliant with instruction: check if initiated_by === userId
         // A more robust check could query users.user_type if admin bypass is needed.
         const user = await trx('iam_users').where({ user_id: userId }).first();
-        const isAdmin = user && ['admin', 'org_admin'].includes(user.user_type);
+        const isAdmin = user && user.user_type === 'admin';
         
         if (cycle.initiated_by !== userId && !isAdmin) {
             throw new AppError('Only the cycle initiator or an admin can cancel this cycle', 403);

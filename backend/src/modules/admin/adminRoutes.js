@@ -9,7 +9,7 @@ const upload = multer(); // memory storage
 
 // Apply auth and role restrictions to all admin routes globally
 router.use(authenticateJWT);
-router.use(restrictTo('admin', 'hr', 'super admin', 'superadmin', 'super_admin', 'employee', 'null'));
+router.use(restrictTo('admin'));
 
 // Users
 router.get('/users', adminController.listUsers);

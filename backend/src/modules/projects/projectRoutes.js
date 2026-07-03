@@ -16,8 +16,8 @@ const router = express.Router();
 router.use(authenticateJWT);
 
 // Projects CRUD (Only Admin and HR can create/edit projects globally)
-router.post('/', restrictTo('admin', 'hr'), projectController.createProject);
-router.put('/:id', restrictTo('admin', 'hr'), projectController.updateProject);
+router.post('/', restrictTo('admin'), projectController.createProject);
+router.put('/:id', restrictTo('admin'), projectController.updateProject);
 
 // Everyone can list projects (but viewing details requires assignment/admin bypass)
 router.get('/', projectController.listProjects);
@@ -25,8 +25,8 @@ router.get('/:id', requireProjectAssignment, projectController.getProject);
 
 // Project Member Management
 router.get('/:id/members', requireProjectAssignment, projectController.getProjectMembers);
-router.post('/:id/members', restrictTo('admin', 'hr'), projectController.assignProjectMember);
-router.delete('/:id/members/:user_id', restrictTo('admin', 'hr'), projectController.removeProjectMember);
+router.post('/:id/members', restrictTo('admin'), projectController.assignProjectMember);
+router.delete('/:id/members/:user_id', restrictTo('admin'), projectController.removeProjectMember);
 
 // Project Directory (sub-resource under each project)
 router.use('/:id/directory', requireProjectPermission('directory'), directoryRoutes);

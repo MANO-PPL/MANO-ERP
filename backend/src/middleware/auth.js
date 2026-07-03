@@ -71,6 +71,14 @@ export const requireSystemPermission = (module) => {
             return next();
         }
 
+        // Clients have no access to global system-level modules
+        if (user_type === 'client') {
+            return res.status(403).json({
+                success: false,
+                message: "Forbidden: Clients do not have access to global administration modules."
+            });
+        }
+
         let permissions = system_permissions;
         if (typeof system_permissions === 'string') {
             try {
@@ -149,6 +157,17 @@ export const requireProjectPermission = (module) => {
                 return res.status(403).json({
                     success: false,
                     message: "Forbidden: You are not assigned to this project."
+                });
+            }
+
+            // Predefined client privilege: read-only (GET) view access
+            if (user_type === 'client') {
+                if (requiredLevel === 'view') {
+                    return next();
+                }
+                return res.status(403).json({
+                    success: false,
+                    message: "Forbidden: Clients are restricted to read-only access in this project."
                 });
             }
 
