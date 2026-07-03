@@ -85,7 +85,7 @@ const SummaryCard = ({ type, count, selected, onClick }) => {
 
 // ─── Unit Row ─────────────────────────────────────────────────────────────────
 
-const UnitRow = ({ unit, unitsMap, onEdit, onDelete }) => {
+const UnitRow = ({ unit, unitsMap, onEdit, onDelete, canWrite }) => {
     const meta = TYPE_META[unit.unit_type] ?? TYPE_META.weight;
     const Icon = meta.icon;
 
@@ -117,24 +117,26 @@ const UnitRow = ({ unit, unitsMap, onEdit, onDelete }) => {
 
             {/* Actions */}
             <td className="px-4 py-3 text-center">
-                <div className="flex items-center justify-center gap-1.5 opacity-0 group-hover:opacity-100 transition-opacity">
-                    <button
-                        id={`edit-unit-${unit.id}`}
-                        onClick={() => onEdit(unit)}
-                        className="p-1.5 text-gray-400 hover:text-green-500 hover:bg-green-50 dark:hover:bg-green-900/20 rounded-lg transition-all"
-                        title="Edit unit"
-                    >
-                        <Edit2 size={15} />
-                    </button>
-                    <button
-                        id={`delete-unit-${unit.id}`}
-                        onClick={() => onDelete(unit)}
-                        className="p-1.5 text-gray-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-lg transition-all"
-                        title="Delete unit"
-                    >
-                        <Trash2 size={15} />
-                    </button>
-                </div>
+                {canWrite && (
+                    <div className="flex items-center justify-center gap-1.5 opacity-0 group-hover:opacity-100 transition-opacity">
+                        <button
+                            id={`edit-unit-${unit.id}`}
+                            onClick={() => onEdit(unit)}
+                            className="p-1.5 text-gray-400 hover:text-green-500 hover:bg-green-50 dark:hover:bg-green-900/20 rounded-lg transition-all"
+                            title="Edit unit"
+                        >
+                            <Edit2 size={15} />
+                        </button>
+                        <button
+                            id={`delete-unit-${unit.id}`}
+                            onClick={() => onDelete(unit)}
+                            className="p-1.5 text-gray-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-lg transition-all"
+                            title="Delete unit"
+                        >
+                            <Trash2 size={15} />
+                        </button>
+                    </div>
+                )}
             </td>
         </tr>
     );
@@ -186,7 +188,7 @@ const ConfirmDelete = ({ unit, onConfirm, onCancel, deleting, error }) => (
 
 // ─── Main Page ────────────────────────────────────────────────────────────────
 
-const UnitList = () => {
+const UnitList = ({ canWrite }) => {
     const [units, setUnits] = useState([]);
     const [isLoading, setIsLoading] = useState(true);
     const [fetchError, setFetchError] = useState('');
@@ -302,14 +304,16 @@ const UnitList = () => {
                             />
                         ))}
                     </div>
-                    <button
-                        id="add-unit-btn"
-                        onClick={handleAddClick}
-                        className="flex items-center gap-2 px-5 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-sm font-bold shadow-lg shadow-blue-500/20 transition-all hover:scale-[1.02] shrink-0"
-                    >
-                        <Plus size={16} />
-                        Add Unit
-                    </button>
+                    {canWrite && (
+                        <button
+                            id="add-unit-btn"
+                            onClick={handleAddClick}
+                            className="flex items-center gap-2 px-5 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-sm font-bold shadow-lg shadow-blue-500/20 transition-all hover:scale-[1.02] shrink-0"
+                        >
+                            <Plus size={16} />
+                            Add Unit
+                        </button>
+                    )}
                 </div>
             </div>
 
@@ -407,6 +411,7 @@ const UnitList = () => {
                                                 unitsMap={unitsMap}
                                                 onEdit={handleEdit}
                                                 onDelete={handleDeleteClick}
+                                                canWrite={canWrite}
                                             />
                                         ))}
                                     </React.Fragment>

@@ -7,9 +7,12 @@ import ClientDetails from './ClientDetails';
 import ClientFilter from './ClientFilter';
 import AddEditClient from './AddEditClient';
 import ManageMetadataModal from '../../components/ManageMetadataModal';
+import { useAuth } from '../../context/AuthContext';
 
 const ClientsList = () => {
     const navigate = useNavigate();
+    const { hasPermission } = useAuth();
+    const canWrite = hasPermission('clients', 2);
     const [clients, setClients] = useState([]);
     const [isLoading, setIsLoading] = useState(true);
     const [error, setError] = useState(null);
@@ -208,48 +211,50 @@ const ClientsList = () => {
                         )}
                     </button>
 
-                    <div className="relative" ref={dropdownRef}>
-                        <button
-                            onClick={() => setIsManageDropdownOpen(!isManageDropdownOpen)}
-                            className="flex items-center space-x-2 px-6 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-sm font-bold shadow-md shadow-blue-500/20 transition-all hover:scale-[1.02]"
-                        >
-                            <span>Manage Clients</span>
-                            <ChevronDown size={14} className={`transition-transform duration-200 ${isManageDropdownOpen ? 'rotate-180' : ''}`} />
-                        </button>
+                    {canWrite && (
+                        <div className="relative" ref={dropdownRef}>
+                            <button
+                                onClick={() => setIsManageDropdownOpen(!isManageDropdownOpen)}
+                                className="flex items-center space-x-2 px-6 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-sm font-bold shadow-md shadow-blue-500/20 transition-all hover:scale-[1.02]"
+                            >
+                                <span>Manage Clients</span>
+                                <ChevronDown size={14} className={`transition-transform duration-200 ${isManageDropdownOpen ? 'rotate-180' : ''}`} />
+                            </button>
 
-                        {isManageDropdownOpen && (
-                            <div className="absolute right-0 mt-2 w-48 bg-white dark:bg-[#161b22] rounded-lg shadow-xl border border-gray-200 dark:border-white/10 z-[5000] anim-fade-in overflow-hidden">
-                                <button
-                                    onClick={() => { setIsAddModalOpen(true); setIsManageDropdownOpen(false); }}
-                                    className="w-full flex items-center px-4 py-3 text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-white/5 transition-colors"
-                                >
-                                    <Plus size={16} className="mr-3 text-emerald-500" />
-                                    Add Manual Client
-                                </button>
-                                <button
-                                    onClick={() => { navigate('/clients/bulk-upload'); setIsManageDropdownOpen(false); }}
-                                    className="w-full flex items-center px-4 py-3 text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-white/5 transition-colors"
-                                >
-                                    <UploadCloud size={16} className="mr-3 text-blue-500" />
-                                    Bulk Upload CSV
-                                </button>
-                                <button
-                                    onClick={() => { setIsJobNatureModalOpen(true); setIsManageDropdownOpen(false); }}
-                                    className="w-full flex items-center px-4 py-3 text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-white/5 border-t border-gray-100 dark:border-white/5 transition-colors"
-                                >
-                                    <Plus size={16} className="mr-3 text-blue-500" />
-                                    Manage Job Natures
-                                </button>
-                                <button
-                                    onClick={() => { setIsSectorModalOpen(true); setIsManageDropdownOpen(false); }}
-                                    className="w-full flex items-center px-4 py-3 text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-white/5 border-t border-gray-100 dark:border-white/5 transition-colors"
-                                >
-                                    <Plus size={16} className="mr-3 text-blue-500" />
-                                    Manage Sectors
-                                </button>
-                            </div>
-                        )}
-                    </div>
+                            {isManageDropdownOpen && (
+                                <div className="absolute right-0 mt-2 w-48 bg-white dark:bg-[#161b22] rounded-lg shadow-xl border border-gray-200 dark:border-white/10 z-[5000] anim-fade-in overflow-hidden">
+                                    <button
+                                        onClick={() => { setIsAddModalOpen(true); setIsManageDropdownOpen(false); }}
+                                        className="w-full flex items-center px-4 py-3 text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-white/5 transition-colors"
+                                    >
+                                        <Plus size={16} className="mr-3 text-emerald-500" />
+                                        Add Manual Client
+                                    </button>
+                                    <button
+                                        onClick={() => { navigate('/clients/bulk-upload'); setIsManageDropdownOpen(false); }}
+                                        className="w-full flex items-center px-4 py-3 text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-white/5 transition-colors"
+                                    >
+                                        <UploadCloud size={16} className="mr-3 text-blue-500" />
+                                        Bulk Upload CSV
+                                    </button>
+                                    <button
+                                        onClick={() => { setIsJobNatureModalOpen(true); setIsManageDropdownOpen(false); }}
+                                        className="w-full flex items-center px-4 py-3 text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-white/5 border-t border-gray-100 dark:border-white/5 transition-colors"
+                                    >
+                                        <Plus size={16} className="mr-3 text-blue-500" />
+                                        Manage Job Natures
+                                    </button>
+                                    <button
+                                        onClick={() => { setIsSectorModalOpen(true); setIsManageDropdownOpen(false); }}
+                                        className="w-full flex items-center px-4 py-3 text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-white/5 border-t border-gray-100 dark:border-white/5 transition-colors"
+                                    >
+                                        <Plus size={16} className="mr-3 text-blue-500" />
+                                        Manage Sectors
+                                    </button>
+                                </div>
+                            )}
+                        </div>
+                    )}
                 </div>
             </div>
 
@@ -298,20 +303,24 @@ const ClientsList = () => {
                                             >
                                                 <Info size={16} />
                                             </button>
-                                            <button
-                                                onClick={() => { setEditingClient(client); setIsAddModalOpen(true); }}
-                                                className="p-1.5 text-gray-400 hover:text-green-500 hover:bg-green-50 dark:hover:bg-green-900/20 rounded transition-all"
-                                                title="Edit Client"
-                                            >
-                                                <Pencil size={16} />
-                                            </button>
-                                            <button
-                                                onClick={() => handleDeleteClient(client.id)}
-                                                className="p-1.5 text-gray-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 rounded transition-all"
-                                                title="Delete Client"
-                                            >
-                                                <Trash2 size={16} />
-                                            </button>
+                                            {canWrite && (
+                                                <>
+                                                    <button
+                                                        onClick={() => { setEditingClient(client); setIsAddModalOpen(true); }}
+                                                        className="p-1.5 text-gray-400 hover:text-green-500 hover:bg-green-50 dark:hover:bg-green-900/20 rounded transition-all"
+                                                        title="Edit Client"
+                                                    >
+                                                        <Pencil size={16} />
+                                                    </button>
+                                                    <button
+                                                        onClick={() => handleDeleteClient(client.id)}
+                                                        className="p-1.5 text-gray-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 rounded transition-all"
+                                                        title="Delete Client"
+                                                    >
+                                                        <Trash2 size={16} />
+                                                    </button>
+                                                </>
+                                            )}
                                         </div>
                                     </td>
                                 </tr>

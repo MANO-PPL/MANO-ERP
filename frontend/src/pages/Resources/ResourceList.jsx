@@ -4,8 +4,11 @@ import { resourceApi } from '../../services/resourceApi';
 import { unitApi } from '../../services/unitApi';
 import ResourceForm from './ResourceForm';
 import ResourceDetail from './ResourceDetail';
+import { useAuth } from '../../context/AuthContext';
 
 const ResourceList = () => {
+    const { hasPermission } = useAuth();
+    const canWrite = hasPermission('resources', 2);
     const [resources, setResources] = useState([]);
     const [units, setUnits] = useState([]);
     const [isLoading, setIsLoading] = useState(true);
@@ -103,13 +106,15 @@ const ResourceList = () => {
                     >
                         <RefreshCw size={18} className={isLoading ? 'animate-spin' : ''} />
                     </button>
-                    <button
-                        onClick={handleAddClick}
-                        className="flex items-center space-x-2 px-6 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-sm font-bold shadow-md shadow-blue-500/20 transition-all hover:scale-[1.02]"
-                    >
-                        <Plus size={16} />
-                        <span>Add Resource</span>
-                    </button>
+                    {canWrite && (
+                        <button
+                            onClick={handleAddClick}
+                            className="flex items-center space-x-2 px-6 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-sm font-bold shadow-md shadow-blue-500/20 transition-all hover:scale-[1.02]"
+                        >
+                            <Plus size={16} />
+                            <span>Add Resource</span>
+                        </button>
+                    )}
                 </div>
             </div>
 
@@ -153,20 +158,24 @@ const ResourceList = () => {
                                         >
                                             <Info size={16} />
                                         </button>
-                                        <button
-                                            onClick={() => handleEditClick(resource)}
-                                            className="p-1.5 text-gray-400 hover:text-green-500 hover:bg-green-50 dark:hover:bg-green-900/20 rounded transition-all"
-                                            title="Edit Resource"
-                                        >
-                                            <Edit2 size={16} />
-                                        </button>
-                                        <button
-                                            onClick={() => handleDeleteClick(resource.id)}
-                                            className="p-1.5 text-gray-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 rounded transition-all"
-                                            title="Delete Resource"
-                                        >
-                                            <Trash2 size={16} />
-                                        </button>
+                                        {canWrite && (
+                                            <>
+                                                <button
+                                                    onClick={() => handleEditClick(resource)}
+                                                    className="p-1.5 text-gray-400 hover:text-green-500 hover:bg-green-50 dark:hover:bg-green-900/20 rounded transition-all"
+                                                    title="Edit Resource"
+                                                >
+                                                    <Edit2 size={16} />
+                                                </button>
+                                                <button
+                                                    onClick={() => handleDeleteClick(resource.id)}
+                                                    className="p-1.5 text-gray-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 rounded transition-all"
+                                                    title="Delete Resource"
+                                                >
+                                                    <Trash2 size={16} />
+                                                </button>
+                                            </>
+                                        )}
                                     </div>
                                 </td>
                             </tr>
@@ -205,6 +214,7 @@ const ResourceList = () => {
                     units={units}
                     onClose={() => setViewingResource(null)} 
                     onUpdate={fetchData}
+                    canWrite={canWrite}
                 />
             )}
         </div>

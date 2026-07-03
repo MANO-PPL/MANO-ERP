@@ -3,9 +3,12 @@ import { useNavigate } from 'react-router-dom';
 import { Filter, Plus, List, Zap, MoreHorizontal, ArrowUpDown, ChevronDown, Box } from 'lucide-react';
 import NewProjectSlideOut from '../components/NewProjectSlideOut';
 import { projectApi } from '../services/projectApi';
+import { useAuth } from '../context/AuthContext';
 
 const Projects = () => {
     const navigate = useNavigate();
+    const { hasPermission } = useAuth();
+    const canWrite = hasPermission('projects', 2);
     const [activeTab, setActiveTab] = useState('Active Projects');
     const [isNewProjectOpen, setIsNewProjectOpen] = useState(false);
 
@@ -53,7 +56,7 @@ const Projects = () => {
     ];
 
     return (
-        <div className="flex flex-col h-[calc(100vh-8vh)] w-full text-gray-900 dark:text-gh-text transition-colors overflow-hidden bg-[#fafafa] dark:bg-[#0d1117] relative">
+        <div className="flex flex-col h-[calc(100vh-7vh)] w-full text-gray-900 dark:text-gh-text transition-colors overflow-hidden bg-[#fafafa] dark:bg-[#0d1117] relative">
             {/* Top Sub-navigation & Toolbar Area */}
             <div className="flex justify-between items-center px-6 py-3 overflow-x-auto no-scrollbar bg-white dark:bg-[#0d1117] border-b border-gray-200 dark:border-white/5">
                 {/* Left side: Tabs */}
@@ -81,15 +84,17 @@ const Projects = () => {
                 </div>
 
                 {/* Right side: Actions */}
-                <div className="flex items-center space-x-3 text-sm">
-                    <button
-                        onClick={() => setIsNewProjectOpen(true)}
-                        className="flex items-center space-x-2 px-5 py-2 font-semibold bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition-colors shadow-sm"
-                    >
-                        <Plus size={16} />
-                        <span>New Project</span>
-                    </button>
-                </div>
+                {canWrite && (
+                    <div className="flex items-center space-x-3 text-sm">
+                        <button
+                            onClick={() => setIsNewProjectOpen(true)}
+                            className="flex items-center space-x-2 px-5 py-2 font-semibold bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition-colors shadow-sm"
+                        >
+                            <Plus size={16} />
+                            <span>New Project</span>
+                        </button>
+                    </div>
+                )}
             </div>
 
             {/* Table Area */}
@@ -131,7 +136,7 @@ const Projects = () => {
                     </thead>
                     <tbody className="divide-y divide-gray-100 dark:divide-white/5 text-[13px]">
                         {filteredProjects.map((project, index) => (
-                            <tr key={index} className="hover:bg-blue-50/50 dark:hover:bg-white/[0.02] transition-colors group">
+                            <tr key={index} onClick={() => navigate(`/projects/${project.dbId}`)} className="hover:bg-blue-50/50 dark:hover:bg-white/[0.02] transition-colors group cursor-pointer">
                                 <td className="px-6 py-4 text-gray-500 dark:text-gray-400 font-mono">{project.id}</td>
                                 <td className="px-6 py-4">
                                     <div className="flex items-center space-x-3">

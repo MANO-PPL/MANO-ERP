@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { ArrowLeftRight, Box } from 'lucide-react';
 import UnitList from './UnitList';
 import ResourceConversions from './ResourceConversions';
+import { useAuth } from '../../context/AuthContext';
 
 const TABS = [
     {
@@ -19,6 +20,8 @@ const TABS = [
 ];
 
 const UnitsPage = () => {
+    const { hasPermission } = useAuth();
+    const canWrite = hasPermission('units', 2);
     const [activeTab, setActiveTab] = useState('units');
 
     const ActiveComponent = TABS.find(t => t.id === activeTab)?.component ?? UnitList;
@@ -65,7 +68,7 @@ const UnitsPage = () => {
 
             {/* ── Active Tab Content ── */}
             <div className="flex-1 flex flex-col overflow-hidden">
-                <ActiveComponent />
+                <ActiveComponent canWrite={canWrite} />
             </div>
         </div>
     );

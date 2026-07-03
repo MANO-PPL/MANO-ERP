@@ -16,7 +16,7 @@ const TYPE_BADGE = {
 
 // ─── Conversion Badge Row ─────────────────────────────────────────────────────
 
-const ConversionBadge = ({ conv, resourceId, onRemove }) => {
+const ConversionBadge = ({ conv, resourceId, onRemove, canWrite }) => {
     const [removing, setRemoving] = useState(false);
     const [error, setError] = useState('');
 
@@ -46,14 +46,16 @@ const ConversionBadge = ({ conv, resourceId, onRemove }) => {
             </div>
             <div className="flex items-center gap-1">
                 {error && <span className="text-red-500 text-[10px]">{error}</span>}
-                <button
-                    onClick={handleRemove}
-                    disabled={removing}
-                    className="p-1 text-gray-300 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 rounded transition-all opacity-0 group-hover:opacity-100"
-                    title="Remove conversion"
-                >
-                    {removing ? <RefreshCw size={13} className="animate-spin" /> : <Trash2 size={13} />}
-                </button>
+                {canWrite && (
+                    <button
+                        onClick={handleRemove}
+                        disabled={removing}
+                        className="p-1 text-gray-300 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 rounded transition-all opacity-0 group-hover:opacity-100"
+                        title="Remove conversion"
+                    >
+                        {removing ? <RefreshCw size={13} className="animate-spin" /> : <Trash2 size={13} />}
+                    </button>
+                )}
             </div>
         </div>
     );
@@ -61,7 +63,7 @@ const ConversionBadge = ({ conv, resourceId, onRemove }) => {
 
 // ─── Resource Row ─────────────────────────────────────────────────────────────
 
-const ResourceRow = ({ resource, units, onConversionChange }) => {
+const ResourceRow = ({ resource, units, onConversionChange, canWrite }) => {
     const [expanded, setExpanded] = useState(false);
     const [detail, setDetail] = useState(null);
     const [loadingDetail, setLoadingDetail] = useState(false);
@@ -149,13 +151,15 @@ const ResourceRow = ({ resource, units, onConversionChange }) => {
                 </td>
                 {/* Add action */}
                 <td className="px-4 py-3 text-center" onClick={e => e.stopPropagation()}>
-                    <button
-                        onClick={(e) => { e.stopPropagation(); setExpanded(true); loadDetail(); setShowForm(true); }}
-                        className="p-1.5 text-gray-300 hover:text-purple-500 hover:bg-purple-50 dark:hover:bg-purple-900/20 rounded-lg transition-all opacity-0 group-hover:opacity-100"
-                        title="Add conversion"
-                    >
-                        <Plus size={15} />
-                    </button>
+                    {canWrite && (
+                        <button
+                            onClick={(e) => { e.stopPropagation(); setExpanded(true); loadDetail(); setShowForm(true); }}
+                            className="p-1.5 text-gray-300 hover:text-purple-500 hover:bg-purple-50 dark:hover:bg-purple-900/20 rounded-lg transition-all opacity-0 group-hover:opacity-100"
+                            title="Add conversion"
+                        >
+                            <Plus size={15} />
+                        </button>
+                    )}
                 </td>
             </tr>
 
@@ -181,12 +185,14 @@ const ResourceRow = ({ resource, units, onConversionChange }) => {
                                             — named aliases mapped to a unit quantity
                                         </span>
                                     </p>
-                                    <button
-                                        onClick={() => setShowForm(true)}
-                                        className="flex items-center gap-1.5 px-3 py-1.5 bg-purple-600 hover:bg-purple-700 text-white rounded-lg text-xs font-semibold transition-all"
-                                    >
-                                        <Plus size={13} /> Add
-                                    </button>
+                                    {canWrite && (
+                                        <button
+                                            onClick={() => setShowForm(true)}
+                                            className="flex items-center gap-1.5 px-3 py-1.5 bg-purple-600 hover:bg-purple-700 text-white rounded-lg text-xs font-semibold transition-all"
+                                        >
+                                            <Plus size={13} /> Add
+                                        </button>
+                                    )}
                                 </div>
 
                                 {/* Conversion badges */}
@@ -200,6 +206,7 @@ const ResourceRow = ({ resource, units, onConversionChange }) => {
                                                 conv={conv}
                                                 resourceId={resource.id}
                                                 onRemove={handleConversionSaved}
+                                                canWrite={canWrite}
                                             />
                                         ))}
                                     </div>
@@ -225,7 +232,7 @@ const ResourceRow = ({ resource, units, onConversionChange }) => {
 
 // ─── Main Page ────────────────────────────────────────────────────────────────
 
-const ResourceConversions = () => {
+const ResourceConversions = ({ canWrite }) => {
     const [resources, setResources] = useState([]);
     const [units, setUnits]         = useState([]);
     const [isLoading, setIsLoading]  = useState(true);
@@ -349,6 +356,7 @@ const ResourceConversions = () => {
                                     resource={resource}
                                     units={units}
                                     onConversionChange={fetchAll}
+                                    canWrite={canWrite}
                                 />
                             ))}
                         </tbody>

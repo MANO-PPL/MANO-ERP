@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { X, Plus, Trash2 } from 'lucide-react';
 import { resourceApi } from '../../services/resourceApi';
 
-const ResourceDetail = ({ resourceId, units, onClose, onUpdate }) => {
+const ResourceDetail = ({ resourceId, units, onClose, onUpdate, canWrite = true }) => {
     const [resource, setResource] = useState(null);
     const [isLoading, setIsLoading] = useState(true);
 
@@ -102,9 +102,11 @@ const ResourceDetail = ({ resourceId, units, onClose, onUpdate }) => {
                 <section>
                     <div className="flex items-center justify-between mb-3">
                         <h3 className="text-sm font-bold text-gray-900 dark:text-white tracking-wide">UNIT CONVERSIONS</h3>
-                        <button onClick={() => setIsAddingConv(!isAddingConv)} className="text-xs text-blue-600 hover:text-blue-700 flex items-center bg-blue-50 px-2 py-1 rounded">
-                            <Plus size={14} className="mr-1"/> Add
-                        </button>
+                        {canWrite && (
+                            <button onClick={() => setIsAddingConv(!isAddingConv)} className="text-xs text-blue-600 hover:text-blue-700 flex items-center bg-blue-50 px-2 py-1 rounded">
+                                <Plus size={14} className="mr-1"/> Add
+                            </button>
+                        )}
                     </div>
 
                     {isAddingConv && (
@@ -147,9 +149,11 @@ const ResourceDetail = ({ resourceId, units, onClose, onUpdate }) => {
                                             <td className="px-3 py-2 font-medium">1 {c.name}</td>
                                             <td className="px-3 py-2">{c.quantity} {c.unit_symbol}</td>
                                             <td className="px-3 py-2 text-right">
-                                                <button onClick={() => handleDeleteConversion(c.id)} className="text-gray-400 hover:text-red-500">
-                                                    <Trash2 size={14}/>
-                                                </button>
+                                                {canWrite && (
+                                                    <button onClick={() => handleDeleteConversion(c.id)} className="text-gray-400 hover:text-red-500">
+                                                        <Trash2 size={14}/>
+                                                    </button>
+                                                )}
                                             </td>
                                         </tr>
                                     ))}
