@@ -328,7 +328,7 @@ const HindranceReport = ({ setExtraBreadcrumbs, onBack }) => {
                                                 <span className="text-[10px] text-blue-500 cursor-pointer font-bold border-b border-blue-500/30 whitespace-nowrap">{editForm.plannedStart || 'Select'}</span>
                                                 {activeDropdown === 'plannedStart' && (
                                                     <div className="absolute top-full left-1/2 -translate-x-1/2 mt-1 z-[100] shadow-2xl">
-                                                        <CustomDatePicker value={editForm.plannedStart} onChange={(d) => { updateEditForm('plannedStart', d); setActiveDropdown(null); }} onClose={() => setActiveDropdown(null)} />
+                                                        <CustomDatePicker value={editForm.plannedStart} onChange={(d) => { updateEditForm('plannedStart', d.target.value); setActiveDropdown(null); }} onClose={() => setActiveDropdown(null)} />
                                                     </div>
                                                 )}
                                             </div>
@@ -342,7 +342,7 @@ const HindranceReport = ({ setExtraBreadcrumbs, onBack }) => {
                                                 <span className="text-[10px] text-blue-500 cursor-pointer font-bold border-b border-blue-500/30 whitespace-nowrap">{editForm.plannedFinish || 'Select'}</span>
                                                 {activeDropdown === 'plannedFinish' && (
                                                     <div className="absolute top-full left-1/2 -translate-x-1/2 mt-1 z-[100] shadow-2xl">
-                                                        <CustomDatePicker value={editForm.plannedFinish} onChange={(d) => { updateEditForm('plannedFinish', d); setActiveDropdown(null); }} onClose={() => setActiveDropdown(null)} />
+                                                        <CustomDatePicker value={editForm.plannedFinish} onChange={(d) => { updateEditForm('plannedFinish', d.target.value); setActiveDropdown(null); }} onClose={() => setActiveDropdown(null)} />
                                                     </div>
                                                 )}
                                             </div>
@@ -361,7 +361,7 @@ const HindranceReport = ({ setExtraBreadcrumbs, onBack }) => {
                                                 <span className="text-[10px] text-blue-500 cursor-pointer font-bold border-b border-blue-500/30 whitespace-nowrap">{editForm.actualStart || 'Select'}</span>
                                                 {activeDropdown === 'actualStart' && (
                                                     <div className="absolute top-full left-1/2 -translate-x-1/2 mt-1 z-[100] shadow-2xl">
-                                                        <CustomDatePicker value={editForm.actualStart} onChange={(d) => { updateEditForm('actualStart', d); setActiveDropdown(null); }} onClose={() => setActiveDropdown(null)} />
+                                                        <CustomDatePicker value={editForm.actualStart} onChange={(d) => { updateEditForm('actualStart', d.target.value); setActiveDropdown(null); }} onClose={() => setActiveDropdown(null)} />
                                                     </div>
                                                 )}
                                             </div>
@@ -375,7 +375,7 @@ const HindranceReport = ({ setExtraBreadcrumbs, onBack }) => {
                                                 <span className="text-[10px] text-blue-500 cursor-pointer font-bold border-b border-blue-500/30 whitespace-nowrap">{editForm.actualFinish || 'Select'}</span>
                                                 {activeDropdown === 'actualFinish' && (
                                                     <div className="absolute top-full left-1/2 -translate-x-1/2 mt-1 z-[100] shadow-2xl">
-                                                        <CustomDatePicker value={editForm.actualFinish} onChange={(d) => { updateEditForm('actualFinish', d); setActiveDropdown(null); }} onClose={() => setActiveDropdown(null)} />
+                                                        <CustomDatePicker value={editForm.actualFinish} onChange={(d) => { updateEditForm('actualFinish', d.target.value); setActiveDropdown(null); }} onClose={() => setActiveDropdown(null)} />
                                                     </div>
                                                 )}
                                             </div>

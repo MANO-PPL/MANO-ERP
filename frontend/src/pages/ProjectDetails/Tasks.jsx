@@ -480,8 +480,8 @@ const Tasks = ({ setExtraBreadcrumbs, projectPermissions, isAdmin }) => {
                                                         <div className="absolute top-full left-0 mt-1 z-50">
                                                             <CustomDatePicker
                                                                 value={editingTask.startDate}
-                                                                onChange={(date) => {
-                                                                    setEditingTask(prev => ({ ...prev, startDate: date }));
+                                                                onChange={(e) => {
+                                                                    setEditingTask(prev => ({ ...prev, startDate: e.target.value }));
                                                                     setActiveDropdown(null);
                                                                 }}
                                                                 onClose={() => setActiveDropdown(null)}
@@ -503,8 +503,8 @@ const Tasks = ({ setExtraBreadcrumbs, projectPermissions, isAdmin }) => {
                                                         <div className="absolute top-full left-0 mt-1 z-50">
                                                             <CustomDatePicker
                                                                 value={editingTask.dueDate}
-                                                                onChange={(date) => {
-                                                                    setEditingTask(prev => ({ ...prev, dueDate: date }));
+                                                                onChange={(e) => {
+                                                                    setEditingTask(prev => ({ ...prev, dueDate: e.target.value }));
                                                                     setActiveDropdown(null);
                                                                 }}
                                                                 onClose={() => setActiveDropdown(null)}

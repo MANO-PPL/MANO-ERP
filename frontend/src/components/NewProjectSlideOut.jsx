@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { X, Users, UserMinus, Loader2 } from 'lucide-react';
 import CustomDatePicker from './CustomDatePicker';
 import CustomSelect from './CustomSelect';
@@ -32,6 +32,19 @@ const NewProjectSlideOut = ({ isOpen, onClose, onProjectCreated, projectToEdit =
     });
     const [isSubmitting, setIsSubmitting] = useState(false);
 
+    const employeeDropdownRef = useRef(null);
+
+    // Close employee dropdown on click outside
+    useEffect(() => {
+        const handleClickOutside = (event) => {
+            if (employeeDropdownRef.current && !employeeDropdownRef.current.contains(event.target)) {
+                setDropdownOpen(false);
+            }
+        };
+        document.addEventListener('mousedown', handleClickOutside);
+        return () => document.removeEventListener('mousedown', handleClickOutside);
+    }, []);
+
     useEffect(() => {
         if (isOpen) {
             if (projectToEdit) {
@@ -52,6 +65,8 @@ const NewProjectSlideOut = ({ isOpen, onClose, onProjectCreated, projectToEdit =
                 setSelectedEmployees([]);
             }
             fetchEmployees();
+        } else {
+            setDropdownOpen(false);
         }
     }, [isOpen, projectToEdit]);
 
@@ -206,12 +221,12 @@ const NewProjectSlideOut = ({ isOpen, onClose, onProjectCreated, projectToEdit =
 
                     {/* Row 5: Dates */}
                     <div className="grid grid-cols-2 gap-5">
-                        <CustomDatePicker label="Start Date" value={formData.startDate} onChange={(val) => handleInputChange('startDate', val)} />
-                        <CustomDatePicker label="End Date" value={formData.endDate} onChange={(val) => handleInputChange('endDate', val)} />
+                        <CustomDatePicker label="Start Date" value={formData.startDate} onChange={(val) => handleInputChange('startDate', val.target.value)} />
+                        <CustomDatePicker label="End Date" value={formData.endDate} onChange={(val) => handleInputChange('endDate', val.target.value)} />
                     </div>
 
                     {/* Row 6: Add Employees */}
-                    <div className="relative">
+                    <div className="relative" ref={employeeDropdownRef}>
                         <label className="block text-xs font-semibold text-gray-500 dark:text-[#7A8AAB] uppercase tracking-wider mb-2">
                             Add Employees
                         </label>

@@ -29,7 +29,32 @@ const CustomDatePicker = ({ label, value: externalValue, onChange: externalOnCha
         return () => document.removeEventListener('mousedown', handleClickOutside);
     }, []);
 
-    const selectedDate = value ? new Date(value) : null;
+    const [alignRight, setAlignRight] = useState(false);
+
+    // Auto align dropdown depending on screen edge space
+    useEffect(() => {
+        if (isOpen && dropdownRef.current) {
+            const rect = dropdownRef.current.getBoundingClientRect();
+            const spaceOnRight = window.innerWidth - rect.left;
+            if (spaceOnRight < 290) {
+                setAlignRight(true);
+            } else {
+                setAlignRight(false);
+            }
+        }
+    }, [isOpen]);
+
+    const parseDate = (val) => {
+        if (!val) return null;
+        let dateToParse = val;
+        if (typeof val === 'object' && val.target && typeof val.target.value === 'string') {
+            dateToParse = val.target.value;
+        }
+        const d = new Date(dateToParse);
+        return isNaN(d.getTime()) ? null : d;
+    };
+
+    const selectedDate = parseDate(value);
 
     const nextMonth = () => setCurrentMonth(addMonths(currentMonth, 1));
     const prevMonth = () => setCurrentMonth(subMonths(currentMonth, 1));
@@ -121,15 +146,15 @@ const CustomDatePicker = ({ label, value: externalValue, onChange: externalOnCha
                 className={`w-full bg-white dark:bg-[#161b22] border rounded-lg px-3 py-2 flex items-center justify-between transition-all cursor-pointer shadow-sm dark:shadow-none
                 ${isOpen ? 'border-blue-500 ring-4 ring-blue-500/10 shadow-lg shadow-blue-500/5' : 'border-gray-200 dark:border-white/10 hover:border-blue-500/30 dark:hover:border-white/20'}`}
             >
-                <span className={`text-sm tracking-wide ${value ? 'text-gray-900 dark:text-white' : 'text-gray-500 dark:text-[#7A8AAB]'}`}>
-                    {value ? format(new Date(value), 'dd - MM - yyyy') : 'dd - mm - yyyy'}
+                <span className={`text-sm tracking-wide ${selectedDate ? 'text-gray-900 dark:text-white' : 'text-gray-500 dark:text-[#7A8AAB]'}`}>
+                    {selectedDate ? format(selectedDate, 'dd - MM - yyyy') : 'dd - mm - yyyy'}
                 </span>
                 <CalendarIcon size={16} className={`${isOpen ? 'text-blue-500' : 'text-gray-500 dark:text-[#7A8AAB]'}`} />
             </div>
 
             {/* Custom Dropdown Calendar */}
             {isOpen && (
-                <div className="absolute top-full left-0 mt-2 w-[280px] bg-white dark:bg-[#1c2128] border border-gray-100 dark:border-white/10 shadow-2xl rounded-2xl p-5 z-50 anim-fade-in">
+                <div className={`absolute top-full mt-2 w-[280px] bg-white dark:bg-[#1c2128] border border-gray-100 dark:border-white/10 shadow-2xl rounded-2xl p-5 z-50 anim-fade-in ${alignRight ? 'right-0' : 'left-0'}`}>
                     {renderHeader()}
                     {renderDays()}
                     {renderCells()}
