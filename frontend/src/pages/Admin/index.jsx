@@ -4,10 +4,13 @@ import {
     Mail, Shield, Calendar, X, Upload, FileText,
     CheckCircle2, AlertCircle, FileCode, Check, Lock,
     ChevronRight, Eye, Edit3, Trash2, Info, Users,
-    LayoutDashboard, Briefcase, Map, MessageSquare, Settings, ChevronDown, Loader2
+    LayoutDashboard, Briefcase, Map, MessageSquare, Settings, ChevronDown, Loader2,
+    Package, ArrowLeftRight
 } from 'lucide-react';
 import { toast } from 'react-toastify';
 import { adminApi } from '../../services/adminApi';
+import { projectApi } from '../../services/projectApi';
+
 
 // ─── Full App Page Tree ───────────────────────────────────────────────────────
 const PAGE_TREE = [
@@ -17,25 +20,7 @@ const PAGE_TREE = [
     },
     {
         id: 'projects', label: 'Projects', icon: Briefcase,
-        children: [
-            { id: 'projects.dashboard', label: 'Project Dashboard' },
-            { id: 'projects.tasks', label: 'Tasks' },
-            { id: 'projects.wip', label: 'WIP' },
-            { id: 'projects.reports', label: 'Reports' },
-            { id: 'projects.reports.daily', label: '↳  Daily Progress' },
-            { id: 'projects.reports.weekly', label: '↳  Weekly Summary' },
-            { id: 'projects.reports.monthly', label: '↳  Monthly Archive' },
-            { id: 'projects.reports.team', label: '↳  Team Contribution' },
-            { id: 'projects.documents', label: 'General Documents' },
-            { id: 'projects.drawings', label: 'Drawings' },
-            { id: 'projects.planning', label: 'Planning' },
-            { id: 'projects.contracts', label: 'Contracts' },
-            { id: 'projects.quality', label: 'Quality' },
-            { id: 'projects.safety', label: 'Safety' },
-            { id: 'projects.billing', label: 'Billing' },
-            { id: 'projects.materials', label: 'Material Management' },
-            { id: 'projects.approvals', label: 'Approvals' },
-        ]
+        children: []
     },
     {
         id: 'vendors', label: 'Vendors', icon: Map,
@@ -43,6 +28,14 @@ const PAGE_TREE = [
     },
     {
         id: 'clients', label: 'Clients', icon: Users,
+        children: []
+    },
+    {
+        id: 'resources', label: 'Resources', icon: Package,
+        children: []
+    },
+    {
+        id: 'units', label: 'Units', icon: ArrowLeftRight,
         children: []
     },
     {
@@ -70,12 +63,27 @@ const allPermKeys = (tree) => {
 
 const ALL_PERM_KEYS = allPermKeys(PAGE_TREE);
 
-const ACCESS_LEVELS = ['None', 'Read', 'Write', 'Full'];
+const ACCESS_LEVELS = ['None', 'Read', 'Write'];
 
 const defaultPermissions = () => {
     const p = {};
     ALL_PERM_KEYS.forEach(k => { p[k] = 0; });
     return p;
+};
+
+const getDynamicPageTree = (projectsList) => {
+    return PAGE_TREE.map(node => {
+        if (node.id === 'projects') {
+            return {
+                ...node,
+                children: (projectsList || []).map(p => ({
+                    id: `project_${p.id}`,
+                    label: p.name
+                }))
+            };
+        }
+        return node;
+    });
 };
 
 // INITIAL_USERS removed. Fetching live from DB.
@@ -102,7 +110,7 @@ const Avatar = ({ name, size = 10 }) => (
 );
 
 // ─── Add User Drawer ──────────────────────────────────────────────────────────
-const AddUserDrawer = ({ open, onClose, onAdd }) => {
+const AddUserDrawer = ({ open, onClose, onAdd, allProjects = [], templates = [] }) => {
     const [tab, setTab] = useState('form');
     const [form, setForm] = useState({ name: '', email: '', role: 'Viewer', department: '', password: '' });
     const [showPw, setShowPw] = useState(false);
@@ -111,6 +119,19 @@ const AddUserDrawer = ({ open, onClose, onAdd }) => {
     const [permissions, setPermissions] = useState(() => defaultPermissions());
     const [permExpanded, setPermExpanded] = useState({ projects: false, collaboration: false });
     const [showPerms, setShowPerms] = useState(false);
+
+    const dynamicPageTree = getDynamicPageTree(allProjects);
+
+    useEffect(() => {
+        if (open) {
+            const p = defaultPermissions();
+            allProjects.forEach(proj => {
+                p[`project_${proj.id}`] = 0;
+            });
+            setPermissions(p);
+            setShowPerms(false);
+        }
+    }, [open, allProjects]);
 
     const handleDrag = (e) => { e.preventDefault(); setDragging(e.type === 'dragenter' || e.type === 'dragover'); };
     const handleDrop = (e) => { e.preventDefault(); setDragging(false); if (e.dataTransfer.files?.[0]) setFile(e.dataTransfer.files[0]); };
@@ -124,9 +145,19 @@ const AddUserDrawer = ({ open, onClose, onAdd }) => {
         }
         setIsSubmitting(true);
         try {
-            await onAdd({ ...form, id: Date.now(), status: 'Active', joined: new Date().toLocaleDateString('en-US', { month: 'short', day: '2-digit', year: 'numeric' }), permissions });
+            const selectedProjectIds = Object.keys(permissions)
+                .filter(k => k.startsWith('project_') && permissions[k] > 0)
+                .map(k => parseInt(k.replace('project_', '')));
+
+            await onAdd({ 
+                ...form, 
+                id: Date.now(), 
+                status: 'Active', 
+                joined: new Date().toLocaleDateString('en-US', { month: 'short', day: '2-digit', year: 'numeric' }), 
+                permissions,
+                project_ids: selectedProjectIds
+            });
             setForm({ name: '', email: '', role: 'Viewer', department: '', password: '' });
-            setPermissions(defaultPermissions());
             setShowPerms(false);
             onClose();
         } catch (e) {
@@ -206,6 +237,45 @@ const AddUserDrawer = ({ open, onClose, onAdd }) => {
                                 </div>
                             </div>
 
+                            {/* Template Selector */}
+                            {templates.length > 0 && (
+                                <div>
+                                    <label className="block text-xs font-bold text-gray-500 dark:text-gray-400 mb-1.5 uppercase tracking-wide">Apply Permission Template</label>
+                                    <select 
+                                        onChange={e => {
+                                            const val = e.target.value;
+                                            if (val) {
+                                                const template = templates.find(t => t.id === parseInt(val));
+                                                if (template) {
+                                                    const perms = typeof template.permissions === 'string' ? JSON.parse(template.permissions) : template.permissions;
+                                                    const mappedPerms = {};
+                                                    const map = { 'none': 0, 'view': 1, 'edit': 2, 'read': 1, 'write': 2 };
+                                                    for (const [k, v] of Object.entries(perms || {})) {
+                                                        if (typeof v === 'string') {
+                                                            mappedPerms[k] = map[v.toLowerCase()] ?? 0;
+                                                        } else {
+                                                            mappedPerms[k] = v;
+                                                        }
+                                                    }
+                                                    setPermissions(p => ({
+                                                        ...p,
+                                                        ...mappedPerms
+                                                    }));
+                                                    toast.info(`Applied template: ${template.name}`);
+                                                }
+                                            }
+                                        }}
+                                        defaultValue=""
+                                        className="w-full px-4 py-2.5 bg-gray-50 dark:bg-[#0d1117] border border-gray-200 dark:border-white/10 rounded-xl text-sm focus:outline-none appearance-none"
+                                    >
+                                        <option value="" disabled>-- Select a template to apply --</option>
+                                        {templates.map(t => (
+                                            <option key={t.id} value={t.id}>{t.name}</option>
+                                        ))}
+                                    </select>
+                                </div>
+                            )}
+
                             {/* Assign Page Permissions */}
                             <div className="rounded-2xl border border-gray-200 dark:border-white/10 overflow-hidden">
                                 <button
@@ -219,7 +289,7 @@ const AddUserDrawer = ({ open, onClose, onAdd }) => {
 
                                 {showPerms && (
                                     <div className="px-3 pb-3 pt-2 space-y-2 border-t border-gray-100 dark:border-white/5">
-                                        {PAGE_TREE.map(section => {
+                                        {dynamicPageTree.map(section => {
                                             const lvl = permissions[section.id] ?? 0;
                                             return (
                                                 <div key={section.id} className="bg-white dark:bg-[#161b22] rounded-xl border border-gray-100 dark:border-white/5 overflow-hidden">
@@ -230,6 +300,7 @@ const AddUserDrawer = ({ open, onClose, onAdd }) => {
                                                             <div className="flex gap-1 shrink-0">
                                                                 {ACCESS_LEVELS.map((name, i) => (
                                                                     <button key={i}
+                                                                        type="button"
                                                                         onClick={() => setPermissions(p => ({ ...p, [section.id]: i }))}
                                                                         className={`px-1.5 py-0.5 rounded-md text-[10px] font-bold transition-all ${lvl === i ? 'bg-blue-600 text-white' : 'bg-gray-100 dark:bg-white/5 text-gray-400 hover:bg-gray-200 dark:hover:bg-white/10'}`}>
                                                                         {name}
@@ -254,6 +325,7 @@ const AddUserDrawer = ({ open, onClose, onAdd }) => {
                                                                         <div className="flex gap-1 shrink-0">
                                                                             {ACCESS_LEVELS.map((name, i) => (
                                                                                 <button key={i}
+                                                                                    type="button"
                                                                                     onClick={() => setPermissions(p => ({ ...p, [child.id]: i }))}
                                                                                     className={`px-1.5 py-0.5 rounded-md text-[10px] font-bold transition-all ${cLvl === i ? 'bg-blue-600 text-white' : 'bg-gray-100 dark:bg-white/5 text-gray-400 hover:bg-gray-200 dark:hover:bg-white/10'}`}>
                                                                                     {name}
@@ -343,18 +415,48 @@ const AddUserDrawer = ({ open, onClose, onAdd }) => {
 };
 
 // ─── User Detail Drawer ───────────────────────────────────────────────────────
-const UserDetailDrawer = ({ user, open, onClose, onUpdate, initialEditing = false }) => {
+const UserDetailDrawer = ({ user, open, onClose, onUpdate, initialEditing = false, allProjects = [], templates = [] }) => {
     const [editing, setEditing] = useState(false);
     const [isSaving, setIsSaving] = useState(false);
     const [localUser, setLocalUser] = useState(null);
     const [expanded, setExpanded] = useState({ projects: true, collaboration: true });
 
-    React.useEffect(() => { if (user) { setLocalUser(user); setEditing(initialEditing); } }, [user, initialEditing]);
+    const dynamicPageTree = getDynamicPageTree(allProjects);
+
+    React.useEffect(() => {
+        if (user) {
+            // Map permissions to frontend integer format
+            const basePerms = user.permissions || {};
+            const mapped = {};
+            const map = { 'none': 0, 'view': 1, 'edit': 2, 'read': 1, 'write': 2 };
+            for (const [k, v] of Object.entries(basePerms)) {
+                if (typeof v === 'string') {
+                    mapped[k] = map[v.toLowerCase()] ?? 0;
+                } else {
+                    mapped[k] = v;
+                }
+            }
+            // For each project, if it's assigned but not in system_permissions, default to 1 (Read)
+            const assigned = user.assigned_projects || [];
+            allProjects.forEach(proj => {
+                const key = `project_${proj.id}`;
+                if (mapped[key] === undefined) {
+                    mapped[key] = assigned.includes(proj.id) ? 1 : 0;
+                }
+            });
+
+            setLocalUser({
+                ...user,
+                permissions: mapped
+            });
+            setEditing(initialEditing);
+        }
+    }, [user, initialEditing, allProjects]);
 
     if (!user || !localUser) return null;
 
-    const accessLevelColor = (lvl) => ['text-gray-400', 'text-blue-400', 'text-indigo-400', 'text-green-500'][lvl] || 'text-gray-400';
-    const accessLevelBg = (lvl) => ['bg-gray-100 dark:bg-white/5', 'bg-blue-50 dark:bg-blue-900/20', 'bg-indigo-50 dark:bg-indigo-900/20', 'bg-green-50 dark:bg-green-900/20'][lvl] || '';
+    const accessLevelColor = (lvl) => ['text-gray-400', 'text-blue-400', 'text-green-500'][lvl] || 'text-gray-400';
+    const accessLevelBg = (lvl) => ['bg-gray-100 dark:bg-white/5', 'bg-blue-50 dark:bg-blue-900/20', 'bg-green-50 dark:bg-green-900/20'][lvl] || '';
 
     const setLevel = (key, lvl) =>
         setLocalUser(u => ({ ...u, permissions: { ...u.permissions, [key]: lvl } }));
@@ -362,7 +464,7 @@ const UserDetailDrawer = ({ user, open, onClose, onUpdate, initialEditing = fals
     const PermRow = ({ id, label, indent = false }) => {
         const lvl = localUser.permissions?.[id] ?? 0;
         return (
-            <div className={`flex items-center justify-between py-2.5 px-3 rounded-xl transition-colors hover:bg-gray-50 dark:hover:bg-white/[0.03] ${indent ? 'ml-6' : ''}`}>
+            <div className={`flex-1 flex items-center justify-between py-2.5 px-3 rounded-xl transition-colors hover:bg-gray-50 dark:hover:bg-white/[0.03] ${indent ? 'ml-6' : ''}`}>
                 <div className="flex items-center gap-2.5">
                     {!indent && <Lock size={12} className="text-gray-400 shrink-0" />}
                     {indent && <span className="w-3 h-px bg-gray-300 dark:bg-white/20 inline-block mr-0.5" />}
@@ -371,7 +473,7 @@ const UserDetailDrawer = ({ user, open, onClose, onUpdate, initialEditing = fals
                 {editing ? (
                     <div className="flex gap-1">
                         {ACCESS_LEVELS.map((name, i) => (
-                            <button key={i} onClick={() => setLevel(id, i)}
+                            <button key={i} type="button" onClick={() => setLevel(id, i)}
                                 className={`px-2 py-0.5 rounded-lg text-[10px] font-bold transition-all ${lvl === i ? 'bg-blue-600 text-white shadow-sm' : 'bg-gray-100 dark:bg-white/5 text-gray-400 hover:bg-gray-200 dark:hover:bg-white/10'
                                     }`}>
                                 {name}
@@ -433,6 +535,48 @@ const UserDetailDrawer = ({ user, open, onClose, onUpdate, initialEditing = fals
                         ))}
                     </div>
 
+                    {/* Template Selector (only when editing) */}
+                    {editing && templates.length > 0 && (
+                        <div className="p-4 bg-gray-50 dark:bg-[#0d1117] rounded-2xl border border-gray-100 dark:border-white/5">
+                            <label className="block text-xs font-bold text-gray-500 dark:text-gray-400 mb-1.5 uppercase tracking-wide">Apply Permission Template</label>
+                            <select 
+                                onChange={e => {
+                                    const val = e.target.value;
+                                    if (val) {
+                                        const template = templates.find(t => t.id === parseInt(val));
+                                        if (template) {
+                                            const perms = typeof template.permissions === 'string' ? JSON.parse(template.permissions) : template.permissions;
+                                            const mappedPerms = {};
+                                            const map = { 'none': 0, 'view': 1, 'edit': 2, 'read': 1, 'write': 2 };
+                                            for (const [k, v] of Object.entries(perms || {})) {
+                                                if (typeof v === 'string') {
+                                                    mappedPerms[k] = map[v.toLowerCase()] ?? 0;
+                                                } else {
+                                                    mappedPerms[k] = v;
+                                                }
+                                            }
+                                            setLocalUser(u => ({
+                                                ...u,
+                                                permissions: {
+                                                    ...u.permissions,
+                                                    ...mappedPerms
+                                                }
+                                            }));
+                                            toast.info(`Applied template: ${template.name}`);
+                                        }
+                                    }
+                                }}
+                                defaultValue=""
+                                className="w-full px-4 py-2.5 bg-white dark:bg-[#161b22] border border-gray-200 dark:border-white/10 rounded-xl text-sm focus:outline-none appearance-none"
+                            >
+                                <option value="" disabled>-- Select a template to apply --</option>
+                                {templates.map(t => (
+                                    <option key={t.id} value={t.id}>{t.name}</option>
+                                ))}
+                            </select>
+                        </div>
+                    )}
+
                     {/* Permissions */}
                     <div>
                         <div className="flex items-center justify-between mb-3">
@@ -445,10 +589,10 @@ const UserDetailDrawer = ({ user, open, onClose, onUpdate, initialEditing = fals
                         </div>
 
                         <div className="space-y-3">
-                            {PAGE_TREE.map(section => (
+                            {dynamicPageTree.map(section => (
                                 <div key={section.id} className="bg-gray-50 dark:bg-[#0d1117] rounded-2xl border border-gray-100 dark:border-white/5 overflow-hidden">
                                     {/* Section header (parent page row) */}
-                                    <div className="flex items-center justify-between px-3 py-1">
+                                    <div className="flex items-center w-full px-3 py-1">
                                         <PermRow id={section.id} label={section.label} />
                                         {section.children.length > 0 && (
                                             <button onClick={() => toggleGroup(section.id)}
@@ -474,19 +618,22 @@ const UserDetailDrawer = ({ user, open, onClose, onUpdate, initialEditing = fals
                 {/* Footer */}
                 {editing && (
                     <div className="px-7 py-5 border-t border-gray-100 dark:border-white/10 flex gap-3 shrink-0">
-                        <button onClick={() => { setLocalUser(user); setEditing(false); }}
-                            className="flex-1 py-2.5 border border-gray-200 dark:border-white/10 rounded-xl text-sm font-semibold text-gray-600 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-white/5 transition-all">
-                            Discard
-                        </button>
                         <button onClick={async () => {
                                 setIsSaving(true);
                                 try {
-                                    await onUpdate(localUser);
+                                    const selectedProjectIds = Object.keys(localUser.permissions)
+                                        .filter(k => k.startsWith('project_') && localUser.permissions[k] > 0)
+                                        .map(k => parseInt(k.replace('project_', '')));
+ 
+                                    await onUpdate({
+                                        ...localUser,
+                                        project_ids: selectedProjectIds
+                                    });
                                     setEditing(false);
                                 } catch(e) {} finally { setIsSaving(false); }
                             }}
                             disabled={isSaving}
-                            className="flex-1 py-2.5 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-sm font-bold transition-all active:scale-95 shadow-lg shadow-blue-500/20 disabled:opacity-50">
+                            className="w-full py-2.5 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-sm font-bold transition-all active:scale-95 shadow-lg shadow-blue-500/20 disabled:opacity-50">
                             {isSaving ? 'Saving...' : 'Save Changes'}
                         </button>
                     </div>
@@ -496,9 +643,36 @@ const UserDetailDrawer = ({ user, open, onClose, onUpdate, initialEditing = fals
     );
 };
 
+// Helper to map backend user model to frontend model
+const mapUserFromBackend = (u) => {
+    const basePerms = u.system_permissions ? (typeof u.system_permissions === 'string' ? JSON.parse(u.system_permissions) : u.system_permissions) : defaultPermissions();
+    const mappedPerms = {};
+    const map = { 'none': 0, 'view': 1, 'edit': 2, 'read': 1, 'write': 2 };
+    for (const [k, v] of Object.entries(basePerms || {})) {
+        if (typeof v === 'string') {
+            mappedPerms[k] = map[v.toLowerCase()] ?? 0;
+        } else {
+            mappedPerms[k] = v;
+        }
+    }
+    return {
+        ...u,
+        id: u.user_id || u.id,
+        name: u.user_name || u.name,
+        email: u.email || u.email_id,
+        role: u.user_type || u.roleName || u.role || 'Viewer',
+        department: u.departmentName || u.department || '-',
+        status: u.user_status || u.status || 'Active',
+        joined: u.created_at ? new Date(u.created_at).toLocaleDateString('en-US', {month: 'short', day: '2-digit', year: 'numeric'}) : '-',
+        permissions: mappedPerms
+    };
+};
+
 // ─── Main Admin Page ──────────────────────────────────────────────────────────
 const AdminPage = () => {
     const [users, setUsers] = useState([]);
+    const [projects, setProjects] = useState([]);
+    const [systemTemplates, setSystemTemplates] = useState([]);
     const [isLoading, setIsLoading] = useState(true);
     const [search, setSearch] = useState('');
     const [addOpen, setAddOpen] = useState(false);
@@ -510,17 +684,7 @@ const AdminPage = () => {
         try {
             const res = await adminApi.getUsers();
             if (res.success && res.users) {
-                const mappedUsers = res.users.map(u => ({
-                    ...u,
-                    id: u.user_id || u.id,
-                    name: u.user_name || u.name,
-                    email: u.email_id || u.email,
-                    role: u.roleName || u.role || 'Viewer',
-                    department: u.departmentName || u.department || '-',
-                    status: u.user_status || u.status || 'Active',
-                    joined: u.created_at ? new Date(u.created_at).toLocaleDateString('en-US', {month: 'short', day: '2-digit', year: 'numeric'}) : '-',
-                    permissions: defaultPermissions() // Currently defaulting permissions
-                }));
+                const mappedUsers = res.users.map(u => mapUserFromBackend(u));
                 setUsers(mappedUsers);
             }
         } catch (error) {
@@ -531,12 +695,67 @@ const AdminPage = () => {
         }
     };
 
+    const fetchInitialData = async () => {
+        try {
+            const [projRes, templRes] = await Promise.all([
+                projectApi.listProjects(),
+                adminApi.getPermissionTemplates('system')
+            ]);
+            if (projRes.success && projRes.projects) {
+                setProjects(projRes.projects);
+            }
+            if (templRes.success && templRes.templates) {
+                setSystemTemplates(templRes.templates);
+            }
+        } catch (err) {
+            console.error('Failed to load projects/templates:', err);
+        }
+    };
+
     useEffect(() => {
         fetchUsers();
+        fetchInitialData();
     }, []);
 
-    const openView = (user) => { setSelectedUser(user); setEditMode(false); };
-    const openEdit = (user) => { setSelectedUser(user); setEditMode(true); };
+    const openView = async (user) => {
+        setSelectedUser({
+            ...user,
+            assigned_projects: user.assigned_projects || []
+        });
+        setEditMode(false);
+        try {
+            const res = await adminApi.getUser(user.id);
+            if (res.success && res.user) {
+                const mapped = mapUserFromBackend(res.user);
+                setSelectedUser({
+                    ...mapped,
+                    assigned_projects: res.user.assigned_projects || []
+                });
+            }
+        } catch (err) {
+            console.error(err);
+        }
+    };
+
+    const openEdit = async (user) => {
+        setSelectedUser({
+            ...user,
+            assigned_projects: user.assigned_projects || []
+        });
+        setEditMode(true);
+        try {
+            const res = await adminApi.getUser(user.id);
+            if (res.success && res.user) {
+                const mapped = mapUserFromBackend(res.user);
+                setSelectedUser({
+                    ...mapped,
+                    assigned_projects: res.user.assigned_projects || []
+                });
+            }
+        } catch (err) {
+            console.error(err);
+        }
+    };
 
     const filtered = users.filter(u =>
         u.name.toLowerCase().includes(search.toLowerCase()) ||
@@ -546,13 +765,25 @@ const AdminPage = () => {
 
     const handleAddUser = async (user) => {
         try {
+            const backendPerms = {};
+            const map = { 0: 'none', 1: 'view', 2: 'edit', 3: 'edit' };
+            for (const [k, v] of Object.entries(user.permissions || {})) {
+                if (typeof v === 'number') {
+                    backendPerms[k] = map[v] || 'none';
+                } else {
+                    backendPerms[k] = v;
+                }
+            }
+
             await adminApi.createUser({
                 name: user.name,
                 email: user.email,
                 password: user.password,
                 role: user.role,
                 department: user.department,
-                status: user.status
+                status: user.status,
+                system_permissions: backendPerms,
+                project_ids: user.project_ids
             });
             toast.success('User created successfully');
             fetchUsers();
@@ -566,15 +797,28 @@ const AdminPage = () => {
 
     const handleUpdateUser = async (updated) => {
         try {
+            const backendPerms = {};
+            const map = { 0: 'none', 1: 'view', 2: 'edit', 3: 'edit' };
+            for (const [k, v] of Object.entries(updated.permissions || {})) {
+                if (typeof v === 'number') {
+                    backendPerms[k] = map[v] || 'none';
+                } else {
+                    backendPerms[k] = v;
+                }
+            }
+
             await adminApi.updateUser(updated.id, {
                 name: updated.name,
                 email: updated.email,
                 role: updated.role,
                 department: updated.department,
-                status: updated.status
+                status: updated.status,
+                system_permissions: backendPerms,
+                project_ids: updated.project_ids
             });
             toast.success('User updated successfully');
             fetchUsers();
+            setSelectedUser(updated);
         } catch (error) {
             console.error(error);
             toast.error('Failed to update user');
@@ -702,8 +946,8 @@ const AdminPage = () => {
             </div>
 
             {/* Drawers */}
-            <AddUserDrawer open={addOpen} onClose={() => setAddOpen(false)} onAdd={handleAddUser} />
-            <UserDetailDrawer user={selectedUser} open={!!selectedUser} onClose={() => setSelectedUser(null)} onUpdate={handleUpdateUser} initialEditing={editMode} />
+            <AddUserDrawer open={addOpen} onClose={() => setAddOpen(false)} onAdd={handleAddUser} allProjects={projects} templates={systemTemplates} />
+            <UserDetailDrawer user={selectedUser} open={!!selectedUser} onClose={() => setSelectedUser(null)} onUpdate={handleUpdateUser} initialEditing={editMode} allProjects={projects} templates={systemTemplates} />
 
         </div>
     );

@@ -13,7 +13,9 @@ export const adminApi = {
             user_name: userData.name,
             email_id: userData.email,
             user_password: userData.password,
-            user_status: userData.status || 'Active'
+            user_status: userData.status || 'Active',
+            system_permissions: userData.system_permissions,
+            user_type: userData.role
         };
         const response = await api.post('/admin/user', payload);
         return response.data;
@@ -24,7 +26,9 @@ export const adminApi = {
             ...userData,
             user_name: userData.name,
             email_id: userData.email,
-            user_status: userData.status
+            user_status: userData.status,
+            system_permissions: userData.system_permissions,
+            user_type: userData.role
         };
         const response = await api.put(`/admin/user/${id}`, payload);
         return response.data;
@@ -32,6 +36,16 @@ export const adminApi = {
 
     deleteUser: async (id) => {
         const response = await api.delete(`/admin/user/${id}`);
+        return response.data;
+    },
+
+    getUser: async (id) => {
+        const response = await api.get(`/admin/user/${id}`);
+        return response.data;
+    },
+
+    getPermissionTemplates: async (type) => {
+        const response = await api.get('/admin/permission-templates', { params: { type } });
         return response.data;
     }
 };
