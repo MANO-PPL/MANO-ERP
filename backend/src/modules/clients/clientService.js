@@ -8,9 +8,9 @@ export async function getClients(query = {}) {
     const limit = parseInt(query.limit) || 20;
     const offset = (page - 1) * limit;
 
-    const baseQuery = db('contacts as c')
-        .leftJoin('job_nature as jn', 'c.job_nature_id', 'jn.job_id')
-        .leftJoin('sectors as s', 'c.sector_id', 's.sector_id')
+    const baseQuery = db('crm_contacts as c')
+        .leftJoin('crm_job_nature as jn', 'c.job_nature_id', 'jn.job_id')
+        .leftJoin('crm_sectors as s', 'c.sector_id', 's.sector_id')
         .where('c.type', 'client');
 
     const applyFilters = (qb) => {
@@ -65,7 +65,7 @@ export async function getClients(query = {}) {
     const clientIds = clients.map(c => c.id);
 
     // Fetch latest interaction for each type for these clients
-    const aggregatedInteractions = await db('interactions')
+    const aggregatedInteractions = await db('crm_interactions')
         .whereIn('contact_id', clientIds)
         .select('contact_id', 'type', 'interaction_date', 'follow_up_date', 'remarks')
         .orderBy('interaction_date', 'asc');
@@ -122,9 +122,9 @@ export async function getClients(query = {}) {
 }
 
 export async function getClientById(id) {
-    const client = await db('contacts as c')
-        .leftJoin('job_nature as jn', 'c.job_nature_id', 'jn.job_id')
-        .leftJoin('sectors as s', 'c.sector_id', 's.sector_id')
+    const client = await db('crm_contacts as c')
+        .leftJoin('crm_job_nature as jn', 'c.job_nature_id', 'jn.job_id')
+        .leftJoin('crm_sectors as s', 'c.sector_id', 's.sector_id')
         .where({ 'c.id': id, 'c.type': 'client' })
         .select('c.*', 'jn.job_name', 's.sector_name')
         .first();
@@ -133,8 +133,8 @@ export async function getClientById(id) {
         throw new AppError('Client not found', 404);
     }
 
-    const interactions = await db('interactions as i')
-        .leftJoin('users as u', 'i.interacted_by', 'u.user_id')
+    const interactions = await db('crm_interactions as i')
+        .leftJoin('iam_users as u', 'i.interacted_by', 'u.user_id')
         .where({ 'i.contact_id': id })
         .select('i.*', 'u.user_name as interacted_by_name')
         .orderBy('i.interaction_date', 'desc');
@@ -195,12 +195,12 @@ export async function createClient(data) {
         insertData.job_nature_id = await findOrCreateJobNature(data.job_nature || data.job_nature_name);
     }
 
-    const [newId] = await db('contacts').insert(insertData);
+    const [newId] = await db('crm_contacts').insert(insertData);
     return newId;
 }
 
 export async function updateClient(id, data) {
-    const client = await db('contacts').where({ id, type: 'client' }).first();
+    const client = await db('crm_contacts').where({ id, type: 'client' }).first();
     if (!client) {
         throw new AppError('Client not found', 404);
     }
@@ -243,21 +243,21 @@ export async function updateClient(id, data) {
 
     updateData.updated_at = db.fn.now();
 
-    await db('contacts').where({ id }).update(updateData);
+    await db('crm_contacts').where({ id }).update(updateData);
     return true;
 }
 
 export async function deleteClient(id) {
-    const client = await db('contacts').where({ id, type: 'client' }).first();
+    const client = await db('crm_contacts').where({ id, type: 'client' }).first();
     if (!client) {
         throw new AppError('Client not found', 404);
     }
 
     // Delete related interactions first (if no cascade)
-    await db('interactions').where({ contact_id: id }).delete();
+    await db('crm_interactions').where({ contact_id: id }).delete();
 
     // Delete contact
-    await db('contacts').where({ id }).delete();
+    await db('crm_contacts').where({ id }).delete();
     return true;
 }
 
@@ -331,7 +331,7 @@ export async function bulkValidateClients(clients) {
     });
 
     if (inputEmails.size > 0 || inputPhones.size > 0) {
-        const existingClients = await db('contacts')
+        const existingClients = await db('crm_contacts')
             .where({ type: 'client' })
             .where(function () {
                 if (inputEmails.size > 0) this.whereIn('email', Array.from(inputEmails));
@@ -363,7 +363,7 @@ export async function bulkValidateClients(clients) {
     }
 
     if (inputJobNatures.size > 0) {
-        const existingJobs = await db('job_nature').whereIn(db.raw('LOWER(job_name)'), Array.from(inputJobNatures)).select('job_name');
+        const existingJobs = await db('crm_job_nature').whereIn(db.raw('LOWER(job_name)'), Array.from(inputJobNatures)).select('job_name');
         const existingJobSet = new Set(existingJobs.map(j => j.job_name.toLowerCase()));
         Array.from(inputJobNatures).forEach(j => {
             if (!existingJobSet.has(j)) {
@@ -387,7 +387,7 @@ export async function createInteraction(data) {
         throw new AppError('Missing required interaction fields', 400);
     }
 
-    const [newId] = await db('interactions').insert({
+    const [newId] = await db('crm_interactions').insert({
         contact_id,
         type,
         interaction_date,

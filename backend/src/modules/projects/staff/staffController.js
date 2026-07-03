@@ -22,7 +22,7 @@ export const addStaff = catchAsync(async (req, res) => {
     if (isNaN(projectId)) throw new AppError('project_id must be a number', 400);
 
     // Ensure project exists
-    const project = await db('projects').where('id', projectId).first();
+    const project = await db('proj_projects').where('id', projectId).first();
     if (!project) throw new AppError('Project not found', 404);
 
     const payload = { ...req.body, project_id: projectId };

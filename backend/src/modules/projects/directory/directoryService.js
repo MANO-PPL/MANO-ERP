@@ -7,10 +7,10 @@ import AppError from '../../../utils/AppError.js';
 export async function fetchProjectDirectory(projectId) {
     if (!projectId) throw new AppError('projectId is required', 400);
 
-    const directory = await db('project_directory as pd')
-        .leftJoin('project_vendors as pv', 'pd.pv_id', 'pv.pv_id')
-        .leftJoin('contacts as c', 'pv.vendors_id', 'c.id')
-        .leftJoin('job_nature as jn', 'c.job_nature_id', 'jn.job_id')
+    const directory = await db('pdoc_directory as pd')
+        .leftJoin('pdoc_vendors as pv', 'pd.pv_id', 'pv.pv_id')
+        .leftJoin('crm_contacts as c', 'pv.vendors_id', 'c.id')
+        .leftJoin('crm_job_nature as jn', 'c.job_nature_id', 'jn.job_id')
         .where('pd.project_id', projectId)
         .select([
             'pd.pd_id',
@@ -36,7 +36,7 @@ export async function fetchProjectDirectory(projectId) {
    METADATA — directory count
 -------------------------------------------------------- */
 export async function fetchDirectoryCount(projectId = null) {
-    let query = db('project_directory');
+    let query = db('pdoc_directory');
     if (projectId) query = query.where('project_id', projectId);
 
     const [result] = await query.count('* as count');
@@ -47,7 +47,7 @@ export async function fetchDirectoryCount(projectId = null) {
    INSERT
 -------------------------------------------------------- */
 export async function insertDirectoryItem(data) {
-    const [pd_id] = await db('project_directory').insert({
+    const [pd_id] = await db('pdoc_directory').insert({
         project_id: data.project_id,
         pv_id: data.pv_id,
         contact_person: data.contact_person,
@@ -83,7 +83,7 @@ export async function updateDirectoryItem(id, data = {}) {
 
     updateData.updated_at = db.fn.now();
 
-    const affected = await db('project_directory')
+    const affected = await db('pdoc_directory')
         .where('pd_id', id)
         .update(updateData);
 
@@ -95,7 +95,7 @@ export async function updateDirectoryItem(id, data = {}) {
    DELETE
 -------------------------------------------------------- */
 export async function deleteDirectoryItem(id) {
-    const affected = await db('project_directory')
+    const affected = await db('pdoc_directory')
         .where('pd_id', id)
         .del();
 

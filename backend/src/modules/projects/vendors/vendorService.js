@@ -46,11 +46,11 @@ export async function getProjectVendors(projectId, fields) {
         );
     }
 
-    const vendors = await db('project_vendors as pv')
-        .leftJoin('contacts as c', function () {
+    const vendors = await db('pdoc_vendors as pv')
+        .leftJoin('crm_contacts as c', function () {
             this.on('pv.vendors_id', 'c.id').andOn('c.type', db.raw("'vendor'"));
         })
-        .leftJoin('job_nature as jn', 'c.job_nature_id', 'jn.job_id')
+        .leftJoin('crm_job_nature as jn', 'c.job_nature_id', 'jn.job_id')
         .where('pv.project_id', projectId)
         .select(selectedFields)
         .orderBy('c.name', 'asc');
@@ -63,7 +63,7 @@ export async function getProjectVendors(projectId, fields) {
 -------------------------------------------------------- */
 export async function addVendorsToProject(projectId, vendorIds) {
     // Validate all vendors exist in contacts with type=vendor
-    const vendorRecords = await db('contacts')
+    const vendorRecords = await db('crm_contacts')
         .where('type', 'vendor')
         .whereIn('id', vendorIds);
 
@@ -74,7 +74,7 @@ export async function addVendorsToProject(projectId, vendorIds) {
     }
 
     // Check for existing associations
-    const existingAssociations = await db('project_vendors')
+    const existingAssociations = await db('pdoc_vendors')
         .where('project_id', projectId)
         .whereIn('vendors_id', vendorIds);
 
@@ -89,10 +89,10 @@ export async function addVendorsToProject(projectId, vendorIds) {
         vendors_id,
     }));
 
-    await db('project_vendors').insert(insertData);
+    await db('pdoc_vendors').insert(insertData);
 
     // Return the inserted pv_ids
-    const insertedRecords = await db('project_vendors')
+    const insertedRecords = await db('pdoc_vendors')
         .where('project_id', projectId)
         .whereIn('vendors_id', vendorIds)
         .select('pv_id');
@@ -104,7 +104,7 @@ export async function addVendorsToProject(projectId, vendorIds) {
    DELETE VENDORS FROM PROJECT (bulk by pv_ids)
 -------------------------------------------------------- */
 export async function removeVendorsFromProject(pvIds) {
-    const existing = await db('project_vendors').whereIn('pv_id', pvIds);
+    const existing = await db('pdoc_vendors').whereIn('pv_id', pvIds);
 
     if (existing.length === 0) {
         throw new AppError('No matching project vendors found', 404);
@@ -113,7 +113,7 @@ export async function removeVendorsFromProject(pvIds) {
     const existingPvIds = existing.map(e => e.pv_id);
     const notFound = pvIds.filter(id => !existingPvIds.includes(id));
 
-    const deletedCount = await db('project_vendors')
+    const deletedCount = await db('pdoc_vendors')
         .whereIn('pv_id', pvIds)
         .del();
 

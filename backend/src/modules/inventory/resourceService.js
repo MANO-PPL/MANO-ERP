@@ -6,7 +6,7 @@ import AppError from '../../utils/AppError.js';
 // ─────────────────────────────────────────────────────────────────────────────
 
 async function ensureResourceExists(orgId, id) {
-    const resource = await db('resources').where({ id, org_id: orgId }).first();
+    const resource = await db('res_resources').where({ id, org_id: orgId }).first();
     if (!resource) throw new AppError('Resource not found in your organization', 404);
     return resource;
 }
@@ -21,8 +21,8 @@ async function ensureResourceExists(orgId, id) {
  * @param {object} filters  { type:'material'|'item', search:'...', limit, offset }
  */
 export async function getResources(orgId, { type, search, limit = 100, offset = 0 } = {}) {
-    const query = db('resources as r')
-        .leftJoin('units as u', 'r.base_unit_id', 'u.id')
+    const query = db('res_resources as r')
+        .leftJoin('res_units as u', 'r.base_unit_id', 'u.id')
         .where('r.org_id', orgId)
         .select(
             'r.id',
@@ -49,8 +49,8 @@ export async function getResources(orgId, { type, search, limit = 100, offset = 
 // ─────────────────────────────────────────────────────────────────────────────
 
 export async function getResourceById(orgId, id) {
-    const resource = await db('resources as r')
-        .leftJoin('units as u', 'r.base_unit_id', 'u.id')
+    const resource = await db('res_resources as r')
+        .leftJoin('res_units as u', 'r.base_unit_id', 'u.id')
         .where('r.id', id)
         .andWhere('r.org_id', orgId)
         .select(
@@ -64,17 +64,17 @@ export async function getResourceById(orgId, id) {
     if (!resource) throw new AppError('Resource not found in your organization', 404);
 
     // Fetch unit conversions
-    resource.conversions = await db('resource_conversions as rc')
-        .leftJoin('units as u', 'rc.unit_id', 'u.id')
+    resource.conversions = await db('res_conversions as rc')
+        .leftJoin('res_units as u', 'rc.unit_id', 'u.id')
         .where('rc.resource_id', id)
         .andWhere('rc.org_id', orgId)
         .select('rc.id', 'rc.name', 'rc.quantity', 'rc.unit_id', 'u.name as unit_name', 'u.symbol as unit_symbol');
 
     // Fetch compositions (only meaningful for items)
     if (resource.type === 'item') {
-        resource.compositions = await db('resource_compositions as c')
-            .join('resources as r2', 'c.component_resource_id', 'r2.id')
-            .leftJoin('units as u', 'c.unit_id', 'u.id')
+        resource.compositions = await db('res_compositions as c')
+            .join('res_resources as r2', 'c.component_resource_id', 'r2.id')
+            .leftJoin('res_units as u', 'c.unit_id', 'u.id')
             .where('c.parent_resource_id', id)
             .select(
                 'c.id',
@@ -110,10 +110,10 @@ export async function createResource(orgId, { name, code, type, base_unit_id, de
     }
 
     // Validate base unit exists in org
-    const unit = await db('units').where({ id: base_unit_id, org_id: orgId }).first();
+    const unit = await db('res_units').where({ id: base_unit_id, org_id: orgId }).first();
     if (!unit) throw new AppError('base_unit_id does not exist in your organization', 400);
 
-    const [insertId] = await db('resources').insert({
+    const [insertId] = await db('res_resources').insert({
         org_id: orgId,
         name, code: code || null, type,
         base_unit_id,
@@ -146,10 +146,10 @@ export async function updateResource(orgId, id, { name, code, base_unit_id, desc
     if (Object.keys(updates).length > 0) {
         // Validate unit if changed
         if (updates.base_unit_id) {
-            const unit = await db('units').where({ id: updates.base_unit_id, org_id: orgId }).first();
+            const unit = await db('res_units').where({ id: updates.base_unit_id, org_id: orgId }).first();
             if (!unit) throw new AppError('base_unit_id does not exist in your organization', 400);
         }
-        await db('resources').where({ id, org_id: orgId }).update(updates);
+        await db('res_resources').where({ id, org_id: orgId }).update(updates);
     }
     return true;
 }
@@ -162,7 +162,7 @@ export async function deleteResource(orgId, id) {
     await ensureResourceExists(orgId, id);
 
     // Guard: referenced as a component in any composition
-    const usedAsComponent = await db('resource_compositions')
+    const usedAsComponent = await db('res_compositions')
         .where('component_resource_id', id)
         .count('id as cnt').first();
     if (parseInt(usedAsComponent.cnt) > 0) {
@@ -170,9 +170,9 @@ export async function deleteResource(orgId, id) {
     }
 
     // Cascade compositions and conversions manually (in case DB doesn't cascade)
-    await db('resource_compositions').where('parent_resource_id', id).del();
-    await db('resource_conversions').where('resource_id', id).del();
-    await db('resources').where({ id, org_id: orgId }).del();
+    await db('res_compositions').where('parent_resource_id', id).del();
+    await db('res_conversions').where('resource_id', id).del();
+    await db('res_resources').where({ id, org_id: orgId }).del();
     return true;
 }
 
@@ -189,14 +189,14 @@ async function _replaceCompositions(orgId, parentResourceId, compositions) {
         if (!c.component_resource_id || !c.quantity) {
             throw new AppError('Each composition row must have component_resource_id and quantity', 400);
         }
-        const comp = await db('resources').where({ id: c.component_resource_id, org_id: orgId }).first();
+        const comp = await db('res_resources').where({ id: c.component_resource_id, org_id: orgId }).first();
         if (!comp) throw new AppError(`Component resource id ${c.component_resource_id} not found in your organization`, 400);
         if (comp.type !== 'material') {
             throw new AppError(`Component resource "${comp.name}" must be of type 'material'`, 400);
         }
     }
 
-    await db('resource_compositions').where('parent_resource_id', parentResourceId).del();
+    await db('res_compositions').where('parent_resource_id', parentResourceId).del();
 
     if (compositions.length > 0) {
         const rows = compositions.map(c => ({
@@ -205,7 +205,7 @@ async function _replaceCompositions(orgId, parentResourceId, compositions) {
             quantity: c.quantity,
             unit_id: c.unit_id || null
         }));
-        await db('resource_compositions').insert(rows);
+        await db('res_compositions').insert(rows);
     }
 }
 
@@ -234,10 +234,10 @@ export async function addConversion(orgId, resourceId, { name, quantity, unit_id
         throw new AppError('name, quantity, and unit_id are required for a conversion', 400);
     }
     // Validate unit exists in org
-    const unit = await db('units').where({ id: unit_id, org_id: orgId }).first();
+    const unit = await db('res_units').where({ id: unit_id, org_id: orgId }).first();
     if (!unit) throw new AppError('unit_id does not exist in your organization', 400);
 
-    const [insertId] = await db('resource_conversions').insert({
+    const [insertId] = await db('res_conversions').insert({
         org_id: orgId,
         resource_id: resourceId,
         name,
@@ -252,8 +252,8 @@ export async function addConversion(orgId, resourceId, { name, quantity, unit_id
  * Verifies that the conversion actually belongs to a resource in the user's org.
  */
 export async function removeConversion(orgId, conversionId) {
-    const conversion = await db('resource_conversions as rc')
-        .join('resources as r', 'rc.resource_id', 'r.id')
+    const conversion = await db('res_conversions as rc')
+        .join('res_resources as r', 'rc.resource_id', 'r.id')
         .where('rc.id', conversionId)
         .andWhere('r.org_id', orgId)
         .select('rc.id')
@@ -261,7 +261,7 @@ export async function removeConversion(orgId, conversionId) {
 
     if (!conversion) throw new AppError('Conversion not found in your organization', 404);
 
-    await db('resource_conversions').where({ id: conversionId }).del();
+    await db('res_conversions').where({ id: conversionId }).del();
     return true;
 }
 

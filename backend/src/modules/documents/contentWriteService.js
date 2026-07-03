@@ -3,8 +3,8 @@ import AppError from '../../utils/AppError.js';
 
 // Centralized helper to assert that the caller is the current_holder_id and cycle is active
 async function verifyWriteAccess(orgId, cycleId, userId) {
-    const cycle = await db('approval_cycles')
-        .join('document_instances', 'approval_cycles.instance_id', 'document_instances.instance_id')
+    const cycle = await db('wf_approval_cycles as approval_cycles')
+        .join('wf_document_instances as document_instances', 'approval_cycles.instance_id', 'document_instances.instance_id')
         .where({ 'approval_cycles.cycle_id': cycleId, 'document_instances.org_id': orgId })
         .select('approval_cycles.*')
         .first();
@@ -97,35 +97,35 @@ export async function upsertEpisodicHeader(orgId, cycleId, userId, tableName, da
 
 // Specific Table Handlers for clarity (optional but helps matching the routes explicitly)
 export const directory = {
-    add: (orgId, cycleId, userId, data) => addDraftRow(orgId, cycleId, userId, 'project_directory', data),
-    update: (orgId, cycleId, userId, pdId, data) => updateDraftRow(orgId, cycleId, userId, 'project_directory', 'pd_id', pdId, data),
-    delete: (orgId, cycleId, userId, pdId) => deleteDraftRow(orgId, cycleId, userId, 'project_directory', 'pd_id', pdId)
+    add: (orgId, cycleId, userId, data) => addDraftRow(orgId, cycleId, userId, 'pdoc_directory', data),
+    update: (orgId, cycleId, userId, pdId, data) => updateDraftRow(orgId, cycleId, userId, 'pdoc_directory', 'pd_id', pdId, data),
+    delete: (orgId, cycleId, userId, pdId) => deleteDraftRow(orgId, cycleId, userId, 'pdoc_directory', 'pd_id', pdId)
 };
 
 export const vendors = {
-    add: (orgId, cycleId, userId, data) => addDraftRow(orgId, cycleId, userId, 'project_vendors', data),
-    delete: (orgId, cycleId, userId, pvId) => deleteDraftRow(orgId, cycleId, userId, 'project_vendors', 'pv_id', pvId)
+    add: (orgId, cycleId, userId, data) => addDraftRow(orgId, cycleId, userId, 'pdoc_vendors', data),
+    delete: (orgId, cycleId, userId, pvId) => deleteDraftRow(orgId, cycleId, userId, 'pdoc_vendors', 'pv_id', pvId)
 };
 
 export const staff = {
-    add: (orgId, cycleId, userId, data) => addDraftRow(orgId, cycleId, userId, 'project_staff_role_responsible', data),
-    update: (orgId, cycleId, userId, psrrId, data) => updateDraftRow(orgId, cycleId, userId, 'project_staff_role_responsible', 'psrr_id', psrrId, data),
-    delete: (orgId, cycleId, userId, psrrId) => deleteDraftRow(orgId, cycleId, userId, 'project_staff_role_responsible', 'psrr_id', psrrId)
+    add: (orgId, cycleId, userId, data) => addDraftRow(orgId, cycleId, userId, 'pdoc_staff_responsible', data),
+    update: (orgId, cycleId, userId, psrrId, data) => updateDraftRow(orgId, cycleId, userId, 'pdoc_staff_responsible', 'psrr_id', psrrId, data),
+    delete: (orgId, cycleId, userId, psrrId) => deleteDraftRow(orgId, cycleId, userId, 'pdoc_staff_responsible', 'psrr_id', psrrId)
 };
 
 export const mom = {
-    updateHeader: (orgId, cycleId, userId, data) => upsertEpisodicHeader(orgId, cycleId, userId, 'project_mom', data),
+    updateHeader: (orgId, cycleId, userId, data) => upsertEpisodicHeader(orgId, cycleId, userId, 'pdoc_mom', data),
     addParticipant: async (orgId, cycleId, userId, pdId) => {
         // We need the draft mom_id first to link the participant
         const cycle = await verifyWriteAccess(orgId, cycleId, userId);
-        const header = await db('project_mom')
+        const header = await db('pdoc_mom')
             .where({ cycle_id: cycleId })
             .whereNull('version_id')
             .first();
             
         if (!header) throw new AppError('MoM header must be created before adding participants', 400);
         
-        await db('project_mom_participants').insert({
+        await db('pdoc_mom_participants').insert({
             mom_id: header.mom_id,
             pd_id: pdId
         });
@@ -135,31 +135,31 @@ export const mom = {
         await verifyWriteAccess(orgId, cycleId, userId);
         
         // Ensure participant belongs to a draft mom header
-        const participant = await db('project_mom_participants').where({ pmp_id: pmpId }).first();
+        const participant = await db('pdoc_mom_participants').where({ pmp_id: pmpId }).first();
         if (!participant) throw new AppError('Participant not found', 404);
         
-        const header = await db('project_mom').where({ mom_id: participant.mom_id }).first();
+        const header = await db('pdoc_mom').where({ mom_id: participant.mom_id }).first();
         if (!header || header.version_id !== null || header.cycle_id != cycleId) {
             throw new AppError('Cannot delete participant from approved MoM', 403);
         }
         
-        await db('project_mom_participants').where({ pmp_id: pmpId }).del();
+        await db('pdoc_mom_participants').where({ pmp_id: pmpId }).del();
         return true;
     }
 };
 
 export const agenda = {
-    updateHeader: (orgId, cycleId, userId, data) => upsertEpisodicHeader(orgId, cycleId, userId, 'project_agenda', data),
+    updateHeader: (orgId, cycleId, userId, data) => upsertEpisodicHeader(orgId, cycleId, userId, 'pdoc_agenda', data),
     addParticipant: async (orgId, cycleId, userId, pdId) => {
         const cycle = await verifyWriteAccess(orgId, cycleId, userId);
-        const header = await db('project_agenda')
+        const header = await db('pdoc_agenda')
             .where({ cycle_id: cycleId })
             .whereNull('version_id')
             .first();
             
         if (!header) throw new AppError('Agenda header must be created before adding participants', 400);
         
-        await db('project_agenda_participants').insert({
+        await db('pdoc_agenda_participants').insert({
             agenda_id: header.agenda_id,
             pd_id: pdId
         });
@@ -168,21 +168,21 @@ export const agenda = {
     removeParticipant: async (orgId, cycleId, userId, papId) => {
         await verifyWriteAccess(orgId, cycleId, userId);
         
-        const participant = await db('project_agenda_participants').where({ pap_id: papId }).first();
+        const participant = await db('pdoc_agenda_participants').where({ pap_id: papId }).first();
         if (!participant) throw new AppError('Participant not found', 404);
         
-        const header = await db('project_agenda').where({ agenda_id: participant.agenda_id }).first();
+        const header = await db('pdoc_agenda').where({ agenda_id: participant.agenda_id }).first();
         if (!header || header.version_id !== null || header.cycle_id != cycleId) {
             throw new AppError('Cannot delete participant from approved Agenda', 403);
         }
         
-        await db('project_agenda_participants').where({ pap_id: papId }).del();
+        await db('pdoc_agenda_participants').where({ pap_id: papId }).del();
         return true;
     }
 };
 
 export const summary = {
-    update: (orgId, cycleId, userId, data) => upsertEpisodicHeader(orgId, cycleId, userId, 'project_summary', data)
+    update: (orgId, cycleId, userId, data) => upsertEpisodicHeader(orgId, cycleId, userId, 'pdoc_summary', data)
 };
 
 export default {

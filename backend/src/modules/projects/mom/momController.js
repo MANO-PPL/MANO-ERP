@@ -43,7 +43,7 @@ export const createMoM = catchAsync(async (req, res) => {
     }
 
     // Ensure project exists
-    const project = await db('projects').where('id', projectId).first();
+    const project = await db('proj_projects').where('id', projectId).first();
     if (!project) throw new AppError('Project not found', 404);
 
     const result = await momService.createMoM(projectId, req.body);

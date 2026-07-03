@@ -40,9 +40,9 @@ function formatUserResponse(user) {
  * Returns access token, refresh token and user data
  */
 export async function authenticateUser(userInput, password, req) {
-    const user = await db('users')
-        .leftJoin('departments', 'users.dept_id', 'departments.dept_id')
-        .leftJoin('designations', 'users.desg_id', 'designations.desg_id')
+    const user = await db('iam_users as users')
+        .leftJoin('iam_departments as departments', 'users.dept_id', 'departments.dept_id')
+        .leftJoin('iam_designations as designations', 'users.desg_id', 'designations.desg_id')
         .select(
             'users.user_id',
             'users.user_code',

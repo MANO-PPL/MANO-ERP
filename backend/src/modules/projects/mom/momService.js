@@ -7,7 +7,7 @@ import AppError from '../../../utils/AppError.js';
 export async function fetchProjectMoMs(projectId) {
     if (!projectId) throw new AppError('projectId is required', 400);
 
-    const moms = await db('project_mom')
+    const moms = await db('pdoc_mom')
         .where('project_id', projectId)
         .select(['mom_id', 'subject', 'meeting_no', 'date', 'venue'])
         .orderBy('date', 'desc');
@@ -21,8 +21,8 @@ export async function fetchProjectMoMs(projectId) {
 export async function fetchMoMById(projectId, momId) {
     if (!momId) throw new AppError('momId is required', 400);
 
-    const mom = await db('project_mom as pm')
-        .leftJoin('projects as p', 'pm.project_id', 'p.id')
+    const mom = await db('pdoc_mom as pm')
+        .leftJoin('proj_projects as p', 'pm.project_id', 'p.id')
         .where('pm.mom_id', momId)
         .andWhere('pm.project_id', projectId)
         .select([
@@ -40,10 +40,10 @@ export async function fetchMoMById(projectId, momId) {
     if (!mom) throw new AppError('MoM not found', 404);
 
     // Fetch participants correctly referencing contacts
-    const participants = await db('project_mom_participants as pmp')
-        .leftJoin('project_directory as pd', 'pmp.pd_id', 'pd.pd_id')
-        .leftJoin('project_vendors as pv', 'pd.pv_id', 'pv.pv_id')
-        .leftJoin('contacts as c', 'pv.vendors_id', 'c.id')
+    const participants = await db('pdoc_mom_participants as pmp')
+        .leftJoin('pdoc_directory as pd', 'pmp.pd_id', 'pd.pd_id')
+        .leftJoin('pdoc_vendors as pv', 'pd.pv_id', 'pv.pv_id')
+        .leftJoin('crm_contacts as c', 'pv.vendors_id', 'c.id')
         .where('pmp.mom_id', momId)
         .select([
             'pmp.pmp_id',
@@ -74,7 +74,7 @@ export async function fetchMoMById(projectId, momId) {
 export async function createMoM(projectId, data) {
     let mom_id;
     await db.transaction(async (trx) => {
-        const [id] = await trx('project_mom').insert({
+        const [id] = await trx('pdoc_mom').insert({
             project_id: projectId,
             subject: data.subject,
             venue: data.venue,
@@ -91,7 +91,7 @@ export async function createMoM(projectId, data) {
                 mom_id,
                 pd_id,
             }));
-            await trx('project_mom_participants').insert(records);
+            await trx('pdoc_mom_participants').insert(records);
         }
     });
 
@@ -117,7 +117,7 @@ export async function updateMoM(projectId, momId, data) {
         }
 
         if (Object.keys(updateData).length > 0) {
-            const affected = await trx('project_mom')
+            const affected = await trx('pdoc_mom')
                 .where('mom_id', momId)
                 .where('project_id', projectId) // Scoped to project
                 .update(updateData);
@@ -127,14 +127,14 @@ export async function updateMoM(projectId, momId, data) {
 
         /* ---------------- PARTICIPANTS UPDATE ---------------- */
         if (Array.isArray(data.participants)) {
-            await trx('project_mom_participants').where('mom_id', momId).del();
+            await trx('pdoc_mom_participants').where('mom_id', momId).del();
 
             if (data.participants.length > 0) {
                 const records = data.participants.map((pd_id) => ({
                     mom_id: momId,
                     pd_id,
                 }));
-                await trx('project_mom_participants').insert(records);
+                await trx('pdoc_mom_participants').insert(records);
             }
         }
     });
@@ -146,12 +146,12 @@ export async function updateMoM(projectId, momId, data) {
    DELETE MoM
 -------------------------------------------------------- */
 export async function deleteMoM(projectId, momId) {
-    const mom = await db('project_mom').where({ mom_id: momId, project_id: projectId }).first();
+    const mom = await db('pdoc_mom').where({ mom_id: momId, project_id: projectId }).first();
     if (!mom) throw new AppError('MoM not found', 404);
 
     await db.transaction(async (trx) => {
-        await trx('project_mom_participants').where('mom_id', momId).del();
-        await trx('project_mom').where('mom_id', momId).del();
+        await trx('pdoc_mom_participants').where('mom_id', momId).del();
+        await trx('pdoc_mom').where('mom_id', momId).del();
     });
 
     return { affectedRows: 1 };

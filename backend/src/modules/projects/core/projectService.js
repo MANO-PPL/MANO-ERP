@@ -29,7 +29,7 @@ export function validateProjectPermissions(permissions) {
 export async function createProject(orgId, { name, location, status = 'active', project_code, start_date, end_date, metadata }) {
     if (!name) throw new AppError('Project name is required', 400);
 
-    const [insertId] = await db('projects').insert({
+    const [insertId] = await db('proj_projects').insert({
         org_id: orgId,
         name,
         location,
@@ -44,13 +44,13 @@ export async function createProject(orgId, { name, location, status = 'active', 
 }
 
 export async function getProjects(orgId) {
-    return await db('projects')
+    return await db('proj_projects')
         .where('org_id', orgId)
         .orderBy('created_at', 'desc');
 }
 
 export async function getProjectById(orgId, projectId) {
-    const project = await db('projects')
+    const project = await db('proj_projects')
         .where({ id: projectId, org_id: orgId })
         .first();
 
@@ -69,7 +69,7 @@ export async function updateProject(orgId, projectId, updateData) {
     if (updateData.metadata !== undefined) updates.metadata = updateData.metadata ? JSON.stringify(updateData.metadata) : null;
 
     if (Object.keys(updates).length > 0) {
-        const affected = await db('projects')
+        const affected = await db('proj_projects')
             .where({ id: projectId, org_id: orgId })
             .update(updates);
 
@@ -83,7 +83,7 @@ export async function assignUserToProject(orgId, projectId, userId, permissionsJ
     await getProjectById(orgId, projectId);
 
     // 2. Validate user belongs to org
-    const user = await db('users').where({ user_id: userId, org_id: orgId }).first();
+    const user = await db('iam_users').where({ user_id: userId, org_id: orgId }).first();
     if (!user) throw new AppError('User not found in your organization', 404);
 
     // 3. Upsert into project_users table
@@ -92,7 +92,7 @@ export async function assignUserToProject(orgId, projectId, userId, permissionsJ
 
     const validatedPerms = permissionsJson ? validateProjectPermissions(permissionsJson) : null;
 
-    await db('project_users')
+    await db('proj_members')
         .insert({
             project_id: projectId,
             user_id: userId,
@@ -108,7 +108,7 @@ export async function assignUserToProject(orgId, projectId, userId, permissionsJ
 }
 
 export async function removeUserFromProject(orgId, projectId, userId) {
-    const affected = await db('project_users')
+    const affected = await db('proj_members')
         .where({
             project_id: projectId,
             user_id: userId,
@@ -124,8 +124,8 @@ export async function getProjectMembers(orgId, projectId) {
     // Validate project
     await getProjectById(orgId, projectId);
 
-    const members = await db('project_users as pu')
-        .join('users as u', 'pu.user_id', 'u.user_id')
+    const members = await db('proj_members as pu')
+        .join('iam_users as u', 'pu.user_id', 'u.user_id')
         .where('pu.project_id', projectId)
         .andWhere('pu.org_id', orgId)
         .select(

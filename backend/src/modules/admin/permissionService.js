@@ -2,7 +2,7 @@ import { db } from '../../config/database.js';
 import AppError from '../../utils/AppError.js';
 
 export async function getTemplates(orgId, type) {
-    let query = db('permission_templates').where('org_id', orgId);
+    let query = db('iam_permission_templates').where('org_id', orgId);
     if (type) {
         query = query.andWhere('type', type);
     }
@@ -18,7 +18,7 @@ export async function createTemplate(orgId, { name, type, permissions }) {
         throw new AppError('Template type must be either system or project', 400);
     }
 
-    const [id] = await db('permission_templates').insert({
+    const [id] = await db('iam_permission_templates').insert({
         org_id: orgId,
         name,
         type,
@@ -33,7 +33,7 @@ export async function updateTemplate(orgId, templateId, { name, permissions }) {
     if (name) updates.name = name;
     if (permissions) updates.permissions = JSON.stringify(permissions);
 
-    const affected = await db('permission_templates')
+    const affected = await db('iam_permission_templates')
         .where({ id: templateId, org_id: orgId })
         .update(updates);
 
@@ -45,7 +45,7 @@ export async function updateTemplate(orgId, templateId, { name, permissions }) {
 }
 
 export async function deleteTemplate(orgId, templateId) {
-    const affected = await db('permission_templates')
+    const affected = await db('iam_permission_templates')
         .where({ id: templateId, org_id: orgId })
         .del();
 

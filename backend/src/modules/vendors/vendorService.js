@@ -8,8 +8,8 @@ export async function getVendors(query = {}) {
     const limit = parseInt(query.limit) || 10;
     const offset = (page - 1) * limit;
 
-    const baseQuery = db('contacts as c')
-        .leftJoin('job_nature as jn', 'c.job_nature_id', 'jn.job_id')
+    const baseQuery = db('crm_contacts as c')
+        .leftJoin('crm_job_nature as jn', 'c.job_nature_id', 'jn.job_id')
         .where('c.type', 'vendor');
 
     // Apply filters to both count and data queries
@@ -71,7 +71,7 @@ export async function getVendors(query = {}) {
     }
 
     // Fetch interactions...
-    const interactions = await db('interactions')
+    const interactions = await db('crm_interactions')
         .whereIn('contact_id', vendorIds)
         .whereNull('interacted_by')
         .select('*');
@@ -100,7 +100,7 @@ export async function getVendors(query = {}) {
 }
 
 export async function getVendorById(id) {
-    const vendor = await db('contacts')
+    const vendor = await db('crm_contacts')
         .where({ id, type: 'vendor' })
         .first();
 
@@ -108,8 +108,8 @@ export async function getVendorById(id) {
         throw new AppError('Vendor not found', 404);
     }
 
-    const interactions = await db('interactions as i')
-        .leftJoin('users as u', 'i.interacted_by', 'u.id')
+    const interactions = await db('crm_interactions as i')
+        .leftJoin('iam_users as u', 'i.interacted_by', 'u.id')
         .where({ 'i.contact_id': id })
         .select('i.*', 'u.name as interacted_by_name')
         .orderBy('i.interaction_date', 'desc');
@@ -136,7 +136,7 @@ export async function createInteraction(id, data) {
         updated_at: db.fn.now()
     };
 
-    const [newId] = await db('interactions').insert(insertData);
+    const [newId] = await db('crm_interactions').insert(insertData);
     return newId;
 }
 
@@ -171,12 +171,12 @@ export async function createVendor(data) {
         insertData.job_nature_id = await findOrCreateJobNature(data.job_nature);
     }
 
-    const [newId] = await db('contacts').insert(insertData);
+    const [newId] = await db('crm_contacts').insert(insertData);
     return newId;
 }
 
 export async function updateVendor(id, data) {
-    const vendor = await db('contacts').where({ id, type: 'vendor' }).first();
+    const vendor = await db('crm_contacts').where({ id, type: 'vendor' }).first();
     if (!vendor) {
         throw new AppError('Vendor not found', 404);
     }
@@ -211,7 +211,7 @@ export async function updateVendor(id, data) {
 
     updateData.updated_at = db.fn.now();
 
-    await db('contacts').where({ id }).update(updateData);
+    await db('crm_contacts').where({ id }).update(updateData);
     return true;
 }
 
@@ -221,10 +221,10 @@ export async function deleteVendors(ids) {
     }
 
     // Delete related interactions first (if no cascade)
-    await db('interactions').whereIn('contact_id', ids).delete();
+    await db('crm_interactions').whereIn('contact_id', ids).delete();
 
     // Delete contact
-    const deletedCount = await db('contacts').whereIn('id', ids).where({ type: 'vendor' }).delete();
+    const deletedCount = await db('crm_contacts').whereIn('id', ids).where({ type: 'vendor' }).delete();
 
     if (deletedCount === 0) {
         throw new AppError('No valid vendors found to delete', 404);
@@ -300,12 +300,12 @@ export async function bulkValidateVendors(vendors) {
     });
 
     if (inputEmails.size > 0) {
-        const existingVendors = await db('contacts').where({ type: 'vendor' }).whereIn('email', Array.from(inputEmails)).select('email');
+        const existingVendors = await db('crm_contacts').where({ type: 'vendor' }).whereIn('email', Array.from(inputEmails)).select('email');
         const existingEmailSet = new Set(existingVendors.map(v => v.email));
 
         let existingPhoneSet = new Set();
         if (inputPhones.size > 0) {
-            const existingPhones = await db('contacts').where({ type: 'vendor' }).whereIn('mobile', Array.from(inputPhones)).select('mobile');
+            const existingPhones = await db('crm_contacts').where({ type: 'vendor' }).whereIn('mobile', Array.from(inputPhones)).select('mobile');
             existingPhoneSet = new Set(existingPhones.map(v => v.mobile));
         }
 
@@ -330,7 +330,7 @@ export async function bulkValidateVendors(vendors) {
     }
 
     if (inputJobNatures.size > 0) {
-        const existingJobs = await db('job_nature').whereIn(db.raw('LOWER(job_name)'), Array.from(inputJobNatures)).select('job_name');
+        const existingJobs = await db('crm_job_nature').whereIn(db.raw('LOWER(job_name)'), Array.from(inputJobNatures)).select('job_name');
         const existingJobSet = new Set(existingJobs.map(j => j.job_name.toLowerCase()));
         Array.from(inputJobNatures).forEach(j => {
             if (!existingJobSet.has(j)) {

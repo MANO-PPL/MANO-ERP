@@ -2,31 +2,31 @@ import { db } from '../../config/database.js';
 import AppError from '../../utils/AppError.js';
 
 const CONTENT_TABLES = [
-    { name: 'project_directory', pk: 'pd_id' },
-    { name: 'project_vendors', pk: 'pv_id' },
-    { name: 'project_staff_role_responsible', pk: 'psrr_id' },
-    { name: 'project_summary', pk: 'id' },
+    { name: 'pdoc_directory', pk: 'pd_id' },
+    { name: 'pdoc_vendors', pk: 'pv_id' },
+    { name: 'pdoc_staff_responsible', pk: 'psrr_id' },
+    { name: 'pdoc_summary', pk: 'id' },
     {
-        name: 'project_mom',
+        name: 'pdoc_mom',
         pk: 'mom_id',
-        children: [{ name: 'project_mom_participants', fk: 'mom_id', pk: 'pmp_id' }]
+        children: [{ name: 'pdoc_mom_participants', fk: 'mom_id', pk: 'pmp_id' }]
     },
     {
-        name: 'project_agenda',
+        name: 'pdoc_agenda',
         pk: 'agenda_id',
-        children: [{ name: 'project_agenda_participants', fk: 'agenda_id', pk: 'pap_id' }]
+        children: [{ name: 'pdoc_agenda_participants', fk: 'agenda_id', pk: 'pap_id' }]
     }
 ];
 
 // Helper to verify user access
 async function verifyAccess(orgId, instanceId, userId) {
-    const instance = await db('document_instances')
+    const instance = await db('wf_document_instances')
         .where({ instance_id: instanceId, org_id: orgId })
         .first();
 
     if (!instance) throw new AppError('Document instance not found', 404);
 
-    const role = await db('document_roles')
+    const role = await db('wf_document_roles')
         .where({ document_id: instance.document_id, user_id: userId })
         .whereIn('role', ['editor', 'approver', 'reporter'])
         .first();
@@ -50,9 +50,9 @@ export async function getApprovedContent(orgId, instanceId, userId, versionIdPar
         throw new AppError('Document has not been approved yet.', 404);
     }
 
-    const versionMeta = await db('document_versions')
+    const versionMeta = await db('wf_document_versions as document_versions')
         .select('document_versions.*', 'users.user_name as final_approved_by_name')
-        .leftJoin('users', 'document_versions.final_approved_by', 'users.user_id')
+        .leftJoin('iam_users as users', 'document_versions.final_approved_by', 'users.user_id')
         .where('document_versions.version_id', targetVersionId)
         .first();
 
@@ -89,7 +89,7 @@ export async function getApprovedContent(orgId, instanceId, userId, versionIdPar
 export async function getDraftContent(orgId, instanceId, userId) {
     const instance = await verifyAccess(orgId, instanceId, userId);
 
-    const activeCycle = await db('approval_cycles')
+    const activeCycle = await db('wf_approval_cycles')
         .where({ instance_id: instanceId })
         .whereIn('status', ['drafting', 'revision_requested', 'in_review'])
         .first();
@@ -140,14 +140,14 @@ export async function getDraftContent(orgId, instanceId, userId) {
 export async function listVersions(orgId, instanceId, userId) {
     await verifyAccess(orgId, instanceId, userId);
 
-    return await db('document_versions')
+    return await db('wf_document_versions as document_versions')
         .select(
             'document_versions.version_id',
             'document_versions.version_number',
             'document_versions.approved_at',
             'users.user_name as final_approved_by_name'
         )
-        .leftJoin('users', 'document_versions.final_approved_by', 'users.user_id')
+        .leftJoin('iam_users as users', 'document_versions.final_approved_by', 'users.user_id')
         .where('document_versions.instance_id', instanceId)
         .orderBy('document_versions.version_number', 'desc');
 }

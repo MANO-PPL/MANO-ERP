@@ -9,7 +9,7 @@ export async function getProjectOrgChart(projectId) {
     if (!projectId) throw new AppError('projectId is required', 400);
 
     // 1. Fetch Basic Project Details
-    const project = await db('projects')
+    const project = await db('proj_projects')
         .select([
             'id',
             'name as project_name',
@@ -33,11 +33,11 @@ export async function getProjectOrgChart(projectId) {
     }
 
     // 2. Fetch Vendors (Project Vendors + Contacts Join)
-    const vendors = await db('project_vendors as pv')
-        .leftJoin('contacts as c', function () {
+    const vendors = await db('pdoc_vendors as pv')
+        .leftJoin('crm_contacts as c', function () {
             this.on('pv.vendors_id', 'c.id').andOn('c.type', db.raw("'vendor'"));
         })
-        .leftJoin('job_nature as jn', 'c.job_nature_id', 'jn.job_id')
+        .leftJoin('crm_job_nature as jn', 'c.job_nature_id', 'jn.job_id')
         .where('pv.project_id', projectId)
         .select([
             'pv.pv_id',
@@ -50,11 +50,11 @@ export async function getProjectOrgChart(projectId) {
         .orderBy('c.name', 'asc');
 
     // 3. Fetch Directory (Project Directory + Contacts Join)
-    const directory = await db('project_directory as pd')
-        .leftJoin('contacts as c', function () {
+    const directory = await db('pdoc_directory as pd')
+        .leftJoin('crm_contacts as c', function () {
             this.on('pd.vendor_id', 'c.id').andOn('c.type', db.raw("'vendor'"));
         })
-        .leftJoin('job_nature as jn', 'c.job_nature_id', 'jn.job_id')
+        .leftJoin('crm_job_nature as jn', 'c.job_nature_id', 'jn.job_id')
         .where('pd.project_id', projectId)
         .select([
             'pd.pd_id',

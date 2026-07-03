@@ -10,7 +10,7 @@ export async function createInstance(orgId, projectId, userId, { document_id, ti
     }
 
     // Verify document template exists
-    const document = await db('documents')
+    const document = await db('wf_documents')
         .where({ document_id, org_id: orgId })
         .first();
 
@@ -20,7 +20,7 @@ export async function createInstance(orgId, projectId, userId, { document_id, ti
 
     // Singletons can only have ONE active instance per project
     if (document.doc_type === 'singleton') {
-        const existing = await db('document_instances')
+        const existing = await db('wf_document_instances')
             .where({
                 project_id: projectId,
                 document_id,
@@ -34,7 +34,7 @@ export async function createInstance(orgId, projectId, userId, { document_id, ti
         }
     }
 
-    const [instance_id] = await db('document_instances').insert({
+    const [instance_id] = await db('wf_document_instances').insert({
         document_id,
         project_id: projectId,
         org_id: orgId,
@@ -50,15 +50,15 @@ export async function createInstance(orgId, projectId, userId, { document_id, ti
  * List document instances for a project.
  */
 export async function listProjectInstances(orgId, projectId, { document_id } = {}) {
-    const query = db('document_instances')
+    const query = db('wf_document_instances as document_instances')
         .select(
             'document_instances.*',
             'documents.name as template_name',
             'documents.doc_type',
             'users.user_name as locked_by_name'
         )
-        .leftJoin('documents', 'document_instances.document_id', 'documents.document_id')
-        .leftJoin('users', 'document_instances.locked_by', 'users.user_id')
+        .leftJoin('wf_documents as documents', 'document_instances.document_id', 'documents.document_id')
+        .leftJoin('iam_users as users', 'document_instances.locked_by', 'users.user_id')
         .where('document_instances.project_id', projectId)
         .andWhere('document_instances.org_id', orgId);
 
@@ -73,12 +73,12 @@ export async function listProjectInstances(orgId, projectId, { document_id } = {
  * Get detailed information about a specific document instance.
  */
 export async function getInstanceDetail(orgId, instanceId) {
-    const instance = await db('document_instances')
+    const instance = await db('wf_document_instances as document_instances')
         .select(
             'document_instances.*',
             'users.user_name as locked_by_name'
         )
-        .leftJoin('users', 'document_instances.locked_by', 'users.user_id')
+        .leftJoin('iam_users as users', 'document_instances.locked_by', 'users.user_id')
         .where({ 'document_instances.instance_id': instanceId, 'document_instances.org_id': orgId })
         .first();
 
@@ -86,12 +86,12 @@ export async function getInstanceDetail(orgId, instanceId) {
         throw new AppError('Document instance not found', 404);
     }
 
-    const template = await db('documents')
+    const template = await db('wf_documents')
         .where({ document_id: instance.document_id })
         .first();
 
     // Check for an active approval cycle
-    const currentCycle = await db('approval_cycles')
+    const currentCycle = await db('wf_approval_cycles')
         .where({ instance_id: instanceId })
         .whereNotIn('status', ['approved', 'rejected', 'cancelled'])
         .orderBy('created_at', 'desc')
@@ -108,7 +108,7 @@ export async function getInstanceDetail(orgId, instanceId) {
  * Archive a document instance.
  */
 export async function archiveInstance(orgId, instanceId) {
-    const instance = await db('document_instances')
+    const instance = await db('wf_document_instances')
         .where({ instance_id: instanceId, org_id: orgId })
         .first();
 
@@ -120,7 +120,7 @@ export async function archiveInstance(orgId, instanceId) {
         throw new AppError('Cannot archive a locked document instance. Finish or cancel the active approval cycle first.', 400);
     }
 
-    await db('document_instances')
+    await db('wf_document_instances')
         .where({ instance_id: instanceId })
         .update({ instance_status: 'archived' });
 

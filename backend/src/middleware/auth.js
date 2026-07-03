@@ -25,7 +25,7 @@ export const authenticateJWT = catchAsync(async (req, res, next) => {
         // Check based on token contents
         // User tokens (issued by LoginAPI.js) have user_type='employee'/'admin'/etc.
 
-        user = await db('users').where({ user_id: decoded.user_id }).first();
+        user = await db('iam_users').where({ user_id: decoded.user_id }).first();
 
         if (!user) {
             return res.status(403).json({ message: "Forbidden: Invalid token user" });
@@ -107,7 +107,7 @@ export const requireProjectAssignment = async (req, res, next) => {
     }
 
     try {
-        const projectUser = await db('project_users')
+        const projectUser = await db('proj_members')
             .where({ project_id: projectId, user_id, org_id })
             .first();
 
@@ -141,7 +141,7 @@ export const requireProjectPermission = (module) => {
         }
 
         try {
-            const projectUser = await db('project_users')
+            const projectUser = await db('proj_members')
                 .where({ project_id: projectId, user_id, org_id })
                 .first();
 

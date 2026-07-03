@@ -19,7 +19,7 @@ export async function createTemplate(orgId, userId, { name, doc_type, approval_t
         throw new AppError(`approval_type must be one of: ${validApprovalTypes.join(', ')}`, 400);
     }
 
-    const [document_id] = await db('documents').insert({
+    const [document_id] = await db('wf_documents').insert({
         org_id: orgId,
         project_id: project_id || null,
         name,
@@ -36,7 +36,7 @@ export async function createTemplate(orgId, userId, { name, doc_type, approval_t
  * List document templates for a project or org.
  */
 export async function getTemplates(orgId, { project_id } = {}) {
-    const query = db('documents').where('org_id', orgId);
+    const query = db('wf_documents').where('org_id', orgId);
 
     if (project_id) {
         query.where(function() {
@@ -51,18 +51,18 @@ export async function getTemplates(orgId, { project_id } = {}) {
  * Get a single document template with levels and roles.
  */
 export async function getTemplateById(orgId, document_id) {
-    const document = await db('documents').where({ document_id, org_id: orgId }).first();
+    const document = await db('wf_documents').where({ document_id, org_id: orgId }).first();
     if (!document) {
         throw new AppError('Document template not found', 404);
     }
 
-    const levels = await db('approval_levels')
+    const levels = await db('wf_approval_levels')
         .where('document_id', document_id)
         .orderBy('level_order', 'ASC');
 
-    const roles = await db('document_roles')
+    const roles = await db('wf_document_roles as document_roles')
         .select('document_roles.*', 'users.user_name', 'users.email')
-        .leftJoin('users', 'document_roles.user_id', 'users.user_id')
+        .leftJoin('iam_users as users', 'document_roles.user_id', 'users.user_id')
         .where('document_roles.document_id', document_id);
 
     return {
@@ -76,7 +76,7 @@ export async function getTemplateById(orgId, document_id) {
  * Update a document template.
  */
 export async function updateTemplate(orgId, document_id, data) {
-    const document = await db('documents').where({ document_id, org_id: orgId }).first();
+    const document = await db('wf_documents').where({ document_id, org_id: orgId }).first();
     if (!document) {
         throw new AppError('Document template not found', 404);
     }
@@ -91,7 +91,7 @@ export async function updateTemplate(orgId, document_id, data) {
     const checkApprovalType = data.approval_type && data.approval_type !== document.approval_type;
 
     if (checkDocType || checkApprovalType) {
-        const instancesExist = await db('document_instances').where('document_id', document_id).first();
+        const instancesExist = await db('wf_document_instances').where('document_id', document_id).first();
         if (instancesExist) {
             throw new AppError('Cannot change doc_type or approval_type when instances exist', 400);
         }
@@ -101,7 +101,7 @@ export async function updateTemplate(orgId, document_id, data) {
 
     if (Object.keys(updates).length === 0) return true;
 
-    await db('documents').where({ document_id, org_id: orgId }).update(updates);
+    await db('wf_documents').where({ document_id, org_id: orgId }).update(updates);
     return true;
 }
 
@@ -109,7 +109,7 @@ export async function updateTemplate(orgId, document_id, data) {
  * Add an approval level.
  */
 export async function addApprovalLevel(orgId, document_id, { label, level_order }) {
-    const document = await db('documents').where({ document_id, org_id: orgId }).first();
+    const document = await db('wf_documents').where({ document_id, org_id: orgId }).first();
     if (!document) {
         throw new AppError('Document template not found', 404);
     }
@@ -119,12 +119,12 @@ export async function addApprovalLevel(orgId, document_id, { label, level_order 
     }
 
     // Validate level_order uniqueness for this document
-    const existing = await db('approval_levels').where({ document_id, level_order }).first();
+    const existing = await db('wf_approval_levels').where({ document_id, level_order }).first();
     if (existing) {
         throw new AppError(`Level order ${level_order} already exists for this document`, 400);
     }
 
-    const [level_id] = await db('approval_levels').insert({
+    const [level_id] = await db('wf_approval_levels').insert({
         document_id,
         label,
         level_order
@@ -137,18 +137,18 @@ export async function addApprovalLevel(orgId, document_id, { label, level_order 
  * Remove an approval level.
  */
 export async function removeApprovalLevel(orgId, document_id, level_id) {
-    const document = await db('documents').where({ document_id, org_id: orgId }).first();
+    const document = await db('wf_documents').where({ document_id, org_id: orgId }).first();
     if (!document) {
         throw new AppError('Document template not found', 404);
     }
 
     // Block if any document_roles reference this level_id
-    const referenced = await db('document_roles').where({ level_id }).first();
+    const referenced = await db('wf_document_roles').where({ level_id }).first();
     if (referenced) {
         throw new AppError('Cannot remove level: it is referenced by one or more document roles', 400);
     }
 
-    const deleted = await db('approval_levels').where({ level_id, document_id }).del();
+    const deleted = await db('wf_approval_levels').where({ level_id, document_id }).del();
     if (!deleted) {
         throw new AppError('Approval level not found for this document', 404);
     }
@@ -160,7 +160,7 @@ export async function removeApprovalLevel(orgId, document_id, level_id) {
  * Assign a user to a role.
  */
 export async function assignDocumentRole(orgId, document_id, { user_id, role, level_id = null }) {
-    const document = await db('documents').where({ document_id, org_id: orgId }).first();
+    const document = await db('wf_documents').where({ document_id, org_id: orgId }).first();
     if (!document) {
         throw new AppError('Document template not found', 404);
     }
@@ -179,7 +179,7 @@ export async function assignDocumentRole(orgId, document_id, { user_id, role, le
             throw new AppError('level_id is required for approver role', 400);
         }
         // Verify level exists for this document
-        const level = await db('approval_levels').where({ level_id, document_id }).first();
+        const level = await db('wf_approval_levels').where({ level_id, document_id }).first();
         if (!level) {
             throw new AppError('level_id does not exist for this document', 400);
         }
@@ -190,12 +190,12 @@ export async function assignDocumentRole(orgId, document_id, { user_id, role, le
     }
 
     // Check duplicate
-    const duplicate = await db('document_roles').where({ document_id, user_id, role }).first();
+    const duplicate = await db('wf_document_roles').where({ document_id, user_id, role }).first();
     if (duplicate) {
         throw new AppError(`User already has the role '${role}' for this document`, 400);
     }
 
-    const [role_id] = await db('document_roles').insert({
+    const [role_id] = await db('wf_document_roles').insert({
         document_id,
         user_id,
         role,
@@ -209,12 +209,12 @@ export async function assignDocumentRole(orgId, document_id, { user_id, role, le
  * Remove a role assignment.
  */
 export async function removeDocumentRole(orgId, document_id, role_id) {
-    const document = await db('documents').where({ document_id, org_id: orgId }).first();
+    const document = await db('wf_documents').where({ document_id, org_id: orgId }).first();
     if (!document) {
         throw new AppError('Document template not found', 404);
     }
 
-    const deleted = await db('document_roles').where({ id: role_id, document_id }).del();
+    const deleted = await db('wf_document_roles').where({ id: role_id, document_id }).del();
     if (!deleted) {
         throw new AppError('Role assignment not found for this document', 404);
     }

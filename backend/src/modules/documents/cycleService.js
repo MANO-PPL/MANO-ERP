@@ -2,26 +2,26 @@ import { db } from '../../config/database.js';
 import AppError from '../../utils/AppError.js';
 
 const CONTENT_TABLES = [
-    { name: 'project_directory', pk: 'pd_id' },
-    { name: 'project_vendors', pk: 'pv_id' },
-    { name: 'project_staff_role_responsible', pk: 'psrr_id' },
-    { name: 'project_summary', pk: 'id' },
+    { name: 'pdoc_directory', pk: 'pd_id' },
+    { name: 'pdoc_vendors', pk: 'pv_id' },
+    { name: 'pdoc_staff_responsible', pk: 'psrr_id' },
+    { name: 'pdoc_summary', pk: 'id' },
     {
-        name: 'project_mom',
+        name: 'pdoc_mom',
         pk: 'mom_id',
-        children: [{ name: 'project_mom_participants', fk: 'mom_id', pk: 'pmp_id' }]
+        children: [{ name: 'pdoc_mom_participants', fk: 'mom_id', pk: 'pmp_id' }]
     },
     {
-        name: 'project_agenda',
+        name: 'pdoc_agenda',
         pk: 'agenda_id',
-        children: [{ name: 'project_agenda_participants', fk: 'agenda_id', pk: 'pap_id' }]
+        children: [{ name: 'pdoc_agenda_participants', fk: 'agenda_id', pk: 'pap_id' }]
     }
 ];
 
 export async function initiateCycle(orgId, instanceId, userId) {
     return await db.transaction(async (trx) => {
         // 1. Fetch instance
-        const instance = await trx('document_instances')
+        const instance = await trx('wf_document_instances')
             .where({ instance_id: instanceId, org_id: orgId })
             .first();
 
@@ -33,7 +33,7 @@ export async function initiateCycle(orgId, instanceId, userId) {
         }
 
         // 3. Verify caller has role='editor'
-        const role = await trx('document_roles')
+        const role = await trx('wf_document_roles')
             .where({ document_id: instance.document_id, user_id: userId, role: 'editor' })
             .first();
             
@@ -42,7 +42,7 @@ export async function initiateCycle(orgId, instanceId, userId) {
         }
 
         // 4. Verify no active cycle exists
-        const activeCycle = await trx('approval_cycles')
+        const activeCycle = await trx('wf_approval_cycles')
             .where({ instance_id: instanceId })
             .whereIn('status', ['drafting', 'in_review', 'revision_requested'])
             .first();
@@ -52,7 +52,7 @@ export async function initiateCycle(orgId, instanceId, userId) {
         }
 
         // 5. Determine version_number
-        const latestCycle = await trx('approval_cycles')
+        const latestCycle = await trx('wf_approval_cycles')
             .where({ instance_id: instanceId })
             .max('version_number as max_ver')
             .first();
@@ -60,7 +60,7 @@ export async function initiateCycle(orgId, instanceId, userId) {
         const nextVersion = (latestCycle && latestCycle.max_ver) ? latestCycle.max_ver + 1 : 1;
 
         // 6. Insert approval_cycles
-        const [cycleId] = await trx('approval_cycles').insert({
+        const [cycleId] = await trx('wf_approval_cycles').insert({
             instance_id: instanceId,
             document_id: instance.document_id,
             version_number: nextVersion,
@@ -106,7 +106,7 @@ export async function initiateCycle(orgId, instanceId, userId) {
         }
 
         // 8. Update instance lock
-        await trx('document_instances')
+        await trx('wf_document_instances')
             .where({ instance_id: instanceId })
             .update({
                 is_locked: 1,
@@ -115,7 +115,7 @@ export async function initiateCycle(orgId, instanceId, userId) {
             });
 
         // 9. Insert log
-        await trx('approval_logs').insert({
+        await trx('wf_approval_logs').insert({
             cycle_id: cycleId,
             action: 'cycle_initiated',
             level_order: 0,
@@ -128,30 +128,30 @@ export async function initiateCycle(orgId, instanceId, userId) {
 
 export async function listCycles(orgId, instanceId) {
     // Validate instance access
-    const instance = await db('document_instances')
+    const instance = await db('wf_document_instances')
         .where({ instance_id: instanceId, org_id: orgId })
         .first();
 
     if (!instance) throw new AppError('Instance not found', 404);
 
-    return await db('approval_cycles')
+    return await db('wf_approval_cycles as approval_cycles')
         .select('approval_cycles.*', 'users.user_name as initiator_name')
-        .leftJoin('users', 'approval_cycles.initiated_by', 'users.user_id')
+        .leftJoin('iam_users as users', 'approval_cycles.initiated_by', 'users.user_id')
         .where('approval_cycles.instance_id', instanceId)
         .orderBy('approval_cycles.version_number', 'desc');
 }
 
 export async function getCycleDetail(orgId, cycleId) {
-    const cycle = await db('approval_cycles')
+    const cycle = await db('wf_approval_cycles as approval_cycles')
         .select(
             'approval_cycles.*',
             'users.user_name as current_holder_name',
             'initiator.user_name as initiator_name',
             'document_instances.org_id'
         )
-        .leftJoin('users', 'approval_cycles.current_holder_id', 'users.user_id')
-        .leftJoin('users as initiator', 'approval_cycles.initiated_by', 'initiator.user_id')
-        .leftJoin('document_instances', 'approval_cycles.instance_id', 'document_instances.instance_id')
+        .leftJoin('iam_users as users', 'approval_cycles.current_holder_id', 'users.user_id')
+        .leftJoin('iam_users as initiator', 'approval_cycles.initiated_by', 'initiator.user_id')
+        .leftJoin('wf_document_instances as document_instances', 'approval_cycles.instance_id', 'document_instances.instance_id')
         .where('approval_cycles.cycle_id', cycleId)
         .first();
 
@@ -159,9 +159,9 @@ export async function getCycleDetail(orgId, cycleId) {
         throw new AppError('Cycle not found', 404);
     }
 
-    const submissions = await db('cycle_submissions')
+    const submissions = await db('wf_cycle_submissions as cycle_submissions')
         .select('cycle_submissions.*', 'users.user_name as submitter_name')
-        .leftJoin('users', 'cycle_submissions.submitted_by', 'users.user_id')
+        .leftJoin('iam_users as users', 'cycle_submissions.submitted_by', 'users.user_id')
         .where('cycle_submissions.cycle_id', cycleId)
         .orderBy('cycle_submissions.level_order', 'asc');
 
@@ -172,8 +172,8 @@ export async function getCycleDetail(orgId, cycleId) {
 }
 
 export async function saveDraft(orgId, cycleId, userId, content) {
-    const cycle = await db('approval_cycles')
-        .join('document_instances', 'approval_cycles.instance_id', 'document_instances.instance_id')
+    const cycle = await db('wf_approval_cycles as approval_cycles')
+        .join('wf_document_instances as document_instances', 'approval_cycles.instance_id', 'document_instances.instance_id')
         .where({ 'approval_cycles.cycle_id': cycleId, 'document_instances.org_id': orgId })
         .select('approval_cycles.*')
         .first();
@@ -189,7 +189,7 @@ export async function saveDraft(orgId, cycleId, userId, content) {
     }
 
     const now = new Date();
-    await db('approval_cycles')
+    await db('wf_approval_cycles')
         .where({ cycle_id: cycleId })
         .update({
             draft_content: content ? JSON.stringify(content) : null,
@@ -197,13 +197,13 @@ export async function saveDraft(orgId, cycleId, userId, content) {
         });
 
     // Check last log
-    const lastLog = await db('approval_logs')
+    const lastLog = await db('wf_approval_logs')
         .where({ cycle_id: cycleId, action: 'draft_saved' })
         .orderBy('created_at', 'desc')
         .first();
 
     if (!lastLog || (now - new Date(lastLog.created_at)) > 60000) {
-        await db('approval_logs').insert({
+        await db('wf_approval_logs').insert({
             cycle_id: cycleId,
             action: 'draft_saved',
             level_order: cycle.current_level,
@@ -216,8 +216,8 @@ export async function saveDraft(orgId, cycleId, userId, content) {
 
 export async function submitDraft(orgId, cycleId, userId, { changes_summary, comments }) {
     return await db.transaction(async (trx) => {
-        const cycle = await trx('approval_cycles')
-            .join('document_instances', 'approval_cycles.instance_id', 'document_instances.instance_id')
+        const cycle = await trx('wf_approval_cycles as approval_cycles')
+            .join('wf_document_instances as document_instances', 'approval_cycles.instance_id', 'document_instances.instance_id')
             .where({ 'approval_cycles.cycle_id': cycleId, 'document_instances.org_id': orgId })
             .select('approval_cycles.*', 'document_instances.is_locked')
             .first();
@@ -233,7 +233,7 @@ export async function submitDraft(orgId, cycleId, userId, { changes_summary, com
         }
 
         // 1. Insert cycle submission
-        await trx('cycle_submissions').insert({
+        await trx('wf_cycle_submissions').insert({
             cycle_id: cycleId,
             level_order: cycle.current_level,
             submitted_by: userId,
@@ -244,8 +244,8 @@ export async function submitDraft(orgId, cycleId, userId, { changes_summary, com
 
         // 2. Find next approver
         // Query all approver roles for this document
-        const approvers = await trx('document_roles')
-            .join('approval_levels', 'document_roles.level_id', 'approval_levels.level_id')
+        const approvers = await trx('wf_document_roles as document_roles')
+            .join('wf_approval_levels as approval_levels', 'document_roles.level_id', 'approval_levels.level_id')
             .where({
                 'document_roles.document_id': cycle.document_id,
                 'document_roles.role': 'approver'
@@ -257,7 +257,7 @@ export async function submitDraft(orgId, cycleId, userId, { changes_summary, com
 
         if (nextApprover) {
             // Forward to next approver
-            await trx('approval_cycles')
+            await trx('wf_approval_cycles')
                 .where({ cycle_id: cycleId })
                 .update({
                     status: 'in_review',
@@ -265,11 +265,11 @@ export async function submitDraft(orgId, cycleId, userId, { changes_summary, com
                     current_holder_id: nextApprover.user_id
                 });
 
-            await trx('document_instances')
+            await trx('wf_document_instances')
                 .where({ instance_id: cycle.instance_id })
                 .update({ locked_by: nextApprover.user_id });
 
-            await trx('approval_logs').insert({
+            await trx('wf_approval_logs').insert({
                 cycle_id: cycleId,
                 action: 'submitted',
                 level_order: cycle.current_level,
@@ -284,7 +284,7 @@ export async function submitDraft(orgId, cycleId, userId, { changes_summary, com
             };
         } else {
             // FULL APPROVAL sequence
-            const [versionId] = await trx('document_versions').insert({
+            const [versionId] = await trx('wf_document_versions').insert({
                 instance_id: cycle.instance_id,
                 cycle_id: cycleId,
                 version_number: cycle.version_number,
@@ -301,14 +301,14 @@ export async function submitDraft(orgId, cycleId, userId, { changes_summary, com
                     .update({ version_id: versionId });
             }
 
-            await trx('approval_cycles')
+            await trx('wf_approval_cycles')
                 .where({ cycle_id: cycleId })
                 .update({
                     status: 'approved',
                     completed_at: new Date()
                 });
 
-            await trx('document_instances')
+            await trx('wf_document_instances')
                 .where({ instance_id: cycle.instance_id })
                 .update({
                     latest_approved_version_id: versionId,
@@ -317,7 +317,7 @@ export async function submitDraft(orgId, cycleId, userId, { changes_summary, com
                     locked_at: null
                 });
 
-            await trx('approval_logs').insert({
+            await trx('wf_approval_logs').insert({
                 cycle_id: cycleId,
                 action: 'approved',
                 level_order: cycle.current_level,
@@ -337,8 +337,8 @@ export async function submitDraft(orgId, cycleId, userId, { changes_summary, com
 
 export async function requestRevision(orgId, cycleId, userId, comments) {
     return await db.transaction(async (trx) => {
-        const cycle = await trx('approval_cycles')
-            .join('document_instances', 'approval_cycles.instance_id', 'document_instances.instance_id')
+        const cycle = await trx('wf_approval_cycles as approval_cycles')
+            .join('wf_document_instances as document_instances', 'approval_cycles.instance_id', 'document_instances.instance_id')
             .where({ 'approval_cycles.cycle_id': cycleId, 'document_instances.org_id': orgId })
             .select('approval_cycles.*', 'document_instances.is_locked')
             .first();
@@ -347,7 +347,7 @@ export async function requestRevision(orgId, cycleId, userId, comments) {
         if (cycle.current_holder_id !== userId) throw new AppError('Only the current holder can request revision', 403);
         if (cycle.status !== 'in_review') throw new AppError('Cycle must be in_review to request revision', 400);
 
-        await trx('approval_cycles')
+        await trx('wf_approval_cycles')
             .where({ cycle_id: cycleId })
             .update({
                 status: 'revision_requested',
@@ -355,7 +355,7 @@ export async function requestRevision(orgId, cycleId, userId, comments) {
                 current_holder_id: null
             });
 
-        await trx('document_instances')
+        await trx('wf_document_instances')
             .where({ instance_id: cycle.instance_id })
             .update({
                 is_locked: 0,
@@ -363,7 +363,7 @@ export async function requestRevision(orgId, cycleId, userId, comments) {
                 locked_at: null
             });
 
-        await trx('approval_logs').insert({
+        await trx('wf_approval_logs').insert({
             cycle_id: cycleId,
             action: 'revision_requested',
             level_order: cycle.current_level,
@@ -377,8 +377,8 @@ export async function requestRevision(orgId, cycleId, userId, comments) {
 
 export async function rejectCycle(orgId, cycleId, userId, comments) {
     return await db.transaction(async (trx) => {
-        const cycle = await trx('approval_cycles')
-            .join('document_instances', 'approval_cycles.instance_id', 'document_instances.instance_id')
+        const cycle = await trx('wf_approval_cycles as approval_cycles')
+            .join('wf_document_instances as document_instances', 'approval_cycles.instance_id', 'document_instances.instance_id')
             .where({ 'approval_cycles.cycle_id': cycleId, 'document_instances.org_id': orgId })
             .select('approval_cycles.*')
             .first();
@@ -387,7 +387,7 @@ export async function rejectCycle(orgId, cycleId, userId, comments) {
         if (cycle.current_holder_id !== userId) throw new AppError('Only the current holder can reject', 403);
         if (cycle.status !== 'in_review') throw new AppError('Cycle must be in_review to reject', 400);
 
-        await trx('approval_cycles')
+        await trx('wf_approval_cycles')
             .where({ cycle_id: cycleId })
             .update({
                 status: 'rejected',
@@ -395,7 +395,7 @@ export async function rejectCycle(orgId, cycleId, userId, comments) {
                 current_holder_id: null
             });
 
-        await trx('document_instances')
+        await trx('wf_document_instances')
             .where({ instance_id: cycle.instance_id })
             .update({
                 is_locked: 0,
@@ -403,7 +403,7 @@ export async function rejectCycle(orgId, cycleId, userId, comments) {
                 locked_at: null
             });
 
-        await trx('approval_logs').insert({
+        await trx('wf_approval_logs').insert({
             cycle_id: cycleId,
             action: 'rejected',
             level_order: cycle.current_level,
@@ -417,8 +417,8 @@ export async function rejectCycle(orgId, cycleId, userId, comments) {
 
 export async function cancelCycle(orgId, cycleId, userId, comments) {
     return await db.transaction(async (trx) => {
-        const cycle = await trx('approval_cycles')
-            .join('document_instances', 'approval_cycles.instance_id', 'document_instances.instance_id')
+        const cycle = await trx('wf_approval_cycles as approval_cycles')
+            .join('wf_document_instances as document_instances', 'approval_cycles.instance_id', 'document_instances.instance_id')
             .where({ 'approval_cycles.cycle_id': cycleId, 'document_instances.org_id': orgId })
             .select('approval_cycles.*')
             .first();
@@ -433,7 +433,7 @@ export async function cancelCycle(orgId, cycleId, userId, comments) {
         // Assuming admin check requires user info, but org_admin is usually a role.
         // To be safe and compliant with instruction: check if initiated_by === userId
         // A more robust check could query users.user_type if admin bypass is needed.
-        const user = await trx('users').where({ user_id: userId }).first();
+        const user = await trx('iam_users').where({ user_id: userId }).first();
         const isAdmin = user && ['admin', 'org_admin'].includes(user.user_type);
         
         if (cycle.initiated_by !== userId && !isAdmin) {
@@ -448,14 +448,14 @@ export async function cancelCycle(orgId, cycleId, userId, comments) {
                 .del();
         }
 
-        await trx('approval_cycles')
+        await trx('wf_approval_cycles')
             .where({ cycle_id: cycleId })
             .update({
                 status: 'cancelled',
                 completed_at: new Date()
             });
 
-        await trx('document_instances')
+        await trx('wf_document_instances')
             .where({ instance_id: cycle.instance_id })
             .update({
                 is_locked: 0,
@@ -463,7 +463,7 @@ export async function cancelCycle(orgId, cycleId, userId, comments) {
                 locked_at: null
             });
 
-        await trx('approval_logs').insert({
+        await trx('wf_approval_logs').insert({
             cycle_id: cycleId,
             action: 'cycle_cancelled',
             level_order: cycle.current_level,
@@ -477,8 +477,8 @@ export async function cancelCycle(orgId, cycleId, userId, comments) {
 
 export async function claimRevision(orgId, cycleId, userId) {
     return await db.transaction(async (trx) => {
-        const cycle = await trx('approval_cycles')
-            .join('document_instances', 'approval_cycles.instance_id', 'document_instances.instance_id')
+        const cycle = await trx('wf_approval_cycles as approval_cycles')
+            .join('wf_document_instances as document_instances', 'approval_cycles.instance_id', 'document_instances.instance_id')
             .where({ 'approval_cycles.cycle_id': cycleId, 'document_instances.org_id': orgId })
             .select('approval_cycles.*')
             .first();
@@ -488,7 +488,7 @@ export async function claimRevision(orgId, cycleId, userId) {
             throw new AppError('Cycle must be in revision_requested state to claim', 400);
         }
 
-        const role = await trx('document_roles')
+        const role = await trx('wf_document_roles')
             .where({ document_id: cycle.document_id, user_id: userId, role: 'editor' })
             .first();
             
@@ -496,14 +496,14 @@ export async function claimRevision(orgId, cycleId, userId) {
             throw new AppError('Caller must have editor role for this document to claim', 403);
         }
 
-        await trx('approval_cycles')
+        await trx('wf_approval_cycles')
             .where({ cycle_id: cycleId })
             .update({
                 status: 'drafting',
                 current_holder_id: userId
             });
 
-        await trx('document_instances')
+        await trx('wf_document_instances')
             .where({ instance_id: cycle.instance_id })
             .update({
                 is_locked: 1,
@@ -511,7 +511,7 @@ export async function claimRevision(orgId, cycleId, userId) {
                 locked_at: new Date()
             });
 
-        await trx('approval_logs').insert({
+        await trx('wf_approval_logs').insert({
             cycle_id: cycleId,
             action: 'cycle_initiated', // as requested
             level_order: 0,

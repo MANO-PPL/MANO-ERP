@@ -6,7 +6,7 @@ import AppError from '../../utils/AppError.js';
  * Returns units ordered by type then name for easy dropdown grouping.
  */
 export async function getUnits(orgId, unitType = null) {
-    const query = db('units').where('org_id', orgId).orderBy(['unit_type', 'name']);
+    const query = db('res_units').where('org_id', orgId).orderBy(['unit_type', 'name']);
     if (unitType) query.where('unit_type', unitType);
     return await query;
 }
@@ -15,7 +15,7 @@ export async function getUnits(orgId, unitType = null) {
  * Get a single unit by id and orgId.
  */
 export async function getUnitById(orgId, id) {
-    const unit = await db('units').where({ id, org_id: orgId }).first();
+    const unit = await db('res_units').where({ id, org_id: orgId }).first();
     if (!unit) throw new AppError('Unit not found in your organization', 404);
     return unit;
 }
@@ -40,7 +40,7 @@ export async function createUnit(orgId, { name, symbol, unit_type, base_unit_id 
         }
     }
 
-    const [insertId] = await db('units').insert({
+    const [insertId] = await db('res_units').insert({
         org_id: orgId,
         name,
         symbol,
@@ -66,7 +66,7 @@ export async function updateUnit(orgId, id, { name, symbol, unit_type, base_unit
 
     if (Object.keys(updates).length === 0) return true;
 
-    await db('units').where({ id, org_id: orgId }).update(updates);
+    await db('res_units').where({ id, org_id: orgId }).update(updates);
     return true;
 }
 
@@ -77,24 +77,24 @@ export async function deleteUnit(orgId, id) {
     await getUnitById(orgId, id);
 
     // Guard: referenced as base_unit in resources
-    const usedInResources = await db('resources').where('base_unit_id', id).count('id as cnt').first();
+    const usedInResources = await db('res_resources').where('base_unit_id', id).count('id as cnt').first();
     if (parseInt(usedInResources.cnt) > 0) {
         throw new AppError('Cannot delete: unit is used as base unit in one or more resources', 400);
     }
 
     // Guard: referenced in resource_conversions
-    const usedInConversions = await db('resource_conversions').where('unit_id', id).count('id as cnt').first();
+    const usedInConversions = await db('res_conversions').where('unit_id', id).count('id as cnt').first();
     if (parseInt(usedInConversions.cnt) > 0) {
         throw new AppError('Cannot delete: unit is referenced in resource conversions', 400);
     }
 
     // Guard: referenced in resource_compositions
-    const usedInCompositions = await db('resource_compositions').where('unit_id', id).count('id as cnt').first();
+    const usedInCompositions = await db('res_compositions').where('unit_id', id).count('id as cnt').first();
     if (parseInt(usedInCompositions.cnt) > 0) {
         throw new AppError('Cannot delete: unit is referenced in resource compositions', 400);
     }
 
-    await db('units').where({ id, org_id: orgId }).del();
+    await db('res_units').where({ id, org_id: orgId }).del();
     return true;
 }
 
