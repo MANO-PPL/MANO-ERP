@@ -2,7 +2,8 @@ import React, { useState, useEffect } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { Users, User, Briefcase, CheckCircle, Clock, AlertCircle, Plus, ChevronRight, Search, Layout, Filter, MoreVertical, Check, X, Info, Calendar, Tag, Flag, AlignLeft, Zap } from 'lucide-react';
 
-const WIP = ({ setExtraBreadcrumbs }) => {
+const WIP = ({ setExtraBreadcrumbs, projectPermissions, isAdmin }) => {
+    const canWrite = isAdmin || (projectPermissions && projectPermissions['WIP'] >= 2);
     const [searchParams, setSearchParams] = useSearchParams();
     const selectedEmployeeId = parseInt(searchParams.get('emp')) || 2;
 
@@ -158,13 +159,15 @@ const WIP = ({ setExtraBreadcrumbs }) => {
                         </div>
                     </div>
 
-                    <button
-                        onClick={() => setIsAssigning(true)}
-                        className="flex items-center space-x-2 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-semibold text-sm transition-all shadow-lg shadow-blue-500/20 active:scale-95"
-                    >
-                        <Plus size={18} />
-                        <span>Assign New Task</span>
-                    </button>
+                    {canWrite && (
+                        <button
+                            onClick={() => setIsAssigning(true)}
+                            className="flex items-center space-x-2 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-semibold text-sm transition-all shadow-lg shadow-blue-500/20 active:scale-95"
+                        >
+                            <Plus size={18} />
+                            <span>Assign New Task</span>
+                        </button>
+                    )}
                 </div>
 
                 <div className="flex-1 overflow-y-auto p-8 custom-scrollbar space-y-8">
@@ -191,16 +194,18 @@ const WIP = ({ setExtraBreadcrumbs }) => {
                                         <div className="flex justify-between items-start mb-3">
                                             <span className="text-[10px] font-mono text-gray-400 dark:text-gray-500">{task.id}</span>
                                             <div className="flex items-center space-x-1">
-                                                <button
-                                                    onClick={(e) => {
-                                                        e.stopPropagation();
-                                                        handleUnassignTask(task.id, selectedEmployeeId);
-                                                    }}
-                                                    className="opacity-0 group-hover:opacity-100 p-1.5 text-gray-400 hover:text-red-500 transition-all"
-                                                    title="Unassign Task"
-                                                >
-                                                    <X size={14} />
-                                                </button>
+                                                {canWrite && (
+                                                    <button
+                                                        onClick={(e) => {
+                                                            e.stopPropagation();
+                                                            handleUnassignTask(task.id, selectedEmployeeId);
+                                                        }}
+                                                        className="opacity-0 group-hover:opacity-100 p-1.5 text-gray-400 hover:text-red-500 transition-all"
+                                                        title="Unassign Task"
+                                                    >
+                                                        <X size={14} />
+                                                    </button>
+                                                )}
                                                 <button
                                                     onClick={() => setSelectedTaskForDetails(task)}
                                                     className="p-1.5 text-gray-400 hover:text-blue-500 hover:bg-blue-50 dark:hover:bg-blue-900/20 rounded transition-all"
@@ -245,12 +250,14 @@ const WIP = ({ setExtraBreadcrumbs }) => {
                             <div className="flex flex-col items-center justify-center py-16 border-2 border-dashed border-gray-200 dark:border-gh-border rounded-2xl bg-gray-50/50 dark:bg-transparent">
                                 <Layout className="text-gray-300 dark:text-gray-700 mb-4" size={48} />
                                 <p className="text-gray-500 dark:text-gray-400 font-medium">No tasks assigned to {selectedEmployee.name} yet.</p>
-                                <button
-                                    onClick={() => setIsAssigning(true)}
-                                    className="mt-4 text-blue-600 dark:text-blue-400 text-sm font-bold hover:underline"
-                                >
-                                    Assign their first task
-                                </button>
+                                {canWrite && (
+                                    <button
+                                        onClick={() => setIsAssigning(true)}
+                                        className="mt-4 text-blue-600 dark:text-blue-400 text-sm font-bold hover:underline"
+                                    >
+                                        Assign their first task
+                                    </button>
+                                )}
                             </div>
                         )}
                     </section>
@@ -354,10 +361,10 @@ const WIP = ({ setExtraBreadcrumbs }) => {
                                 {['To Do', 'In Progress', 'Completed', 'On Hold'].map(s => (
                                     <button
                                         key={s}
-                                        onClick={() => {
+                                        onClick={canWrite ? () => {
                                             handleStatusUpdate(selectedTaskForDetails.id, s);
                                             setSelectedTaskForDetails({ ...selectedTaskForDetails, status: s });
-                                        }}
+                                        } : undefined}
                                         className={`flex-1 flex items-center justify-center space-x-2 py-3 px-2 rounded-xl text-xs font-bold transition-all ${selectedTaskForDetails.status === s
                                             ? 'bg-white dark:bg-gh-border text-blue-600 dark:text-blue-400 shadow-md scale-105 ring-1 ring-blue-500/20'
                                             : 'text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 hover:bg-white/50 dark:hover:bg-white/5'
@@ -417,18 +424,20 @@ const WIP = ({ setExtraBreadcrumbs }) => {
                                                                 {emp.initials}
                                                             </div>
                                                             <span className="text-sm font-semibold text-gray-900 dark:text-white mt-1 flex items-center text-left">{emp.name}</span>
-                                                            <button
-                                                                onClick={() => {
-                                                                    handleUnassignTask(selectedTaskForDetails.id, id);
-                                                                    setSelectedTaskForDetails({
-                                                                        ...selectedTaskForDetails,
-                                                                        assigneeIds: selectedTaskForDetails.assigneeIds.filter(aid => aid !== id)
-                                                                    });
-                                                                }}
-                                                                className="ml-auto opacity-0 group-hover/member:opacity-100 p-1 text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 rounded transition-all"
-                                                            >
-                                                                <X size={12} />
-                                                            </button>
+                                                            {canWrite && (
+                                                                <button
+                                                                    onClick={() => {
+                                                                        handleUnassignTask(selectedTaskForDetails.id, id);
+                                                                        setSelectedTaskForDetails({
+                                                                            ...selectedTaskForDetails,
+                                                                            assigneeIds: selectedTaskForDetails.assigneeIds.filter(aid => aid !== id)
+                                                                        });
+                                                                    }}
+                                                                    className="ml-auto opacity-0 group-hover/member:opacity-100 p-1 text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 rounded transition-all"
+                                                                >
+                                                                    <X size={12} />
+                                                                </button>
+                                                            )}
                                                         </div>
                                                     ) : null;
                                                 })}

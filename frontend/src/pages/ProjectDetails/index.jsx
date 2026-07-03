@@ -1,6 +1,10 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useParams, useNavigate, useSearchParams } from 'react-router-dom';
-import { Search, Plus, Settings, ChevronRight } from 'lucide-react';
+import { ChevronRight } from 'lucide-react';
+import { toast } from 'react-toastify';
+import { projectApi } from '../../services/projectApi';
+import { useAuth } from '../../context/AuthContext';
+import PageSkeleton from '../../components/PageSkeleton';
 
 // Tab Components
 import Dashboard from './Dashboard';
@@ -20,19 +24,68 @@ import Approvals from './Approvals/index';
 const ProjectDetails = () => {
     const { id } = useParams();
     const navigate = useNavigate();
+    const { user } = useAuth();
     const [searchParams, setSearchParams] = useSearchParams();
     const activeTab = searchParams.get('tab') || 'Dashboard';
+
+    const [project, setProject] = useState(null);
+    const [projectPermissions, setProjectPermissions] = useState(null);
+    const [loading, setLoading] = useState(true);
+    const [extraBreadcrumbs, setExtraBreadcrumbs] = useState([]); // Array of { label, onClick }
+
+    useEffect(() => {
+        const loadProject = async () => {
+            setLoading(true);
+            try {
+                const res = await projectApi.getProject(id);
+                if (res.success) {
+                    setProject(res.project);
+                    setProjectPermissions(res.projectPermissions || {});
+                }
+            } catch (err) {
+                console.error(err);
+                toast.error(err.response?.data?.message || 'Failed to load project');
+                if (err.response?.status === 403 || err.response?.status === 401) {
+                    navigate('/projects');
+                }
+            } finally {
+                setLoading(false);
+            }
+        };
+        loadProject();
+    }, [id, navigate]);
 
     const setActiveTab = (tab) => {
         setSearchParams({ tab });
         setExtraBreadcrumbs([]); // Clear on tab switch
     };
 
-    const [extraBreadcrumbs, setExtraBreadcrumbs] = useState([]); // Array of { label, onClick }
-    const tabs = ['Dashboard', 'Tasks', 'WIP', 'Reports', 'General Documents', 'Drawings', 'Planning', 'Contracts', 'Quality', 'Safety', 'Billing', 'Material Management', 'Approvals'];
+    const isAdmin = ['admin', 'super admin', 'superadmin', 'super_admin'].includes(user?.user_type?.toLowerCase());
+
+    const allTabs = [
+        'Dashboard', 'Tasks', 'WIP', 'Reports', 'General Documents', 'Drawings', 
+        'Planning', 'Contracts', 'Quality', 'Safety', 'Billing', 'Material Management', 'Approvals'
+    ];
+
+    const allowedTabs = allTabs.filter(tab => {
+        if (tab === 'Dashboard') return true;
+        if (isAdmin) return true;
+        const lvl = projectPermissions?.[tab] ?? 0;
+        return lvl >= 1;
+    });
+
+    useEffect(() => {
+        if (!loading && allowedTabs.length > 0 && !allowedTabs.includes(activeTab)) {
+            setSearchParams({ tab: allowedTabs[0] });
+        }
+    }, [activeTab, allowedTabs, loading, setSearchParams]);
+
+    if (loading) {
+        return <PageSkeleton variant="grid" />;
+    }
 
     const renderTabContent = () => {
-        const props = { setExtraBreadcrumbs };
+        const props = { setExtraBreadcrumbs, project, projectPermissions, isAdmin };
         switch (activeTab) {
             case 'Dashboard':
                 return <Dashboard {...props} />;
@@ -61,13 +114,12 @@ const ProjectDetails = () => {
             case 'Approvals':
                 return <Approvals {...props} />;
             default:
-                return <Tasks {...props} />;
+                return <Dashboard {...props} />;
         }
     };
 
     return (
-        <div className="flex flex-col h-[calc(100vh-8vh)] w-full text-gray-900 dark:text-gray-300 bg-white dark:bg-[#0d1117] font-sans">
-
+        <div className="flex flex-col h-[calc(100vh-7vh)] w-full text-gray-900 dark:text-gray-300 bg-white dark:bg-[#0d1117] font-sans">
             {/* Minimal Header */}
             <div className="flex justify-between items-center px-5 py-3 border-b border-gray-200 dark:border-gh-border bg-[#f9fafb] dark:bg-gh-bg transition-colors">
                 <div className="flex items-center space-x-2 text-xs">
@@ -82,7 +134,7 @@ const ProjectDetails = () => {
                         className={`transition-colors ${extraBreadcrumbs.length > 0 ? 'text-blue-600 dark:text-blue-400 font-medium cursor-pointer' : 'text-gray-900 dark:text-white font-semibold'}`}
                         onClick={() => extraBreadcrumbs.length > 0 && setActiveTab('Dashboard')}
                     >
-                        {id} Explore Zoho Projects!
+                        {project?.project_code || id} {project?.name ? `- ${project.name}` : ''}
                     </span>
                     {extraBreadcrumbs.map((bc, index) => (
                         <React.Fragment key={index}>
@@ -96,14 +148,11 @@ const ProjectDetails = () => {
                         </React.Fragment>
                     ))}
                 </div>
-
-                <div className="flex items-center space-x-4 text-gray-600 dark:text-gray-400">
-                </div>
             </div>
 
             {/* Sub-Navigation */}
             <div className="flex px-6 pt-3 border-b border-gray-200 dark:border-gh-border bg-[#f9fafb] dark:bg-gh-bg transition-colors">
-                {tabs.map((tab) => (
+                {allowedTabs.map((tab) => (
                     <button
                         key={tab}
                         onClick={() => setActiveTab(tab)}

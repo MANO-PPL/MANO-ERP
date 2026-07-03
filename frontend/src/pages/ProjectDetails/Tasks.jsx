@@ -3,7 +3,8 @@ import { useSearchParams } from 'react-router-dom';
 import { ChevronDown, ChevronRight, AlignLeft, Zap, Filter, Search, Plus, Pencil, Trash2, X, Check, GripVertical } from 'lucide-react';
 import CustomDatePicker from '../../components/CustomDatePicker';
 
-const Tasks = ({ setExtraBreadcrumbs }) => {
+const Tasks = ({ setExtraBreadcrumbs, projectPermissions, isAdmin }) => {
+    const canWrite = isAdmin || (projectPermissions && projectPermissions['Tasks'] >= 2);
     useEffect(() => {
         setExtraBreadcrumbs([{ label: 'Tasks' }]);
     }, [setExtraBreadcrumbs]);
@@ -127,6 +128,7 @@ const Tasks = ({ setExtraBreadcrumbs }) => {
     };
 
     const handleEditClick = (groupIdx, taskIdx, task, targetField = 'name') => {
+        if (!canWrite) return;
         setEditingTask({ ...task });
         setEditingTarget({ groupIdx, taskIdx });
         setActiveDropdown(targetField);
@@ -222,12 +224,14 @@ const Tasks = ({ setExtraBreadcrumbs }) => {
                 </div>
 
                 <div className="flex items-center space-x-3">
-                    <button
-                        onClick={handleAddHeading}
-                        className="bg-blue-600 hover:bg-blue-700 text-white px-3 py-1.5 rounded-md text-[11px] font-bold transition flex items-center shadow-lg shadow-blue-500/20 transform active:scale-95"
-                    >
-                        <Plus size={14} className="mr-1" /> Add Task
-                    </button>
+                    {canWrite && (
+                        <button
+                            onClick={handleAddHeading}
+                            className="bg-blue-600 hover:bg-blue-700 text-white px-3 py-1.5 rounded-md text-[11px] font-bold transition flex items-center shadow-lg shadow-blue-500/20 transform active:scale-95"
+                        >
+                            <Plus size={14} className="mr-1" /> Add Task
+                        </button>
+                    )}
                 </div>
             </div>
 
@@ -270,7 +274,7 @@ const Tasks = ({ setExtraBreadcrumbs }) => {
                                         </div>
 
                                         {/* Group Inline Actions - only visible when expanded */}
-                                        {expandedLists[group.listName] && (
+                                        {expandedLists[group.listName] && canWrite && (
                                             <div className="flex items-center space-x-3 mt-3 ml-6 text-[12px] text-gray-400 dark:text-gray-500 font-medium">
                                                 <span
                                                     className="text-blue-600 dark:text-blue-400 hover:underline cursor-pointer transition-all"
@@ -622,22 +626,24 @@ const Tasks = ({ setExtraBreadcrumbs }) => {
                                                 </div>
                                             </td>
                                             <td className="px-4 py-2 text-center group-hover/row:bg-gray-50 dark:group-hover/row:bg-white/5 transition-colors">
-                                                <div className="flex items-center justify-center space-x-1 opacity-0 group-hover/row:opacity-100 transition-opacity">
-                                                    <button
-                                                        onClick={() => handleEditClick(groupIdx, taskIdx, task, 'name')}
-                                                        className="p-1.5 text-gray-400 hover:text-blue-500 hover:bg-blue-50 dark:hover:bg-blue-900/20 rounded transition-all"
-                                                        title="Edit Task"
-                                                    >
-                                                        <Pencil size={14} />
-                                                    </button>
-                                                    <button
-                                                        onClick={(e) => { e.stopPropagation(); handleDeleteTask(groupIdx, taskIdx); }}
-                                                        className="p-1.5 text-gray-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 rounded transition-all"
-                                                        title="Delete Task"
-                                                    >
-                                                        <Trash2 size={14} />
-                                                    </button>
-                                                </div>
+                                                {canWrite && (
+                                                    <div className="flex items-center justify-center space-x-1 opacity-0 group-hover/row:opacity-100 transition-opacity">
+                                                        <button
+                                                            onClick={() => handleEditClick(groupIdx, taskIdx, task, 'name')}
+                                                            className="p-1.5 text-gray-400 hover:text-blue-500 hover:bg-blue-50 dark:hover:bg-blue-900/20 rounded transition-all"
+                                                            title="Edit Task"
+                                                        >
+                                                            <Pencil size={14} />
+                                                        </button>
+                                                        <button
+                                                            onClick={(e) => { e.stopPropagation(); handleDeleteTask(groupIdx, taskIdx); }}
+                                                            className="p-1.5 text-gray-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 rounded transition-all"
+                                                            title="Delete Task"
+                                                        >
+                                                            <Trash2 size={14} />
+                                                        </button>
+                                                    </div>
+                                                )}
                                             </td>
                                         </tr>
                                     );

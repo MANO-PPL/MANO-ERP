@@ -4,6 +4,8 @@ import {
     GitBranch, Shield, CheckCircle2, Trash2, UserCheck,
     Pencil, Check, ArrowUp, ArrowDown
 } from 'lucide-react';
+import AccessControl from '../AccessControl';
+import { toast } from 'react-toastify';
 
 // ─── Employee pool ─────────────────────────────────────────────────────────
 const EMPLOYEES = [
@@ -115,7 +117,7 @@ const EmpPicker = ({ selected, onChange, placeholder }) => {
 
 
 // ─── Level Row (single approval level with rename + reorder) ──────────────
-const LevelRow = ({ level, idx, total, onApproversChange, onRemove, onRename, onMove }) => {
+const LevelRow = ({ level, idx, total, onApproversChange, onRemove, onRename, onMove, canWrite }) => {
     const [editing, setEditing] = useState(false);
     const [draft, setDraft] = useState(level.label);
 
@@ -133,7 +135,7 @@ const LevelRow = ({ level, idx, total, onApproversChange, onRemove, onRename, on
                 {/* Up / Down reorder */}
                 <div className="flex flex-col gap-0.5 shrink-0">
                     <button
-                        disabled={idx === 0}
+                        disabled={idx === 0 || !canWrite}
                         onClick={() => onMove(-1)}
                         className="p-0.5 rounded text-gray-300 dark:text-gray-600 hover:text-blue-500 disabled:opacity-20 disabled:cursor-not-allowed transition-colors"
                         title="Move up (higher priority)"
@@ -141,7 +143,7 @@ const LevelRow = ({ level, idx, total, onApproversChange, onRemove, onRename, on
                         <ArrowUp size={11} />
                     </button>
                     <button
-                        disabled={idx === total - 1}
+                        disabled={idx === total - 1 || !canWrite}
                         onClick={() => onMove(1)}
                         className="p-0.5 rounded text-gray-300 dark:text-gray-600 hover:text-blue-500 disabled:opacity-20 disabled:cursor-not-allowed transition-colors"
                         title="Move down (lower priority)"
@@ -171,15 +173,15 @@ const LevelRow = ({ level, idx, total, onApproversChange, onRemove, onRename, on
                 ) : (
                     <div className="flex items-center gap-1 flex-1 min-w-0">
                         <span className="text-xs font-bold text-gray-700 dark:text-gray-300 truncate">{level.label}</span>
-                        <button onClick={() => { setDraft(level.label); setEditing(true); }} className="p-0.5 rounded text-gray-300 hover:text-blue-500 transition-colors shrink-0"><Pencil size={10} /></button>
+                        {canWrite && <button onClick={() => { setDraft(level.label); setEditing(true); }} className="p-0.5 rounded text-gray-300 hover:text-blue-500 transition-colors shrink-0"><Pencil size={10} /></button>}
                     </div>
                 )}
 
                 {/* Approver picker */}
-                <EmpPicker selected={level.approvers} onChange={onApproversChange} placeholder="Add approvers…" />
+                {canWrite && <EmpPicker selected={level.approvers} onChange={onApproversChange} placeholder="Add approvers…" />}
 
                 {/* Remove */}
-                {total > 1 && (
+                {total > 1 && canWrite && (
                     <button onClick={onRemove} className="p-1 rounded-lg text-gray-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 transition-all shrink-0" title="Remove level">
                         <Trash2 size={12} />
                     </button>
@@ -191,7 +193,7 @@ const LevelRow = ({ level, idx, total, onApproversChange, onRemove, onRename, on
                 <div className="flex flex-wrap gap-1.5 ml-9">
                     {level.approvers.map(emp => (
                         <Chip key={emp.id} emp={emp}
-                            onRemove={() => onApproversChange(level.approvers.filter(e => e.id !== emp.id))} />
+                            onRemove={canWrite ? () => onApproversChange(level.approvers.filter(e => e.id !== emp.id)) : null} />
                     ))}
                 </div>
             )}
@@ -200,7 +202,7 @@ const LevelRow = ({ level, idx, total, onApproversChange, onRemove, onRename, on
 };
 
 // ─── Section Card ──────────────────────────────────────────────────────────
-const SectionCard = ({ section, config, onChange }) => {
+const SectionCard = ({ section, config, onChange, canWrite }) => {
 
     const setReporters = (reporters) => onChange({ ...config, reporters });
 
@@ -259,16 +261,18 @@ const SectionCard = ({ section, config, onChange }) => {
                     <div className="flex items-center gap-2 mb-2">
                         <Users size={12} className="text-indigo-500" />
                         <span className="text-xs font-bold text-gray-500 dark:text-gray-400 uppercase tracking-wider">Reporters</span>
-                        <EmpPicker
-                            selected={config.reporters}
-                            onChange={setReporters}
-                            placeholder="Add reporters…"
-                        />
+                        {canWrite && (
+                            <EmpPicker
+                                selected={config.reporters}
+                                onChange={setReporters}
+                                placeholder="Add reporters…"
+                            />
+                        )}
                     </div>
                     {config.reporters.length > 0 && (
                         <div className="flex flex-wrap gap-1.5 ml-5">
                             {config.reporters.map(emp => (
-                                <Chip key={emp.id} emp={emp} onRemove={() => setReporters(config.reporters.filter(e => e.id !== emp.id))} />
+                                <Chip key={emp.id} emp={emp} onRemove={canWrite ? () => setReporters(config.reporters.filter(e => e.id !== emp.id)) : null} />
                             ))}
                         </div>
                     )}
@@ -290,16 +294,19 @@ const SectionCard = ({ section, config, onChange }) => {
                             onRemove={() => removeLevel(level.id)}
                             onRename={(label) => renameLevel(level.id, label)}
                             onMove={(dir) => moveLevel(idx, dir)}
+                            canWrite={canWrite}
                         />
                     ))}
 
                     {/* Add approval level */}
-                    <button
-                        onClick={addLevel}
-                        className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-blue-600 dark:text-blue-400 hover:bg-blue-50 dark:hover:bg-blue-900/20 rounded-lg transition-colors border border-dashed border-blue-300 dark:border-blue-500/40"
-                    >
-                        <Plus size={12} /> Add Approval Level
-                    </button>
+                    {canWrite && (
+                        <button
+                            onClick={addLevel}
+                            className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-blue-600 dark:text-blue-400 hover:bg-blue-50 dark:hover:bg-blue-900/20 rounded-lg transition-colors border border-dashed border-blue-300 dark:border-blue-500/40"
+                        >
+                            <Plus size={12} /> Add Approval Level
+                        </button>
+                    )}
                 </div>
             </div>
         </div>
@@ -307,13 +314,15 @@ const SectionCard = ({ section, config, onChange }) => {
 };
 
 // ─── Main Approvals page ───────────────────────────────────────────────────
-const Approvals = ({ setExtraBreadcrumbs }) => {
+const Approvals = ({ setExtraBreadcrumbs, project, projectPermissions, isAdmin }) => {
+    const canWrite = isAdmin || (projectPermissions && projectPermissions['Approvals'] >= 2);
     const [configs, setConfigs] = useState(() => {
         const c = {};
         SECTIONS.forEach(s => { c[s] = defaultConfig(); });
         return c;
     });
     const [saved, setSaved] = useState(false);
+    const [activeSubTab, setActiveSubTab] = useState('workflows'); // 'workflows' or 'access'
 
     useEffect(() => {
         setExtraBreadcrumbs([{ label: 'Approvals' }]);
@@ -324,14 +333,56 @@ const Approvals = ({ setExtraBreadcrumbs }) => {
 
     const handleSave = () => {
         setSaved(true);
+        toast.success('Approval workflows saved successfully');
         setTimeout(() => setSaved(false), 2500);
     };
 
     const totalAssigned = Object.values(configs).reduce((sum, cfg) =>
         sum + cfg.reporters.length + cfg.approvalLevels.reduce((s, l) => s + l.approvers.length, 0), 0);
 
+    if (isAdmin && activeSubTab === 'access') {
+        return (
+            <div className="flex-1 flex flex-col h-full bg-white dark:bg-[#0d1117] overflow-hidden anim-fade-in Poppins text-left">
+                {/* Sub Tab Switcher */}
+                <div className="px-6 py-2 bg-gray-50 dark:bg-[#161b22] border-b border-gray-200 dark:border-white/5 flex gap-4 shrink-0">
+                    <button
+                        onClick={() => setActiveSubTab('workflows')}
+                        className="py-1 px-3 text-xs font-semibold rounded-lg text-gray-500 dark:text-gray-400 hover:text-gray-800 dark:hover:text-gray-200"
+                    >
+                        Approval Workflows
+                    </button>
+                    <button
+                        onClick={() => setActiveSubTab('access')}
+                        className="py-1 px-3 text-xs font-bold rounded-lg bg-blue-50 dark:bg-blue-900/20 text-blue-600 dark:text-blue-400"
+                    >
+                        Member Permissions
+                    </button>
+                </div>
+                <AccessControl />
+            </div>
+        );
+    }
+
     return (
         <div className="flex-1 flex flex-col h-full bg-white dark:bg-[#0d1117] overflow-hidden anim-fade-in Poppins text-left">
+            {/* Sub Tab Switcher */}
+            {isAdmin && (
+                <div className="px-6 py-2 bg-gray-50 dark:bg-[#161b22] border-b border-gray-200 dark:border-white/5 flex gap-4 shrink-0">
+                    <button
+                        onClick={() => setActiveSubTab('workflows')}
+                        className="py-1 px-3 text-xs font-bold rounded-lg bg-blue-50 dark:bg-blue-900/20 text-blue-600 dark:text-blue-400"
+                    >
+                        Approval Workflows
+                    </button>
+                    <button
+                        onClick={() => setActiveSubTab('access')}
+                        className="py-1 px-3 text-xs font-semibold rounded-lg text-gray-500 dark:text-gray-400 hover:text-gray-800 dark:hover:text-gray-200"
+                    >
+                        Member Permissions
+                    </button>
+                </div>
+            )}
+
             {/* Page header */}
             <div className="px-6 py-4 flex items-center justify-between border-b border-gray-200 dark:border-white/5 bg-white dark:bg-[#0d1117] shrink-0">
                 <div className="flex items-center gap-3">
@@ -347,12 +398,14 @@ const Approvals = ({ setExtraBreadcrumbs }) => {
                         </span>
                     )}
                 </div>
-                <button
-                    onClick={handleSave}
-                    className={`flex items-center gap-2 px-5 py-2 rounded-xl text-sm font-bold transition-all shadow-lg active:scale-95 ${saved ? 'bg-green-500 text-white shadow-green-500/25' : 'bg-blue-600 hover:bg-blue-700 text-white shadow-blue-500/25'}`}
-                >
-                    {saved ? <><CheckCircle2 size={15} /> Saved!</> : <><UserCheck size={15} /> Save Workflows</>}
-                </button>
+                {canWrite && (
+                    <button
+                        onClick={handleSave}
+                        className={`flex items-center gap-2 px-5 py-2 rounded-xl text-sm font-bold transition-all shadow-lg active:scale-95 ${saved ? 'bg-green-500 text-white shadow-green-500/25' : 'bg-blue-600 hover:bg-blue-700 text-white shadow-blue-500/25'}`}
+                    >
+                        {saved ? <><CheckCircle2 size={15} /> Saved!</> : <><UserCheck size={15} /> Save Workflows</>}
+                    </button>
+                )}
             </div>
 
             {/* Section cards */}
@@ -364,6 +417,7 @@ const Approvals = ({ setExtraBreadcrumbs }) => {
                             section={section}
                             config={configs[section]}
                             onChange={(cfg) => updateConfig(section, cfg)}
+                            canWrite={canWrite}
                         />
                     ))}
                 </div>
