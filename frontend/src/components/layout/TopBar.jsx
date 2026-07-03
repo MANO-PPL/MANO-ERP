@@ -6,24 +6,21 @@ import { useLocation, useNavigate } from 'react-router-dom';
 import { authApi } from '../../services/authApi';
 import { setAccessToken } from '../../services/api';
 import { toast } from 'react-toastify';
+import { useAuth } from '../../context/AuthContext';
 
 const TopBar = () => {
   const { theme, setTheme } = useTheme();
   const location = useLocation();
   const navigate = useNavigate();
   const [isProfileOpen, setIsProfileOpen] = useState(false);
+  const { user, logout } = useAuth();
 
   const handleLogout = async () => {
       try {
-          await authApi.logout();
-          setAccessToken(null);
+          await logout();
           toast.success('Logged out successfully');
-          navigate('/login');
       } catch (err) {
           console.error(err);
-          // Even on failure, clear local state and force redirect
-          setAccessToken(null);
-          navigate('/login');
       }
   };
 
@@ -38,7 +35,7 @@ const TopBar = () => {
       return hash === 'calendar' ? 'Calendar' : 'Chat';
     }
 
-    if (location.pathname === '/admin') return 'Admin Console';
+    if (location.pathname === '/admin') return 'Employee';
 
     switch (location.pathname) {
       case '/': return 'Dashboard';
@@ -50,7 +47,7 @@ const TopBar = () => {
   };
 
   return (
-    <div className="h-[8vh] min-h-[60px] bg-white dark:bg-gh-bg border-b border-gray-200 dark:border-gh-border flex items-center justify-between px-6 sticky top-0 z-10 w-full transition-colors">
+    <div className="h-[7vh] min-h-[52px] bg-white dark:bg-gh-bg border-b border-gray-200 dark:border-gh-border flex items-center justify-between px-6 sticky top-0 z-10 w-full transition-colors">
       {/* Left: Dynamic Page Title */}
       <div className="flex items-center min-w-[150px]">
         <h1 className="text-xl font-bold text-gray-900 dark:text-white capitalize tracking-tight">
@@ -94,12 +91,20 @@ const TopBar = () => {
                 onClick={() => setIsProfileOpen(!isProfileOpen)}
             >
               <div className="text-right hidden md:block">
-                <p className="text-sm font-semibold text-gray-800 dark:text-gh-text whitespace-nowrap">Admin User</p>
-                <p className="text-xs text-gray-500 dark:text-gh-muted whitespace-nowrap">PM</p>
+                <p className="text-sm font-semibold text-gray-800 dark:text-gh-text whitespace-nowrap">{user?.user_name || 'User'}</p>
+                <p className="text-xs text-gray-500 dark:text-gh-muted whitespace-nowrap">{user?.desg_name || user?.user_type || 'Employee'}</p>
               </div>
-              <div className="w-8 h-8 rounded-full bg-blue-100 dark:bg-blue-900/30 flex items-center justify-center text-blue-600 dark:text-blue-400 font-bold border border-blue-200 dark:border-blue-800 text-sm transition-colors shadow-sm">
-                AU
-              </div>
+              {user?.profile_image_url ? (
+                <img 
+                  src={user.profile_image_url} 
+                  alt={user?.user_name} 
+                  className="w-8 h-8 rounded-full object-cover border border-blue-200 dark:border-blue-800 shadow-sm"
+                />
+              ) : (
+                <div className="w-8 h-8 rounded-full bg-blue-100 dark:bg-blue-900/30 flex items-center justify-center text-blue-600 dark:text-blue-400 font-bold border border-blue-200 dark:border-blue-800 text-sm transition-colors shadow-sm">
+                  {(user?.user_name || 'U').split(' ').map(n => n[0]).join('').slice(0, 2).toUpperCase()}
+                </div>
+              )}
             </div>
 
             {/* Profile Dropdown */}
