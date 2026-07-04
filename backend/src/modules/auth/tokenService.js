@@ -18,7 +18,7 @@ export function generateRefreshToken() {
  */
 export async function saveRefreshToken(userId, token, ipAddress, userAgent) {
     const expiresAt = new Date();
-    expiresAt.setDate(expiresAt.getDate() + 7); // 7 Days validity
+    expiresAt.setDate(expiresAt.getDate() + 30); // 30 Days validity
 
     await db('iam_refresh_tokens').insert({
         user_id: userId,

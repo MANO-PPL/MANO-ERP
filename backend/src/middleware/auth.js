@@ -5,10 +5,10 @@ import AppError from '../utils/AppError.js';
 import catchAsync from '../utils/catchAsync.js';
 
 export const authenticateJWT = catchAsync(async (req, res, next) => {
-    let token;
+    let token = req.cookies?.accessToken;
     const authHeader = req.headers['authorization'];
 
-    if (authHeader && authHeader.startsWith("Bearer ")) {
+    if (!token && authHeader && authHeader.startsWith("Bearer ")) {
         token = authHeader.split(" ")[1];
     }
 

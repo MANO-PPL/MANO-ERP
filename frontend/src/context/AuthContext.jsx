@@ -9,8 +9,8 @@ export const AuthProvider = ({ children }) => {
     const [loading, setLoading] = useState(true);
 
     const refreshUser = async () => {
-        const token = localStorage.getItem('token');
-        if (!token) {
+        const hasUserTypeCookie = document.cookie.split(';').some((item) => item.trim().startsWith('userType='));
+        if (!hasUserTypeCookie) {
             setUser(null);
             setLoading(false);
             return;

@@ -11,7 +11,7 @@ const api = axios.create({
 });
 
 // Request Interceptor
-let accessToken = localStorage.getItem('token') || null;
+let accessToken = null;
 let isRefreshing = false;
 let failedQueue = [];
 
@@ -29,11 +29,6 @@ const processQueue = (error, token = null) => {
 
 export const setAccessToken = (token) => {
     accessToken = token;
-    if (token) {
-        localStorage.setItem('token', token);
-    } else {
-        localStorage.removeItem('token');
-    }
 };
 
 api.interceptors.request.use(
