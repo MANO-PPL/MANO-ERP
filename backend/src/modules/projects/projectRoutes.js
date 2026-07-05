@@ -8,6 +8,7 @@ import agendaRoutes from './agenda/agendaRoutes.js';
 import momRoutes from './mom/momRoutes.js';
 import orgRoutes from './org/orgRoutes.js';
 import projectInstanceRoutes from './instances/projectInstanceRoutes.js';
+import tasksRoutes from './tasks/tasksRoutes.js';
 import { authenticateJWT, restrictTo, requireProjectPermission, requireProjectAssignment } from '../../middleware/auth.js';
 
 const router = express.Router();
@@ -51,5 +52,8 @@ router.use('/:id/org', requireProjectPermission('org'), orgRoutes);
 
 // Project Document Instances
 router.use('/:id/instances', requireProjectPermission('instances'), projectInstanceRoutes);
+
+// Project Tasks (sub-resource under each project)
+router.use('/:id/tasks', requireProjectPermission('Tasks'), tasksRoutes);
 
 export default router;
