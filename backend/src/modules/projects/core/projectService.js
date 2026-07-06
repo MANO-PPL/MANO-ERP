@@ -46,15 +46,30 @@ export async function createProject(orgId, { name, location, status = 'active', 
 export async function getProjects(orgId, userId, userType) {
     const isUserAdmin = ['admin', 'super admin', 'superadmin', 'super_admin'].includes(userType?.toLowerCase());
     if (isUserAdmin) {
-        return await db('proj_projects')
-            .where('org_id', orgId)
-            .orderBy('created_at', 'desc');
+        return await db('proj_projects as p')
+            .leftJoin('proj_members as pu', 'p.id', 'pu.project_id')
+            .where('p.org_id', orgId)
+            .select(
+                'p.*',
+                db.raw('COUNT(pu.user_id) as member_count')
+            )
+            .groupBy('p.id')
+            .orderBy('p.created_at', 'desc');
     } else {
         return await db('proj_projects as p')
-            .join('proj_members as pu', 'p.id', 'pu.project_id')
+            .leftJoin('proj_members as pu', 'p.id', 'pu.project_id')
             .where('p.org_id', orgId)
-            .andWhere('pu.user_id', userId)
-            .select('p.*')
+            .andWhereExists(
+                db.select('*')
+                    .from('proj_members as pm')
+                    .whereRaw('pm.project_id = p.id')
+                    .andWhere('pm.user_id', userId)
+            )
+            .select(
+                'p.*',
+                db.raw('COUNT(pu.user_id) as member_count')
+            )
+            .groupBy('p.id')
             .orderBy('p.created_at', 'desc');
     }
 }

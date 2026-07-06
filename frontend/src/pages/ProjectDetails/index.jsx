@@ -14,6 +14,7 @@ import Reports from './Reports';
 import GeneralDocuments from './GeneralDocuments/index';
 import Drawings from './Drawings/index';
 import Planning from './Planning/index';
+import Phases from './Phases';
 import Contracts from './Contracts/index';
 import Quality from './Quality/index';
 import Safety from './Safety/index';
@@ -64,7 +65,7 @@ const ProjectDetails = () => {
 
     const allTabs = [
         'Dashboard', 'Tasks', 'WIP', 'Reports', 'General Documents', 'Drawings', 
-        'Planning', 'Contracts', 'Quality', 'Safety', 'Billing', 'Material Management', 'Approvals'
+        'Planning', 'Phases', 'Contracts', 'Quality', 'Safety', 'Billing', 'Material Management', 'Approvals'
     ];
 
     const allowedTabs = allTabs.filter(tab => {
@@ -85,7 +86,7 @@ const ProjectDetails = () => {
     }
 
     const renderTabContent = () => {
-        const props = { setExtraBreadcrumbs, project, projectPermissions, isAdmin };
+        const props = { setExtraBreadcrumbs, project, projectPermissions, isAdmin, user };
         switch (activeTab) {
             case 'Dashboard':
                 return <Dashboard {...props} />;
@@ -101,6 +102,8 @@ const ProjectDetails = () => {
                 return <Drawings {...props} />;
             case 'Planning':
                 return <Planning {...props} />;
+            case 'Phases':
+                return <Phases {...props} />;
             case 'Contracts':
                 return <Contracts {...props} />;
             case 'Quality':
