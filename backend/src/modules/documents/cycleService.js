@@ -1,23 +1,6 @@
 import { db } from '../../config/database.js';
 import AppError from '../../utils/AppError.js';
 
-const CONTENT_TABLES = [
-    { name: 'pdoc_directory', pk: 'pd_id' },
-    { name: 'pdoc_vendors', pk: 'pv_id' },
-    { name: 'pdoc_staff_responsible', pk: 'psrr_id' },
-    { name: 'pdoc_summary', pk: 'id' },
-    {
-        name: 'pdoc_mom',
-        pk: 'mom_id',
-        children: [{ name: 'pdoc_mom_participants', fk: 'mom_id', pk: 'pmp_id' }]
-    },
-    {
-        name: 'pdoc_agenda',
-        pk: 'agenda_id',
-        children: [{ name: 'pdoc_agenda_participants', fk: 'agenda_id', pk: 'pap_id' }]
-    }
-];
-
 export async function initiateCycle(orgId, instanceId, userId) {
     return await db.transaction(async (trx) => {
         // 1. Fetch instance
@@ -59,7 +42,18 @@ export async function initiateCycle(orgId, instanceId, userId) {
             
         const nextVersion = (latestCycle && latestCycle.max_ver) ? latestCycle.max_ver + 1 : 1;
 
-        // 6. Insert approval_cycles
+        // 6. Copy draft content from latest approved version's JSON if it exists
+        let initialDraftContent = null;
+        if (instance.latest_approved_version_id) {
+            const lastVersion = await trx('wf_document_versions')
+                .where({ version_id: instance.latest_approved_version_id })
+                .first();
+            if (lastVersion) {
+                initialDraftContent = lastVersion.final_content;
+            }
+        }
+
+        // 7. Insert approval_cycles
         const [cycleId] = await trx('wf_approval_cycles').insert({
             instance_id: instanceId,
             document_id: instance.document_id,
@@ -67,43 +61,9 @@ export async function initiateCycle(orgId, instanceId, userId) {
             status: 'drafting',
             current_level: 0,
             current_holder_id: userId,
+            draft_content: initialDraftContent,
             initiated_by: userId
         });
-
-        // 7. Copy content from latest_approved_version_id
-        if (instance.latest_approved_version_id) {
-            for (const tableConf of CONTENT_TABLES) {
-                const rows = await trx(tableConf.name)
-                    .where({ instance_id: instanceId, version_id: instance.latest_approved_version_id });
-
-                for (const row of rows) {
-                    const oldPk = row[tableConf.pk];
-                    delete row[tableConf.pk];
-                    
-                    // Assign new versioning identifiers
-                    row.cycle_id = cycleId;
-                    row.version_id = null; // null marks it as a draft
-
-                    // Remove timestamps to allow auto-generation
-                    delete row.created_at;
-                    delete row.updated_at;
-
-                    const [newPk] = await trx(tableConf.name).insert(row);
-
-                    // Handle child tables if they exist
-                    if (tableConf.children) {
-                        for (const childConf of tableConf.children) {
-                            const childRows = await trx(childConf.name).where(childConf.fk, oldPk);
-                            for (const childRow of childRows) {
-                                delete childRow[childConf.pk];
-                                childRow[childConf.fk] = newPk;
-                                await trx(childConf.name).insert(childRow);
-                            }
-                        }
-                    }
-                }
-            }
-        }
 
         // 8. Update instance lock
         await trx('wf_document_instances')
@@ -192,17 +152,17 @@ export async function saveDraft(orgId, cycleId, userId, content) {
     await db('wf_approval_cycles')
         .where({ cycle_id: cycleId })
         .update({
-            draft_content: content ? JSON.stringify(content) : null,
+            draft_content: content ? (typeof content === 'string' ? content : JSON.stringify(content)) : null,
             last_draft_saved: now
         });
 
-    // Check last log
+    // Check last log to prevent logs flooding
     const lastLog = await db('wf_approval_logs')
         .where({ cycle_id: cycleId, action: 'draft_saved' })
-        .orderBy('created_at', 'desc')
+        .orderBy('acted_at', 'desc')
         .first();
 
-    if (!lastLog || (now - new Date(lastLog.created_at)) > 60000) {
+    if (!lastLog || (now - new Date(lastLog.acted_at)) > 60000) {
         await db('wf_approval_logs').insert({
             cycle_id: cycleId,
             action: 'draft_saved',
@@ -214,12 +174,144 @@ export async function saveDraft(orgId, cycleId, userId, content) {
     return now;
 }
 
+async function finalizeApproval(trx, cycle, document, userId, comments) {
+    // 1. Create a version in wf_document_versions
+    const [versionId] = await trx('wf_document_versions').insert({
+        instance_id: cycle.instance_id,
+        cycle_id: cycle.cycle_id,
+        version_number: cycle.version_number,
+        final_content: cycle.draft_content,
+        final_approved_by: userId,
+        approved_at: new Date()
+    });
+
+    // 2. Set cycle status to approved
+    await trx('wf_approval_cycles')
+        .where({ cycle_id: cycle.cycle_id })
+        .update({
+            status: 'approved',
+            completed_at: new Date(),
+            current_holder_id: null
+        });
+
+    // 3. Unlock document instance
+    await trx('wf_document_instances')
+        .where({ instance_id: cycle.instance_id })
+        .update({
+            latest_approved_version_id: versionId,
+            is_locked: 0,
+            locked_by: null,
+            locked_at: null
+        });
+
+    // 4. Log the approval action
+    await trx('wf_approval_logs').insert({
+        cycle_id: cycle.cycle_id,
+        action: 'approved',
+        level_order: cycle.current_level,
+        acted_by: userId,
+        comments: comments || 'Document version approved and published.'
+    });
+
+    // 5. Dynamic Publishing based on publishing_config column
+    if (document.publishing_config) {
+        const config = typeof document.publishing_config === 'string' 
+            ? JSON.parse(document.publishing_config) 
+            : document.publishing_config;
+            
+        const draft = cycle.draft_content 
+            ? (typeof cycle.draft_content === 'string' ? JSON.parse(cycle.draft_content) : cycle.draft_content) 
+            : {};
+
+        if (config.target_type === 'singleton') {
+            const updatePayload = {};
+            for (const [draftKey, dbCol] of Object.entries(config.mapping || {})) {
+                if (draft[draftKey] !== undefined) {
+                    updatePayload[dbCol] = typeof draft[draftKey] === 'object' 
+                        ? JSON.stringify(draft[draftKey]) 
+                        : draft[draftKey];
+                }
+            }
+            if (Object.keys(updatePayload).length > 0) {
+                const keyCol = config.key_column || 'id';
+                const keySrc = config.key_source || 'project_id';
+                await trx(config.target_table)
+                    .where({ [keyCol]: cycle[keySrc] })
+                    .update(updatePayload);
+            }
+
+            // Sync relations if configured
+            if (Array.isArray(config.relations)) {
+                for (const rel of config.relations) {
+                    const keySrc = config.key_source || 'project_id';
+                    const parentVal = cycle[keySrc];
+                    
+                    if (rel.type === '1:N' && Array.isArray(draft[rel.source_array])) {
+                        // Delete old rows
+                        await trx(rel.target_table).where({ [rel.parent_key]: parentVal }).del();
+                        
+                        // Insert new rows mapped dynamically
+                        const recordsToInsert = draft[rel.source_array].map(item => {
+                            const record = { [rel.parent_key]: parentVal };
+                            for (const [draftKey, dbCol] of Object.entries(rel.mapping || {})) {
+                                if (item[draftKey] !== undefined) {
+                                    record[dbCol] = item[draftKey];
+                                }
+                            }
+                            return record;
+                        });
+                        if (recordsToInsert.length > 0) {
+                            await trx(rel.target_table).insert(recordsToInsert);
+                        }
+                    } else if (rel.type === 'N:M' && Array.isArray(draft[rel.source_array])) {
+                        await trx(rel.target_table).where({ [rel.parent_key]: parentVal }).del();
+                        
+                        const relationRecords = draft[rel.source_array].map(childVal => ({
+                            [rel.parent_key]: parentVal,
+                            [rel.child_key]: childVal
+                        }));
+                        if (relationRecords.length > 0) {
+                            await trx(rel.target_table).insert(relationRecords);
+                        }
+                    }
+                }
+            }
+
+        } else if (config.target_type === 'episodic') {
+            const insertPayload = {};
+            for (const [draftKey, dbCol] of Object.entries(config.mapping || {})) {
+                if (draft[draftKey] !== undefined) {
+                    insertPayload[dbCol] = typeof draft[draftKey] === 'object' 
+                        ? JSON.stringify(draft[draftKey]) 
+                        : draft[draftKey];
+                } else if (draftKey === 'project_id') {
+                    insertPayload[dbCol] = cycle.project_id;
+                }
+            }
+            await trx(config.target_table).insert(insertPayload);
+        }
+    }
+
+    return {
+        status: 'approved',
+        current_level: cycle.current_level,
+        current_holder_id: null,
+        version_id: versionId
+    };
+}
+
 export async function submitDraft(orgId, cycleId, userId, { changes_summary, comments }) {
     return await db.transaction(async (trx) => {
+        // Fetch cycle along with instance mapping details
         const cycle = await trx('wf_approval_cycles as approval_cycles')
             .join('wf_document_instances as document_instances', 'approval_cycles.instance_id', 'document_instances.instance_id')
             .where({ 'approval_cycles.cycle_id': cycleId, 'document_instances.org_id': orgId })
-            .select('approval_cycles.*', 'document_instances.is_locked')
+            .select(
+                'approval_cycles.*', 
+                'document_instances.is_locked', 
+                'document_instances.project_id',
+                'document_instances.document_id'
+            )
             .first();
 
         if (!cycle) throw new AppError('Cycle not found', 404);
@@ -232,18 +324,29 @@ export async function submitDraft(orgId, cycleId, userId, { changes_summary, com
             throw new AppError('Cannot submit a closed cycle', 400);
         }
 
-        // 1. Insert cycle submission
+        // Fetch document template configuration
+        const document = await trx('wf_documents')
+            .where({ document_id: cycle.document_id })
+            .first();
+
+        if (!document) throw new AppError('Document template configuration not found', 404);
+
+        // 1. Insert snapshot into cycle submissions
         await trx('wf_cycle_submissions').insert({
             cycle_id: cycleId,
             level_order: cycle.current_level,
             submitted_by: userId,
             content_snapshot: cycle.draft_content,
-            changes_summary: changes_summary || null,
-            comments: comments || null
+            changes_summary: changes_summary || null
         });
 
-        // 2. Find next approver
-        // Query all approver roles for this document
+        // 2. Check if the document configuration bypasses approvals dynamically
+        if (document.requires_approval === 0) {
+            console.log("Auto-approving document template as requires_approval = 0");
+            return await finalizeApproval(trx, cycle, document, userId, comments);
+        }
+
+        // 3. Find next approver
         const approvers = await trx('wf_document_roles as document_roles')
             .join('wf_approval_levels as approval_levels', 'document_roles.level_id', 'approval_levels.level_id')
             .where({
@@ -283,54 +386,8 @@ export async function submitDraft(orgId, cycleId, userId, { changes_summary, com
                 current_holder_id: nextApprover.user_id
             };
         } else {
-            // FULL APPROVAL sequence
-            const [versionId] = await trx('wf_document_versions').insert({
-                instance_id: cycle.instance_id,
-                cycle_id: cycleId,
-                version_number: cycle.version_number,
-                final_content: cycle.draft_content,
-                final_approved_by: userId,
-                approved_at: new Date()
-            });
-
-            // Update content rows where version_id IS NULL and cycle_id = current
-            for (const tableConf of CONTENT_TABLES) {
-                await trx(tableConf.name)
-                    .where({ cycle_id: cycleId })
-                    .whereNull('version_id')
-                    .update({ version_id: versionId });
-            }
-
-            await trx('wf_approval_cycles')
-                .where({ cycle_id: cycleId })
-                .update({
-                    status: 'approved',
-                    completed_at: new Date()
-                });
-
-            await trx('wf_document_instances')
-                .where({ instance_id: cycle.instance_id })
-                .update({
-                    latest_approved_version_id: versionId,
-                    is_locked: 0,
-                    locked_by: null,
-                    locked_at: null
-                });
-
-            await trx('wf_approval_logs').insert({
-                cycle_id: cycleId,
-                action: 'approved',
-                level_order: cycle.current_level,
-                acted_by: userId,
-                comments: comments || null
-            });
-
-            return {
-                status: 'approved',
-                current_level: cycle.current_level,
-                current_holder_id: null,
-                version_id: versionId
-            };
+            // No next approver: finalize approval
+            return await finalizeApproval(trx, cycle, document, userId, comments);
         }
     });
 }
@@ -428,24 +485,11 @@ export async function cancelCycle(orgId, cycleId, userId, comments) {
             throw new AppError('Cannot cancel an already closed cycle', 400);
         }
 
-        // Verify caller is initiator or an admin
-        // We'll trust the caller has admin rights if they are an admin, otherwise must be initiator.
-        // Assuming admin check requires user info, but org_admin is usually a role.
-        // To be safe and compliant with instruction: check if initiated_by === userId
-        // A more robust check could query users.user_type if admin bypass is needed.
         const user = await trx('iam_users').where({ user_id: userId }).first();
         const isAdmin = user && user.user_type === 'admin';
         
         if (cycle.initiated_by !== userId && !isAdmin) {
             throw new AppError('Only the cycle initiator or an admin can cancel this cycle', 403);
-        }
-
-        // 1. Delete draft content rows where cycle_id=X AND version_id IS NULL
-        for (const tableConf of CONTENT_TABLES) {
-            await trx(tableConf.name)
-                .where({ cycle_id: cycleId })
-                .whereNull('version_id')
-                .del();
         }
 
         await trx('wf_approval_cycles')
@@ -513,7 +557,7 @@ export async function claimRevision(orgId, cycleId, userId) {
 
         await trx('wf_approval_logs').insert({
             cycle_id: cycleId,
-            action: 'cycle_initiated', // as requested
+            action: 'cycle_initiated',
             level_order: 0,
             acted_by: userId,
             comments: 'revision claimed'

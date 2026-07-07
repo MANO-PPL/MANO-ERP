@@ -1,39 +1,30 @@
 import { db } from '../../../config/database.js';
 import AppError from '../../../utils/AppError.js';
 
-/* -------------------------------------------------------
-   FETCH PROJECT STAFF
--------------------------------------------------------- */
 export async function fetchProjectStaff(projectId) {
     if (!projectId) throw new AppError('projectId is required', 400);
 
-    const staff = await db('pdoc_staff_responsible')
+    const staff = await db('proj_staff_responsible')
         .where('project_id', projectId)
         .select('*');
 
     return { staff, staffCount: staff.length };
 }
 
-/* -------------------------------------------------------
-   INSERT STAFF
--------------------------------------------------------- */
 export async function insertStaff(data) {
-    const [psrr_id] = await db('pdoc_staff_responsible').insert({
+    const [psrr_id] = await db('proj_staff_responsible').insert({
         project_id: data.project_id,
         name: data.name,
-        designation: data.designation,
-        responsibilities: data.responsibilities,
-        mobile: data.mobile,
-        email: data.email,
+        designation: data.designation || null,
+        responsibilities: data.responsibilities || null,
+        mobile: data.mobile || null,
+        email: data.email || null
     });
 
     return { psrr_id };
 }
 
-/* -------------------------------------------------------
-   UPDATE STAFF
--------------------------------------------------------- */
-export async function updateStaff(id, data = {}) {
+export async function updateStaff(projectId, id, data = {}) {
     const updateData = {};
     if (data.name !== undefined) updateData.name = data.name;
     if (data.designation !== undefined) updateData.designation = data.designation;
@@ -45,20 +36,17 @@ export async function updateStaff(id, data = {}) {
         throw new AppError('No fields provided to update', 400);
     }
 
-    const affected = await db('pdoc_staff_responsible')
-        .where('psrr_id', id)
+    const affected = await db('proj_staff_responsible')
+        .where({ psrr_id: id, project_id: projectId })
         .update(updateData);
 
     if (affected === 0) throw new AppError('Staff not found', 404);
     return { affected };
 }
 
-/* -------------------------------------------------------
-   DELETE STAFF
--------------------------------------------------------- */
-export async function deleteStaff(id) {
-    const affected = await db('pdoc_staff_responsible')
-        .where('psrr_id', id)
+export async function deleteStaff(projectId, id) {
+    const affected = await db('proj_staff_responsible')
+        .where({ psrr_id: id, project_id: projectId })
         .del();
 
     if (affected === 0) throw new AppError('Staff not found', 404);

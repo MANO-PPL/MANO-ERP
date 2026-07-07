@@ -1,21 +1,17 @@
 import { db } from '../../../config/database.js';
 import AppError from '../../../utils/AppError.js';
 
-/* -------------------------------------------------------
-   FETCH DIRECTORY (with vendor + job_nature joins)
--------------------------------------------------------- */
 export async function fetchProjectDirectory(projectId) {
     if (!projectId) throw new AppError('projectId is required', 400);
 
-    const directory = await db('pdoc_directory as pd')
-        .leftJoin('pdoc_vendors as pv', 'pd.pv_id', 'pv.pv_id')
-        .leftJoin('crm_contacts as c', 'pv.vendors_id', 'c.id')
+    const directory = await db('proj_directory as pd')
+        .leftJoin('crm_contacts as c', 'pd.vendor_id', 'c.id')
         .leftJoin('crm_job_nature as jn', 'c.job_nature_id', 'jn.job_id')
         .where('pd.project_id', projectId)
         .select([
             'pd.pd_id',
             'pd.project_id',
-            'pd.pv_id',
+            'pd.vendor_id',
             'c.name as company_name',
             'jn.job_name as job_nature',
             'pd.contact_person',
@@ -23,53 +19,40 @@ export async function fetchProjectDirectory(projectId) {
             'pd.responsibilities',
             'pd.mobile_no',
             'pd.email',
-            'pd.address_line',
-            'pd.created_at',
-            'pd.updated_at',
-        ])
-        .orderBy('pd.created_at', 'desc');
+            'pd.address_line'
+        ]);
 
     return { directory, count: directory.length };
 }
 
-/* -------------------------------------------------------
-   METADATA — directory count
--------------------------------------------------------- */
 export async function fetchDirectoryCount(projectId = null) {
-    let query = db('pdoc_directory');
-    if (projectId) query = query.where('project_id', projectId);
-
-    const [result] = await query.count('* as count');
-    return result.count;
+    const query = db('proj_directory');
+    if (projectId) {
+        query.where('project_id', projectId);
+    }
+    const result = await query.count('pd_id as cnt').first();
+    return result ? parseInt(result.cnt, 10) : 0;
 }
 
-/* -------------------------------------------------------
-   INSERT
--------------------------------------------------------- */
 export async function insertDirectoryItem(data) {
-    const [pd_id] = await db('pdoc_directory').insert({
+    const [pd_id] = await db('proj_directory').insert({
         project_id: data.project_id,
-        pv_id: data.pv_id,
+        vendor_id: data.vendor_id || data.pv_id || null,
         contact_person: data.contact_person,
-        designation: data.designation,
-        responsibilities: data.responsibilities,
-        mobile_no: data.mobile_no,
-        email: data.email,
-        address_line: data.address_line,
-        created_at: db.fn.now(),
-        updated_at: db.fn.now(),
+        designation: data.designation || null,
+        responsibilities: data.responsibilities || null,
+        mobile_no: data.mobile_no || null,
+        email: data.email || null,
+        address_line: data.address_line || null
     });
 
     return { pd_id };
 }
 
-/* -------------------------------------------------------
-   UPDATE
--------------------------------------------------------- */
-export async function updateDirectoryItem(id, data = {}) {
+export async function updateDirectoryItem(projectId, id, data = {}) {
     const updateData = {};
-
-    if (data.pv_id !== undefined) updateData.pv_id = data.pv_id;
+    if (data.vendor_id !== undefined) updateData.vendor_id = data.vendor_id;
+    if (data.pv_id !== undefined) updateData.vendor_id = data.pv_id;
     if (data.contact_person !== undefined) updateData.contact_person = data.contact_person;
     if (data.designation !== undefined) updateData.designation = data.designation;
     if (data.responsibilities !== undefined) updateData.responsibilities = data.responsibilities;
@@ -77,30 +60,21 @@ export async function updateDirectoryItem(id, data = {}) {
     if (data.email !== undefined) updateData.email = data.email;
     if (data.address_line !== undefined) updateData.address_line = data.address_line;
 
-    if (Object.keys(updateData).length === 0) {
-        throw new AppError('No fields provided to update', 400);
-    }
-
-    updateData.updated_at = db.fn.now();
-
-    const affected = await db('pdoc_directory')
-        .where('pd_id', id)
+    const affected = await db('proj_directory')
+        .where({ pd_id: id, project_id: projectId })
         .update(updateData);
 
     if (affected === 0) throw new AppError('Directory item not found', 404);
     return { affected };
 }
 
-/* -------------------------------------------------------
-   DELETE
--------------------------------------------------------- */
-export async function deleteDirectoryItem(id) {
-    const affected = await db('pdoc_directory')
-        .where('pd_id', id)
+export async function deleteDirectoryItem(projectId, id) {
+    const affectedRows = await db('proj_directory')
+        .where({ pd_id: id, project_id: projectId })
         .del();
 
-    if (affected === 0) throw new AppError('Directory item not found', 404);
-    return { affectedRows: affected };
+    if (affectedRows === 0) throw new AppError('Directory item not found', 404);
+    return { affectedRows };
 }
 
 export default {

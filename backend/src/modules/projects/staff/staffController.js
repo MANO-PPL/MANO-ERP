@@ -36,9 +36,11 @@ export const addStaff = catchAsync(async (req, res) => {
 -------------------------------------------------------- */
 export const updateStaff = catchAsync(async (req, res) => {
     const id = parseInt(req.params.psrr_id, 10);
+    const projectId = parseInt(req.params.id, 10);
     if (isNaN(id)) throw new AppError('id is required and must be a number', 400);
+    if (isNaN(projectId)) throw new AppError('project_id is required and must be a number', 400);
 
-    const result = await staffService.updateStaff(id, req.body || {});
+    const result = await staffService.updateStaff(projectId, id, req.body || {});
     res.json({ success: true, message: 'Staff updated', affectedRows: result.affected });
 });
 
@@ -47,9 +49,11 @@ export const updateStaff = catchAsync(async (req, res) => {
 -------------------------------------------------------- */
 export const removeStaff = catchAsync(async (req, res) => {
     const id = parseInt(req.params.psrr_id, 10);
+    const projectId = parseInt(req.params.id, 10);
     if (isNaN(id)) throw new AppError('id is required and must be a number', 400);
+    if (isNaN(projectId)) throw new AppError('project_id is required and must be a number', 400);
 
-    const result = await staffService.deleteStaff(id);
+    const result = await staffService.deleteStaff(projectId, id);
     res.json({ success: true, message: 'Staff deleted', affectedRows: result.affectedRows });
 });
 

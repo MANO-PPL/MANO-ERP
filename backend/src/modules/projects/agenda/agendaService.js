@@ -7,9 +7,9 @@ import AppError from '../../../utils/AppError.js';
 export async function fetchProjectAgendas(projectId) {
     if (!projectId) throw new AppError('projectId is required', 400);
 
-    const agendas = await db('pdoc_agenda')
+    const agendas = await db('proj_agendas')
         .where('project_id', projectId)
-        .select(['agenda_id', 'subject', 'meeting_no', 'date', 'venue'])
+        .select(['id as agenda_id', 'subject', 'meeting_no', 'date', 'venue'])
         .orderBy('date', 'desc');
 
     return { agendas, count: agendas.length };
@@ -21,41 +21,47 @@ export async function fetchProjectAgendas(projectId) {
 export async function fetchAgendaById(projectId, agendaId) {
     if (!agendaId) throw new AppError('agendaId is required', 400);
 
-    // Get agenda details with project name
-    const agenda = await db('pdoc_agenda as pa')
+    const agenda = await db('proj_agendas as pa')
         .leftJoin('proj_projects as p', 'pa.project_id', 'p.id')
-        .where('pa.agenda_id', agendaId)
+        .where('pa.id', agendaId)
         .andWhere('pa.project_id', projectId)
         .select([
-            'pa.agenda_id',
+            'pa.id as agenda_id',
             'pa.project_id',
             'p.name as project_name',
             'pa.subject',
             'pa.venue',
             'pa.date',
             'pa.meeting_no',
-            'pa.content'
+            'pa.content',
+            'pa.participants'
         ])
         .first();
 
     if (!agenda) throw new AppError('Agenda not found', 404);
 
-    // Get participants for this agenda (using contacts table instead of vendors)
-    const participants = await db('pdoc_agenda_participants as pap')
-        .leftJoin('pdoc_directory as pd', 'pap.pd_id', 'pd.pd_id')
-        .leftJoin('pdoc_vendors as pv', 'pd.pv_id', 'pv.pv_id')
-        .leftJoin('crm_contacts as c', 'pv.vendors_id', 'c.id')
-        .where('pap.agenda_id', agendaId)
-        .select([
-            'pap.pap_id',
-            'pap.pd_id',
-            'pd.responsibilities',
-            'c.name as company_name',
-            'pd.contact_person',
-            'pd.designation'
-        ]);
+    // Parse JSON values safely
+    if (agenda.content && typeof agenda.content === "string") {
+        try {
+            agenda.content = JSON.parse(agenda.content);
+        } catch (e) {
+            console.error(`Error parsing Agenda content for ID ${agendaId}:`, e.message);
+        }
+    }
 
-    agenda.participants = participants;
+    if (agenda.participants) {
+        if (typeof agenda.participants === "string") {
+            try {
+                agenda.participants = JSON.parse(agenda.participants);
+            } catch (e) {
+                console.error(`Error parsing Agenda participants for ID ${agendaId}:`, e.message);
+                agenda.participants = [];
+            }
+        }
+    } else {
+        agenda.participants = [];
+    }
+
     return agenda;
 }
 
@@ -63,75 +69,48 @@ export async function fetchAgendaById(projectId, agendaId) {
    CREATE AGENDA
 -------------------------------------------------------- */
 export async function createAgenda(projectId, data) {
-    let agenda_id;
-
-    await db.transaction(async (trx) => {
-        const [id] = await trx('pdoc_agenda').insert({
-            project_id: projectId,
-            subject: data.subject,
-            venue: data.venue,
-            date: data.date,
-            meeting_no: data.meeting_no,
-            content: data.content ? JSON.stringify(data.content) : null,
-        });
-
-        agenda_id = id;
-
-        // Insert participants
-        if (Array.isArray(data.participants) && data.participants.length > 0) {
-            const participantRecords = data.participants.map(pd_id => ({
-                agenda_id,
-                pd_id,
-            }));
-            await trx('pdoc_agenda_participants').insert(participantRecords);
-        }
+    const [id] = await db('proj_agendas').insert({
+        project_id: projectId,
+        meeting_no: data.meeting_no,
+        subject: data.subject,
+        venue: data.venue,
+        date: data.date,
+        participants: data.participants ? (typeof data.participants === 'string' ? data.participants : JSON.stringify(data.participants)) : null,
+        content: data.content ? (typeof data.content === 'string' ? data.content : JSON.stringify(data.content)) : null
     });
 
-    return { agenda_id };
+    return { agenda_id: id };
 }
 
 /* -------------------------------------------------------
    UPDATE AGENDA
 -------------------------------------------------------- */
 export async function updateAgenda(projectId, agendaId, data) {
-    await db.transaction(async (trx) => {
-        const allowedFields = ["subject", "venue", "date", "meeting_no"];
-        const updateData = {};
+    const allowedFields = ["subject", "venue", "date", "meeting_no"];
+    const updateData = {};
 
-        for (const field of allowedFields) {
-            if (data[field] !== undefined) {
-                updateData[field] = data[field];
-            }
+    for (const field of allowedFields) {
+        if (data[field] !== undefined) {
+            updateData[field] = data[field];
         }
+    }
 
-        if (data.content !== undefined) {
-            updateData.content = data.content ? JSON.stringify(data.content) : null;
-        }
+    if (data.content !== undefined) {
+        updateData.content = data.content ? (typeof data.content === 'string' ? data.content : JSON.stringify(data.content)) : null;
+    }
 
-        if (Object.keys(updateData).length > 0) {
-            const affected = await trx('pdoc_agenda')
-                .where('agenda_id', agendaId)
-                .where('project_id', projectId)
-                .update(updateData);
+    if (data.participants !== undefined) {
+        updateData.participants = data.participants ? (typeof data.participants === 'string' ? data.participants : JSON.stringify(data.participants)) : null;
+    }
 
-            if (affected === 0) throw new AppError('Agenda not found', 404);
-        }
+    if (Object.keys(updateData).length > 0) {
+        const affected = await db('proj_agendas')
+            .where('id', agendaId)
+            .where('project_id', projectId)
+            .update(updateData);
 
-        /* ---------------- PARTICIPANTS UPDATE ---------------- */
-        if (Array.isArray(data.participants)) {
-            await trx('pdoc_agenda_participants')
-                .where('agenda_id', agendaId)
-                .del();
-
-            if (data.participants.length > 0) {
-                const participantRecords = data.participants.map(pd_id => ({
-                    agenda_id: agendaId,
-                    pd_id
-                }));
-                await trx('pdoc_agenda_participants').insert(participantRecords);
-            }
-        }
-    });
+        if (affected === 0) throw new AppError('Agenda not found', 404);
+    }
 
     return { affected: 1 };
 }
@@ -140,17 +119,11 @@ export async function updateAgenda(projectId, agendaId, data) {
    DELETE AGENDA
 -------------------------------------------------------- */
 export async function deleteAgenda(projectId, agendaId) {
-    const agenda = await db('pdoc_agenda').where({ agenda_id: agendaId, project_id: projectId }).first();
-    if (!agenda) throw new AppError('Agenda not found', 404);
+    const affected = await db('proj_agendas')
+        .where({ id: agendaId, project_id: projectId })
+        .del();
 
-    await db.transaction(async (trx) => {
-        // Delete participants first (foreign key constraint)
-        await trx('pdoc_agenda_participants').where('agenda_id', agendaId).del();
-        
-        // Delete agenda
-        await trx('pdoc_agenda').where('agenda_id', agendaId).del();
-    });
-
+    if (affected === 0) throw new AppError('Agenda not found', 404);
     return { affectedRows: 1 };
 }
 

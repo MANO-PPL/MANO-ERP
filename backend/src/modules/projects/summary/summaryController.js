@@ -38,12 +38,15 @@ export const addSummaries = catchAsync(async (req, res) => {
    UPDATE — PUT /:id/summary
 -------------------------------------------------------- */
 export const updateSummaries = catchAsync(async (req, res) => {
+    const projectId = parseInt(req.params.id, 10);
+    if (isNaN(projectId)) throw new AppError('Invalid project_id', 400);
+
     const items = req.body;
     if (!Array.isArray(items)) {
         throw new AppError('Invalid input, expected array', 400);
     }
 
-    await summaryService.updateProjectSummaries(items);
+    await summaryService.updateProjectSummaries(projectId, items);
     res.json({ success: true, message: 'Summaries updated successfully' });
 });
 
@@ -51,6 +54,9 @@ export const updateSummaries = catchAsync(async (req, res) => {
    DELETE — DELETE /:id/summary
 -------------------------------------------------------- */
 export const removeSummaries = catchAsync(async (req, res) => {
+    const projectId = parseInt(req.params.id, 10);
+    if (isNaN(projectId)) throw new AppError('Invalid project_id', 400);
+
     const ids = req.body;
     if (!Array.isArray(ids)) {
         throw new AppError('Invalid input, expected array of IDs', 400);
@@ -59,7 +65,7 @@ export const removeSummaries = catchAsync(async (req, res) => {
     // Normalize to array of IDs in case they pass objects
     const idsToDelete = ids.map(i => (typeof i === 'object' ? i.id : i));
 
-    await summaryService.deleteProjectSummaries(idsToDelete);
+    await summaryService.deleteProjectSummaries(projectId, idsToDelete);
     res.json({ success: true, message: 'Summaries deleted successfully' });
 });
 

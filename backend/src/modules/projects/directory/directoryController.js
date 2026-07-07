@@ -36,9 +36,11 @@ export const addDirectoryItem = catchAsync(async (req, res) => {
 -------------------------------------------------------- */
 export const updateDirectoryItem = catchAsync(async (req, res) => {
     const id = parseInt(req.params.pd_id, 10);
+    const projectId = parseInt(req.params.id, 10);
     if (isNaN(id)) throw new AppError('id is required and must be a number', 400);
+    if (isNaN(projectId)) throw new AppError('project_id is required and must be a number', 400);
 
-    const result = await directoryService.updateDirectoryItem(id, req.body);
+    const result = await directoryService.updateDirectoryItem(projectId, id, req.body);
     res.json({ success: true, message: 'Directory item updated', affectedRows: result.affected });
 });
 
@@ -47,9 +49,11 @@ export const updateDirectoryItem = catchAsync(async (req, res) => {
 -------------------------------------------------------- */
 export const deleteDirectoryItem = catchAsync(async (req, res) => {
     const id = parseInt(req.params.pd_id, 10);
+    const projectId = parseInt(req.params.id, 10);
     if (isNaN(id)) throw new AppError('id is required and must be a number', 400);
+    if (isNaN(projectId)) throw new AppError('project_id is required and must be a number', 400);
 
-    const result = await directoryService.deleteDirectoryItem(id);
+    const result = await directoryService.deleteDirectoryItem(projectId, id);
     res.json({ success: true, message: 'Directory item deleted', affectedRows: result.affectedRows });
 });
 

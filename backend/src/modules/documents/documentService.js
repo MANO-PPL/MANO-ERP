@@ -4,7 +4,7 @@ import AppError from '../../utils/AppError.js';
 /**
  * Create a new document template.
  */
-export async function createTemplate(orgId, userId, { name, doc_type, approval_type, description, project_id = null }) {
+export async function createTemplate(orgId, userId, { name, doc_type, approval_type, description, project_id = null, publishing_config = null }) {
     if (!name || !doc_type || !approval_type) {
         throw new AppError('name, doc_type, and approval_type are required', 400);
     }
@@ -26,7 +26,8 @@ export async function createTemplate(orgId, userId, { name, doc_type, approval_t
         doc_type,
         approval_type,
         description: description || null,
-        created_by: userId
+        created_by: userId,
+        publishing_config: publishing_config ? (typeof publishing_config === 'string' ? publishing_config : JSON.stringify(publishing_config)) : null
     });
 
     return document_id;
