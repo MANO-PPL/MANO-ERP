@@ -3,7 +3,37 @@ import AppError from '../../utils/AppError.js';
 import { findOrCreateSector } from '../shared/sectorService.js';
 import { findOrCreateJobNature } from '../shared/jobNatureService.js';
 
-export async function getClients(query = {}) {
+/**
+ * Startup self-healing schema migration to introduce org_id columns for CRM tables
+ */
+export async function initializeCrmSchema() {
+    const tables = ['crm_contacts', 'crm_interactions', 'crm_job_nature', 'crm_sectors'];
+    for (const t of tables) {
+        const hasTable = await db.schema.hasTable(t);
+        if (hasTable) {
+            const hasOrgId = await db.schema.hasColumn(t, 'org_id');
+            if (!hasOrgId) {
+                // 1. Add org_id as nullable first
+                await db.schema.alterTable(t, (table) => {
+                    table.integer('org_id').unsigned().nullable();
+                });
+                console.log(`Added column 'org_id' to table '${t}'`);
+
+                // 2. Set default value to 2 (MANO PPL) for all existing rows
+                await db(t).update({ org_id: 2 });
+                console.log(`Assigned all existing rows in '${t}' to organization ID 2`);
+
+                // 3. Alter it to NOT NULL
+                await db.schema.alterTable(t, (table) => {
+                    table.integer('org_id').unsigned().notNullable().alter();
+                });
+                console.log(`Altered column 'org_id' in table '${t}' to NOT NULL`);
+            }
+        }
+    }
+}
+
+export async function getClients(orgId, query = {}) {
     const page = parseInt(query.page) || 1;
     const limit = parseInt(query.limit) || 20;
     const offset = (page - 1) * limit;
@@ -11,7 +41,8 @@ export async function getClients(query = {}) {
     const baseQuery = db('crm_contacts as c')
         .leftJoin('crm_job_nature as jn', 'c.job_nature_id', 'jn.job_id')
         .leftJoin('crm_sectors as s', 'c.sector_id', 's.sector_id')
-        .where('c.type', 'client');
+        .where('c.type', 'client')
+        .andWhere('c.org_id', orgId);
 
     const applyFilters = (qb) => {
         if (query.company || query.name) {
@@ -67,6 +98,7 @@ export async function getClients(query = {}) {
     // Fetch latest interaction for each type for these clients
     const aggregatedInteractions = await db('crm_interactions')
         .whereIn('contact_id', clientIds)
+        .andWhere('org_id', orgId)
         .select('contact_id', 'type', 'interaction_date', 'follow_up_date', 'remarks')
         .orderBy('interaction_date', 'asc');
 
@@ -121,11 +153,11 @@ export async function getClients(query = {}) {
     };
 }
 
-export async function getClientById(id) {
+export async function getClientById(orgId, id) {
     const client = await db('crm_contacts as c')
         .leftJoin('crm_job_nature as jn', 'c.job_nature_id', 'jn.job_id')
         .leftJoin('crm_sectors as s', 'c.sector_id', 's.sector_id')
-        .where({ 'c.id': id, 'c.type': 'client' })
+        .where({ 'c.id': id, 'c.type': 'client', 'c.org_id': orgId })
         .select('c.*', 'jn.job_name', 's.sector_name')
         .first();
 
@@ -135,7 +167,7 @@ export async function getClientById(id) {
 
     const interactions = await db('crm_interactions as i')
         .leftJoin('iam_users as u', 'i.interacted_by', 'u.user_id')
-        .where({ 'i.contact_id': id })
+        .where({ 'i.contact_id': id, 'i.org_id': orgId })
         .select('i.*', 'u.user_name as interacted_by_name')
         .orderBy('i.interaction_date', 'desc');
 
@@ -160,12 +192,13 @@ export async function getClientById(id) {
     };
 }
 
-export async function createClient(data) {
+export async function createClient(orgId, data) {
     if (!data.name) {
         throw new AppError('Client name is required', 400);
     }
 
     const insertData = {
+        org_id: orgId,
         type: 'client',
         name: data.name,
         sector_id: data.sector_id || null,
@@ -188,19 +221,19 @@ export async function createClient(data) {
 
     // Resolve sector name to ID if provided as string
     if (data.sector && !data.sector_id) {
-        insertData.sector_id = await findOrCreateSector(data.sector);
+        insertData.sector_id = await findOrCreateSector(orgId, data.sector);
     }
     // Resolve job nature name to ID if provided as string
     if ((data.job_nature || data.job_nature_name) && !data.job_nature_id) {
-        insertData.job_nature_id = await findOrCreateJobNature(data.job_nature || data.job_nature_name);
+        insertData.job_nature_id = await findOrCreateJobNature(orgId, data.job_nature || data.job_nature_name);
     }
 
     const [newId] = await db('crm_contacts').insert(insertData);
     return newId;
 }
 
-export async function updateClient(id, data) {
-    const client = await db('crm_contacts').where({ id, type: 'client' }).first();
+export async function updateClient(orgId, id, data) {
+    const client = await db('crm_contacts').where({ id, type: 'client', org_id: orgId }).first();
     if (!client) {
         throw new AppError('Client not found', 404);
     }
@@ -233,35 +266,35 @@ export async function updateClient(id, data) {
 
     // Resolve job nature name to ID if provided as string
     if ((data.job_nature || data.job_nature_name) && !updateData.job_nature_id) {
-        updateData.job_nature_id = await findOrCreateJobNature(data.job_nature || data.job_nature_name || data.job_id);
+        updateData.job_nature_id = await findOrCreateJobNature(orgId, data.job_nature || data.job_nature_name || data.job_id);
     }
 
     // Resolve sector name to ID if provided as string
     if (data.sector && !updateData.sector_id) {
-        updateData.sector_id = await findOrCreateSector(data.sector);
+        updateData.sector_id = await findOrCreateSector(orgId, data.sector);
     }
 
     updateData.updated_at = db.fn.now();
 
-    await db('crm_contacts').where({ id }).update(updateData);
+    await db('crm_contacts').where({ id, org_id: orgId }).update(updateData);
     return true;
 }
 
-export async function deleteClient(id) {
-    const client = await db('crm_contacts').where({ id, type: 'client' }).first();
+export async function deleteClient(orgId, id) {
+    const client = await db('crm_contacts').where({ id, type: 'client', org_id: orgId }).first();
     if (!client) {
         throw new AppError('Client not found', 404);
     }
 
-    // Delete related interactions first (if no cascade)
-    await db('crm_interactions').where({ contact_id: id }).delete();
+    // Delete related interactions first
+    await db('crm_interactions').where({ contact_id: id, org_id: orgId }).delete();
 
     // Delete contact
-    await db('crm_contacts').where({ id }).delete();
+    await db('crm_contacts').where({ id, org_id: orgId }).delete();
     return true;
 }
 
-export async function bulkInsertClients(rowsData) {
+export async function bulkInsertClients(orgId, rowsData) {
     const results = { total_processed: 0, success_count: 0, failure_count: 0, errors: [] };
 
     let rowNumber = 1;
@@ -287,7 +320,7 @@ export async function bulkInsertClients(rowsData) {
         try {
             const designation = rawDesignation ? rawDesignation.trim() : null;
 
-            await createClient({
+            await createClient(orgId, {
                 name,
                 contact_person: contact_person,
                 designation,
@@ -314,7 +347,7 @@ export async function bulkInsertClients(rowsData) {
     return results;
 }
 
-export async function bulkValidateClients(clients) {
+export async function bulkValidateClients(orgId, clients) {
     const response = { duplicates: [], new_job_natures: [], valid_count: 0 };
     const inputEmails = new Set();
     const inputPhones = new Set();
@@ -332,7 +365,7 @@ export async function bulkValidateClients(clients) {
 
     if (inputEmails.size > 0 || inputPhones.size > 0) {
         const existingClients = await db('crm_contacts')
-            .where({ type: 'client' })
+            .where({ type: 'client', org_id: orgId })
             .where(function () {
                 if (inputEmails.size > 0) this.whereIn('email', Array.from(inputEmails));
                 if (inputPhones.size > 0) this.orWhereIn('mobile', Array.from(inputPhones));
@@ -363,7 +396,7 @@ export async function bulkValidateClients(clients) {
     }
 
     if (inputJobNatures.size > 0) {
-        const existingJobs = await db('crm_job_nature').whereIn(db.raw('LOWER(job_name)'), Array.from(inputJobNatures)).select('job_name');
+        const existingJobs = await db('crm_job_nature').where({ org_id: orgId }).whereIn(db.raw('LOWER(job_name)'), Array.from(inputJobNatures)).select('job_name');
         const existingJobSet = new Set(existingJobs.map(j => j.job_name.toLowerCase()));
         Array.from(inputJobNatures).forEach(j => {
             if (!existingJobSet.has(j)) {
@@ -380,7 +413,7 @@ export async function bulkValidateClients(clients) {
     return response;
 }
 
-export async function createInteraction(data) {
+export async function createInteraction(orgId, data) {
     const { contact_id, type, interaction_date, follow_up_date, remarks, interacted_by } = data;
 
     if (!contact_id || !type || !interaction_date) {
@@ -388,6 +421,7 @@ export async function createInteraction(data) {
     }
 
     const [newId] = await db('crm_interactions').insert({
+        org_id: orgId,
         contact_id,
         type,
         interaction_date,
@@ -409,5 +443,6 @@ export default {
     deleteClient,
     bulkInsertClients,
     bulkValidateClients,
-    createInteraction
+    createInteraction,
+    initializeCrmSchema
 };

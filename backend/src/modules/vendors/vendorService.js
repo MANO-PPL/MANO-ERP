@@ -3,14 +3,15 @@ import AppError from '../../utils/AppError.js';
 import { findOrCreateSector } from '../shared/sectorService.js';
 import { findOrCreateJobNature } from '../shared/jobNatureService.js';
 
-export async function getVendors(query = {}) {
+export async function getVendors(orgId, query = {}) {
     const page = parseInt(query.page) || 1;
     const limit = parseInt(query.limit) || 10;
     const offset = (page - 1) * limit;
 
     const baseQuery = db('crm_contacts as c')
         .leftJoin('crm_job_nature as jn', 'c.job_nature_id', 'jn.job_id')
-        .where('c.type', 'vendor');
+        .where('c.type', 'vendor')
+        .andWhere('c.org_id', orgId);
 
     // Apply filters to both count and data queries
     const applyFilters = (qb) => {
@@ -29,7 +30,6 @@ export async function getVendors(query = {}) {
         if (query.categories && query.categories.length > 0) {
             let cats = Array.isArray(query.categories) ? query.categories : query.categories.split(',').filter(Boolean);
             if (cats.length > 0) {
-                // Normalize and handle common plural/singular mismatches
                 cats = cats.map(c => c.toLowerCase());
                 if (cats.includes('consultant') && !cats.includes('consultants')) cats.push('consultants');
                 if (cats.includes('consultants') && !cats.includes('consultant')) cats.push('consultant');
@@ -70,9 +70,10 @@ export async function getVendors(query = {}) {
         return { vendors: [], total, page, limit };
     }
 
-    // Fetch interactions...
+    // Fetch interactions
     const interactions = await db('crm_interactions')
         .whereIn('contact_id', vendorIds)
+        .andWhere('org_id', orgId)
         .whereNull('interacted_by')
         .select('*');
 
@@ -99,9 +100,9 @@ export async function getVendors(query = {}) {
     };
 }
 
-export async function getVendorById(id) {
+export async function getVendorById(orgId, id) {
     const vendor = await db('crm_contacts')
-        .where({ id, type: 'vendor' })
+        .where({ id, type: 'vendor', org_id: orgId })
         .first();
 
     if (!vendor) {
@@ -109,9 +110,9 @@ export async function getVendorById(id) {
     }
 
     const interactions = await db('crm_interactions as i')
-        .leftJoin('iam_users as u', 'i.interacted_by', 'u.id')
-        .where({ 'i.contact_id': id })
-        .select('i.*', 'u.name as interacted_by_name')
+        .leftJoin('iam_users as u', 'i.interacted_by', 'u.user_id')
+        .where({ 'i.contact_id': id, 'i.org_id': orgId })
+        .select('i.*', 'u.user_name as interacted_by_name')
         .orderBy('i.interaction_date', 'desc');
 
     vendor.interactions = interactions;
@@ -120,12 +121,13 @@ export async function getVendorById(id) {
     return vendor;
 }
 
-export async function createInteraction(id, data) {
+export async function createInteraction(orgId, id, data) {
     if (!data.type || !data.interaction_date) {
         throw new AppError('Interaction type and date are required', 400);
     }
 
     const insertData = {
+        org_id: orgId,
         contact_id: id,
         type: data.type.toLowerCase(),
         interaction_date: data.interaction_date,
@@ -140,12 +142,13 @@ export async function createInteraction(id, data) {
     return newId;
 }
 
-export async function createVendor(data) {
+export async function createVendor(orgId, data) {
     if (!data.name) {
         throw new AppError('Vendor name is required', 400);
     }
 
     const insertData = {
+        org_id: orgId,
         type: 'vendor',
         name: data.name,
         sector_id: data.sector_id || null,
@@ -168,15 +171,15 @@ export async function createVendor(data) {
 
     // Resolve job nature name to ID if provided as string
     if (data.job_nature && !data.job_nature_id) {
-        insertData.job_nature_id = await findOrCreateJobNature(data.job_nature);
+        insertData.job_nature_id = await findOrCreateJobNature(orgId, data.job_nature);
     }
 
     const [newId] = await db('crm_contacts').insert(insertData);
     return newId;
 }
 
-export async function updateVendor(id, data) {
-    const vendor = await db('crm_contacts').where({ id, type: 'vendor' }).first();
+export async function updateVendor(orgId, id, data) {
+    const vendor = await db('crm_contacts').where({ id, type: 'vendor', org_id: orgId }).first();
     if (!vendor) {
         throw new AppError('Vendor not found', 404);
     }
@@ -206,25 +209,25 @@ export async function updateVendor(id, data) {
 
     // Resolve job nature name to ID if provided as string
     if (data.job_nature && !data.job_nature_id) {
-        updateData.job_nature_id = await findOrCreateJobNature(data.job_nature);
+        updateData.job_nature_id = await findOrCreateJobNature(orgId, data.job_nature);
     }
 
     updateData.updated_at = db.fn.now();
 
-    await db('crm_contacts').where({ id }).update(updateData);
+    await db('crm_contacts').where({ id, org_id: orgId }).update(updateData);
     return true;
 }
 
-export async function deleteVendors(ids) {
+export async function deleteVendors(orgId, ids) {
     if (!Array.isArray(ids) || ids.length === 0) {
         throw new AppError('No Vendor IDs provided', 400);
     }
 
-    // Delete related interactions first (if no cascade)
-    await db('crm_interactions').whereIn('contact_id', ids).delete();
+    // Delete related interactions first
+    await db('crm_interactions').whereIn('contact_id', ids).andWhere('org_id', orgId).delete();
 
     // Delete contact
-    const deletedCount = await db('crm_contacts').whereIn('id', ids).where({ type: 'vendor' }).delete();
+    const deletedCount = await db('crm_contacts').whereIn('id', ids).where({ type: 'vendor', org_id: orgId }).delete();
 
     if (deletedCount === 0) {
         throw new AppError('No valid vendors found to delete', 404);
@@ -233,7 +236,7 @@ export async function deleteVendors(ids) {
     return true;
 }
 
-export async function bulkInsertVendors(rowsData) {
+export async function bulkInsertVendors(orgId, rowsData) {
     const results = { total_processed: 0, success_count: 0, failure_count: 0, errors: [] };
 
     let rowNumber = 1;
@@ -257,10 +260,10 @@ export async function bulkInsertVendors(rowsData) {
         try {
             let jobNatureId = null;
             if (rawJobNature) {
-                jobNatureId = await findOrCreateJobNature(rawJobNature);
+                jobNatureId = await findOrCreateJobNature(orgId, rawJobNature);
             }
 
-            await createVendor({
+            await createVendor(orgId, {
                 name,
                 contact_person,
                 mobile,
@@ -283,7 +286,7 @@ export async function bulkInsertVendors(rowsData) {
     return results;
 }
 
-export async function bulkValidateVendors(vendors) {
+export async function bulkValidateVendors(orgId, vendors) {
     const response = { duplicates: [], new_job_natures: [], valid_count: 0 };
     const inputEmails = new Set();
     const inputPhones = new Set();
@@ -300,12 +303,12 @@ export async function bulkValidateVendors(vendors) {
     });
 
     if (inputEmails.size > 0) {
-        const existingVendors = await db('crm_contacts').where({ type: 'vendor' }).whereIn('email', Array.from(inputEmails)).select('email');
+        const existingVendors = await db('crm_contacts').where({ type: 'vendor', org_id: orgId }).whereIn('email', Array.from(inputEmails)).select('email');
         const existingEmailSet = new Set(existingVendors.map(v => v.email));
 
         let existingPhoneSet = new Set();
         if (inputPhones.size > 0) {
-            const existingPhones = await db('crm_contacts').where({ type: 'vendor' }).whereIn('mobile', Array.from(inputPhones)).select('mobile');
+            const existingPhones = await db('crm_contacts').where({ type: 'vendor', org_id: orgId }).whereIn('mobile', Array.from(inputPhones)).select('mobile');
             existingPhoneSet = new Set(existingPhones.map(v => v.mobile));
         }
 
@@ -330,7 +333,7 @@ export async function bulkValidateVendors(vendors) {
     }
 
     if (inputJobNatures.size > 0) {
-        const existingJobs = await db('crm_job_nature').whereIn(db.raw('LOWER(job_name)'), Array.from(inputJobNatures)).select('job_name');
+        const existingJobs = await db('crm_job_nature').where({ org_id: orgId }).whereIn(db.raw('LOWER(job_name)'), Array.from(inputJobNatures)).select('job_name');
         const existingJobSet = new Set(existingJobs.map(j => j.job_name.toLowerCase()));
         Array.from(inputJobNatures).forEach(j => {
             if (!existingJobSet.has(j)) {

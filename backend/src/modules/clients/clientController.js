@@ -5,7 +5,7 @@ import ExcelJS from 'exceljs';
 import { PassThrough } from 'stream';
 
 export const listClients = catchAsync(async (req, res) => {
-    const { clients, total, page, limit } = await clientService.getClients(req.query);
+    const { clients, total, page, limit } = await clientService.getClients(req.user.org_id, req.query);
     res.json({ success: true, clients, total, page, limit });
 });
 
@@ -15,12 +15,12 @@ export const getClient = catchAsync(async (req, res) => {
          throw new AppError('Invalid Client ID', 400);
     }
 
-    const client = await clientService.getClientById(id);
+    const client = await clientService.getClientById(req.user.org_id, id);
     res.json({ success: true, client });
 });
 
 export const createClient = catchAsync(async (req, res) => {
-    const newId = await clientService.createClient(req.body);
+    const newId = await clientService.createClient(req.user.org_id, req.body);
     res.status(201).json({ success: true, message: 'Client created successfully', id: newId });
 });
 
@@ -30,7 +30,7 @@ export const updateClient = catchAsync(async (req, res) => {
          throw new AppError('Invalid Client ID', 400);
     }
 
-    await clientService.updateClient(id, req.body);
+    await clientService.updateClient(req.user.org_id, id, req.body);
     res.json({ success: true, message: 'Client updated successfully' });
 });
 
@@ -40,7 +40,7 @@ export const deleteClient = catchAsync(async (req, res) => {
          throw new AppError('Invalid Client ID', 400);
     }
 
-    await clientService.deleteClient(id);
+    await clientService.deleteClient(req.user.org_id, id);
     res.json({ success: true, message: 'Client deleted successfully' });
 });
 
@@ -83,7 +83,7 @@ export const bulkUpload = catchAsync(async (req, res) => {
         rowsData.push(record);
     });
 
-    const results = await clientService.bulkInsertClients(rowsData);
+    const results = await clientService.bulkInsertClients(req.user.org_id, rowsData);
     res.json({ success: true, report: results });
 });
 
@@ -92,7 +92,7 @@ export const bulkValidate = catchAsync(async (req, res) => {
     if (!clients || !Array.isArray(clients)) {
         throw new AppError('Invalid clients data', 400);
     }
-    const validation = await clientService.bulkValidateClients(clients);
+    const validation = await clientService.bulkValidateClients(req.user.org_id, clients);
     res.json({ success: true, validation });
 });
 
@@ -101,7 +101,7 @@ export const bulkJson = catchAsync(async (req, res) => {
     if (!clients || !Array.isArray(clients)) {
         throw new AppError('Invalid clients data', 400);
     }
-    const results = await clientService.bulkInsertClients(clients);
+    const results = await clientService.bulkInsertClients(req.user.org_id, clients);
     res.json({ success: true, report: results });
 });
 
@@ -114,10 +114,10 @@ export const addInteraction = catchAsync(async (req, res) => {
     const interactionData = {
         ...req.body,
         contact_id: id,
-        interacted_by: req.user?.id // Assuming user ID is available from auth
+        interacted_by: req.user?.user_id
     };
 
-    const newId = await clientService.createInteraction(interactionData);
+    const newId = await clientService.createInteraction(req.user.org_id, interactionData);
     res.status(201).json({ success: true, message: 'Interaction logged successfully', id: newId });
 });
 
