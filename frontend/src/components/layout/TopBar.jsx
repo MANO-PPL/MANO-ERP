@@ -47,7 +47,7 @@ const TopBar = () => {
   };
 
   return (
-    <div className="h-[7vh] min-h-[52px] bg-white dark:bg-gh-bg border-b border-gray-200 dark:border-gh-border flex items-center justify-between px-6 sticky top-0 z-10 w-full transition-colors">
+    <div className="h-[7vh] min-h-[52px] bg-white dark:bg-gh-bg border-b border-gray-200 dark:border-gh-border flex items-center justify-between px-6 sticky top-0 z-[30] w-full transition-colors">
       {/* Left: Dynamic Page Title */}
       <div className="flex items-center min-w-[150px]">
         <h1 className="text-xl font-bold text-gray-900 dark:text-white capitalize tracking-tight">

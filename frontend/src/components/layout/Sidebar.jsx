@@ -63,16 +63,16 @@ const Sidebar = () => {
 
             {/* Navigation & Recent */}
             <div className="flex-1 flex flex-col overflow-y-auto">
-                <nav className="py-2 space-y-0.5">
+                <nav className="py-3 space-y-1">
                     {filteredNavItems.map((item) => (
                         <NavLink
                             key={item.path}
                             to={item.path}
                             end={item.path === '/'}
                             className={({ isActive }) =>
-                                `flex items-center px-6 py-2.5 text-sm font-medium transition-colors ${isActive
-                                    ? 'bg-blue-50 text-blue-600 border-r-4 border-blue-600 dark:bg-blue-900/20 dark:text-blue-400 dark:border-blue-500'
-                                    : 'text-gray-600 hover:bg-gray-50 hover:text-gray-900 dark:text-gray-400 dark:hover:bg-gh-hover dark:hover:text-gray-200'
+                                `flex items-center mx-3 px-4 py-2 text-sm font-medium rounded-lg transition-all ${isActive
+                                    ? 'bg-blue-50 text-blue-600 dark:bg-blue-900/30 dark:text-blue-400 font-semibold shadow-sm'
+                                    : 'text-gray-600 hover:bg-gray-50 hover:text-gray-900 dark:text-gray-400 dark:hover:bg-gh-hover/50 dark:hover:text-gray-200'
                                 }`
                             }
                         >

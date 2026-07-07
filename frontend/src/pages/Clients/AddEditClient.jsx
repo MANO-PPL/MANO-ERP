@@ -50,8 +50,6 @@ const AddEditClient = ({ isOpen, onClose, onSave, initialData = null, availableS
         }
     }, [initialData, isOpen]);
 
-    if (!isOpen) return null;
-
     const handleChange = (e) => {
         const { name, value } = e.target;
         setFormData(prev => ({ ...prev, [name]: value }));
@@ -67,13 +65,19 @@ const AddEditClient = ({ isOpen, onClose, onSave, initialData = null, availableS
     const labelClasses = "block text-xs font-semibold text-gray-700 dark:text-gray-300 mb-1.5";
 
     return (
-        <div className="fixed inset-0 z-[5000] flex justify-end p-0 sm:p-0 anim-fade-in text-left">
-            <div
-                className="absolute inset-0 bg-black/60 backdrop-blur-sm transition-opacity"
-                onClick={onClose}
-            ></div>
+        <>
+            {/* Overlay */}
+            {isOpen && (
+                <div
+                    className="fixed inset-0 bg-gray-900/40 dark:bg-black/60 backdrop-blur-sm z-[4999] transition-all duration-300 ease-out"
+                    onClick={onClose}
+                />
+            )}
 
-            <div className="relative w-full max-w-2xl bg-white dark:bg-[#161b22] shadow-2xl border-l border-gray-200 dark:border-white/10 overflow-hidden flex flex-col h-full anim-slide-left">
+            {/* Right Slide-out Drawer */}
+            <div
+                className={`fixed top-0 right-0 h-full w-full max-w-2xl bg-white dark:bg-[#161b22] shadow-2xl z-[5000] transform transition-transform duration-300 flex flex-col border-l border-gray-200 dark:border-white/10 overflow-hidden ${isOpen ? 'translate-x-0' : 'translate-x-full'}`}
+            >
 
                 <div className="px-8 py-6 border-b border-gray-100 dark:border-white/5">
                     <h2 className="text-xl font-bold text-gray-900 dark:text-white mb-1">
@@ -226,7 +230,7 @@ const AddEditClient = ({ isOpen, onClose, onSave, initialData = null, availableS
                     </button>
                 </div>
             </div>
-        </div>
+        </>
     );
 };
 

@@ -90,17 +90,24 @@ const ManageMetadataModal = ({
         }
     };
 
-    if (!isOpen) return null;
-
     const filteredItems = items.filter(item => 
         item[itemNameKey]?.toLowerCase().includes(searchTerm.toLowerCase())
     );
 
     return (
-        <div className="fixed inset-0 z-[5000] flex items-center justify-center p-4 sm:p-6 anim-fade-in text-left">
-            <div className="absolute inset-0 bg-black/60 backdrop-blur-sm transition-opacity" onClick={onClose}></div>
-            
-            <div className="relative w-full max-w-md bg-white dark:bg-[#161b22] rounded-xl shadow-2xl border border-gray-200 dark:border-white/10 overflow-hidden flex flex-col anim-slide-up max-h-[80vh]">
+        <>
+            {/* Overlay */}
+            {isOpen && (
+                <div
+                    className="fixed inset-0 bg-gray-900/40 dark:bg-black/60 backdrop-blur-sm z-[4999] transition-all duration-300 ease-out"
+                    onClick={onClose}
+                />
+            )}
+
+            {/* Right Slide-out Drawer */}
+            <div
+                className={`fixed top-0 right-0 h-full w-full max-w-md bg-white dark:bg-[#161b22] shadow-2xl z-[5000] transform transition-transform duration-300 flex flex-col border-l border-gray-200 dark:border-white/10 overflow-hidden ${isOpen ? 'translate-x-0' : 'translate-x-full'}`}
+            >
                 
                 <div className="px-6 py-4 flex justify-between items-center border-b border-gray-100 dark:border-white/5 bg-gray-50/50 dark:bg-white/[0.02]">
                     <h2 className="text-lg font-bold text-gray-900 dark:text-white">{title}</h2>
@@ -178,7 +185,7 @@ const ManageMetadataModal = ({
                     </button>
                 </div>
             </div>
-        </div>
+        </>
     );
 };
 
