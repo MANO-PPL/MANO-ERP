@@ -136,7 +136,7 @@ const NewCategoryDrawer = ({ open, onClose, onAdd }) => {
 };
 
 // ─── Drawings Index ───────────────────────────────────────────────────────────
-const DrawingsIndex = ({ setExtraBreadcrumbs }) => {
+const DrawingsIndex = ({ setExtraBreadcrumbs, canWrite }) => {
     const [searchParams, setSearchParams] = useSearchParams();
     const [categories, setCategories] = useState(DEFAULT_CATEGORIES);
     const [drawerOpen, setDrawerOpen] = useState(false);
@@ -175,6 +175,7 @@ const DrawingsIndex = ({ setExtraBreadcrumbs }) => {
                 category={selectedCategory}
                 onBack={handleBack}
                 setExtraBreadcrumbs={setExtraBreadcrumbs}
+                canWrite={canWrite}
             />
         );
     }
@@ -193,12 +194,14 @@ const DrawingsIndex = ({ setExtraBreadcrumbs }) => {
                     <h2 className="text-sm font-black text-gray-800 dark:text-white uppercase tracking-widest">Drawings</h2>
                     <p className="text-xs text-gray-400 mt-0.5">{categories.length} categories · Click any to open</p>
                 </div>
-                <button
-                    onClick={() => setDrawerOpen(true)}
-                    className="flex items-center gap-2 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold rounded-xl transition-colors shadow-md shadow-blue-500/20"
-                >
-                    <Plus size={14} /> New Category
-                </button>
+                {canWrite && (
+                    <button
+                        onClick={() => setDrawerOpen(true)}
+                        className="flex items-center gap-2 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold rounded-xl transition-colors shadow-md shadow-blue-500/20"
+                    >
+                        <Plus size={14} /> New Category
+                    </button>
+                )}
             </div>
 
             <div className="flex-1 overflow-y-auto p-6 md:p-10 custom-scrollbar bg-gray-50/20 dark:bg-transparent">

@@ -318,7 +318,7 @@ const AISuggestionsPanel = ({ sectionId, sections, slabArea, gstRate, onClose })
 };
 
 // ─── Budget Module (state container + view router) ────────────────────────
-const BudgetIndex = ({ onBack, setExtraBreadcrumbs }) => {
+const BudgetIndex = ({ onBack, setExtraBreadcrumbs, canWrite }) => {
     const [searchParams, setSearchParams] = useSearchParams();
     const [sections, setSections] = useState(BUDGET_SECTIONS);
     const [slabArea, setSlabArea] = useState(PROJECT_DEFAULTS.slabArea);
@@ -458,6 +458,7 @@ const BudgetIndex = ({ onBack, setExtraBreadcrumbs }) => {
                 gstRate={gstRate}
                 onItemsChange={items => updateSectionItems(activeSectionId, items)}
                 onBack={backToLanding}
+                canWrite={canWrite}
             />
         );
     }
@@ -514,9 +515,11 @@ const BudgetIndex = ({ onBack, setExtraBreadcrumbs }) => {
                     <button onClick={() => setAiSectionId('all')} className="flex items-center gap-1.5 px-3 py-1.5 bg-gradient-to-r from-violet-600 to-blue-600 hover:from-violet-700 hover:to-blue-700 text-white text-xs font-semibold rounded-lg transition-all shadow-md shadow-violet-500/20">
                         <Sparkles size={13} /> AI Suggestions
                     </button>
-                    <button onClick={() => { setEditTarget(null); setDrawerOpen(true); }} className="flex items-center gap-1.5 px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white text-xs font-semibold rounded-lg transition-colors">
-                        <Plus size={13} /> New Phase
-                    </button>
+                    {canWrite && (
+                        <button onClick={() => { setEditTarget(null); setDrawerOpen(true); }} className="flex items-center gap-1.5 px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white text-xs font-semibold rounded-lg transition-colors">
+                            <Plus size={13} /> New Phase
+                        </button>
+                    )}
                     <button onClick={goToSummary} className="flex items-center gap-1.5 px-3 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-semibold rounded-lg transition-colors">
                         <TrendingUp size={13} /> Summary & Charts
                     </button>
@@ -533,9 +536,10 @@ const BudgetIndex = ({ onBack, setExtraBreadcrumbs }) => {
                     <span className="text-xs text-gray-500 font-semibold">Slab Area:</span>
                     <input
                         type="number"
+                        disabled={!canWrite}
                         value={slabArea}
                         onChange={e => setSlabArea(Number(e.target.value))}
-                        className="w-28 bg-gray-50 dark:bg-white/5 border border-gray-200 dark:border-white/10 rounded-lg px-2 py-1 text-xs font-semibold text-gray-700 dark:text-gray-300 outline-none focus:ring-1 ring-blue-400"
+                        className="w-28 bg-gray-50 dark:bg-white/5 border border-gray-200 dark:border-white/10 rounded-lg px-2 py-1 text-xs font-semibold text-gray-700 dark:text-gray-300 outline-none focus:ring-1 ring-blue-400 disabled:opacity-70"
                     />
                     <span className="text-xs text-gray-400">Sqft</span>
                 </div>
@@ -543,9 +547,10 @@ const BudgetIndex = ({ onBack, setExtraBreadcrumbs }) => {
                     <span className="text-xs text-gray-500 font-semibold">GST Rate:</span>
                     <input
                         type="number"
+                        disabled={!canWrite}
                         value={gstRate * 100}
                         onChange={e => setGstRate(Number(e.target.value) / 100)}
-                        className="w-16 bg-gray-50 dark:bg-white/5 border border-gray-200 dark:border-white/10 rounded-lg px-2 py-1 text-xs font-semibold text-gray-700 dark:text-gray-300 outline-none focus:ring-1 ring-blue-400"
+                        className="w-16 bg-gray-50 dark:bg-white/5 border border-gray-200 dark:border-white/10 rounded-lg px-2 py-1 text-xs font-semibold text-gray-700 dark:text-gray-300 outline-none focus:ring-1 ring-blue-400 disabled:opacity-70"
                     />
                     <span className="text-xs text-gray-400">%</span>
                 </div>
@@ -565,13 +570,15 @@ const BudgetIndex = ({ onBack, setExtraBreadcrumbs }) => {
                             >
                                 {/* Card header — icon-only action buttons absolute top-right */}
                                 <div className="absolute top-3 right-3 flex items-center gap-1" onClick={e => e.stopPropagation()}>
-                                    <button
-                                        onClick={(e) => openEditDrawer(e, sec)}
-                                        title="Edit phase"
-                                        className="w-7 h-7 flex items-center justify-center rounded-lg border border-gray-200 dark:border-white/10 bg-white dark:bg-[#0d1117] text-amber-500 hover:bg-amber-50 dark:hover:bg-amber-900/20 hover:border-amber-300 transition-all shadow-sm"
-                                    >
-                                        <Pencil size={11} />
-                                    </button>
+                                    {canWrite && (
+                                        <button
+                                            onClick={(e) => openEditDrawer(e, sec)}
+                                            title="Edit phase"
+                                            className="w-7 h-7 flex items-center justify-center rounded-lg border border-gray-200 dark:border-white/10 bg-white dark:bg-[#0d1117] text-amber-500 hover:bg-amber-50 dark:hover:bg-amber-900/20 hover:border-amber-300 transition-all shadow-sm"
+                                        >
+                                            <Pencil size={11} />
+                                        </button>
+                                    )}
                                     <button
                                         onClick={() => setAiSectionId(sec.id)}
                                         title="AI Insights for this phase"

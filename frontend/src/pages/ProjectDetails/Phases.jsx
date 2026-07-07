@@ -5,7 +5,7 @@ import { projectApi } from '../../services/projectApi';
 import CustomDatePicker from '../../components/CustomDatePicker';
 import CustomInput from '../../components/CustomInput';
 
-const Phases = ({ setExtraBreadcrumbs }) => {
+const Phases = ({ setExtraBreadcrumbs, canWrite }) => {
     const { id: projectId } = useParams();
     const [project, setProject] = useState(null);
     const [phases, setPhases] = useState([]);
@@ -207,7 +207,7 @@ const Phases = ({ setExtraBreadcrumbs }) => {
                 )}
 
                 {/* Add Phase Form Toggle */}
-                {!isAdding && editingIdx === null && (
+                {!isAdding && editingIdx === null && canWrite && (
                     <button
                         onClick={() => setIsAdding(true)}
                         className="flex items-center gap-2 px-4 py-2.5 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-sm font-semibold transition-colors shadow-sm w-fit"
@@ -393,7 +393,7 @@ const Phases = ({ setExtraBreadcrumbs }) => {
                                     </div>
 
                                     {/* Action Buttons Panel (Right side) */}
-                                    {!isEditing && editingIdx === null && (
+                                    {!isEditing && editingIdx === null && canWrite && (
                                         <div className="flex md:flex-col border-t md:border-t-0 md:border-l border-gray-100 dark:border-white/5 bg-gray-50/50 dark:bg-white/[0.01]">
                                             {/* Move Up */}
                                             <button

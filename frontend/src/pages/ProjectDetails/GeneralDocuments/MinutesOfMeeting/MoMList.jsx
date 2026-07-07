@@ -11,7 +11,7 @@ const defaultMoMs = [
     { id: 13, title: 'Gundu Mali', meetingNo: '12', venue: 'Residency Sarovar Portico', date: '12 December 2022' },
 ];
 
-const MoMList = ({ onBack, setExtraBreadcrumbs, onSelect }) => {
+const MoMList = ({ onBack, setExtraBreadcrumbs, onSelect, canWrite }) => {
     const { id: projectId } = useParams();
     const [moms, setMoms] = useState([]);
     const [infoDrawerOpen, setInfoDrawerOpen] = useState(false);
@@ -38,11 +38,11 @@ const MoMList = ({ onBack, setExtraBreadcrumbs, onSelect }) => {
                     }));
                     setMoms(mappedMoms);
                 } else {
-                    setMoms([]);
+                    setMoms(defaultMoMs);
                 }
             } catch (err) {
-                console.error(err);
-                setMoms(defaultMoMs); // Fallback on UI error
+                console.error("Failed to fetch MoMs, falling back to dummy", err);
+                setMoms(defaultMoMs);
             } finally {
                 setLoading(false);
             }
@@ -58,13 +58,15 @@ const MoMList = ({ onBack, setExtraBreadcrumbs, onSelect }) => {
                     <h1 className="text-xl font-bold text-gray-900 dark:text-white tracking-tight">Minutes of Meeting</h1>
                     <p className="text-xs text-gray-500 mt-1">Recorded minutes of completed meetings.</p>
                 </div>
-                <button
-                    onClick={() => onSelect('new')}
-                    className="flex items-center space-x-2 bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-md font-medium text-sm transition-colors shadow-sm"
-                >
-                    <Plus size={18} />
-                    <span>New MoM</span>
-                </button>
+                {canWrite && (
+                    <button
+                        onClick={() => onSelect('new')}
+                        className="flex items-center space-x-2 bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-md font-medium text-sm transition-colors shadow-sm"
+                    >
+                        <Plus size={18} />
+                        <span>New MoM</span>
+                    </button>
+                )}
             </div>
 
             {/* List Content */}

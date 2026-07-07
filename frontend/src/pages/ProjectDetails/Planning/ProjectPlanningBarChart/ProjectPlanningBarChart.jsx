@@ -167,7 +167,7 @@ const PhaseDrawer = ({ open, onClose, phases, setPhases, editingPhase }) => {
 };
 
 // ─── Main Component ────────────────────────────────────────────────────────────
-const ProjectPlanningBarChart = ({ setExtraBreadcrumbs, onBack }) => {
+const ProjectPlanningBarChart = ({ setExtraBreadcrumbs, onBack, canWrite }) => {
     const [phases, setPhases] = useState(DEFAULT_PHASES);
     const [expandedPhases, setExpandedPhases] = useState(Object.fromEntries(DEFAULT_PHASES.map(p => [p.id, true])));
     const [showOrigPlan, setShowOrigPlan] = useState(true);
@@ -184,8 +184,8 @@ const ProjectPlanningBarChart = ({ setExtraBreadcrumbs, onBack }) => {
     useEffect(() => { setExpandedPhases(prev => { const n = { ...prev }; phases.forEach(p => { if (n[p.id] === undefined) n[p.id] = true; }); return n; }); }, [phases]);
 
     const togglePhase = (id) => setExpandedPhases(prev => ({ ...prev, [id]: !prev[id] }));
-    const openAddDrawer = () => { setEditingPhase(null); setDrawerOpen(true); };
-    const openEditDrawer = (id) => { setEditingPhase(id); setDrawerOpen(true); };
+    const openAddDrawer = () => { if (!canWrite) return; setEditingPhase(null); setDrawerOpen(true); };
+    const openEditDrawer = (id) => { if (!canWrite) return; setEditingPhase(id); setDrawerOpen(true); };
     const showPhaseDetail = (phase) => { setAiPanel(null); setDetailType('phase'); setDetailPhase(phase); setDetailActivity(null); };
     const showTaskDetail = (phase, act) => { setAiPanel(null); setDetailType('task'); setDetailPhase(phase); setDetailActivity(act); };
     const closeDetail = () => { setDetailType(null); setDetailPhase(null); setDetailActivity(null); setAiPanel(null); };
@@ -246,7 +246,11 @@ const ProjectPlanningBarChart = ({ setExtraBreadcrumbs, onBack }) => {
                         className="flex items-center gap-1.5 px-3 py-1.5 border border-violet-300 dark:border-violet-500/30 bg-violet-50 dark:bg-violet-500/10 hover:bg-violet-100 dark:hover:bg-violet-500/20 text-violet-600 dark:text-violet-400 text-xs font-bold rounded-lg transition-colors">
                         <Sparkles size={13} /> AI Summary
                     </button>
-                    <button onClick={openAddDrawer} className="flex items-center gap-1.5 px-3 py-1.5 bg-blue-500 hover:bg-blue-600 text-white text-xs font-bold rounded-lg shadow-lg shadow-blue-500/20"><Plus size={13} /> Add Phase</button>
+                    {canWrite && (
+                        <button onClick={openAddDrawer} className="flex items-center gap-1.5 px-3 py-1.5 bg-blue-500 hover:bg-blue-600 text-white text-xs font-bold rounded-lg shadow-lg shadow-blue-500/20">
+                            <Plus size={13} /> Add Phase
+                        </button>
+                    )}
                     <select value={phaseFilter} onChange={e => setPhaseFilter(e.target.value)} className="text-xs font-semibold px-3 py-1.5 border border-gray-200 dark:border-white/10 rounded-lg bg-white dark:bg-[#161b22] text-gray-700 dark:text-gray-300 outline-none focus:border-blue-500">
                         <option value="all">All Phases</option>{phases.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
                     </select>
@@ -285,7 +289,7 @@ const ProjectPlanningBarChart = ({ setExtraBreadcrumbs, onBack }) => {
                                 <div className="h-[42px] px-4 flex items-center border-b border-gray-200 dark:border-white/10 bg-gray-100/80 dark:bg-white/[0.03]">
                                     <span className="text-[10px] font-bold text-gray-500 uppercase tracking-wider">WBS / Task</span>
                                 </div>
-                                <Reorder.Group axis="y" values={phases} onReorder={setPhases}>
+                                <Reorder.Group axis="y" values={phases} onReorder={canWrite ? setPhases : () => {}}>
                                     {rows.map((row) => {
                                         if (row.type === 'phase') {
                                             const p = row.phase;
@@ -293,8 +297,8 @@ const ProjectPlanningBarChart = ({ setExtraBreadcrumbs, onBack }) => {
                                             return (
                                                 <Reorder.Item key={p.id} value={p} dragListener={false}>
                                                     <div className="flex items-center gap-1 px-2 cursor-pointer hover:bg-gray-100 dark:hover:bg-white/5 transition-colors border-b border-gray-100 dark:border-white/5" style={{ height: PHASE_H }}>
-                                                        <GripVertical size={11} className="text-gray-300 dark:text-gray-600 cursor-grab shrink-0" style={{ cursor: 'grab' }}
-                                                            onPointerDown={(e) => { e.currentTarget.parentElement.parentElement.style.cursor = 'grabbing'; }}
+                                                        <GripVertical size={11} className={`text-gray-300 dark:text-gray-600 shrink-0 ${canWrite ? 'cursor-grab' : 'pointer-events-none opacity-40'}`} style={{ cursor: canWrite ? 'grab' : undefined }}
+                                                            onPointerDown={(e) => { if (canWrite) e.currentTarget.parentElement.parentElement.style.cursor = 'grabbing'; }}
                                                             onPointerUp={(e) => { if (e.currentTarget.parentElement?.parentElement) e.currentTarget.parentElement.parentElement.style.cursor = ''; }} />
                                                         <div className="flex items-center gap-1.5 flex-1 min-w-0" onClick={() => togglePhase(p.id)}>
                                                             {expandedPhases[p.id] ? <ChevronDown size={12} style={{ color: p.color }} /> : <ChevronRight size={12} className="text-gray-400" />}
@@ -304,8 +308,10 @@ const ProjectPlanningBarChart = ({ setExtraBreadcrumbs, onBack }) => {
                                                         <span className="text-[9px] font-bold px-1.5 py-0.5 rounded-full shrink-0" style={{ backgroundColor: p.color + '20', color: p.color }}>{pp}%</span>
                                                         <button onClick={(e) => { e.stopPropagation(); showAiPanel(`AI: ${p.name}`, [p]); }}
                                                             className="p-0.5 rounded hover:bg-violet-50 dark:hover:bg-violet-900/20 text-gray-400 hover:text-violet-500 shrink-0"><Sparkles size={11} /></button>
-                                                        <button onClick={(e) => { e.stopPropagation(); openEditDrawer(p.id); }}
-                                                            className="p-0.5 rounded hover:bg-gray-200 dark:hover:bg-white/10 text-gray-400 hover:text-blue-500 shrink-0"><Edit2 size={11} /></button>
+                                                        {canWrite && (
+                                                            <button onClick={(e) => { e.stopPropagation(); openEditDrawer(p.id); }}
+                                                                className="p-0.5 rounded hover:bg-gray-200 dark:hover:bg-white/10 text-gray-400 hover:text-blue-500 shrink-0"><Edit2 size={11} /></button>
+                                                        )}
                                                     </div>
                                                 </Reorder.Item>
                                             );

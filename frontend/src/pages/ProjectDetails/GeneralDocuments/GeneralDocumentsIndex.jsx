@@ -11,7 +11,7 @@ import AgendaDetail from './Agenda/AgendaDetail';
 import MoMList from './MinutesOfMeeting/MoMList';
 import MoMDetail from './MinutesOfMeeting/MoMDetail';
 
-const GeneralDocumentsIndex = ({ setExtraBreadcrumbs }) => {
+const GeneralDocumentsIndex = ({ setExtraBreadcrumbs, canWrite }) => {
     const { id } = useParams();
     const [searchParams, setSearchParams] = useSearchParams();
     const currentView = searchParams.get('view') || 'grid';
@@ -34,22 +34,22 @@ const GeneralDocumentsIndex = ({ setExtraBreadcrumbs }) => {
     }, [currentView, setExtraBreadcrumbs]);
 
     if (currentView === 'vendor-list') {
-        return <ProjectVendorList onBack={handleBack} setExtraBreadcrumbs={setExtraBreadcrumbs} />;
+        return <ProjectVendorList onBack={handleBack} setExtraBreadcrumbs={setExtraBreadcrumbs} canWrite={canWrite} />;
     }
     if (currentView === 'directory') {
-        return <ProjectDirectory onBack={handleBack} setExtraBreadcrumbs={setExtraBreadcrumbs} />;
+        return <ProjectDirectory onBack={handleBack} setExtraBreadcrumbs={setExtraBreadcrumbs} canWrite={canWrite} />;
     }
     if (currentView === 'staff-roles') {
-        return <StaffRoles onBack={handleBack} setExtraBreadcrumbs={setExtraBreadcrumbs} />;
+        return <StaffRoles onBack={handleBack} setExtraBreadcrumbs={setExtraBreadcrumbs} canWrite={canWrite} />;
     }
     if (currentView === 'project-summary') {
-        return <ProjectSummary onBack={handleBack} setExtraBreadcrumbs={setExtraBreadcrumbs} />;
+        return <ProjectSummary onBack={handleBack} setExtraBreadcrumbs={setExtraBreadcrumbs} canWrite={canWrite} />;
     }
     if (currentView === 'org-chart') {
-        return <OrganisationChart onBack={handleBack} setExtraBreadcrumbs={setExtraBreadcrumbs} />;
+        return <OrganisationChart onBack={handleBack} setExtraBreadcrumbs={setExtraBreadcrumbs} canWrite={canWrite} />;
     }
     if (currentView === 'agenda-list') {
-        return <AgendaList onBack={handleBack} setExtraBreadcrumbs={setExtraBreadcrumbs} onSelect={(aid) => {
+        return <AgendaList onBack={handleBack} setExtraBreadcrumbs={setExtraBreadcrumbs} canWrite={canWrite} onSelect={(aid) => {
             const newParams = new URLSearchParams(searchParams);
             newParams.set('view', 'agenda-detail');
             newParams.set('aid', aid);
@@ -57,10 +57,10 @@ const GeneralDocumentsIndex = ({ setExtraBreadcrumbs }) => {
         }} />;
     }
     if (currentView === 'agenda-detail') {
-        return <AgendaDetail onBack={() => setCurrentView('agenda-list')} setExtraBreadcrumbs={setExtraBreadcrumbs} agendaId={searchParams.get('aid')} />;
+        return <AgendaDetail onBack={() => setCurrentView('agenda-list')} setExtraBreadcrumbs={setExtraBreadcrumbs} agendaId={searchParams.get('aid')} canWrite={canWrite} />;
     }
     if (currentView === 'mom-list') {
-        return <MoMList onBack={handleBack} setExtraBreadcrumbs={setExtraBreadcrumbs} onSelect={(mid) => {
+        return <MoMList onBack={handleBack} setExtraBreadcrumbs={setExtraBreadcrumbs} canWrite={canWrite} onSelect={(mid) => {
             const newParams = new URLSearchParams(searchParams);
             newParams.set('view', 'mom-detail');
             newParams.set('mid', mid);
@@ -68,7 +68,7 @@ const GeneralDocumentsIndex = ({ setExtraBreadcrumbs }) => {
         }} />;
     }
     if (currentView === 'mom-detail') {
-        return <MoMDetail onBack={() => setCurrentView('mom-list')} setExtraBreadcrumbs={setExtraBreadcrumbs} momId={searchParams.get('mid')} />;
+        return <MoMDetail onBack={() => setCurrentView('mom-list')} setExtraBreadcrumbs={setExtraBreadcrumbs} momId={searchParams.get('mid')} canWrite={canWrite} />;
     }
 
     const categories = [

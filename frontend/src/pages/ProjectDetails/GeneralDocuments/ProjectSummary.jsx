@@ -18,7 +18,7 @@ const ResizableInput = ({ value, onChange, autoFocus, className = "", minW = "50
     </div>
 );
 
-const ProjectSummary = ({ onBack, setExtraBreadcrumbs }) => {
+const ProjectSummary = ({ onBack, setExtraBreadcrumbs, canWrite }) => {
     const { id: projectId } = useParams();
     const [milestones, setMilestones] = useState([]);
     const [loading, setLoading] = useState(true);
@@ -62,11 +62,12 @@ const ProjectSummary = ({ onBack, setExtraBreadcrumbs }) => {
     };
 
     const handleAdd = () => {
+        if (!canWrite) return;
         const newRecord = {
             id: `new-${Date.now()}`,
             activity: '',
             date: '',
-            status: 'pending',
+            status: 'In Progress',
             remarks: '',
             isNew: true
         };
@@ -76,6 +77,7 @@ const ProjectSummary = ({ onBack, setExtraBreadcrumbs }) => {
     };
 
     const handleEdit = (milestone) => {
+        if (!canWrite) return;
         setEditingId(milestone.id);
         setEditData({ ...milestone });
     };
@@ -142,14 +144,18 @@ const ProjectSummary = ({ onBack, setExtraBreadcrumbs }) => {
                     </div>
                 </div>
                 <div className="flex items-center space-x-3">
-                    <button className="flex items-center space-x-2 px-4 py-2 bg-gray-100 dark:bg-white/5 hover:bg-gray-200 dark:hover:bg-white/10 text-gray-700 dark:text-gray-300 border border-gray-300 dark:border-white/10 rounded-md text-[12px] font-medium transition-all">
-                        <Edit2 size={16} />
-                        <span>Edit</span>
-                    </button>
-                    <button onClick={handleAdd} className="flex items-center space-x-2 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-md text-[12px] font-medium shadow-lg shadow-blue-500/20 transition-all active:scale-95">
-                        <Plus size={16} />
-                        <span>Add milestone</span>
-                    </button>
+                    {canWrite && (
+                        <>
+                            <button className="flex items-center space-x-2 px-4 py-2 bg-gray-100 dark:bg-white/5 hover:bg-gray-200 dark:hover:bg-white/10 text-gray-700 dark:text-gray-300 border border-gray-300 dark:border-white/10 rounded-md text-[12px] font-medium transition-all">
+                                <Edit2 size={16} />
+                                <span>Edit</span>
+                            </button>
+                            <button onClick={handleAdd} className="flex items-center space-x-2 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-md text-[12px] font-medium shadow-lg shadow-blue-500/20 transition-all active:scale-95">
+                                <Plus size={16} />
+                                <span>Add milestone</span>
+                            </button>
+                        </>
+                    )}
                     <button
                         onClick={() => setIsInfoOpen(true)}
                         className="p-2 bg-gray-100 dark:bg-white/5 hover:bg-gray-200 dark:hover:bg-white/10 text-gray-700 dark:text-gray-300 border border-gray-300 dark:border-white/10 rounded-md transition-all active:scale-95"
@@ -175,10 +181,10 @@ const ProjectSummary = ({ onBack, setExtraBreadcrumbs }) => {
                                     <th className="px-4 py-3 font-medium capitalize text-[10px] tracking-widest border-r border-gray-100 dark:border-white/5">Date</th>
                                     <th className="px-4 py-3 font-medium capitalize text-[10px] tracking-widest border-r border-gray-100 dark:border-white/5">Status</th>
                                     <th className="px-4 py-3 font-medium capitalize text-[10px] tracking-widest border-r border-gray-100 dark:border-white/5">Remarks</th>
-                                    <th className="px-4 py-3 font-medium capitalize text-[10px] tracking-widest text-center">Actions</th>
+                                    {canWrite && <th className="px-4 py-3 font-medium capitalize text-[10px] tracking-widest text-center">Actions</th>}
                                 </tr>
                             </thead>
-                            <Reorder.Group axis="y" values={milestones} onReorder={setMilestones} as="tbody" className="divide-y divide-gray-100 dark:divide-white/[0.03]">
+                            <Reorder.Group axis="y" values={milestones} onReorder={canWrite ? setMilestones : () => {}} as="tbody" className="divide-y divide-gray-100 dark:divide-white/[0.03]">
                                 <AnimatePresence initial={false}>
                                     {milestones.map((milestone, idx) => {
                                         const isEditing = editingId === milestone.id;
@@ -195,7 +201,7 @@ const ProjectSummary = ({ onBack, setExtraBreadcrumbs }) => {
                                             >
                                                 <td className="px-3 py-2 text-center w-6 min-w-[40px]">
                                                     <div className="flex items-center justify-center">
-                                                        <GripVertical size={14} className="text-gray-300 dark:text-gray-700 group-hover/row:text-blue-500 transition-colors cursor-grab active:cursor-grabbing" />
+                                                        <GripVertical size={14} className={`text-gray-300 dark:text-gray-700 group-hover/row:text-blue-500 transition-colors ${canWrite ? 'cursor-grab active:cursor-grabbing' : 'pointer-events-none'}`} />
                                                     </div>
                                                 </td>
                                                 <td className="px-4 py-2 text-gray-500 dark:text-gray-600 font-mono text-[11px] border-r border-gray-100 dark:border-white/[0.03] text-center w-16">
@@ -272,41 +278,43 @@ const ProjectSummary = ({ onBack, setExtraBreadcrumbs }) => {
                                                 </td>
 
                                                 {/* Actions Column */}
-                                                <td className="px-4 py-2 text-center min-w-[120px]">
-                                                    {isEditing ? (
-                                                        <div className="flex items-center justify-center space-x-2">
-                                                            <button
-                                                                onClick={(e) => { e.stopPropagation(); handleSave(); }}
-                                                                className="px-2.5 py-1 bg-blue-600 text-white rounded text-[11px] font-medium hover:bg-blue-700 transition-all shadow-md shadow-blue-500/20"
-                                                            >
-                                                                Save
-                                                            </button>
-                                                            <button
-                                                                onClick={(e) => { e.stopPropagation(); handleCancel(); }}
-                                                                className="px-2.5 py-1 bg-gray-100 dark:bg-white/5 text-gray-600 dark:text-gray-400 rounded text-[11px] font-medium hover:bg-gray-200 dark:hover:bg-white/10 transition-all"
-                                                            >
-                                                                Cancel
-                                                            </button>
-                                                        </div>
-                                                    ) : (
-                                                        <div className={`flex items-center justify-center space-x-3 transition-opacity duration-200 opacity-100`}>
-                                                            <button
-                                                                onClick={(e) => { e.stopPropagation(); handleEdit(milestone); }}
-                                                                className="text-gray-400 hover:text-blue-500 transition-colors p-1"
-                                                                title="Edit"
-                                                            >
-                                                                <Edit2 size={14} />
-                                                            </button>
-                                                            <button
-                                                                onClick={(e) => { e.stopPropagation(); handleDelete(milestone.id); }}
-                                                                className="text-gray-400 hover:text-red-500 transition-colors p-1"
-                                                                title="Delete"
-                                                            >
-                                                                <Trash2 size={14} />
-                                                            </button>
-                                                        </div>
-                                                    )}
-                                                </td>
+                                                {canWrite && (
+                                                    <td className="px-4 py-2 text-center min-w-[120px]">
+                                                        {isEditing ? (
+                                                            <div className="flex items-center justify-center space-x-2">
+                                                                <button
+                                                                    onClick={(e) => { e.stopPropagation(); handleSave(); }}
+                                                                    className="px-2.5 py-1 bg-blue-600 text-white rounded text-[11px] font-medium hover:bg-blue-700 transition-all shadow-md shadow-blue-500/20"
+                                                                >
+                                                                    Save
+                                                                </button>
+                                                                <button
+                                                                    onClick={(e) => { e.stopPropagation(); handleCancel(); }}
+                                                                    className="px-2.5 py-1 bg-gray-100 dark:bg-white/5 text-gray-600 dark:text-gray-400 rounded text-[11px] font-medium hover:bg-gray-200 dark:hover:bg-white/10 transition-all"
+                                                                >
+                                                                    Cancel
+                                                                </button>
+                                                            </div>
+                                                        ) : (
+                                                            <div className={`flex items-center justify-center space-x-3 transition-opacity duration-200 opacity-100`}>
+                                                                <button
+                                                                    onClick={(e) => { e.stopPropagation(); handleEdit(milestone); }}
+                                                                    className="text-gray-400 hover:text-blue-500 transition-colors p-1"
+                                                                    title="Edit"
+                                                                >
+                                                                    <Edit2 size={14} />
+                                                                </button>
+                                                                <button
+                                                                    onClick={(e) => { e.stopPropagation(); handleDelete(milestone.id); }}
+                                                                    className="text-gray-400 hover:text-red-500 transition-colors p-1"
+                                                                    title="Delete"
+                                                                >
+                                                                    <Trash2 size={14} />
+                                                                </button>
+                                                            </div>
+                                                        )}
+                                                    </td>
+                                                )}
                                             </Reorder.Item>
                                         );
                                     })}

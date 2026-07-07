@@ -2,7 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { Plus, GripVertical, ChevronDown, Check, X, ExternalLink, Info, Edit2, Trash2, Clock, User, FileText, CheckCircle2, History } from 'lucide-react';
 import { Reorder, AnimatePresence, motion } from 'framer-motion';
 
-const DrawingCategoryDetail = ({ category, onBack, setExtraBreadcrumbs }) => {
+const DrawingCategoryDetail = ({ category, onBack, setExtraBreadcrumbs, canWrite }) => {
     const [activeTab, setActiveTab] = useState('management'); // 'management' or 'planned'
     const [editingDrawing, setEditingDrawing] = useState(null);
     const [editingTarget, setEditingTarget] = useState(null); // { id }
@@ -62,6 +62,7 @@ const DrawingCategoryDetail = ({ category, onBack, setExtraBreadcrumbs }) => {
     }, [category, onBack, setExtraBreadcrumbs]);
 
     const handleEditClick = (drawing, field) => {
+        if (!canWrite) return;
         setEditingDrawing({ ...drawing });
         setEditingTarget(drawing.id);
         setActiveDropdown(field);
@@ -291,19 +292,23 @@ const DrawingCategoryDetail = ({ category, onBack, setExtraBreadcrumbs }) => {
                                         >
                                             <Info size={14} />
                                         </button>
-                                        <button
-                                            onClick={(e) => { e.stopPropagation(); handleEditClick(drawing, 'title'); }}
-                                            className="text-gray-600 dark:text-gray-400 hover:text-blue-500 transition-colors p-1"
-                                            title="Edit"
-                                        >
-                                            <Edit2 size={14} />
-                                        </button>
-                                        <button
-                                            className="text-gray-600 dark:text-gray-400 hover:text-red-500 transition-colors p-1"
-                                            title="Delete"
-                                        >
-                                            <Trash2 size={14} />
-                                        </button>
+                                        {canWrite && (
+                                            <>
+                                                <button
+                                                    onClick={(e) => { e.stopPropagation(); handleEditClick(drawing, 'title'); }}
+                                                    className="text-gray-600 dark:text-gray-400 hover:text-blue-500 transition-colors p-1"
+                                                    title="Edit"
+                                                >
+                                                    <Edit2 size={14} />
+                                                </button>
+                                                <button
+                                                    className="text-gray-600 dark:text-gray-400 hover:text-red-500 transition-colors p-1"
+                                                    title="Delete"
+                                                >
+                                                    <Trash2 size={14} />
+                                                </button>
+                                            </>
+                                        )}
                                     </div>
                                 )}
                             </td>
@@ -421,19 +426,23 @@ const DrawingCategoryDetail = ({ category, onBack, setExtraBreadcrumbs }) => {
                                         >
                                             <Info size={14} />
                                         </button>
-                                        <button
-                                            onClick={(e) => { e.stopPropagation(); handleEditClick(drawing, 'name'); }}
-                                            className="text-gray-600 dark:text-gray-400 hover:text-blue-500 transition-colors p-1"
-                                            title="Edit"
-                                        >
-                                            <Edit2 size={14} />
-                                        </button>
-                                        <button
-                                            className="text-gray-600 dark:text-gray-400 hover:text-red-500 transition-colors p-1"
-                                            title="Delete"
-                                        >
-                                            <Trash2 size={14} />
-                                        </button>
+                                        {canWrite && (
+                                            <>
+                                                <button
+                                                    onClick={(e) => { e.stopPropagation(); handleEditClick(drawing, 'name'); }}
+                                                    className="text-gray-600 dark:text-gray-400 hover:text-blue-500 transition-colors p-1"
+                                                    title="Edit"
+                                                >
+                                                    <Edit2 size={14} />
+                                                </button>
+                                                <button
+                                                    className="text-gray-600 dark:text-gray-400 hover:text-red-500 transition-colors p-1"
+                                                    title="Delete"
+                                                >
+                                                    <Trash2 size={14} />
+                                                </button>
+                                            </>
+                                        )}
                                     </div>
                                 )}
                             </td>
@@ -448,8 +457,8 @@ const DrawingCategoryDetail = ({ category, onBack, setExtraBreadcrumbs }) => {
         <div className="flex-1 flex flex-col overflow-hidden bg-white dark:bg-[#0d1117] transition-colors Poppins select-none">
             {/* Local Tab Switcher & Global Filters */}
             <div className="flex flex-col bg-white dark:bg-[#0d1117] border-b border-gray-200 dark:border-white/5 z-20">
-                <div className="px-5 mx-1 py-4">
-                    <div className="inline-flex p-1 bg-gray-100 dark:bg-white/5 border border-gray-200 dark:border-white/10 rounded-full">
+                <div className="px-5 mx-1 py-3">
+                    <div className="inline-flex p-0.5 bg-gray-100 dark:bg-white/5 border border-gray-200 dark:border-white/10 rounded-lg">
                         {[
                             { id: 'management', label: 'Drawing Management', count: managementDrawings.length },
                             { id: 'planned', label: 'Drawing Planned vs Achieved', count: plannedDrawings.length }
@@ -457,14 +466,14 @@ const DrawingCategoryDetail = ({ category, onBack, setExtraBreadcrumbs }) => {
                             <button
                                 key={tab.id}
                                 onClick={() => setActiveTab(tab.id)}
-                                className={`flex items-center space-x-2 px-6 py-2 text-sm font-medium rounded-full transition-all duration-200 ${activeTab === tab.id
+                                className={`flex items-center space-x-1.5 px-4 py-1 text-xs font-semibold rounded-md transition-all duration-200 ${activeTab === tab.id
                                     ? 'bg-white dark:bg-white/10 text-blue-600 dark:text-blue-400 shadow-sm'
                                     : 'text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200'
                                     }`}
                             >
                                 <span>{tab.label}</span>
                                 {tab.count > 0 && (
-                                    <span className={`flex items-center justify-center min-w-[20px] h-5 px-1.5 text-[10px] font-bold rounded-full ml-1 ${activeTab === tab.id
+                                    <span className={`flex items-center justify-center min-w-[16px] h-4 px-1 text-[9px] font-bold rounded-full ml-1 ${activeTab === tab.id
                                         ? 'bg-blue-100 text-blue-600 dark:bg-blue-900/30 dark:text-blue-400'
                                         : 'bg-red-500 text-white'
                                         }`}>
@@ -500,16 +509,18 @@ const DrawingCategoryDetail = ({ category, onBack, setExtraBreadcrumbs }) => {
                             )}
                         </div>
                     </div>
-                    <div className="flex items-center space-x-3">
-                        <button className="flex items-center space-x-2 px-3 py-1.5 bg-gray-100 dark:bg-white/5 hover:bg-gray-200 dark:bg-white/10 text-gray-700 dark:text-gray-300 border border-gray-200 dark:border-white/10 rounded-md text-[12px] font-normal transition-all active:scale-95" title="Edit Mode">
-                            <Edit2 size={14} />
-                            <span>Edit</span>
-                        </button>
-                        <button className="flex items-center space-x-2 px-4 py-1.5 bg-blue-600 hover:bg-blue-500 text-white rounded-md text-[12px] font-normal transition-all shadow-lg shadow-blue-500/10 active:scale-95">
-                            <Plus size={14} />
-                            <span>Add Record</span>
-                        </button>
-                    </div>
+                    {canWrite && (
+                        <div className="flex items-center space-x-3">
+                            <button className="flex items-center space-x-2 px-3 py-1.5 bg-gray-100 dark:bg-white/5 hover:bg-gray-200 dark:bg-white/10 text-gray-700 dark:text-gray-300 border border-gray-200 dark:border-white/10 rounded-md text-[12px] font-normal transition-all active:scale-95" title="Edit Mode">
+                                <Edit2 size={14} />
+                                <span>Edit</span>
+                            </button>
+                            <button className="flex items-center space-x-2 px-4 py-1.5 bg-blue-600 hover:bg-blue-500 text-white rounded-md text-[12px] font-normal transition-all shadow-lg shadow-blue-500/10 active:scale-95">
+                                <Plus size={14} />
+                                <span>Add Record</span>
+                            </button>
+                        </div>
+                    )}
                 </div>
             </div>
 

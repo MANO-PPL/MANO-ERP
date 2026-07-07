@@ -104,7 +104,7 @@ const INITIAL_DATA = {
 };
 
 // --- Sub-component: The Node Card ---
-const NodeCard = React.memo(({ node, onSelect, onEdit, onDelete, selectedNodeId, level = 0, isFirst = true, isLast = true, parentHasMany = false }) => {
+const NodeCard = React.memo(({ node, onSelect, onEdit, onDelete, selectedNodeId, level = 0, isFirst = true, isLast = true, parentHasMany = false, canWrite }) => {
     const isStaff = node.type === 'staff';
     const isDept = node.type === 'department';
     const isCompany = node.type === 'company';
@@ -134,7 +134,7 @@ const NodeCard = React.memo(({ node, onSelect, onEdit, onDelete, selectedNodeId,
                 initial={{ opacity: 0, scale: 0.85, y: 20 }}
                 animate={{ opacity: 1, scale: 1, y: 0 }}
                 transition={{ duration: 0.4, ease: "easeOut" }}
-                onClick={(e) => { e.stopPropagation(); onSelect(node); onEdit(node); }}
+                onClick={(e) => { e.stopPropagation(); onSelect(node); canWrite && onEdit(node); }}
                 className={`
                     px-7 py-5 rounded-2xl border transition-all duration-300 relative
                     ${isProject ? 'bg-blue-600 border-blue-400 text-white min-w-[220px]' : ''}
@@ -169,14 +169,16 @@ const NodeCard = React.memo(({ node, onSelect, onEdit, onDelete, selectedNodeId,
 
 
                 {/* Quick Actions */}
-                <div className="absolute -right-2 -top-2 flex flex-col space-y-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                    <button onClick={(e) => { e.stopPropagation(); onEdit(node); }} className="p-1.5 bg-blue-600 rounded-full text-white shadow-lg hover:bg-blue-500 scale-75 hover:scale-100 transition-transform">
-                        <Edit2 size={12} />
-                    </button>
-                    <button onClick={(e) => { e.stopPropagation(); onDelete(node.id); }} className="p-1.5 bg-red-600 rounded-full text-white shadow-lg shadow-red-500/20 hover:bg-red-500 scale-75 hover:scale-100 transition-transform">
-                        <Trash2 size={12} />
-                    </button>
-                </div>
+                {canWrite && (
+                    <div className="absolute -right-2 -top-2 flex flex-col space-y-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                        <button onClick={(e) => { e.stopPropagation(); onEdit(node); }} className="p-1.5 bg-blue-600 rounded-full text-white shadow-lg hover:bg-blue-500 scale-75 hover:scale-100 transition-transform">
+                            <Edit2 size={12} />
+                        </button>
+                        <button onClick={(e) => { e.stopPropagation(); onDelete(node.id); }} className="p-1.5 bg-red-600 rounded-full text-white shadow-lg shadow-red-500/20 hover:bg-red-500 scale-75 hover:scale-100 transition-transform">
+                            <Trash2 size={12} />
+                        </button>
+                    </div>
+                )}
             </motion.div>
 
             {/* Child Connector (Stem Out) */}
@@ -199,6 +201,7 @@ const NodeCard = React.memo(({ node, onSelect, onEdit, onDelete, selectedNodeId,
                                 isFirst={idx === 0}
                                 isLast={idx === node.children.length - 1}
                                 parentHasMany={node.children.length > 1}
+                                canWrite={canWrite}
                             />
                         </div>
                     ))}
@@ -209,7 +212,7 @@ const NodeCard = React.memo(({ node, onSelect, onEdit, onDelete, selectedNodeId,
 });
 
 // --- Main Container Component ---
-const OrganisationChart = ({ onBack, setExtraBreadcrumbs }) => {
+const OrganisationChart = ({ onBack, setExtraBreadcrumbs, canWrite }) => {
     const { id: projectId } = useParams();
 
     useEffect(() => {
@@ -435,6 +438,7 @@ const OrganisationChart = ({ onBack, setExtraBreadcrumbs }) => {
                 onSelect={handleSelect}
                 onEdit={handleEdit}
                 onDelete={handleDelete}
+                canWrite={canWrite}
             />
         );
     };
@@ -452,12 +456,14 @@ const OrganisationChart = ({ onBack, setExtraBreadcrumbs }) => {
                         <ZoomIn size={16} />
                     </button>
                 </div>
-                <button
-                    onClick={() => { setData(INITIAL_DATA); setSelectedNodeId('root'); }}
-                    className="px-4 py-2 bg-white dark:bg-[#161b22] hover:bg-gray-50 dark:hover:bg-[#1e293b] text-gray-700 dark:text-gray-300 rounded-md text-[11px] font-bold border border-gray-200 dark:border-white/10 transition-all shadow-sm active:scale-95"
-                >
-                    Reset to Default
-                </button>
+                {canWrite && (
+                    <button
+                        onClick={() => { setData(INITIAL_DATA); setSelectedNodeId('root'); }}
+                        className="px-4 py-2 bg-white dark:bg-[#161b22] hover:bg-gray-50 dark:hover:bg-[#1e293b] text-gray-700 dark:text-gray-300 rounded-md text-[11px] font-bold border border-gray-200 dark:border-white/10 transition-all shadow-sm active:scale-95"
+                    >
+                        Reset to Default
+                    </button>
+                )}
                 <button
                     onClick={() => setIsInfoOpen(true)}
                     className="p-2 bg-white dark:bg-[#161b22] hover:bg-gray-50 dark:hover:bg-[#1e293b] text-gray-700 dark:text-gray-300 border border-gray-200 dark:border-white/10 rounded-md transition-all active:scale-95 shadow-sm"
@@ -489,20 +495,22 @@ const OrganisationChart = ({ onBack, setExtraBreadcrumbs }) => {
                             </div>
                             <h3 className="text-gray-900 dark:text-white font-bold text-xl tracking-tight mb-2">Blank Canvas</h3>
                             <p className="text-gray-500 text-sm mb-10 leading-relaxed">Great organizations are built brick by brick. Start your project structure today.</p>
-                            <button
-                                onClick={handleAddRoot}
-                                className="w-full py-4 bg-blue-600 hover:bg-blue-500 text-white rounded-2xl text-sm font-black transition-all shadow-xl shadow-blue-600/20 active:scale-95 flex items-center justify-center space-x-2"
-                            >
-                                <Plus size={20} />
-                                <span>Create Root Node</span>
-                            </button>
+                            {canWrite && (
+                                <button
+                                    onClick={handleAddRoot}
+                                    className="w-full py-4 bg-blue-600 hover:bg-blue-500 text-white rounded-2xl text-sm font-black transition-all shadow-xl shadow-blue-600/20 active:scale-95 flex items-center justify-center space-x-2"
+                                >
+                                    <Plus size={20} />
+                                    <span>Create Root Node</span>
+                                </button>
+                            )}
                         </motion.div>
                     </div>
                 )}
 
                 {/* The "Construction Kit" - macOS Glassmorphism & Draggable */}
                 <AnimatePresence>
-                    {data && (
+                    {data && canWrite && (
                         <motion.div
                             drag
                             dragConstraints={containerRef}

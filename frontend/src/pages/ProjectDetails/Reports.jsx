@@ -23,7 +23,7 @@ import TeamContribution from './Reports/Team/TeamContribution';
 import CustomDatePicker from '../../components/CustomDatePicker';
 import CustomSelect from '../../components/CustomSelect';
 
-const Reports = ({ setExtraBreadcrumbs }) => {
+const Reports = ({ setExtraBreadcrumbs, canWrite }) => {
     const [searchParams, setSearchParams] = useSearchParams();
     const activeTab = searchParams.get('type') || 'daily';
     const subView = searchParams.get('view') || 'list';
@@ -119,7 +119,7 @@ const Reports = ({ setExtraBreadcrumbs }) => {
     const renderHeaderActions = () => {
         return (
             <div className="flex items-center space-x-3 anim-fade-in">
-                {(activeTab === 'daily' || activeTab === 'weekly' || activeTab === 'monthly') && subView === 'list' && (
+                {(activeTab === 'daily' || activeTab === 'weekly' || activeTab === 'monthly') && subView === 'list' && canWrite && (
                     <button
                         onClick={() => navigateTo(activeTab, 'create')}
                         className="flex items-center space-x-2 px-5 py-2.5 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-sm font-medium shadow-lg shadow-blue-500/20 transition-all active:scale-95"
@@ -243,6 +243,7 @@ const Reports = ({ setExtraBreadcrumbs }) => {
                                 setSubBreadcrumb={setSubBreadcrumb}
                                 view={subView}
                                 setView={setSubView}
+                                canWrite={canWrite}
                             />
                         )}
                         {activeTab === 'weekly' && (
@@ -251,6 +252,7 @@ const Reports = ({ setExtraBreadcrumbs }) => {
                                 setSubBreadcrumb={setSubBreadcrumb}
                                 view={subView}
                                 setView={setSubView}
+                                canWrite={canWrite}
                             />
                         )}
                         {activeTab === 'monthly' && (
@@ -259,9 +261,10 @@ const Reports = ({ setExtraBreadcrumbs }) => {
                                 setSubBreadcrumb={setSubBreadcrumb}
                                 view={subView}
                                 setView={setSubView}
+                                canWrite={canWrite}
                             />
                         )}
-                        {activeTab === 'employee' && <TeamContribution setSubBreadcrumb={setSubBreadcrumb} />}
+                        {activeTab === 'employee' && <TeamContribution setSubBreadcrumb={setSubBreadcrumb} canWrite={canWrite} />}
                     </div>
                 </div>
             </div>

@@ -319,18 +319,23 @@ const AddUserDrawer = ({ open, onClose, onAdd, allProjects = [], templates = [] 
                                                         <div className="border-t border-gray-100 dark:border-white/5 px-3 pb-2 pt-1 space-y-0.5">
                                                             {section.children.map(child => {
                                                                 const cLvl = permissions[child.id] ?? 0;
+                                                                const isProjectNode = child.id.startsWith('project_');
+                                                                const levelsToUse = isProjectNode ? ['None', 'Access'] : ACCESS_LEVELS;
                                                                 return (
                                                                     <div key={child.id} className="flex items-center justify-between ml-4 py-1.5 px-2 rounded-lg hover:bg-gray-50 dark:hover:bg-white/[0.03]">
                                                                         <span className="text-xs text-gray-500 dark:text-gray-400 flex-1 truncate">{child.label}</span>
                                                                         <div className="flex gap-1 shrink-0">
-                                                                            {ACCESS_LEVELS.map((name, i) => (
-                                                                                <button key={i}
-                                                                                    type="button"
-                                                                                    onClick={() => setPermissions(p => ({ ...p, [child.id]: i }))}
-                                                                                    className={`px-1.5 py-0.5 rounded-md text-[10px] font-bold transition-all ${cLvl === i ? 'bg-blue-600 text-white' : 'bg-gray-100 dark:bg-white/5 text-gray-400 hover:bg-gray-200 dark:hover:bg-white/10'}`}>
-                                                                                    {name}
-                                                                                </button>
-                                                                            ))}
+                                                                            {levelsToUse.map((name, i) => {
+                                                                                const isActive = isProjectNode ? (i === 0 ? cLvl === 0 : cLvl > 0) : cLvl === i;
+                                                                                return (
+                                                                                    <button key={i}
+                                                                                        type="button"
+                                                                                        onClick={() => setPermissions(p => ({ ...p, [child.id]: isProjectNode ? (i === 0 ? 0 : 1) : i }))}
+                                                                                        className={`px-1.5 py-0.5 rounded-md text-[10px] font-bold transition-all ${isActive ? 'bg-blue-600 text-white' : 'bg-gray-100 dark:bg-white/5 text-gray-400 hover:bg-gray-200 dark:hover:bg-white/10'}`}>
+                                                                                        {name}
+                                                                                    </button>
+                                                                                );
+                                                                            })}
                                                                         </div>
                                                                     </div>
                                                                 );
@@ -463,6 +468,8 @@ const UserDetailDrawer = ({ user, open, onClose, onUpdate, initialEditing = fals
 
     const PermRow = ({ id, label, indent = false }) => {
         const lvl = localUser.permissions?.[id] ?? 0;
+        const isProjectNode = id.startsWith('project_');
+        const levelsToUse = isProjectNode ? ['None', 'Access'] : ACCESS_LEVELS;
         return (
             <div className={`flex-1 flex items-center justify-between py-2.5 px-3 rounded-xl transition-colors hover:bg-gray-50 dark:hover:bg-white/[0.03] ${indent ? 'ml-6' : ''}`}>
                 <div className="flex items-center gap-2.5">
@@ -472,17 +479,20 @@ const UserDetailDrawer = ({ user, open, onClose, onUpdate, initialEditing = fals
                 </div>
                 {editing ? (
                     <div className="flex gap-1">
-                        {ACCESS_LEVELS.map((name, i) => (
-                            <button key={i} type="button" onClick={() => setLevel(id, i)}
-                                className={`px-2 py-0.5 rounded-lg text-[10px] font-bold transition-all ${lvl === i ? 'bg-blue-600 text-white shadow-sm' : 'bg-gray-100 dark:bg-white/5 text-gray-400 hover:bg-gray-200 dark:hover:bg-white/10'
-                                    }`}>
-                                {name}
-                            </button>
-                        ))}
+                        {levelsToUse.map((name, i) => {
+                            const isActive = isProjectNode ? (i === 0 ? lvl === 0 : lvl > 0) : lvl === i;
+                            return (
+                                <button key={i} type="button" onClick={() => setLevel(id, isProjectNode ? (i === 0 ? 0 : 1) : i)}
+                                    className={`px-2 py-0.5 rounded-lg text-[10px] font-bold transition-all ${isActive ? 'bg-blue-600 text-white shadow-sm' : 'bg-gray-100 dark:bg-white/5 text-gray-400 hover:bg-gray-200 dark:hover:bg-white/10'
+                                        }`}>
+                                    {name}
+                                </button>
+                            );
+                        })}
                     </div>
                 ) : (
-                    <span className={`px-2.5 py-0.5 rounded-lg text-[11px] font-bold ${accessLevelBg(lvl)} ${accessLevelColor(lvl)}`}>
-                        {ACCESS_LEVELS[lvl]}
+                    <span className={`px-2.5 py-0.5 rounded-lg text-[11px] font-bold ${isProjectNode ? (lvl > 0 ? accessLevelBg(1) : accessLevelBg(0)) : accessLevelBg(lvl)} ${isProjectNode ? (lvl > 0 ? accessLevelColor(1) : accessLevelColor(0)) : accessLevelColor(lvl)}`}>
+                        {isProjectNode ? (lvl > 0 ? 'Access' : 'None') : ACCESS_LEVELS[lvl]}
                     </span>
                 )}
             </div>

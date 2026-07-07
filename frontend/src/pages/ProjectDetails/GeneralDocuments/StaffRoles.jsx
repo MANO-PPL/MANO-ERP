@@ -32,7 +32,7 @@ const ResizableTextarea = ({ value, onChange, autoFocus, className = "", minW = 
     </div>
 );
 
-const StaffRoles = ({ onBack, setExtraBreadcrumbs }) => {
+const StaffRoles = ({ onBack, setExtraBreadcrumbs, canWrite }) => {
     const { id: projectId } = useParams();
     const [staffs, setStaffs] = useState([]);
     const [loading, setLoading] = useState(true);
@@ -77,6 +77,7 @@ const StaffRoles = ({ onBack, setExtraBreadcrumbs }) => {
     };
 
     const handleAdd = () => {
+        if (!canWrite) return;
         const newRecord = {
             id: `new-${Date.now()}`,
             name: '',
@@ -92,6 +93,7 @@ const StaffRoles = ({ onBack, setExtraBreadcrumbs }) => {
     };
 
     const handleEdit = (staff) => {
+        if (!canWrite) return;
         setEditingId(staff.id);
         setEditData({ ...staff });
     };
@@ -154,14 +156,18 @@ const StaffRoles = ({ onBack, setExtraBreadcrumbs }) => {
                     </div>
                 </div>
                 <div className="flex items-center space-x-3">
-                    <button className="flex items-center space-x-2 px-4 py-2 bg-gray-100 dark:bg-white/5 hover:bg-gray-200 dark:hover:bg-white/10 text-gray-700 dark:text-gray-300 border border-gray-300 dark:border-white/10 rounded-md text-[12px] font-medium transition-all">
-                        <Edit2 size={16} />
-                        <span>Edit</span>
-                    </button>
-                    <button onClick={handleAdd} className="flex items-center space-x-2 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-md text-[12px] font-medium shadow-lg shadow-blue-500/20 transition-all active:scale-95">
-                        <Plus size={16} />
-                        <span>Add staff</span>
-                    </button>
+                    {canWrite && (
+                        <>
+                            <button className="flex items-center space-x-2 px-4 py-2 bg-gray-100 dark:bg-white/5 hover:bg-gray-200 dark:hover:bg-white/10 text-gray-700 dark:text-gray-300 border border-gray-300 dark:border-white/10 rounded-md text-[12px] font-medium transition-all">
+                                <Edit2 size={16} />
+                                <span>Edit</span>
+                            </button>
+                            <button onClick={handleAdd} className="flex items-center space-x-2 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-md text-[12px] font-medium shadow-lg shadow-blue-500/20 transition-all active:scale-95">
+                                <Plus size={16} />
+                                <span>Add staff</span>
+                            </button>
+                        </>
+                    )}
                     <button
                         onClick={() => setIsInfoOpen(true)}
                         className="p-2 bg-gray-100 dark:bg-white/5 hover:bg-gray-200 dark:hover:bg-white/10 text-gray-700 dark:text-gray-300 border border-gray-300 dark:border-white/10 rounded-md transition-all active:scale-95"
@@ -188,10 +194,10 @@ const StaffRoles = ({ onBack, setExtraBreadcrumbs }) => {
                                     <th className="px-4 py-3 font-medium capitalize text-[10px] tracking-widest border-r border-gray-100 dark:border-white/5 whitespace-normal">Responsibilities</th>
                                     <th className="px-4 py-3 font-medium capitalize text-[10px] tracking-widest border-r border-gray-100 dark:border-white/5">Mobile no</th>
                                     <th className="px-4 py-3 font-medium capitalize text-[10px] tracking-widest border-r border-gray-100 dark:border-white/5">Email id</th>
-                                    <th className="px-4 py-3 font-medium capitalize text-[10px] tracking-widest text-center">Actions</th>
+                                    {canWrite && <th className="px-4 py-3 font-medium capitalize text-[10px] tracking-widest text-center">Actions</th>}
                                 </tr>
                             </thead>
-                            <Reorder.Group axis="y" values={staffs} onReorder={setStaffs} as="tbody" className="divide-y divide-gray-100 dark:divide-white/[0.03]">
+                            <Reorder.Group axis="y" values={staffs} onReorder={canWrite ? setStaffs : () => {}} as="tbody" className="divide-y divide-gray-100 dark:divide-white/[0.03]">
                                 <AnimatePresence initial={false}>
                                     {staffs.map((staff, idx) => {
                                         const isEditing = editingId === staff.id;
@@ -283,42 +289,43 @@ const StaffRoles = ({ onBack, setExtraBreadcrumbs }) => {
                                                     )}
                                                 </td>
 
-                                                {/* Actions Column */}
-                                                <td className="px-4 py-2 text-center min-w-[120px]">
-                                                    {isEditing ? (
-                                                        <div className="flex items-center justify-center space-x-2">
-                                                            <button
-                                                                onClick={(e) => { e.stopPropagation(); handleSave(); }}
-                                                                className="px-2.5 py-1 bg-blue-600 text-white rounded text-[11px] font-medium hover:bg-blue-700 transition-all shadow-md shadow-blue-500/20"
-                                                            >
-                                                                Save
-                                                            </button>
-                                                            <button
-                                                                onClick={(e) => { e.stopPropagation(); handleCancel(); }}
-                                                                className="px-2.5 py-1 bg-gray-100 dark:bg-white/5 text-gray-600 dark:text-gray-400 rounded text-[11px] font-medium hover:bg-gray-200 dark:hover:bg-white/10 transition-all"
-                                                            >
-                                                                Cancel
-                                                            </button>
-                                                        </div>
-                                                    ) : (
-                                                        <div className={`flex items-center justify-center space-x-3 transition-opacity duration-200 opacity-100`}>
-                                                            <button
-                                                                onClick={(e) => { e.stopPropagation(); handleEdit(staff); }}
-                                                                className="text-gray-400 hover:text-blue-500 transition-colors p-1"
-                                                                title="Edit"
-                                                            >
-                                                                <Edit2 size={14} />
-                                                            </button>
-                                                            <button
-                                                                onClick={(e) => { e.stopPropagation(); handleDelete(staff.id); }}
-                                                                className="text-gray-400 hover:text-red-500 transition-colors p-1"
-                                                                title="Delete"
-                                                            >
-                                                                <Trash2 size={14} />
-                                                            </button>
-                                                        </div>
+                                                    {canWrite && (
+                                                        <td className="px-4 py-2 text-center min-w-[120px]">
+                                                            {isEditing ? (
+                                                                <div className="flex items-center justify-center space-x-2">
+                                                                    <button
+                                                                        onClick={(e) => { e.stopPropagation(); handleSave(); }}
+                                                                        className="px-2.5 py-1 bg-blue-600 text-white rounded text-[11px] font-medium hover:bg-blue-700 transition-all shadow-md shadow-blue-500/20"
+                                                                    >
+                                                                        Save
+                                                                    </button>
+                                                                    <button
+                                                                        onClick={(e) => { e.stopPropagation(); handleCancel(); }}
+                                                                        className="px-2.5 py-1 bg-gray-100 dark:bg-white/5 text-gray-600 dark:text-gray-400 rounded text-[11px] font-medium hover:bg-gray-200 dark:hover:bg-white/10 transition-all"
+                                                                    >
+                                                                        Cancel
+                                                                    </button>
+                                                                </div>
+                                                            ) : (
+                                                                <div className={`flex items-center justify-center space-x-3 transition-opacity duration-200 opacity-100`}>
+                                                                    <button
+                                                                        onClick={(e) => { e.stopPropagation(); handleEdit(staff); }}
+                                                                        className="text-gray-400 hover:text-blue-500 transition-colors p-1"
+                                                                        title="Edit"
+                                                                    >
+                                                                        <Edit2 size={14} />
+                                                                    </button>
+                                                                    <button
+                                                                        onClick={(e) => { e.stopPropagation(); handleDelete(staff.id); }}
+                                                                        className="text-gray-400 hover:text-red-500 transition-colors p-1"
+                                                                        title="Delete"
+                                                                    >
+                                                                        <Trash2 size={14} />
+                                                                    </button>
+                                                                </div>
+                                                            )}
+                                                        </td>
                                                     )}
-                                                </td>
                                             </Reorder.Item>
                                         );
                                     })}

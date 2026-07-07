@@ -128,9 +128,9 @@ const ResizableTextarea = ({ value, onChange, placeholder = "", className = "" }
 );
 
 
-const AgendaDetail = ({ onBack, setExtraBreadcrumbs, agendaId: id }) => {
+const AgendaDetail = ({ onBack, setExtraBreadcrumbs, agendaId: id, canWrite }) => {
     const { id: projectId } = useParams();
-    const [isEditing, setIsEditing] = useState(id === 'new');
+    const [isEditing, setIsEditing] = useState(id === 'new' && canWrite);
 
     // Form State
     const [details, setDetails] = useState({
@@ -335,13 +335,15 @@ const AgendaDetail = ({ onBack, setExtraBreadcrumbs, agendaId: id }) => {
                 </button>
                 <div className="flex items-center space-x-3">
                     {!isEditing ? (
-                        <button
-                            onClick={() => setIsEditing(true)}
-                            className="flex items-center space-x-2 bg-blue-600 hover:bg-blue-500 text-white px-4 py-1.5 rounded-md font-medium text-sm transition-colors shadow-sm"
-                        >
-                            <Pencil size={16} />
-                            <span>Edit Agenda</span>
-                        </button>
+                        canWrite && (
+                            <button
+                                onClick={() => setIsEditing(true)}
+                                className="flex items-center space-x-2 bg-blue-600 hover:bg-blue-500 text-white px-4 py-1.5 rounded-md font-medium text-sm transition-colors shadow-sm"
+                            >
+                                <Pencil size={16} />
+                                <span>Edit Agenda</span>
+                            </button>
+                        )
                     ) : (
                         <button
                             onClick={handleSave}

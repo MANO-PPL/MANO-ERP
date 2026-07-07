@@ -4,7 +4,7 @@ import { Reorder, AnimatePresence, motion } from 'framer-motion';
 import { useParams } from 'react-router-dom';
 import { generalDocsApi } from '../../../services/generalDocsApi';
 
-const ProjectVendorList = ({ onBack, setExtraBreadcrumbs }) => {
+const ProjectVendorList = ({ onBack, setExtraBreadcrumbs, canWrite }) => {
     const { id: projectId } = useParams();
     const [vendors, setVendors] = useState([]);
     const [loading, setLoading] = useState(true);
@@ -121,13 +121,15 @@ const ProjectVendorList = ({ onBack, setExtraBreadcrumbs }) => {
                     </div>
                 </div>
                 <div className="flex items-center space-x-3 relative" ref={dropdownRef}>
-                    <button 
-                        onClick={() => setIsAdding(!isAdding)} 
-                        className="flex items-center space-x-2 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-md text-[12px] font-medium shadow-lg shadow-blue-500/20 transition-all active:scale-95"
-                    >
-                        <Plus size={16} />
-                        <span>Add vendor</span>
-                    </button>
+                    {canWrite && (
+                        <button 
+                            onClick={() => setIsAdding(!isAdding)} 
+                            className="flex items-center space-x-2 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-md text-[12px] font-medium shadow-lg shadow-blue-500/20 transition-all active:scale-95"
+                        >
+                            <Plus size={16} />
+                            <span>Add vendor</span>
+                        </button>
+                    )}
 
                     {/* Searchable Dropdown */}
                     <AnimatePresence>
@@ -202,10 +204,10 @@ const ProjectVendorList = ({ onBack, setExtraBreadcrumbs }) => {
                                     <th className="px-4 py-3 font-medium normal-case text-[10px] tracking-normal border-r border-gray-100 dark:border-white/5">Mobile no</th>
                                     <th className="px-4 py-3 font-medium normal-case text-[10px] tracking-normal border-r border-gray-100 dark:border-white/5">Email id</th>
                                     <th className="px-4 py-3 font-medium normal-case text-[10px] tracking-normal border-r border-gray-100 dark:border-white/5">Trade / service</th>
-                                    <th className="px-4 py-3 font-medium normal-case text-[10px] tracking-normal text-center">Actions</th>
+                                    {canWrite && <th className="px-4 py-3 font-medium normal-case text-[10px] tracking-normal text-center">Actions</th>}
                                 </tr>
                             </thead>
-                            <Reorder.Group axis="y" values={vendors} onReorder={setVendors} as="tbody" className="divide-y divide-gray-100 dark:divide-white/[0.03]">
+                            <Reorder.Group axis="y" values={vendors} onReorder={canWrite ? setVendors : () => {}} as="tbody" className="divide-y divide-gray-100 dark:divide-white/[0.03]">
                                 <AnimatePresence initial={false}>
                                     {vendors.map((vendor, idx) => {
                                         return (
@@ -219,7 +221,7 @@ const ProjectVendorList = ({ onBack, setExtraBreadcrumbs }) => {
                                             >
                                                 <td className="px-3 py-2 text-center w-6 min-w-[40px]">
                                                     <div className="flex items-center justify-center">
-                                                        <GripVertical size={14} className="text-gray-300 dark:text-gray-700 group-hover/row:text-blue-500 transition-colors cursor-grab active:cursor-grabbing" />
+                                                        <GripVertical size={14} className={`text-gray-300 dark:text-gray-700 group-hover/row:text-blue-500 transition-colors ${canWrite ? 'cursor-grab active:cursor-grabbing' : 'pointer-events-none'}`} />
                                                     </div>
                                                 </td>
                                                 <td className="px-4 py-2 text-gray-500 dark:text-gray-600 font-mono text-[11px] border-r border-gray-100 dark:border-white/[0.03] text-center w-16">
@@ -256,17 +258,19 @@ const ProjectVendorList = ({ onBack, setExtraBreadcrumbs }) => {
                                                 </td>
 
                                                 {/* Actions Column */}
-                                                <td className="px-4 py-2 text-center min-w-[120px]">
-                                                    <div className={`flex items-center justify-center space-x-3 transition-opacity duration-200 opacity-100`}>
-                                                        <button
-                                                            onClick={(e) => { e.stopPropagation(); handleDelete(vendor.id); }}
-                                                            className="text-gray-400 hover:text-red-500 transition-colors p-1"
-                                                            title="Remove from Project"
-                                                        >
-                                                            <Trash2 size={14} />
-                                                        </button>
-                                                    </div>
-                                                </td>
+                                                {canWrite && (
+                                                    <td className="px-4 py-2 text-center min-w-[120px]">
+                                                        <div className={`flex items-center justify-center space-x-3 transition-opacity duration-200 opacity-100`}>
+                                                            <button
+                                                                onClick={(e) => { e.stopPropagation(); handleDelete(vendor.id); }}
+                                                                className="text-gray-400 hover:text-red-500 transition-colors p-1"
+                                                                title="Remove from Project"
+                                                            >
+                                                                <Trash2 size={14} />
+                                                            </button>
+                                                        </div>
+                                                    </td>
+                                                )}
                                             </Reorder.Item>
                                         );
                                     })}

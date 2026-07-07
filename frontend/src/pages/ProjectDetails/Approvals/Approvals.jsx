@@ -340,24 +340,35 @@ const Approvals = ({ setExtraBreadcrumbs, project, projectPermissions, isAdmin }
     const totalAssigned = Object.values(configs).reduce((sum, cfg) =>
         sum + cfg.reporters.length + cfg.approvalLevels.reduce((s, l) => s + l.approvers.length, 0), 0);
 
+    const renderSubTabSwitcher = () => {
+        if (!isAdmin) return null;
+        return (
+            <div className="px-5 py-2.5 bg-white dark:bg-[#0d1117] border-b border-gray-200 dark:border-white/5 flex shrink-0">
+                <div className="inline-flex p-0.5 bg-gray-100 dark:bg-white/5 border border-gray-200 dark:border-white/10 rounded-lg">
+                    {[
+                        { id: 'workflows', label: 'Approval Workflows' },
+                        { id: 'access', label: 'Member Permissions' }
+                    ].map((tab) => (
+                        <button
+                            key={tab.id}
+                            onClick={() => setActiveSubTab(tab.id)}
+                            className={`flex items-center px-4 py-1 text-xs font-semibold rounded-md transition-all duration-200 ${activeSubTab === tab.id
+                                ? 'bg-white dark:bg-white/10 text-blue-600 dark:text-blue-400 shadow-sm'
+                                : 'text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200'
+                                }`}
+                        >
+                            {tab.label}
+                        </button>
+                    ))}
+                </div>
+            </div>
+        );
+    };
+
     if (isAdmin && activeSubTab === 'access') {
         return (
             <div className="flex-1 flex flex-col h-full bg-white dark:bg-[#0d1117] overflow-hidden anim-fade-in Poppins text-left">
-                {/* Sub Tab Switcher */}
-                <div className="px-6 py-2 bg-gray-50 dark:bg-[#161b22] border-b border-gray-200 dark:border-white/5 flex gap-4 shrink-0">
-                    <button
-                        onClick={() => setActiveSubTab('workflows')}
-                        className="py-1 px-3 text-xs font-semibold rounded-lg text-gray-500 dark:text-gray-400 hover:text-gray-800 dark:hover:text-gray-200"
-                    >
-                        Approval Workflows
-                    </button>
-                    <button
-                        onClick={() => setActiveSubTab('access')}
-                        className="py-1 px-3 text-xs font-bold rounded-lg bg-blue-50 dark:bg-blue-900/20 text-blue-600 dark:text-blue-400"
-                    >
-                        Member Permissions
-                    </button>
-                </div>
+                {renderSubTabSwitcher()}
                 <AccessControl />
             </div>
         );
@@ -365,35 +376,19 @@ const Approvals = ({ setExtraBreadcrumbs, project, projectPermissions, isAdmin }
 
     return (
         <div className="flex-1 flex flex-col h-full bg-white dark:bg-[#0d1117] overflow-hidden anim-fade-in Poppins text-left">
-            {/* Sub Tab Switcher */}
-            {isAdmin && (
-                <div className="px-6 py-2 bg-gray-50 dark:bg-[#161b22] border-b border-gray-200 dark:border-white/5 flex gap-4 shrink-0">
-                    <button
-                        onClick={() => setActiveSubTab('workflows')}
-                        className="py-1 px-3 text-xs font-bold rounded-lg bg-blue-50 dark:bg-blue-900/20 text-blue-600 dark:text-blue-400"
-                    >
-                        Approval Workflows
-                    </button>
-                    <button
-                        onClick={() => setActiveSubTab('access')}
-                        className="py-1 px-3 text-xs font-semibold rounded-lg text-gray-500 dark:text-gray-400 hover:text-gray-800 dark:hover:text-gray-200"
-                    >
-                        Member Permissions
-                    </button>
-                </div>
-            )}
+            {renderSubTabSwitcher()}
 
             {/* Page header */}
-            <div className="px-6 py-4 flex items-center justify-between border-b border-gray-200 dark:border-white/5 bg-white dark:bg-[#0d1117] shrink-0">
+            <div className="px-6 py-3 flex items-center justify-between border-b border-gray-200 dark:border-white/5 bg-white dark:bg-[#0d1117] shrink-0">
                 <div className="flex items-center gap-3">
-                    <div className="w-9 h-9 rounded-xl bg-blue-50 dark:bg-blue-500/10 flex items-center justify-center">
-                        <Shield size={18} className="text-blue-500" />
+                    <div className="w-8 h-8 rounded-lg bg-blue-50 dark:bg-blue-500/10 flex items-center justify-center">
+                        <Shield size={16} className="text-blue-500" />
                     </div>
                     <div>
-                        <h2 className="text-base font-bold text-gray-900 dark:text-white">Approval Workflows</h2>
+                        <h2 className="text-sm font-bold text-gray-900 dark:text-white">Approval Workflows</h2>
                     </div>
                     {totalAssigned > 0 && (
-                        <span className="ml-2 px-3 py-1 bg-blue-50 dark:bg-blue-900/20 text-blue-600 dark:text-blue-400 text-xs font-bold rounded-full border border-blue-100 dark:border-blue-500/30">
+                        <span className="ml-2 px-2.5 py-0.5 bg-blue-50 dark:bg-blue-900/20 text-blue-600 dark:text-blue-400 text-[10px] font-bold rounded-full border border-blue-100 dark:border-blue-500/30">
                             {totalAssigned} total assignments
                         </span>
                     )}
@@ -401,16 +396,16 @@ const Approvals = ({ setExtraBreadcrumbs, project, projectPermissions, isAdmin }
                 {canWrite && (
                     <button
                         onClick={handleSave}
-                        className={`flex items-center gap-2 px-5 py-2 rounded-xl text-sm font-bold transition-all shadow-lg active:scale-95 ${saved ? 'bg-green-500 text-white shadow-green-500/25' : 'bg-blue-600 hover:bg-blue-700 text-white shadow-blue-500/25'}`}
+                        className={`flex items-center gap-1.5 px-4 py-1.5 rounded-lg text-xs font-bold transition-all shadow-lg active:scale-95 ${saved ? 'bg-green-500 text-white shadow-green-500/25' : 'bg-blue-600 hover:bg-blue-700 text-white shadow-blue-500/25'}`}
                     >
-                        {saved ? <><CheckCircle2 size={15} /> Saved!</> : <><UserCheck size={15} /> Save Workflows</>}
+                        {saved ? <><CheckCircle2 size={13} /> Saved!</> : <><UserCheck size={13} /> Save Workflows</>}
                     </button>
                 )}
             </div>
 
             {/* Section cards */}
-            <div className="flex-1 overflow-y-auto p-6 md:p-10 custom-scrollbar bg-gray-50/20 dark:bg-transparent">
-                <div className="grid grid-cols-2 gap-4">
+            <div className="flex-1 overflow-y-auto p-3 custom-scrollbar bg-gray-50/20 dark:bg-transparent">
+                <div className="grid grid-cols-2 gap-3">
                     {SECTIONS.map(section => (
                         <SectionCard
                             key={section}

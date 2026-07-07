@@ -85,7 +85,7 @@ const PhotoSlot = ({ photo, label, note, date, user }) => (
     </div>
 );
 
-const QAQCModule = ({ onBack }) => {
+const QAQCModule = ({ onBack, canWrite }) => {
     const [obs, setObs] = useState(INITIAL_OBSERVATIONS);
     const [drawerOpen, setDrawerOpen] = useState(false); // 'ADD' | 'FIX' | 'EDIT_ADD' | 'EDIT_FIX' | false
     const [selectedObs, setSelectedObs] = useState(null);
@@ -150,12 +150,14 @@ const QAQCModule = ({ onBack }) => {
                     <h2 className="text-xl font-black text-gray-900 dark:text-white uppercase tracking-tight">QA / QC Control</h2>
                     <p className="text-xs text-gray-500 dark:text-gray-400">Site Quality Observation & Resolution Tracking</p>
                 </div>
-                <div className="flex items-center gap-3">
-                    <button onClick={() => setDrawerOpen('ADD')} className="flex items-center gap-2 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-bold transition-all shadow-lg shadow-blue-500/20 active:scale-95">
-                        <Plus size={16} />
-                        New Observation
-                    </button>
-                </div>
+                {canWrite && (
+                    <div className="flex items-center gap-3">
+                        <button onClick={() => setDrawerOpen('ADD')} className="flex items-center gap-2 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-bold transition-all shadow-lg shadow-blue-500/20 active:scale-95">
+                            <Plus size={16} />
+                            New Observation
+                        </button>
+                    </div>
+                )}
             </div>
 
             {/* Content Area */}
@@ -166,6 +168,7 @@ const QAQCModule = ({ onBack }) => {
                         initial={{ opacity: 0, y: 20 }}
                         animate={{ opacity: 1, y: 0 }}
                         onClick={() => {
+                            if (!canWrite) return;
                             if (item.status === 'PENDING') openDrawer('FIX', item);
                             else if (item.status === 'FIXED') openDrawer('EDIT_FIX', item);
                         }}
@@ -186,10 +189,12 @@ const QAQCModule = ({ onBack }) => {
                             </div>
                             <div className="flex items-center gap-4" onClick={e => e.stopPropagation()}>
                                 <StatusBadge status={item.status} />
-                                <button onClick={() => openDrawer('EDIT_ADD', item)} className="p-2 text-gray-400 hover:text-blue-500 hover:bg-blue-500/10 rounded-lg transition-all" title="Edit Observation">
-                                    <FileText size={16} />
-                                </button>
-                                {item.status === 'FIXED' && (
+                                {canWrite && (
+                                    <button onClick={() => openDrawer('EDIT_ADD', item)} className="p-2 text-gray-400 hover:text-blue-500 hover:bg-blue-500/10 rounded-lg transition-all" title="Edit Observation">
+                                        <FileText size={16} />
+                                    </button>
+                                )}
+                                {item.status === 'FIXED' && canWrite && (
                                     <button onClick={() => approve(item.id)} className="p-2 bg-emerald-500 text-white rounded-full hover:scale-110 active:scale-90 transition-all shadow-lg shadow-emerald-500/20" title="Approve Fix">
                                         <ShieldCheck size={18} />
                                     </button>

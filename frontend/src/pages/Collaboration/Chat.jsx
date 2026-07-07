@@ -31,13 +31,13 @@ export default function Chat({ activeTab, setActiveTab }) {
             {/* Main Chat Area */}
             <div className="flex-1 flex flex-col overflow-hidden">
                 {/* Tab Bar Integration */}
-                <div className="flex-shrink-0 px-6 pt-6 pb-4 bg-white dark:bg-[#0d1117]">
-                    <div className="inline-flex p-1 bg-gray-100 dark:bg-white/5 border border-gray-200 dark:border-white/10 rounded-full">
+                <div className="flex-shrink-0 px-6 pt-5 pb-3 bg-white dark:bg-[#0d1117]">
+                    <div className="inline-flex p-0.5 bg-gray-100 dark:bg-white/5 border border-gray-200 dark:border-white/10 rounded-lg">
                         {['chat', 'calendar'].map(tabId => (
                             <button
                                 key={tabId}
                                 onClick={() => setActiveTab(tabId)}
-                                className={`flex items-center px-6 py-2 text-sm font-medium rounded-full transition-all ${activeTab === tabId
+                                className={`flex items-center px-4 py-1 text-xs font-semibold rounded-md transition-all ${activeTab === tabId
                                     ? 'bg-white dark:bg-white/10 text-blue-600 dark:text-blue-400 shadow-sm'
                                     : 'text-gray-500 hover:text-gray-700 dark:hover:text-gray-300'
                                     }`}

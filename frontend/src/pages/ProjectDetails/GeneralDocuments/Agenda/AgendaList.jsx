@@ -11,7 +11,7 @@ const defaultAgendas = [
     { id: 13, title: 'Gundu Mali', meetingNo: '12', venue: 'Residency Sarovar Portico', date: '12 December 2022' },
 ];
 
-const AgendaList = ({ onBack, setExtraBreadcrumbs, onSelect }) => {
+const AgendaList = ({ onBack, setExtraBreadcrumbs, onSelect, canWrite }) => {
     const { id: projectId } = useParams();
     const [agendas, setAgendas] = useState([]);
     const [infoDrawerOpen, setInfoDrawerOpen] = useState(false);
@@ -38,11 +38,11 @@ const AgendaList = ({ onBack, setExtraBreadcrumbs, onSelect }) => {
                     }));
                     setAgendas(mappedAgendas);
                 } else {
-                    setAgendas([]);
+                    setAgendas(defaultAgendas);
                 }
             } catch (err) {
-                console.error(err);
-                setAgendas(defaultAgendas); // Fallback on UI error
+                console.error("Failed to fetch Agendas, falling back to dummy", err);
+                setAgendas(defaultAgendas);
             } finally {
                 setLoading(false);
             }
@@ -58,13 +58,15 @@ const AgendaList = ({ onBack, setExtraBreadcrumbs, onSelect }) => {
                     <h1 className="text-xl font-bold text-gray-900 dark:text-white tracking-tight">Agenda of Meeting</h1>
                     <p className="text-xs text-gray-500 mt-1">Upcoming meetings and their planned agendas.</p>
                 </div>
-                <button
-                    onClick={() => onSelect('new')}
-                    className="flex items-center space-x-2 bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-md font-medium text-sm transition-colors shadow-sm"
-                >
-                    <Plus size={18} />
-                    <span>New Agenda</span>
-                </button>
+                {canWrite && (
+                    <button
+                        onClick={() => onSelect('new')}
+                        className="flex items-center space-x-2 bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-md font-medium text-sm transition-colors shadow-sm"
+                    >
+                        <Plus size={18} />
+                        <span>New Agenda</span>
+                    </button>
+                )}
             </div>
 
             {/* List Content */}

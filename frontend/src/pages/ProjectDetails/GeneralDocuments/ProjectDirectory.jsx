@@ -109,7 +109,7 @@ const ResizableInput = ({ value, onChange, autoFocus, className = "", minW = "50
     </div>
 );
 
-const ProjectDirectory = ({ onBack, setExtraBreadcrumbs }) => {
+const ProjectDirectory = ({ onBack, setExtraBreadcrumbs, canWrite }) => {
     const { id: projectId } = useParams();
     const [contacts, setContacts] = useState([]);
     const [loading, setLoading] = useState(true);
@@ -169,6 +169,7 @@ const ProjectDirectory = ({ onBack, setExtraBreadcrumbs }) => {
     };
 
     const handleAdd = () => {
+        if (!canWrite) return;
         const newRecord = {
             id: `new-${Date.now()}`,
             pv_id: null,
@@ -198,6 +199,7 @@ const ProjectDirectory = ({ onBack, setExtraBreadcrumbs }) => {
     };
 
     const handleEdit = (contact) => {
+        if (!canWrite) return;
         setEditingId(contact.id);
         setEditData({ ...contact });
     };
@@ -262,14 +264,18 @@ const ProjectDirectory = ({ onBack, setExtraBreadcrumbs }) => {
                     </div>
                 </div>
                 <div className="flex items-center space-x-3">
-                    <button className="flex items-center space-x-2 px-4 py-2 bg-gray-100 dark:bg-white/5 hover:bg-gray-200 dark:hover:bg-white/10 text-gray-700 dark:text-gray-300 border border-gray-300 dark:border-white/10 rounded-md text-[12px] font-medium transition-all">
-                        <Edit2 size={16} />
-                        <span>Edit</span>
-                    </button>
-                    <button onClick={handleAdd} className="flex items-center space-x-2 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-md text-[12px] font-medium shadow-lg shadow-blue-500/20 transition-all active:scale-95">
-                        <Plus size={16} />
-                        <span>Add new contact</span>
-                    </button>
+                    {canWrite && (
+                        <>
+                            <button className="flex items-center space-x-2 px-4 py-2 bg-gray-100 dark:bg-white/5 hover:bg-gray-200 dark:hover:bg-white/10 text-gray-700 dark:text-gray-300 border border-gray-300 dark:border-white/10 rounded-md text-[12px] font-medium transition-all">
+                                <Edit2 size={16} />
+                                <span>Edit</span>
+                            </button>
+                            <button onClick={handleAdd} className="flex items-center space-x-2 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-md text-[12px] font-medium shadow-lg shadow-blue-500/20 transition-all active:scale-95">
+                                <Plus size={16} />
+                                <span>Add new contact</span>
+                            </button>
+                        </>
+                    )}
                     <button
                         onClick={() => setIsInfoOpen(true)}
                         className="p-2 bg-gray-100 dark:bg-white/5 hover:bg-gray-200 dark:hover:bg-white/10 text-gray-700 dark:text-gray-300 border border-gray-300 dark:border-white/10 rounded-md transition-all active:scale-95"
@@ -461,20 +467,22 @@ const ProjectDirectory = ({ onBack, setExtraBreadcrumbs }) => {
                                                                 </button>
                                                             </div>
                                                         ) : (
-                                                            <div className="flex items-center justify-center space-x-3 transition-opacity duration-200">
-                                                                <button
-                                                                    onClick={(e) => { e.stopPropagation(); handleEdit(contact); }}
-                                                                    className="text-gray-400 hover:text-blue-500 transition-colors p-1"
-                                                                >
-                                                                    <Edit2 size={15} />
-                                                                </button>
-                                                                <button
-                                                                    onClick={(e) => { e.stopPropagation(); handleDelete(contact.id); }}
-                                                                    className="text-gray-400 hover:text-red-500 transition-colors p-1"
-                                                                >
-                                                                    <Trash2 size={15} />
-                                                                </button>
-                                                            </div>
+                                                            canWrite && (
+                                                                <div className="flex items-center justify-center space-x-3 transition-opacity duration-200">
+                                                                    <button
+                                                                        onClick={(e) => { e.stopPropagation(); handleEdit(contact); }}
+                                                                        className="text-gray-400 hover:text-blue-500 transition-colors p-1"
+                                                                    >
+                                                                        <Edit2 size={15} />
+                                                                    </button>
+                                                                    <button
+                                                                        onClick={(e) => { e.stopPropagation(); handleDelete(contact.id); }}
+                                                                        className="text-gray-400 hover:text-red-500 transition-colors p-1"
+                                                                    >
+                                                                        <Trash2 size={15} />
+                                                                    </button>
+                                                                </div>
+                                                            )
                                                         )}
                                                     </td>
                                                 </Reorder.Item>

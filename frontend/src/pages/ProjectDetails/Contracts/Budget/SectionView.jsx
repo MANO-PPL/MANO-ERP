@@ -55,7 +55,7 @@ const utilColor = (pct) => {
 };
 
 // ─── Main SectionView ──────────────────────────────────────────────────────────
-const SectionView = ({ section, onItemsChange, slabArea, gstRate }) => {
+const SectionView = ({ section, onItemsChange, slabArea, gstRate, canWrite }) => {
     const items = section.items;
 
     const updateItem = (id, field, val) =>
@@ -127,9 +127,11 @@ const SectionView = ({ section, onItemsChange, slabArea, gstRate }) => {
                         </div>
                     </div>
                     <div className="flex items-center gap-2">
-                        <button onClick={addRow} className="flex items-center gap-1.5 px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white text-xs font-semibold rounded-lg transition-colors">
-                            <Plus size={13} /> Add Row
-                        </button>
+                        {canWrite && (
+                            <button onClick={addRow} className="flex items-center gap-1.5 px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white text-xs font-semibold rounded-lg transition-colors">
+                                <Plus size={13} /> Add Row
+                            </button>
+                        )}
                         <button onClick={exportCSV} className="flex items-center gap-1.5 px-3 py-1.5 border border-gray-200 dark:border-white/10 hover:bg-gray-50 dark:hover:bg-white/5 text-gray-600 dark:text-gray-300 text-xs font-semibold rounded-lg transition-colors">
                             <Download size={13} /> Export
                         </button>
@@ -213,33 +215,35 @@ const SectionView = ({ section, onItemsChange, slabArea, gstRate }) => {
                                 <tr key={it.id} className="bg-white dark:bg-[#0d1117] hover:bg-gray-50/50 dark:hover:bg-white/[0.02] transition-colors group">
                                     {/* Reorder */}
                                     <td className="px-1 py-1">
-                                        <div className="flex flex-col gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity">
-                                            <button onClick={() => moveRow(idx, -1)} disabled={idx === 0} className="p-0.5 hover:text-blue-500 disabled:opacity-20 text-gray-400"><ChevronUp size={10} /></button>
-                                            <button onClick={() => moveRow(idx, 1)} disabled={idx === items.length - 1} className="p-0.5 hover:text-blue-500 disabled:opacity-20 text-gray-400"><ChevronDown size={10} /></button>
-                                        </div>
+                                        {canWrite && (
+                                            <div className="flex flex-col gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity">
+                                                <button onClick={() => moveRow(idx, -1)} disabled={idx === 0} className="p-0.5 hover:text-blue-500 disabled:opacity-20 text-gray-400"><ChevronUp size={10} /></button>
+                                                <button onClick={() => moveRow(idx, 1)} disabled={idx === items.length - 1} className="p-0.5 hover:text-blue-500 disabled:opacity-20 text-gray-400"><ChevronDown size={10} /></button>
+                                            </div>
+                                        )}
                                     </td>
                                     {/* Sr */}
-                                    <td className="px-2 py-1 text-gray-500"><EditCell value={it.srNo} onChange={v => updateItem(it.id, 'srNo', v)} /></td>
+                                    <td className="px-2 py-1 text-gray-500"><EditCell value={it.srNo} onChange={v => updateItem(it.id, 'srNo', v)} readOnly={!canWrite} /></td>
                                     {/* Description */}
                                     <td className="px-3 py-1 font-medium text-gray-800 dark:text-gray-200">
-                                        <EditCell value={it.description} onChange={v => updateItem(it.id, 'description', v)} />
+                                        <EditCell value={it.description} onChange={v => updateItem(it.id, 'description', v)} readOnly={!canWrite} />
                                     </td>
                                     {/* Unit */}
-                                    <td className="px-2 py-1"><EditCell value={it.unit} onChange={v => updateItem(it.id, 'unit', v)} /></td>
+                                    <td className="px-2 py-1"><EditCell value={it.unit} onChange={v => updateItem(it.id, 'unit', v)} readOnly={!canWrite} /></td>
                                     {/* Qty */}
-                                    <td className="px-2 py-1"><EditCell value={it.quantity} onChange={v => updateItem(it.id, 'quantity', v)} type="number" align="right" /></td>
+                                    <td className="px-2 py-1"><EditCell value={it.quantity} onChange={v => updateItem(it.id, 'quantity', v)} type="number" align="right" readOnly={!canWrite} /></td>
                                     {/* Mat Rate */}
                                     <td className={`px-2 py-1 ${isCombined ? 'opacity-30 pointer-events-none' : ''}`}>
-                                        <EditCell value={it.materialRate} onChange={v => updateItem(it.id, 'materialRate', v)} type="number" align="right" />
+                                        <EditCell value={it.materialRate} onChange={v => updateItem(it.id, 'materialRate', v)} type="number" align="right" readOnly={!canWrite} />
                                     </td>
                                     {/* Lab Rate */}
                                     <td className={`px-2 py-1 ${isCombined ? 'opacity-30 pointer-events-none' : ''}`}>
-                                        <EditCell value={it.labourRate} onChange={v => updateItem(it.id, 'labourRate', v)} type="number" align="right" />
+                                        <EditCell value={it.labourRate} onChange={v => updateItem(it.id, 'labourRate', v)} type="number" align="right" readOnly={!canWrite} />
                                     </td>
                                     {/* Total Rate */}
                                     <td className="px-2 py-1 bg-blue-50/50 dark:bg-blue-900/10">
                                         {isCombined
-                                            ? <EditCell value={it.totalRateOverride} onChange={v => updateItem(it.id, 'totalRateOverride', v)} type="number" align="right" />
+                                            ? <EditCell value={it.totalRateOverride} onChange={v => updateItem(it.id, 'totalRateOverride', v)} type="number" align="right" readOnly={!canWrite} />
                                             : <span className="block text-right text-blue-600 dark:text-blue-400 font-semibold pr-1">{fmt(c.resolved, 2)}</span>
                                         }
                                     </td>
@@ -263,6 +267,7 @@ const SectionView = ({ section, onItemsChange, slabArea, gstRate }) => {
                                             type="number"
                                             align="right"
                                             placeholder="0.00"
+                                            readOnly={!canWrite}
                                         />
                                     </td>
                                     {/* Remaining */}
@@ -283,13 +288,15 @@ const SectionView = ({ section, onItemsChange, slabArea, gstRate }) => {
                                     </td>
                                     {/* Remarks */}
                                     <td className="px-2 py-1 text-gray-400">
-                                        <EditCell value={it.remarks} onChange={v => updateItem(it.id, 'remarks', v)} />
+                                        <EditCell value={it.remarks} onChange={v => updateItem(it.id, 'remarks', v)} readOnly={!canWrite} />
                                     </td>
                                     {/* Delete */}
                                     <td className="px-2 py-1">
-                                        <button onClick={() => deleteRow(it.id)} className="opacity-0 group-hover:opacity-100 p-1 rounded hover:bg-red-50 dark:hover:bg-red-900/20 text-gray-400 hover:text-red-500 transition-all">
-                                            <Trash2 size={12} />
-                                        </button>
+                                        {canWrite && (
+                                            <button onClick={() => deleteRow(it.id)} className="opacity-0 group-hover:opacity-100 p-1 rounded hover:bg-red-50 dark:hover:bg-red-900/20 text-gray-400 hover:text-red-500 transition-all">
+                                                <Trash2 size={12} />
+                                            </button>
+                                        )}
                                     </td>
                                 </tr>
                             );
@@ -298,7 +305,9 @@ const SectionView = ({ section, onItemsChange, slabArea, gstRate }) => {
                             <tr>
                                 <td colSpan={16} className="py-16 text-center text-gray-400 text-sm">
                                     No items yet ·{' '}
-                                    <button onClick={addRow} className="text-blue-500 hover:underline font-semibold">Add first row</button>
+                                    {canWrite && (
+                                        <button onClick={addRow} className="text-blue-500 hover:underline font-semibold">Add first row</button>
+                                    )}
                                 </td>
                             </tr>
                         )}
