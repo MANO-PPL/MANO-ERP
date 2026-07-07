@@ -36,20 +36,57 @@ const VendorsList = () => {
     const [activeFilters, setActiveFilters] = useState({ jobs: [], categories: [] });
     const [hoveredRow, setHoveredRow] = useState(null);
 
-    const fetchVendors = async (page = currentPage) => {
-        setIsLoading(true);
+    const fetchVendors = async (page = currentPage, force = false) => {
+        const params = {
+            ...debouncedSearchFilters,
+            page,
+            limit: recordsPerPage,
+            categories: activeFilters.categories.join(','),
+            jobs: activeFilters.jobs.join(',')
+        };
+
+        const cacheKey = `crm_vendors_${JSON.stringify(params)}`;
+        const cacheTimeKey = `crm_vendors_time_${JSON.stringify(params)}`;
+        const CACHE_TTL = 50000; // 50 seconds
+
+        if (force) {
+            Object.keys(sessionStorage).forEach(key => {
+                if (key.startsWith('crm_vendors_')) {
+                    sessionStorage.removeItem(key);
+                }
+            });
+        }
+
+        const cached = sessionStorage.getItem(cacheKey);
+        const cachedTime = sessionStorage.getItem(cacheTimeKey);
+        const now = Date.now();
+
+        if (cached && cachedTime) {
+            try {
+                const parsed = JSON.parse(cached);
+                setVendors(parsed.vendors);
+                setTotalRecords(parsed.total);
+                setIsLoading(false);
+                if (now - parseInt(cachedTime) < CACHE_TTL) {
+                    return;
+                }
+            } catch (e) {
+                console.error("Failed to parse cached vendors", e);
+            }
+        } else {
+            setIsLoading(true);
+        }
+
         try {
-            const params = {
-                ...debouncedSearchFilters,
-                page,
-                limit: recordsPerPage,
-                categories: activeFilters.categories.join(','),
-                jobs: activeFilters.jobs.join(',')
-            };
             const res = await api.get('/vendors', { params });
             if (res.data.success) {
                 setVendors(res.data.vendors);
                 setTotalRecords(res.data.total);
+                sessionStorage.setItem(cacheKey, JSON.stringify({
+                    vendors: res.data.vendors,
+                    total: res.data.total
+                }));
+                sessionStorage.setItem(cacheTimeKey, now.toString());
             }
         } catch (err) {
             setError('Failed to load vendors');
@@ -113,14 +150,14 @@ const VendorsList = () => {
                 const res = await api.put(`/vendors/${editingVendor.id}`, vendorData);
                 if (res.data.success) {
                     toast.success('Vendor updated successfully');
-                    fetchVendors();
+                    fetchVendors(currentPage, true);
                     fetchMetadata();
                 }
             } else {
                 const res = await api.post('/vendors', vendorData);
                 if (res.data.success) {
                     toast.success('Vendor added successfully');
-                    fetchVendors();
+                    fetchVendors(currentPage, true);
                     fetchMetadata();
                 }
             }
@@ -137,7 +174,7 @@ const VendorsList = () => {
             const res = await api.delete('/vendors', { data: { ids: [id] } });
             if (res.data.success) {
                 toast.success('Vendor deleted');
-                fetchVendors();
+                fetchVendors(currentPage, true);
             }
         } catch (err) {
             toast.error('Failed to delete vendor');
@@ -395,7 +432,7 @@ const VendorsList = () => {
                 listKey="job_natures"
                 addPlaceholder="Enter Job Nature (e.g. Electrical)"
                 onUpdate={() => {
-                    fetchVendors();
+                    fetchVendors(currentPage, true);
                     fetchMetadata();
                 }}
             />

@@ -689,13 +689,42 @@ const AdminPage = () => {
     const [selectedUser, setSelectedUser] = useState(null);
     const [editMode, setEditMode] = useState(false);
 
-    const fetchUsers = async () => {
-        setIsLoading(true);
+    const fetchUsers = async (force = false) => {
+        const cacheKey = 'crm_employees_list';
+        const cacheTimeKey = 'crm_employees_list_time';
+        const CACHE_TTL = 50000; // 50 seconds
+
+        if (force) {
+            sessionStorage.removeItem(cacheKey);
+            sessionStorage.removeItem(cacheTimeKey);
+        }
+
+        const cached = sessionStorage.getItem(cacheKey);
+        const cachedTime = sessionStorage.getItem(cacheTimeKey);
+        const now = Date.now();
+
+        if (cached && cachedTime) {
+            try {
+                const parsed = JSON.parse(cached);
+                setUsers(parsed);
+                setIsLoading(false);
+                if (now - parseInt(cachedTime) < CACHE_TTL) {
+                    return;
+                }
+            } catch (e) {
+                console.error("Failed to parse cached employees", e);
+            }
+        } else {
+            setIsLoading(true);
+        }
+
         try {
             const res = await adminApi.getUsers();
             if (res.success && res.users) {
                 const mappedUsers = res.users.map(u => mapUserFromBackend(u));
                 setUsers(mappedUsers);
+                sessionStorage.setItem(cacheKey, JSON.stringify(mappedUsers));
+                sessionStorage.setItem(cacheTimeKey, now.toString());
             }
         } catch (error) {
             console.error(error);
@@ -796,7 +825,7 @@ const AdminPage = () => {
                 project_ids: user.project_ids
             });
             toast.success('User created successfully');
-            fetchUsers();
+            fetchUsers(true);
         } catch (error) {
             console.error(error);
             const msg = error.response?.data?.message || 'Failed to create user';
@@ -827,7 +856,7 @@ const AdminPage = () => {
                 project_ids: updated.project_ids
             });
             toast.success('User updated successfully');
-            fetchUsers();
+            fetchUsers(true);
             setSelectedUser(updated);
         } catch (error) {
             console.error(error);
@@ -842,7 +871,7 @@ const AdminPage = () => {
         try {
             await adminApi.deleteUser(user.id);
             toast.success('User deleted successfully');
-            fetchUsers();
+            fetchUsers(true);
         } catch (error) {
             console.error(error);
             toast.error('Failed to delete user');

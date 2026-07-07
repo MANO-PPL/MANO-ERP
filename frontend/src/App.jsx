@@ -41,6 +41,14 @@ const ProtectedRoute = ({ children, pageId, requiredLevel = 1 }) => {
 };
 
 function App() {
+  React.useEffect(() => {
+    Object.keys(sessionStorage).forEach(key => {
+      if (key.startsWith('crm_')) {
+        sessionStorage.removeItem(key);
+      }
+    });
+  }, []);
+
   return (
     <AuthProvider>
       <Router>

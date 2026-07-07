@@ -22,7 +22,33 @@ const Projects = () => {
     // Action menu states
     const [activeActionsMenuId, setActiveActionsMenuId] = useState(null);
 
-    const fetchProjects = async () => {
+    const fetchProjects = async (force = false) => {
+        const cacheKey = 'crm_projects_list';
+        const cacheTimeKey = 'crm_projects_list_time';
+        const CACHE_TTL = 50000; // 50 seconds
+
+        if (force) {
+            sessionStorage.removeItem(cacheKey);
+            sessionStorage.removeItem(cacheTimeKey);
+        }
+
+        const cached = sessionStorage.getItem(cacheKey);
+        const cachedTime = sessionStorage.getItem(cacheTimeKey);
+        const now = Date.now();
+
+        if (cached && cachedTime) {
+            try {
+                const parsed = JSON.parse(cached);
+                setProjectData(parsed);
+                // If cache is fresh, skip API call entirely
+                if (now - parseInt(cachedTime) < CACHE_TTL) {
+                    return;
+                }
+            } catch (e) {
+                console.error("Failed to parse cached projects", e);
+            }
+        }
+
         try {
             const res = await projectApi.listProjects();
             if (res.success) {
@@ -63,6 +89,8 @@ const Projects = () => {
                     };
                 });
                 setProjectData(mappedProjects);
+                sessionStorage.setItem(cacheKey, JSON.stringify(mappedProjects));
+                sessionStorage.setItem(cacheTimeKey, now.toString());
             }
         } catch (error) {
             console.error("Failed to fetch projects", error);
@@ -98,7 +126,7 @@ const Projects = () => {
 
             const res = await projectApi.updateProject(project.dbId, updatedPayload);
             if (res.success) {
-                fetchProjects();
+                fetchProjects(true);
             }
         } catch (error) {
             console.error("Failed to update issue status", error);
@@ -132,7 +160,7 @@ const Projects = () => {
 
             const res = await projectApi.updateProject(project.dbId, updatedPayload);
             if (res.success) {
-                fetchProjects();
+                fetchProjects(true);
             }
         } catch (error) {
             console.error("Failed to add tag", error);
@@ -159,7 +187,7 @@ const Projects = () => {
 
             const res = await projectApi.updateProject(project.dbId, updatedPayload);
             if (res.success) {
-                fetchProjects();
+                fetchProjects(true);
             }
         } catch (error) {
             console.error("Failed to delete tag", error);
@@ -181,7 +209,7 @@ const Projects = () => {
 
             const res = await projectApi.updateProject(project.dbId, updatedPayload);
             if (res.success) {
-                fetchProjects();
+                fetchProjects(true);
             }
         } catch (error) {
             console.error("Failed to toggle project status", error);
@@ -461,7 +489,7 @@ const Projects = () => {
                 onProjectCreated={() => {
                     setIsNewProjectOpen(false);
                     setProjectToEdit(null);
-                    fetchProjects();
+                    fetchProjects(true);
                 }}
             />
         </div>

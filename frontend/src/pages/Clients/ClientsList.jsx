@@ -38,20 +38,57 @@ const ClientsList = () => {
     const [activeFilters, setActiveFilters] = useState({ jobs: [], sectors: [] });
     const [hoveredRow, setHoveredRow] = useState(null);
 
-    const fetchClients = async (page = currentPage) => {
-        setIsLoading(true);
+    const fetchClients = async (page = currentPage, force = false) => {
+        const params = {
+            ...debouncedSearchFilters,
+            page,
+            limit: recordsPerPage,
+            jobs: activeFilters.jobs.join(','),
+            sectors: activeFilters.sectors ? activeFilters.sectors.join(',') : ''
+        };
+
+        const cacheKey = `crm_clients_${JSON.stringify(params)}`;
+        const cacheTimeKey = `crm_clients_time_${JSON.stringify(params)}`;
+        const CACHE_TTL = 50000; // 50 seconds
+
+        if (force) {
+            Object.keys(sessionStorage).forEach(key => {
+                if (key.startsWith('crm_clients_')) {
+                    sessionStorage.removeItem(key);
+                }
+            });
+        }
+
+        const cached = sessionStorage.getItem(cacheKey);
+        const cachedTime = sessionStorage.getItem(cacheTimeKey);
+        const now = Date.now();
+
+        if (cached && cachedTime) {
+            try {
+                const parsed = JSON.parse(cached);
+                setClients(parsed.clients);
+                setTotalRecords(parsed.total);
+                setIsLoading(false);
+                if (now - parseInt(cachedTime) < CACHE_TTL) {
+                    return;
+                }
+            } catch (e) {
+                console.error("Failed to parse cached clients", e);
+            }
+        } else {
+            setIsLoading(true);
+        }
+
         try {
-            const params = {
-                ...debouncedSearchFilters,
-                page,
-                limit: recordsPerPage,
-                jobs: activeFilters.jobs.join(','),
-                sectors: activeFilters.sectors ? activeFilters.sectors.join(',') : ''
-            };
             const res = await api.get('/clients', { params });
             if (res.data.success) {
                 setClients(res.data.clients);
                 setTotalRecords(res.data.total);
+                sessionStorage.setItem(cacheKey, JSON.stringify({
+                    clients: res.data.clients,
+                    total: res.data.total
+                }));
+                sessionStorage.setItem(cacheTimeKey, now.toString());
             }
         } catch (err) {
             setError('Failed to load clients');
@@ -119,14 +156,14 @@ const ClientsList = () => {
                 const res = await api.put(`/clients/${editingClient.id}`, clientData);
                 if (res.data.success) {
                     toast.success('Client updated successfully');
-                    fetchClients();
+                    fetchClients(currentPage, true);
                     fetchMetadata();
                 }
             } else {
                 const res = await api.post('/clients', clientData);
                 if (res.data.success) {
                     toast.success('Client added successfully');
-                    fetchClients();
+                    fetchClients(currentPage, true);
                     fetchMetadata();
                 }
             }
@@ -143,7 +180,7 @@ const ClientsList = () => {
             const res = await api.delete(`/clients/${id}`);
             if (res.data.success) {
                 toast.success('Client deleted');
-                fetchClients();
+                fetchClients(currentPage, true);
             }
         } catch (err) {
             toast.error('Failed to delete client');
@@ -405,7 +442,7 @@ const ClientsList = () => {
                 onClose={() => setViewingClient(null)}
                 client={viewingClient}
                 onUpdate={() => {
-                    fetchClients();
+                    fetchClients(currentPage, true);
                     if (viewingClient) handleViewClient(viewingClient);
                 }}
             />
@@ -420,7 +457,7 @@ const ClientsList = () => {
                 listKey="job_natures"
                 addPlaceholder="Enter Job Nature (e.g. Electrical)"
                 onUpdate={() => {
-                    fetchClients();
+                    fetchClients(currentPage, true);
                     fetchMetadata();
                 }}
             />
@@ -435,7 +472,7 @@ const ClientsList = () => {
                 listKey="sectors"
                 addPlaceholder="Enter Sector (e.g. IT)"
                 onUpdate={() => {
-                    fetchClients();
+                    fetchClients(currentPage, true);
                     fetchMetadata();
                 }}
             />
