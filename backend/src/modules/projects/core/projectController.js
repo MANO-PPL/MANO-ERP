@@ -32,7 +32,7 @@ export const getProject = catchAsync(async (req, res) => {
             'Approvals': 3
         };
     } else {
-        const member = await db('project_users')
+        const member = await db('proj_members')
             .where({ project_id: id, user_id: req.user.user_id, org_id: req.user.org_id })
             .first();
         if (!member) {

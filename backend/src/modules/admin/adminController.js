@@ -98,7 +98,7 @@ export const createUser = catchAsync(async (req, res) => {
             org_id: req.user.org_id,
             project_permissions: JSON.stringify({})
         }));
-        await db('project_users').insert(inserts);
+        await db('proj_members').insert(inserts);
     }
 
     res.status(201).json({ success: true, message: 'User created', user_id: newUserId });
@@ -126,8 +126,8 @@ export const updateUser = catchAsync(async (req, res) => {
     await userService.updateUser(req.user.org_id, user_id, updatePayload);
 
     if (project_ids !== undefined && Array.isArray(project_ids)) {
-        // Sync project_users table
-        const existing = await db('project_users')
+        // Sync proj_members table
+        const existing = await db('proj_members')
             .where({ user_id: user_id, org_id: req.user.org_id })
             .select('project_id');
         const existingIds = existing.map(e => e.project_id);
@@ -136,7 +136,7 @@ export const updateUser = catchAsync(async (req, res) => {
         const toRemove = existingIds.filter(id => !project_ids.includes(id));
 
         if (toRemove.length > 0) {
-            await db('project_users')
+            await db('proj_members')
                 .where({ user_id: user_id, org_id: req.user.org_id })
                 .whereIn('project_id', toRemove)
                 .del();
@@ -149,7 +149,7 @@ export const updateUser = catchAsync(async (req, res) => {
                 org_id: req.user.org_id,
                 project_permissions: JSON.stringify({})
             }));
-            await db('project_users').insert(inserts);
+            await db('proj_members').insert(inserts);
         }
     }
 

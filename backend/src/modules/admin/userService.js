@@ -81,7 +81,7 @@ export async function getUserById(orgId, userId) {
     }
 
     // Fetch assigned projects
-    const projects = await db('project_users')
+    const projects = await db('proj_members')
         .where({ user_id: userId, org_id: orgId })
         .select('project_id');
     user.assigned_projects = projects.map(p => p.project_id);
