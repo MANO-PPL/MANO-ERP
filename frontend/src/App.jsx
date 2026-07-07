@@ -8,15 +8,15 @@ import { AuthProvider, useAuth } from './context/AuthContext';
 // ─── Lazy-loaded pages ────────────────────────────────────────────────────
 const Dashboard = lazy(() => import('./pages/Dashboard'));
 const Projects = lazy(() => import('./pages/Projects'));
-const ProjectDetails = lazy(() => import('./pages/ProjectDetails/index'));
-const VendorsList = lazy(() => import('./pages/Vendors'));
-const ResourcesList = lazy(() => import('./pages/Resources/index'));
-const UnitsList = lazy(() => import('./pages/Units/index'));
+const ProjectDetails = lazy(() => import('./pages/ProjectDetails/ProjectDetails'));
+const VendorsList = lazy(() => import('./pages/Vendors/VendorsList'));
+const ResourcesList = lazy(() => import('./pages/Resources/ResourceList'));
+const UnitsList = lazy(() => import('./pages/Units/UnitsPage'));
 const VendorBulkUpload = lazy(() => import('./pages/Vendors/VendorBulkUpload'));
-const ClientsList = lazy(() => import('./pages/Clients'));
+const ClientsList = lazy(() => import('./pages/Clients/ClientsList'));
 const ClientBulkUpload = lazy(() => import('./pages/Clients/ClientBulkUpload'));
-const CollaborationPage = lazy(() => import('./pages/Collaboration/index'));
-const AdminPage = lazy(() => import('./pages/Admin/index'));
+const CollaborationPage = lazy(() => import('./pages/Collaboration/CollaborationPage'));
+const AdminPage = lazy(() => import('./pages/Admin/AdminPage'));
 const Login = lazy(() => import('./pages/Auth/Login'));
 
 import './index.css';

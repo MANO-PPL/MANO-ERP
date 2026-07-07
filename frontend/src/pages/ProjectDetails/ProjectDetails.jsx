@@ -11,16 +11,16 @@ import Dashboard from './Dashboard';
 import Tasks from './Tasks';
 import WIP from './WIP';
 import Reports from './Reports';
-import GeneralDocuments from './GeneralDocuments/index';
-import Drawings from './Drawings/index';
-import Planning from './Planning/index';
+import GeneralDocuments from './GeneralDocuments/GeneralDocumentsIndex';
+import Drawings from './Drawings/DrawingsIndex';
+import Planning from './Planning/PlanningIndex';
 import Phases from './Phases';
-import Contracts from './Contracts/index';
-import Quality from './Quality/index';
-import Safety from './Safety/index';
-import Billing from './Billing/index';
-import MaterialManagement from './MaterialManagement/index';
-import Approvals from './Approvals/index';
+import Contracts from './Contracts/ContractsIndex';
+import Quality from './Quality/Quality';
+import Safety from './Safety/SafetyIndex';
+import Billing from './Billing/BillingIndex';
+import MaterialManagement from './MaterialManagement/MaterialManagementIndex';
+import Approvals from './Approvals/Approvals';
 
 const ProjectDetails = () => {
     const { id } = useParams();
@@ -86,7 +86,9 @@ const ProjectDetails = () => {
     }
 
     const renderTabContent = () => {
-        const props = { setExtraBreadcrumbs, project, projectPermissions, isAdmin, user };
+        const activeTabLvl = projectPermissions?.[activeTab] ?? 0;
+        const canWrite = isAdmin || activeTabLvl >= 2;
+        const props = { setExtraBreadcrumbs, project, projectPermissions, isAdmin, user, canWrite };
         switch (activeTab) {
             case 'Dashboard':
                 return <Dashboard {...props} />;

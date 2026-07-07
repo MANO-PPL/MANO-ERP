@@ -5,7 +5,7 @@ import {
     ChevronDown, Clock, UserCheck, Plus, X, Trash2, Edit2, Save, Sparkles, GripVertical, Calendar, Briefcase, ChevronRight
 } from 'lucide-react';
 import { motion, AnimatePresence, Reorder } from 'framer-motion';
-import { DEFAULT_PHASES as PROJECT_PHASES } from '../ProjectPlanningBarChart';
+import { DEFAULT_PHASES as PROJECT_PHASES } from '../ProjectPlanningBarChart/ProjectPlanningBarChart';
 
 // ─── Trade Data ─────────────────────────────────────────────────────────────────
 const TRADES = [
@@ -50,7 +50,7 @@ const DEFAULT_PHASES = [
 ];
 
 // ─── Phase Requirement Drawer ──────────────────────────────────────────────────
-const ManpowerRequirementDrawer = ({ open, onClose, tasks, setTasks, targetTask }) => {
+const ManpowerRequirementDrawer = ({ open, onClose, tasks, setTasks, targetTask, canWrite }) => {
     const task = tasks.find(t => t.id === targetTask);
     const [localManpower, setLocalManpower] = useState({});
 
@@ -59,10 +59,12 @@ const ManpowerRequirementDrawer = ({ open, onClose, tasks, setTasks, targetTask 
     }, [task, open]);
 
     const updateHeadcount = (tid, val) => {
+        if (!canWrite) return;
         setLocalManpower(prev => ({ ...prev, [tid]: Math.max(0, parseInt(val) || 0) }));
     };
 
     const save = () => {
+        if (!canWrite) return;
         setTasks(prev => prev.map(t => t.id === targetTask ? { ...t, manpower: localManpower } : t));
         onClose();
     };
@@ -76,7 +78,7 @@ const ManpowerRequirementDrawer = ({ open, onClose, tasks, setTasks, targetTask 
                         className="fixed top-0 right-0 bottom-0 w-full max-w-md bg-white dark:bg-[#161b22] shadow-2xl z-[70] flex flex-col overflow-hidden">
                         <div className="flex items-center justify-between px-6 py-4 border-b border-gray-200 dark:border-white/5 shrink-0">
                             <div>
-                                <h2 className="text-base font-bold text-gray-900 dark:text-white">Plan Manpower</h2>
+                                <h2 className="text-base font-bold text-gray-900 dark:text-white">{canWrite ? 'Plan Manpower' : 'View Planned Manpower'}</h2>
                                 <p className="text-[10px] text-gray-400">{task.name}</p>
                             </div>
                             <button onClick={onClose} className="p-1.5 rounded-lg hover:bg-gray-100 dark:hover:bg-white/10 text-gray-500"><X size={16} /></button>
@@ -94,16 +96,16 @@ const ManpowerRequirementDrawer = ({ open, onClose, tasks, setTasks, targetTask 
                                             </div>
                                         </div>
                                         <div className="w-24">
-                                            <input type="number" value={localManpower[trade.id] || 0} onChange={(e) => updateHeadcount(trade.id, e.target.value)}
-                                                className="w-full px-3 py-1.5 rounded-lg border border-gray-200 dark:border-white/10 bg-white dark:bg-[#161b22] text-sm text-center font-bold text-gray-800 dark:text-gray-200 focus:border-blue-500 outline-none" />
+                                            <input type="number" disabled={!canWrite} value={localManpower[trade.id] || 0} onChange={(e) => updateHeadcount(trade.id, e.target.value)}
+                                                className="w-full px-3 py-1.5 rounded-lg border border-gray-200 dark:border-white/10 bg-white dark:bg-[#161b22] text-sm text-center font-bold text-gray-800 dark:text-gray-200 focus:border-blue-500 outline-none disabled:opacity-75" />
                                         </div>
                                     </div>
                                 ))}
                             </div>
                         </div>
                         <div className="px-6 py-4 border-t border-gray-100 dark:border-white/5 bg-gray-50 dark:bg-[#0d1117] flex gap-3">
-                            <button onClick={onClose} className="flex-1 py-2 text-xs font-bold text-gray-500 hover:text-gray-700">Cancel</button>
-                            <button onClick={save} className="flex-2 py-2 bg-blue-500 hover:bg-blue-600 text-white text-xs font-bold rounded-lg shadow-lg shadow-blue-500/20">Apply Plan</button>
+                            <button onClick={onClose} className="flex-1 py-2 text-xs font-bold text-gray-500 hover:text-gray-700">{canWrite ? 'Cancel' : 'Close'}</button>
+                            {canWrite && <button onClick={save} className="flex-2 py-2 bg-blue-500 hover:bg-blue-600 text-white text-xs font-bold rounded-lg shadow-lg shadow-blue-500/20">Apply Plan</button>}
                         </div>
                     </motion.div>
                 </>
@@ -476,7 +478,7 @@ const DonutChart = ({ data, activeTrades }) => {
 };
 
 // ─── Main Component ────────────────────────────────────────────────────────────
-const ManpowerHistogram = ({ setExtraBreadcrumbs, onBack }) => {
+const ManpowerHistogram = ({ setExtraBreadcrumbs, onBack, canWrite }) => {
     const [view, setView] = useState('histogram'); // 'histogram' | 'planning'
     const [phases, setPhases] = useState(DEFAULT_PHASES);
     const [activeTrades, setActiveTrades] = useState(TRADES.map(t => t.id));
@@ -603,7 +605,8 @@ const ManpowerHistogram = ({ setExtraBreadcrumbs, onBack }) => {
                         tasks: newAllTasks.filter(t => ph.tasks.some(pt => pt.id === t.id))
                     })));
                 }}
-                targetTask={reqTargetTask} />
+                targetTask={reqTargetTask}
+                canWrite={canWrite} />
 
             <ProjectPlanImportModal
                 open={importModalOpen}
@@ -673,16 +676,18 @@ const ManpowerHistogram = ({ setExtraBreadcrumbs, onBack }) => {
                             </div>
                         </>
                     ) : (
-                        <div className="flex items-center gap-2">
-                            <button onClick={() => setImportModalOpen(true)}
-                                className="flex items-center gap-1.5 px-3 py-1.5 bg-indigo-50 dark:bg-indigo-500/10 hover:bg-indigo-100 dark:hover:bg-indigo-500/20 text-indigo-600 dark:text-indigo-400 text-xs font-bold rounded-lg border border-indigo-200 dark:border-indigo-500/20 transition-all">
-                                <Plus size={13} /> Import from Project Plan
-                            </button>
-                            <button onClick={() => { setEditingPhase(null); setDrawerOpen(true); }}
-                                className="flex items-center gap-1.5 px-3 py-1.5 bg-blue-500 hover:bg-blue-600 text-white text-xs font-bold rounded-lg shadow-lg shadow-blue-500/20">
-                                <Plus size={13} /> Add Phase
-                            </button>
-                        </div>
+                        canWrite && (
+                            <div className="flex items-center gap-2">
+                                <button onClick={() => setImportModalOpen(true)}
+                                    className="flex items-center gap-1.5 px-3 py-1.5 bg-indigo-50 dark:bg-indigo-500/10 hover:bg-indigo-100 dark:hover:bg-indigo-500/20 text-indigo-600 dark:text-indigo-400 text-xs font-bold rounded-lg border border-indigo-200 dark:border-indigo-500/20 transition-all">
+                                    <Plus size={13} /> Import from Project Plan
+                                </button>
+                                <button onClick={() => { setEditingPhase(null); setDrawerOpen(true); }}
+                                    className="flex items-center gap-1.5 px-3 py-1.5 bg-blue-500 hover:bg-blue-600 text-white text-xs font-bold rounded-lg shadow-lg shadow-blue-500/20">
+                                    <Plus size={13} /> Add Phase
+                                </button>
+                            </div>
+                        )
                     )}
                     <button onClick={exportCSV}
                         className="flex items-center gap-1.5 px-3 py-1.5 border border-gray-200 dark:border-white/10 hover:bg-gray-50 dark:hover:bg-white/5 text-gray-600 dark:text-gray-300 text-xs font-semibold rounded-lg transition-colors">
@@ -801,10 +806,12 @@ const ManpowerHistogram = ({ setExtraBreadcrumbs, onBack }) => {
                                                 <p className="text-[10px] text-gray-400 uppercase tracking-widest font-bold">{phase.tasks.length} Tasks</p>
                                             </div>
                                         </div>
-                                        <div className="flex items-center gap-2">
-                                            <button onClick={() => { setEditingPhase(phase.id); setDrawerOpen(true); }}
-                                                className="p-2 rounded-lg hover:bg-white dark:hover:bg-white/10 text-gray-400 hover:text-blue-500 transition-colors"><Edit2 size={16} /></button>
-                                        </div>
+                                        {canWrite && (
+                                            <div className="flex items-center gap-2">
+                                                <button onClick={() => { setEditingPhase(phase.id); setDrawerOpen(true); }}
+                                                    className="p-2 rounded-lg hover:bg-white dark:hover:bg-white/10 text-gray-400 hover:text-blue-500 transition-colors"><Edit2 size={16} /></button>
+                                            </div>
+                                        )}
                                     </div>
                                     <div className="divide-y divide-gray-50 dark:divide-white/5">
                                         {phase.tasks.length === 0 && <div className="px-6 py-8 text-center text-gray-400 text-xs italic">No tasks added to this phase.</div>}
@@ -864,10 +871,17 @@ const ManpowerHistogram = ({ setExtraBreadcrumbs, onBack }) => {
                                                         <p className="text-[9px] text-gray-400 uppercase font-black tracking-tighter mt-1">Workers Req.</p>
                                                     </div>
 
-                                                    <button onClick={() => { setReqTargetTask(task.id); setReqDrawerOpen(true); }}
-                                                        className="px-5 py-2.5 bg-indigo-50 dark:bg-indigo-500/10 hover:bg-blue-500 hover:text-white text-indigo-600 dark:text-indigo-400 text-xs font-bold rounded-xl transition-all flex items-center gap-2 border border-indigo-200 dark:border-indigo-500/20 hover:border-blue-500 hover:shadow-lg hover:shadow-blue-500/25">
-                                                        <Sparkles size={14} className="group-hover:animate-pulse" /> Allocate Resources <ChevronRight size={14} />
-                                                    </button>
+                                                    {canWrite ? (
+                                                        <button onClick={() => { setReqTargetTask(task.id); setReqDrawerOpen(true); }}
+                                                            className="px-5 py-2.5 bg-indigo-50 dark:bg-indigo-500/10 hover:bg-blue-500 hover:text-white text-indigo-600 dark:text-indigo-400 text-xs font-bold rounded-xl transition-all flex items-center gap-2 border border-indigo-200 dark:border-indigo-500/20 hover:border-blue-500 hover:shadow-lg hover:shadow-blue-500/25">
+                                                            <Sparkles size={14} className="group-hover:animate-pulse" /> Allocate Resources <ChevronRight size={14} />
+                                                        </button>
+                                                    ) : (
+                                                        <button onClick={() => { setReqTargetTask(task.id); setReqDrawerOpen(true); }}
+                                                            className="px-5 py-2.5 bg-gray-50 dark:bg-white/5 hover:bg-gray-100 text-gray-600 dark:text-gray-400 text-xs font-bold rounded-xl transition-all flex items-center gap-2 border border-gray-200 dark:border-white/10">
+                                                            View Allocations <ChevronRight size={14} />
+                                                        </button>
+                                                    )}
                                                 </div>
                                             );
                                         })}

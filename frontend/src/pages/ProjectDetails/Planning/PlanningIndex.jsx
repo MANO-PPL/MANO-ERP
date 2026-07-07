@@ -4,12 +4,12 @@ import {
     BarChart3, Truck, Users,
     LayoutList, AlertOctagon, FileStack, ChevronRight
 } from 'lucide-react';
-import BudgetIndex from '../Contracts/Budget/index';
-import HindranceReport from './HindranceReport/index';
-import MaterialHistogram from './MaterialHistogram/index';
-import ProjectPlanningBarChart from './ProjectPlanningBarChart/index';
-import ManpowerHistogram from './ManpowerHistogram/index';
-import LogisticPlan from './LogisticPlan/index';
+import BudgetIndex from '../Contracts/Budget/BudgetIndex';
+import HindranceReport from './HindranceReport/HindranceReport';
+import MaterialHistogram from './MaterialHistogram/MaterialHistogram';
+import ProjectPlanningBarChart from './ProjectPlanningBarChart/ProjectPlanningBarChart';
+import ManpowerHistogram from './ManpowerHistogram/ManpowerHistogram';
+import LogisticPlan from './LogisticPlan/LogisticPlan';
 
 const GDCard = ({ name, onClick }) => {
     const icons = {
@@ -49,7 +49,7 @@ const GDCard = ({ name, onClick }) => {
     );
 };
 
-const PlanningIndex = ({ setExtraBreadcrumbs }) => {
+const PlanningIndex = ({ setExtraBreadcrumbs, canWrite }) => {
     const [searchParams, setSearchParams] = useSearchParams();
     const reportParam = searchParams.get('report');
     const [view, setView] = useState(reportParam || 'grid');
@@ -108,27 +108,27 @@ const PlanningIndex = ({ setExtraBreadcrumbs }) => {
     };
 
     if (view === 'budget') {
-        return <BudgetIndex onBack={() => handleNavigate('grid')} setExtraBreadcrumbs={setExtraBreadcrumbs} />;
+        return <BudgetIndex onBack={() => handleNavigate('grid')} setExtraBreadcrumbs={setExtraBreadcrumbs} canWrite={canWrite} />;
     }
 
     if (view === 'hindrance-report') {
-        return <HindranceReport onBack={() => handleNavigate('grid')} setExtraBreadcrumbs={setExtraBreadcrumbs} />;
+        return <HindranceReport onBack={() => handleNavigate('grid')} setExtraBreadcrumbs={setExtraBreadcrumbs} canWrite={canWrite} />;
     }
 
     if (view === 'material-histogram') {
-        return <MaterialHistogram onBack={() => handleNavigate('grid')} setExtraBreadcrumbs={setExtraBreadcrumbs} />;
+        return <MaterialHistogram onBack={() => handleNavigate('grid')} setExtraBreadcrumbs={setExtraBreadcrumbs} canWrite={canWrite} />;
     }
 
     if (view === 'project-planning') {
-        return <ProjectPlanningBarChart onBack={() => handleNavigate('grid')} setExtraBreadcrumbs={setExtraBreadcrumbs} />;
+        return <ProjectPlanningBarChart onBack={() => handleNavigate('grid')} setExtraBreadcrumbs={setExtraBreadcrumbs} canWrite={canWrite} />;
     }
 
     if (view === 'manpower-histogram') {
-        return <ManpowerHistogram onBack={() => handleNavigate('grid')} setExtraBreadcrumbs={setExtraBreadcrumbs} />;
+        return <ManpowerHistogram onBack={() => handleNavigate('grid')} setExtraBreadcrumbs={setExtraBreadcrumbs} canWrite={canWrite} />;
     }
 
     if (view === 'logistic-plan') {
-        return <LogisticPlan onBack={() => handleNavigate('grid')} setExtraBreadcrumbs={setExtraBreadcrumbs} />;
+        return <LogisticPlan onBack={() => handleNavigate('grid')} setExtraBreadcrumbs={setExtraBreadcrumbs} canWrite={canWrite} />;
     }
 
     const items = [
