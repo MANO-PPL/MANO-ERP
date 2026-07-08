@@ -6,16 +6,19 @@ import { authenticateJWT, requireSystemPermission } from '../../middleware/auth.
 const router = express.Router();
 const upload = multer();
 
-// Apply auth and permission checks to all vendor routes
+// Apply auth to all vendor routes
 router.use(authenticateJWT);
+
+// Publicly readable for all authenticated users to allow picking vendors for projects
+router.get('/', vendorController.listVendors);
+router.get('/:id', vendorController.getVendor);
+
+// Restrict modifications and bulk operations to users with 'vendors' system permission
 router.use(requireSystemPermission('vendors'));
 
-// Publicly readable/writable based on none/view/edit permission settings
-router.get('/', vendorController.listVendors);
 router.post('/bulk', upload.single('file'), vendorController.bulkUpload);
 router.post('/bulk-validate', vendorController.bulkValidate);
 router.post('/bulk-json', vendorController.bulkJson);
-router.get('/:id', vendorController.getVendor);
 
 // Modifications
 router.post('/', vendorController.createVendor);
