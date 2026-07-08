@@ -68,7 +68,7 @@ const Dashboard = () => {
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
                     <DashboardCard
                         title="Total Contract Value"
-                        value="₹1,248.5L"
+                        value="₹69.7L"
                         subtext="+2.4% vs last month"
                         icon={BarChart3}
                         color="from-blue-500 to-indigo-600"
