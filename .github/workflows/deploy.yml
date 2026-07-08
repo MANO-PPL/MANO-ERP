@@ -75,6 +75,7 @@ jobs:
           fi
           
           # Restart backend process using PM2
+          cd /home/ubuntu/MANO-ERP/backend
           if pm2 describe "mano-erp-backend" > /dev/null 2>&1; then
             echo "🔄 Reloading backend with PM2..."
             pm2 reload "mano-erp-backend" --update-env
