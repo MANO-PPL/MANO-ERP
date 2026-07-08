@@ -642,14 +642,7 @@ const MoMDetail = ({ onBack, setExtraBreadcrumbs, momId: id, canWrite }) => {
                         </div>
                         <div className="overflow-x-auto">
                             <table className="w-full text-left text-sm table-fixed min-w-[800px]">
-                                <colgroup>
-                                    <col className="w-[60px]" />
-                                    <col className="w-auto" />
-                                    <col className="w-[60px]" />
-                                    <col className="w-[140px]" />
-                                    <col className="w-[180px]" />
-                                    {isEditing && <col className="w-[100px]" />}
-                                </colgroup>
+                                <colgroup><col className="w-[60px]" /><col className="w-auto" /><col className="w-[60px]" /><col className="w-[140px]" /><col className="w-[180px]" />{isEditing && <col className="w-[100px]" />}</colgroup>
                                 <thead>
                                     <tr className="border-b border-gray-200 dark:border-white/10 text-gray-500 bg-gray-100 dark:bg-[#12161c]">
                                         <th className="px-4 py-3 text-xs font-medium text-center">Sl No.</th>

@@ -7,9 +7,9 @@ import AppError from '../../../utils/AppError.js';
 export async function fetchProjectMoMs(projectId) {
     if (!projectId) throw new AppError('projectId is required', 400);
 
-    const moms = await db('proj_moms')
-        .where('project_id', projectId)
-        .select(['id as mom_id', 'subject', 'meeting_no', 'date', 'venue'])
+    const moms = await db('pdoc_meeting')
+        .where({ project_id: projectId, meeting_type: 'mom' })
+        .select(['meeting_id as mom_id', 'subject', 'meeting_no', 'date', 'venue'])
         .orderBy('date', 'desc');
 
     return { moms, count: moms.length };
@@ -21,45 +21,49 @@ export async function fetchProjectMoMs(projectId) {
 export async function fetchMoMById(projectId, momId) {
     if (!momId) throw new AppError('momId is required', 400);
 
-    const mom = await db('proj_moms as pm')
+    const mom = await db('pdoc_meeting as pm')
         .leftJoin('proj_projects as p', 'pm.project_id', 'p.id')
-        .where('pm.id', momId)
+        .where('pm.meeting_id', momId)
         .andWhere('pm.project_id', projectId)
+        .andWhere('pm.meeting_type', 'mom')
         .select([
-            'pm.id as mom_id',
+            'pm.meeting_id as mom_id',
             'pm.project_id',
             'p.name as project_name',
             'pm.subject',
             'pm.venue',
             'pm.date',
             'pm.meeting_no',
-            'pm.content',
-            'pm.participants'
+            'pm.content'
         ])
         .first();
 
     if (!mom) throw new AppError('MoM not found', 404);
 
-    // Parse JSON values safely
+    // Fetch participants correctly referencing contacts
+    const participants = await db('pdoc_meeting_participants as pmp')
+        .leftJoin('pdoc_directory as pd', 'pmp.pd_id', 'pd.pd_id')
+        .leftJoin('pdoc_vendors as pv', 'pd.pv_id', 'pv.pv_id')
+        .leftJoin('crm_contacts as c', 'pv.vendors_id', 'c.id')
+        .where('pmp.meeting_id', momId)
+        .select([
+            'pmp.id as pmp_id',
+            'pmp.pd_id',
+            'pd.responsibilities',
+            'c.name as organization',
+            'pd.contact_person',
+            'pd.designation'
+        ]);
+
+    mom.participants = participants;
+
+    // Parse content JSON safely
     if (mom.content && typeof mom.content === "string") {
         try {
             mom.content = JSON.parse(mom.content);
         } catch (e) {
-            console.error(`Error parsing MoM content for ID ${momId}:`, e.message);
+            console.error(`[fetchMoMById] Error parsing MoM content for ID ${momId}:`, e.message);
         }
-    }
-
-    if (mom.participants) {
-        if (typeof mom.participants === "string") {
-            try {
-                mom.participants = JSON.parse(mom.participants);
-            } catch (e) {
-                console.error(`Error parsing MoM participants for ID ${momId}:`, e.message);
-                mom.participants = [];
-            }
-        }
-    } else {
-        mom.participants = [];
     }
 
     return mom;
@@ -69,48 +73,74 @@ export async function fetchMoMById(projectId, momId) {
    CREATE MoM
 -------------------------------------------------------- */
 export async function createMoM(projectId, data) {
-    const [id] = await db('proj_moms').insert({
-        project_id: projectId,
-        meeting_no: data.meeting_no,
-        subject: data.subject,
-        venue: data.venue,
-        date: data.date,
-        participants: data.participants ? (typeof data.participants === 'string' ? data.participants : JSON.stringify(data.participants)) : null,
-        content: data.content ? (typeof data.content === 'string' ? data.content : JSON.stringify(data.content)) : null
+    let mom_id;
+    await db.transaction(async (trx) => {
+        const [id] = await trx('pdoc_meeting').insert({
+            project_id: projectId,
+            meeting_type: 'mom',
+            subject: data.subject,
+            venue: data.venue,
+            date: data.date,
+            meeting_no: data.meeting_no,
+            content: data.content ? JSON.stringify(data.content) : null,
+        });
+
+        mom_id = id;
+
+        // Insert participants
+        if (Array.isArray(data.participants) && data.participants.length > 0) {
+            const records = data.participants.map((pd_id) => ({
+                meeting_id: mom_id,
+                pd_id,
+            }));
+            await trx('pdoc_meeting_participants').insert(records);
+        }
     });
 
-    return { mom_id: id };
+    return { mom_id };
 }
 
 /* -------------------------------------------------------
    UPDATE MoM
 -------------------------------------------------------- */
 export async function updateMoM(projectId, momId, data) {
-    const allowedFields = ["subject", "venue", "date", "meeting_no"];
-    const updateData = {};
+    await db.transaction(async (trx) => {
+        const allowedFields = ["subject", "venue", "date", "meeting_no"];
+        const updateData = {};
 
-    for (const field of allowedFields) {
-        if (data[field] !== undefined) {
-            updateData[field] = data[field];
+        for (const field of allowedFields) {
+            if (data[field] !== undefined) {
+                updateData[field] = data[field];
+            }
         }
-    }
 
-    if (data.content !== undefined) {
-        updateData.content = data.content ? (typeof data.content === 'string' ? data.content : JSON.stringify(data.content)) : null;
-    }
+        if (data.content !== undefined) {
+            updateData.content = data.content ? JSON.stringify(data.content) : null;
+        }
 
-    if (data.participants !== undefined) {
-        updateData.participants = data.participants ? (typeof data.participants === 'string' ? data.participants : JSON.stringify(data.participants)) : null;
-    }
+        if (Object.keys(updateData).length > 0) {
+            const affected = await trx('pdoc_meeting')
+                .where('meeting_id', momId)
+                .where('project_id', projectId) // Scoped to project
+                .where('meeting_type', 'mom')
+                .update(updateData);
 
-    if (Object.keys(updateData).length > 0) {
-        const affected = await db('proj_moms')
-            .where('id', momId)
-            .where('project_id', projectId)
-            .update(updateData);
+            if (affected === 0) throw new AppError('MoM not found', 404);
+        }
 
-        if (affected === 0) throw new AppError('MoM not found', 404);
-    }
+        /* ---------------- PARTICIPANTS UPDATE ---------------- */
+        if (Array.isArray(data.participants)) {
+            await trx('pdoc_meeting_participants').where('meeting_id', momId).del();
+
+            if (data.participants.length > 0) {
+                const records = data.participants.map((pd_id) => ({
+                    meeting_id: momId,
+                    pd_id,
+                }));
+                await trx('pdoc_meeting_participants').insert(records);
+            }
+        }
+    });
 
     return { affected: 1 };
 }
@@ -119,11 +149,16 @@ export async function updateMoM(projectId, momId, data) {
    DELETE MoM
 -------------------------------------------------------- */
 export async function deleteMoM(projectId, momId) {
-    const affected = await db('proj_moms')
-        .where({ id: momId, project_id: projectId })
-        .del();
+    const mom = await db('pdoc_meeting')
+        .where({ meeting_id: momId, project_id: projectId, meeting_type: 'mom' })
+        .first();
+    if (!mom) throw new AppError('MoM not found', 404);
 
-    if (affected === 0) throw new AppError('MoM not found', 404);
+    await db.transaction(async (trx) => {
+        await trx('pdoc_meeting_participants').where('meeting_id', momId).del();
+        await trx('pdoc_meeting').where('meeting_id', momId).del();
+    });
+
     return { affectedRows: 1 };
 }
 

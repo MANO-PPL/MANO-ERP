@@ -293,19 +293,7 @@ const ProjectDirectory = ({ onBack, setExtraBreadcrumbs, canWrite }) => {
                 ) : (
                         <div className="overflow-x-auto">
                             <table className="w-full text-left text-[13px] border-collapse bg-white dark:bg-[#0d1117] table-fixed min-w-[1200px]">
-                                <colgroup>
-                                    <col className="w-[50px]" />
-                                    <col className="w-[60px]" />
-                                    <col className="w-[220px]" />
-                                    <col className="w-[180px]" />
-                                    <col className="w-[180px]" />
-                                    <col className="w-[160px]" />
-                                    <col className="w-[200px]" />
-                                    <col className="w-[140px]" />
-                                    <col className="w-[200px]" />
-                                    <col className="w-[220px]" />
-                                    <col className="w-[120px]" />
-                                </colgroup>
+                                <colgroup><col className="w-[50px]" /><col className="w-[60px]" /><col className="w-[220px]" /><col className="w-[180px]" /><col className="w-[180px]" /><col className="w-[160px]" /><col className="w-[200px]" /><col className="w-[140px]" /><col className="w-[200px]" /><col className="w-[220px]" /><col className="w-[120px]" /></colgroup>
                                 <thead className="bg-[#f9fafb] dark:bg-[#161b22] text-gray-500 dark:text-gray-400 sticky top-0 z-10 border-b border-gray-200 dark:border-white/5 tracking-wide">
                                     <tr>
                                         <th className="px-3 py-3 text-center"></th>

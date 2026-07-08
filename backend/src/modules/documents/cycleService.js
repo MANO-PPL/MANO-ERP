@@ -1,6 +1,19 @@
 import { db } from '../../config/database.js';
 import AppError from '../../utils/AppError.js';
 
+const CONTENT_TABLES = [
+    { name: 'pdoc_directory', pk: 'pd_id' },
+    { name: 'pdoc_vendors', pk: 'pv_id' },
+    { name: 'pdoc_staff_responsible', pk: 'psrr_id' },
+    { name: 'pdoc_summary', pk: 'id' },
+    {
+        name: 'pdoc_meeting',
+        pk: 'meeting_id',
+        children: [{ name: 'pdoc_meeting_participants', fk: 'meeting_id', pk: 'id' }]
+    }
+];
+
+
 export async function initiateCycle(orgId, instanceId, userId) {
     return await db.transaction(async (trx) => {
         // 1. Fetch instance
@@ -19,7 +32,7 @@ export async function initiateCycle(orgId, instanceId, userId) {
         const role = await trx('wf_document_roles')
             .where({ document_id: instance.document_id, user_id: userId, role: 'editor' })
             .first();
-            
+
         if (!role) {
             throw new AppError('Caller must have editor role for this document', 403);
         }
@@ -39,7 +52,7 @@ export async function initiateCycle(orgId, instanceId, userId) {
             .where({ instance_id: instanceId })
             .max('version_number as max_ver')
             .first();
-            
+
         const nextVersion = (latestCycle && latestCycle.max_ver) ? latestCycle.max_ver + 1 : 1;
 
         // 6. Copy draft content from latest approved version's JSON if it exists
@@ -215,20 +228,20 @@ async function finalizeApproval(trx, cycle, document, userId, comments) {
 
     // 5. Dynamic Publishing based on publishing_config column
     if (document.publishing_config) {
-        const config = typeof document.publishing_config === 'string' 
-            ? JSON.parse(document.publishing_config) 
+        const config = typeof document.publishing_config === 'string'
+            ? JSON.parse(document.publishing_config)
             : document.publishing_config;
-            
-        const draft = cycle.draft_content 
-            ? (typeof cycle.draft_content === 'string' ? JSON.parse(cycle.draft_content) : cycle.draft_content) 
+
+        const draft = cycle.draft_content
+            ? (typeof cycle.draft_content === 'string' ? JSON.parse(cycle.draft_content) : cycle.draft_content)
             : {};
 
         if (config.target_type === 'singleton') {
             const updatePayload = {};
             for (const [draftKey, dbCol] of Object.entries(config.mapping || {})) {
                 if (draft[draftKey] !== undefined) {
-                    updatePayload[dbCol] = typeof draft[draftKey] === 'object' 
-                        ? JSON.stringify(draft[draftKey]) 
+                    updatePayload[dbCol] = typeof draft[draftKey] === 'object'
+                        ? JSON.stringify(draft[draftKey])
                         : draft[draftKey];
                 }
             }
@@ -245,11 +258,11 @@ async function finalizeApproval(trx, cycle, document, userId, comments) {
                 for (const rel of config.relations) {
                     const keySrc = config.key_source || 'project_id';
                     const parentVal = cycle[keySrc];
-                    
+
                     if (rel.type === '1:N' && Array.isArray(draft[rel.source_array])) {
                         // Delete old rows
                         await trx(rel.target_table).where({ [rel.parent_key]: parentVal }).del();
-                        
+
                         // Insert new rows mapped dynamically
                         const recordsToInsert = draft[rel.source_array].map(item => {
                             const record = { [rel.parent_key]: parentVal };
@@ -265,7 +278,7 @@ async function finalizeApproval(trx, cycle, document, userId, comments) {
                         }
                     } else if (rel.type === 'N:M' && Array.isArray(draft[rel.source_array])) {
                         await trx(rel.target_table).where({ [rel.parent_key]: parentVal }).del();
-                        
+
                         const relationRecords = draft[rel.source_array].map(childVal => ({
                             [rel.parent_key]: parentVal,
                             [rel.child_key]: childVal
@@ -281,8 +294,8 @@ async function finalizeApproval(trx, cycle, document, userId, comments) {
             const insertPayload = {};
             for (const [draftKey, dbCol] of Object.entries(config.mapping || {})) {
                 if (draft[draftKey] !== undefined) {
-                    insertPayload[dbCol] = typeof draft[draftKey] === 'object' 
-                        ? JSON.stringify(draft[draftKey]) 
+                    insertPayload[dbCol] = typeof draft[draftKey] === 'object'
+                        ? JSON.stringify(draft[draftKey])
                         : draft[draftKey];
                 } else if (draftKey === 'project_id') {
                     insertPayload[dbCol] = cycle.project_id;
@@ -307,8 +320,8 @@ export async function submitDraft(orgId, cycleId, userId, { changes_summary, com
             .join('wf_document_instances as document_instances', 'approval_cycles.instance_id', 'document_instances.instance_id')
             .where({ 'approval_cycles.cycle_id': cycleId, 'document_instances.org_id': orgId })
             .select(
-                'approval_cycles.*', 
-                'document_instances.is_locked', 
+                'approval_cycles.*',
+                'document_instances.is_locked',
                 'document_instances.project_id',
                 'document_instances.document_id'
             )
@@ -487,7 +500,7 @@ export async function cancelCycle(orgId, cycleId, userId, comments) {
 
         const user = await trx('iam_users').where({ user_id: userId }).first();
         const isAdmin = user && user.user_type === 'admin';
-        
+
         if (cycle.initiated_by !== userId && !isAdmin) {
             throw new AppError('Only the cycle initiator or an admin can cancel this cycle', 403);
         }
@@ -535,7 +548,7 @@ export async function claimRevision(orgId, cycleId, userId) {
         const role = await trx('wf_document_roles')
             .where({ document_id: cycle.document_id, user_id: userId, role: 'editor' })
             .first();
-            
+
         if (!role) {
             throw new AppError('Caller must have editor role for this document to claim', 403);
         }

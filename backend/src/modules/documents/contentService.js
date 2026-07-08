@@ -7,16 +7,12 @@ const CONTENT_TABLES = [
     { name: 'pdoc_staff_responsible', pk: 'psrr_id' },
     { name: 'pdoc_summary', pk: 'id' },
     {
-        name: 'pdoc_mom',
-        pk: 'mom_id',
-        children: [{ name: 'pdoc_mom_participants', fk: 'mom_id', pk: 'pmp_id' }]
-    },
-    {
-        name: 'pdoc_agenda',
-        pk: 'agenda_id',
-        children: [{ name: 'pdoc_agenda_participants', fk: 'agenda_id', pk: 'pap_id' }]
+        name: 'pdoc_meeting',
+        pk: 'meeting_id',
+        children: [{ name: 'pdoc_meeting_participants', fk: 'meeting_id', pk: 'id' }]
     }
 ];
+
 
 // Helper to verify user access
 async function verifyAccess(orgId, instanceId, userId) {

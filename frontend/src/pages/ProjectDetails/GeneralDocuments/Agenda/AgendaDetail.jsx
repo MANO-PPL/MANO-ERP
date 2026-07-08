@@ -536,12 +536,7 @@ const AgendaDetail = ({ onBack, setExtraBreadcrumbs, agendaId: id, canWrite }) =
                         </div>
                         <div className="overflow-x-auto">
                             <table className="w-full text-left text-sm" style={{ tableLayout: 'fixed' }}>
-                                <colgroup>
-                                    <col style={{ width: '60px' }} />
-                                    <col style={{ width: '55%' }} />
-                                    <col style={{ width: '30%' }} />
-                                    <col style={{ width: '80px' }} />
-                                </colgroup>
+                                <colgroup><col style={{ width: '60px' }} /><col style={{ width: '55%' }} /><col style={{ width: '30%' }} /><col style={{ width: '80px' }} /></colgroup>
                                 <thead>
                                     <tr className="border-b border-gray-200 dark:border-white/10 text-gray-500 bg-gray-100 dark:bg-[#12161c]">
                                         <th className="px-5 py-3 text-xs font-medium text-center w-[60px]">Sl No.</th>

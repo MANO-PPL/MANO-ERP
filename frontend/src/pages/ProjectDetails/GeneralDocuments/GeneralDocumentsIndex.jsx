@@ -24,6 +24,8 @@ const GeneralDocumentsIndex = ({ setExtraBreadcrumbs, canWrite }) => {
     }, [searchParams, setSearchParams]);
 
     const handleBack = React.useCallback(() => setCurrentView('grid'), [setCurrentView]);
+    const handleAgendaBack = React.useCallback(() => setCurrentView('agenda-list'), [setCurrentView]);
+    const handleMomBack = React.useCallback(() => setCurrentView('mom-list'), [setCurrentView]);
 
     const navigate = useNavigate();
 
@@ -57,7 +59,7 @@ const GeneralDocumentsIndex = ({ setExtraBreadcrumbs, canWrite }) => {
         }} />;
     }
     if (currentView === 'agenda-detail') {
-        return <AgendaDetail onBack={() => setCurrentView('agenda-list')} setExtraBreadcrumbs={setExtraBreadcrumbs} agendaId={searchParams.get('aid')} canWrite={canWrite} />;
+        return <AgendaDetail onBack={handleAgendaBack} setExtraBreadcrumbs={setExtraBreadcrumbs} agendaId={searchParams.get('aid')} canWrite={canWrite} />;
     }
     if (currentView === 'mom-list') {
         return <MoMList onBack={handleBack} setExtraBreadcrumbs={setExtraBreadcrumbs} canWrite={canWrite} onSelect={(mid) => {
@@ -68,7 +70,7 @@ const GeneralDocumentsIndex = ({ setExtraBreadcrumbs, canWrite }) => {
         }} />;
     }
     if (currentView === 'mom-detail') {
-        return <MoMDetail onBack={() => setCurrentView('mom-list')} setExtraBreadcrumbs={setExtraBreadcrumbs} momId={searchParams.get('mid')} canWrite={canWrite} />;
+        return <MoMDetail onBack={handleMomBack} setExtraBreadcrumbs={setExtraBreadcrumbs} momId={searchParams.get('mid')} canWrite={canWrite} />;
     }
 
     const categories = [

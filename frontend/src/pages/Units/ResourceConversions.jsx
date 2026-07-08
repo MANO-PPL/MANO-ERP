@@ -327,16 +327,7 @@ const ResourceConversions = ({ canWrite }) => {
                     </div>
                 ) : (
                     <table className="w-full text-left text-[13px] border-collapse">
-                        <colgroup>
-                            <col className="w-8" />   {/* expand */}
-                            <col className="w-12" />  {/* ID */}
-                            <col />                   {/* Name */}
-                            <col className="w-28" />  {/* Code */}
-                            <col className="w-24" />  {/* Type */}
-                            <col className="w-32" />  {/* Base unit */}
-                            <col className="w-24" />  {/* Conv count */}
-                            <col className="w-16" />  {/* Add */}
-                        </colgroup>
+                        <colgroup><col className="w-8" /><col className="w-12" /><col /><col className="w-28" /><col className="w-24" /><col className="w-32" /><col className="w-24" /><col className="w-16" /></colgroup>
                         <thead className="bg-[#f9fafb] dark:bg-[#161b22] text-gray-500 dark:text-gray-400 border-b border-gray-100 dark:border-white/5 tracking-widest text-[10px] uppercase font-bold sticky top-0 z-10">
                             <tr>
                                 <th className="px-4 py-3"></th>

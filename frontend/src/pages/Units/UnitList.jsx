@@ -362,15 +362,7 @@ const UnitList = ({ canWrite }) => {
                 ) : (
                     /* Single table — one layout for all groups so columns stay aligned */
                     <table className="w-full text-left text-[13px] border-collapse">
-                        {/* Fixed column widths defined once */}
-                        <colgroup>
-                            <col className="w-14" />   {/* ID */}
-                            <col className="w-28" />   {/* Symbol */}
-                            <col />                    {/* Name — grows */}
-                            <col className="w-28" />   {/* Type */}
-                            <col />                    {/* Conversion — grows */}
-                            <col className="w-24" />   {/* Actions */}
-                        </colgroup>
+                        <colgroup><col className="w-14" /><col className="w-28" /><col /><col className="w-28" /><col /><col className="w-24" /></colgroup>
 
                         <thead className="bg-[#f9fafb] dark:bg-[#161b22] text-gray-500 dark:text-gray-400 border-b border-gray-100 dark:border-white/5 tracking-widest text-[10px] uppercase font-bold sticky top-0 z-10">
                             <tr>

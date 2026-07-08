@@ -4,7 +4,7 @@ import AppError from '../../../utils/AppError.js';
 export async function getProjectSummaries(projectId) {
     if (!projectId) throw new AppError('projectId is required', 400);
 
-    const summaries = await db('proj_summary')
+    const summaries = await db('pdoc_summary')
         .where({ project_id: projectId })
         .orderBy('date', 'desc');
         
@@ -20,7 +20,7 @@ export async function addProjectSummaries(projectId, items) {
         date: item.date || new Date().toISOString().split('T')[0]
     }));
 
-    await db('proj_summary').insert(toInsert);
+    await db('pdoc_summary').insert(toInsert);
     return true;
 }
 
@@ -39,7 +39,7 @@ export async function updateProjectSummaries(projectId, items) {
             // Remove undefined fields
             Object.keys(updateData).forEach(key => updateData[key] === undefined && delete updateData[key]);
 
-            return trx('proj_summary')
+            return trx('pdoc_summary')
                 .where({ id: item.id, project_id: projectId })
                 .update(updateData);
         });
@@ -49,7 +49,7 @@ export async function updateProjectSummaries(projectId, items) {
 }
 
 export async function deleteProjectSummaries(projectId, idsToDelete) {
-    await db('proj_summary')
+    await db('pdoc_summary')
         .where('project_id', projectId)
         .whereIn('id', idsToDelete)
         .del();

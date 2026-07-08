@@ -4,7 +4,7 @@ import AppError from '../../../utils/AppError.js';
 export async function fetchProjectStaff(projectId) {
     if (!projectId) throw new AppError('projectId is required', 400);
 
-    const staff = await db('proj_staff_responsible')
+    const staff = await db('pdoc_staff_responsible')
         .where('project_id', projectId)
         .select('*');
 
@@ -12,7 +12,7 @@ export async function fetchProjectStaff(projectId) {
 }
 
 export async function insertStaff(data) {
-    const [psrr_id] = await db('proj_staff_responsible').insert({
+    const [psrr_id] = await db('pdoc_staff_responsible').insert({
         project_id: data.project_id,
         name: data.name,
         designation: data.designation || null,
@@ -36,7 +36,7 @@ export async function updateStaff(projectId, id, data = {}) {
         throw new AppError('No fields provided to update', 400);
     }
 
-    const affected = await db('proj_staff_responsible')
+    const affected = await db('pdoc_staff_responsible')
         .where({ psrr_id: id, project_id: projectId })
         .update(updateData);
 
@@ -45,7 +45,7 @@ export async function updateStaff(projectId, id, data = {}) {
 }
 
 export async function deleteStaff(projectId, id) {
-    const affected = await db('proj_staff_responsible')
+    const affected = await db('pdoc_staff_responsible')
         .where({ psrr_id: id, project_id: projectId })
         .del();
 
