@@ -51,14 +51,13 @@ export async function getProjectOrgChart(projectId) {
 
     // 3. Fetch Directory (Project Directory + Contacts Join)
     const directory = await db('pdoc_directory as pd')
-        .leftJoin('crm_contacts as c', function () {
-            this.on('pd.vendor_id', 'c.id').andOn('c.type', db.raw("'vendor'"));
-        })
+        .leftJoin('pdoc_vendors as pv', 'pd.pv_id', 'pv.pv_id')
+        .leftJoin('crm_contacts as c', 'pv.vendors_id', 'c.id')
         .leftJoin('crm_job_nature as jn', 'c.job_nature_id', 'jn.job_id')
         .where('pd.project_id', projectId)
         .select([
             'pd.pd_id',
-            'pd.vendor_id',
+            'pv.vendors_id as vendor_id',
             'c.name as company_name',
             'jn.job_name as job_nature',
             'pd.contact_person',
