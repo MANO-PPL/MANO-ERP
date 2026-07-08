@@ -51,7 +51,7 @@ server.listen(PORT, '0.0.0.0', async () => {
     console.log('Booting Python AI Engine...');
     
     const isWin = process.platform === 'win32';
-    const command = isWin ? 'cmd.exe' : 'venv/bin/uvicorn';
+    const command = isWin ? 'cmd.exe' : path.join(pythonDir, 'venv', 'bin', 'uvicorn');
     const args = isWin 
         ? ['/c', 'venv\\Scripts\\uvicorn main:app --port 8000 --reload'] 
         : ['main:app', '--port', '8000', '--reload'];
