@@ -1,6 +1,7 @@
 import express from 'express';
 import cors from 'cors';
 import cookieParser from 'cookie-parser';
+import path from 'path';
 import AppError from './utils/AppError.js';
 import errorHandler from './middleware/errorHandler.js';
 import routes from './modules/index.js';
@@ -35,6 +36,7 @@ app.use(cors({
 // ============================================================
 app.use(cookieParser());
 app.use(express.json());
+app.use('/uploads', express.static(path.join(process.cwd(), 'uploads')));
 
 // ============================================================
 // Health Check Route
