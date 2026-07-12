@@ -18,6 +18,7 @@ const ClientBulkUpload = lazy(() => import('./pages/Clients/ClientBulkUpload'));
 const CollaborationPage = lazy(() => import('./pages/Collaboration/CollaborationPage'));
 const AdminPage = lazy(() => import('./pages/Admin/AdminPage'));
 const Login = lazy(() => import('./pages/Auth/Login'));
+const DrawingTest = lazy(() => import('./pages/DrawingTest/DrawingTest'));
 
 import './index.css';
 
@@ -135,6 +136,13 @@ function App() {
               <ProtectedRoute pageId="clients">
                 <Suspense fallback={<PageSkeleton variant="table" />}>
                   <ClientBulkUpload />
+                </Suspense>
+              </ProtectedRoute>
+            } />
+            <Route path="drawing-test" element={
+              <ProtectedRoute>
+                <Suspense fallback={<PageSkeleton variant="table" />}>
+                  <DrawingTest />
                 </Suspense>
               </ProtectedRoute>
             } />
