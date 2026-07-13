@@ -9,6 +9,7 @@ import momRoutes from './mom/momRoutes.js';
 import orgRoutes from './org/orgRoutes.js';
 import projectInstanceRoutes from './instances/projectInstanceRoutes.js';
 import tasksRoutes from './tasks/tasksRoutes.js';
+import drawingsRoutes from './drawings/drawingsRoutes.js';
 import { authenticateJWT, restrictTo, requireProjectPermission, requireProjectAssignment } from '../../middleware/auth.js';
 
 const router = express.Router();
@@ -55,5 +56,8 @@ router.use('/:id/instances', requireProjectPermission('instances'), projectInsta
 
 // Project Tasks (sub-resource under each project)
 router.use('/:id/tasks', requireProjectPermission('Tasks'), tasksRoutes);
+
+// Project Drawings (sub-resource under each project)
+router.use('/:id/drawings', requireProjectPermission('Drawings'), drawingsRoutes);
 
 export default router;
