@@ -34,7 +34,9 @@ const MoMList = ({ onBack, setExtraBreadcrumbs, onSelect, canWrite }) => {
                         title: m.subject,
                         meeting_no: m.meeting_no,
                         venue: m.venue,
-                        date: m.date
+                        date: m.date,
+                        instance_id: m.instance_id,
+                        instance_status: m.instance_status
                     }));
                     setMoms(mappedMoms);
                 } else {
@@ -53,10 +55,19 @@ const MoMList = ({ onBack, setExtraBreadcrumbs, onSelect, canWrite }) => {
     return (
         <div className="flex-1 flex flex-col bg-[#fafafa] dark:bg-[#0d1117] font-sans text-gray-900 dark:text-gray-700 dark:text-gray-300 transition-colors overflow-hidden">
             {/* Header */}
-            <div className="flex justify-between items-center px-6 py-5 border-b border-gray-200 dark:border-white/10">
-                <div>
-                    <h1 className="text-xl font-bold text-gray-900 dark:text-white tracking-tight">Minutes of Meeting</h1>
-                    <p className="text-xs text-gray-500 mt-1">Recorded minutes of completed meetings.</p>
+            <div className="flex justify-between items-center px-6 py-5 border-b border-gray-200 dark:border-white/10 bg-white dark:bg-[#0d1117] z-20">
+                <div className="flex items-center space-x-4">
+                    <button
+                        onClick={onBack}
+                        className="p-2 -ml-2 bg-gray-100 dark:bg-white/10 hover:bg-gray-200 dark:hover:bg-white/20 text-gray-700 dark:text-gray-300 rounded-lg transition-all active:scale-95 group cursor-pointer"
+                        title="Back to list"
+                    >
+                        <ArrowLeft size={18} className="group-hover:-translate-x-0.5 transition-transform" />
+                    </button>
+                    <div>
+                        <h1 className="text-xl font-bold text-gray-900 dark:text-white tracking-tight">Minutes of Meeting</h1>
+                        <p className="text-xs text-gray-500 mt-1">Recorded minutes of completed meetings.</p>
+                    </div>
                 </div>
                 {canWrite && (
                     <button
@@ -82,8 +93,23 @@ const MoMList = ({ onBack, setExtraBreadcrumbs, onSelect, canWrite }) => {
                             className="group flex flex-col p-6 bg-gray-50 dark:bg-[#161b22] border border-gray-200 dark:border-white/10 hover:border-blue-500/50 rounded-xl cursor-pointer transition-all duration-300 shadow-sm hover:shadow-lg hover:shadow-blue-900/10 min-h-[160px]"
                         >
                             <div className="flex items-start justify-between">
-                                <div className="p-3 bg-gray-100 dark:bg-gray-800/50 group-hover:bg-blue-500/20 group-hover:text-blue-400 rounded-lg text-gray-600 dark:text-gray-400 transition-colors">
-                                    <FileText size={24} />
+                                <div className="flex items-center space-x-3">
+                                    <div className="p-3 bg-gray-100 dark:bg-gray-800/50 group-hover:bg-blue-500/20 group-hover:text-blue-400 rounded-lg text-gray-600 dark:text-gray-400 transition-colors">
+                                        <FileText size={24} />
+                                    </div>
+                                    {mom.instance_status && (
+                                        <span className={`px-2 py-0.5 text-[9px] font-bold rounded border ${
+                                            mom.instance_status === 'approved' ? 'bg-emerald-500/10 text-emerald-500 border-emerald-500/20' :
+                                            mom.instance_status === 'in_review' ? 'bg-blue-500/10 text-blue-500 border-blue-500/20' :
+                                            mom.instance_status === 'rejected' ? 'bg-rose-500/10 text-rose-500 border-rose-500/20' :
+                                            mom.instance_status === 'cancelled' ? 'bg-gray-500/10 text-gray-500 border-gray-500/20' :
+                                            'bg-amber-500/10 text-amber-500 border-amber-500/20' // drafting
+                                        }`}>
+                                            {mom.instance_status === 'drafting' ? 'DRAFT' :
+                                             mom.instance_status === 'in_review' ? 'UNDER REVIEW' :
+                                             mom.instance_status.toUpperCase()}
+                                        </span>
+                                    )}
                                 </div>
                                 <div className="flex items-center space-x-2">
                                     <div className="flex items-center space-x-2 text-xs bg-gray-50 dark:bg-gray-800/30 px-2 py-1.5 rounded-md border border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-500 dark:text-gray-400 group-hover:text-gray-900 dark:group-hover:text-gray-800 dark:text-gray-200 transition-colors">

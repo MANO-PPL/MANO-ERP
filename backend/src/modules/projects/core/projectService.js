@@ -59,7 +59,7 @@ export async function getProjects(orgId, userId, userType) {
         return await db('proj_projects as p')
             .leftJoin('proj_members as pu', 'p.id', 'pu.project_id')
             .where('p.org_id', orgId)
-            .andWhereExists(
+            .whereExists(
                 db.select('*')
                     .from('proj_members as pm')
                     .whereRaw('pm.project_id = p.id')

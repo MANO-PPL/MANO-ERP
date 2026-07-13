@@ -129,10 +129,12 @@ export async function getUserProfile(userId) {
 
     return {
         id: user.user_id,
+        user_id: user.user_id,
         user_code: user.user_code,
         user_name: user.user_name,
         email: user.email,
         phone_no: user.phone_no,
+        org_id: user.org_id,
         user_type: user.user_type,
         profile_image_url: user.profile_image_url,
         dept_name: user.dept_name,

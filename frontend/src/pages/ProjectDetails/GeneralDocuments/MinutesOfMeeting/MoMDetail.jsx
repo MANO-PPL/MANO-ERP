@@ -1,9 +1,12 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import { useParams, useNavigate } from 'react-router-dom';
-import { X, Plus, Trash2, ChevronRight, Pencil, Save, ArrowLeft, Search, ChevronDown } from 'lucide-react';
+import { X, Plus, Trash2, ChevronRight, Pencil, Save, ArrowLeft, Search, ChevronDown, Info, Clock, Play, Shield, Loader2 } from 'lucide-react';
 import { motion, Reorder, AnimatePresence } from 'framer-motion';
 import { generalDocsApi } from '../../../../services/generalDocsApi';
+import WorkflowPanel from '../../../../components/WorkflowPanel';
+import { workflowApi } from '../../../../services/workflowApi';
+import { toast } from 'react-toastify';
 
 // --- Vendor Selector Dropdown ---
 const VendorSelector = ({ value, onChange, globalVendors }) => {
@@ -33,13 +36,13 @@ const VendorSelector = ({ value, onChange, globalVendors }) => {
     );
 
     return (
-        <div ref={ref} className="relative min-w-[160px]">
+        <div ref={ref} className="relative w-full">
             <button
                 type="button"
                 onClick={handleToggle}
                 className="flex items-center justify-between w-full px-2 py-1 bg-transparent border border-blue-500/40 hover:border-blue-500 rounded text-xs outline-none dark:text-white transition-all min-h-[26px] gap-2"
             >
-                <span className="truncate max-w-[160px] text-left">{value || <span className="text-gray-400">Select vendor…</span>}</span>
+                <span className="truncate text-left flex-1">{value || <span className="text-gray-400">Select vendor…</span>}</span>
                 <ChevronDown size={12} className={`shrink-0 text-gray-400 transition-transform ${open ? 'rotate-180' : ''}`} />
             </button>
 
@@ -69,9 +72,9 @@ const VendorSelector = ({ value, onChange, globalVendors }) => {
                         </div>
                     </div>
                     <div className="overflow-y-auto custom-scrollbar flex-1">
-                        {filtered.length > 0 ? filtered.map(v => (
+                        {filtered.length > 0 ? filtered.map((v, idx) => (
                             <button
-                                key={v.id}
+                                key={v.id ?? v.vendor_id ?? v._id ?? v.company_name ?? idx}
                                 type="button"
                                 onClick={() => { onChange(v); setOpen(false); setSearch(''); }}
                                 className="w-full px-3 py-2.5 flex flex-col items-start hover:bg-blue-50 dark:hover:bg-blue-900/20 border-b border-gray-50 dark:border-white/5 text-left group transition-colors"
@@ -226,6 +229,8 @@ const ResizableTextarea = ({ value, onChange, placeholder = "", className = "" }
 
 const MoMDetail = ({ onBack, setExtraBreadcrumbs, momId: id, canWrite }) => {
     const { id: projectId } = useParams();
+    const [workflowState, setWorkflowState] = useState({ mode: 'read', cycleId: null, instanceId: null });
+    const [template, setTemplate] = useState(null);
     const [isEditing, setIsEditing] = useState(id === 'new' && canWrite);
 
     // Form State
@@ -237,8 +242,86 @@ const MoMDetail = ({ onBack, setExtraBreadcrumbs, momId: id, canWrite }) => {
     });
 
     const [participants, setParticipants] = useState([]);
+    const [originalParticipants, setOriginalParticipants] = useState([]);
     const [points, setPoints] = useState([]);
     const [directoryContacts, setDirectoryContacts] = useState([]);
+    const isEditable = canWrite && (workflowState.notConfigured || !workflowState.instanceId ? isEditing : (workflowState.mode === 'edit' && workflowState.cycleId));
+
+    const [isInfoOpen, setIsInfoOpen] = useState(false);
+    const [auditTrail, setAuditTrail] = useState([]);
+
+    const fetchLogs = async () => {
+        if (!workflowState.instanceId) return;
+        try {
+            const res = await workflowApi.getInstanceLogs(workflowState.instanceId);
+            if (res.success && res.logs) {
+                const mappedLogs = res.logs.map(log => {
+                    let actionText = log.action;
+                    let logType = 'update';
+                    
+                    if (log.action === 'cycle_initiated') {
+                        actionText = `Revision cycle V${log.version_number} started`;
+                        logType = 'create';
+                    } else if (log.action === 'submitted') {
+                        actionText = `Submitted for Level ${log.level_order} Approval`;
+                        logType = 'update';
+                    } else if (log.action === 'revision_requested') {
+                        actionText = `Revision requested at Level ${log.level_order}`;
+                        logType = 'cancel';
+                    } else if (log.action === 'approved') {
+                        actionText = `Approved and sealed V${log.version_number}`;
+                        logType = 'create';
+                    } else if (log.action === 'rejected') {
+                        actionText = `Rejected at Level ${log.level_order}`;
+                        logType = 'cancel';
+                    } else if (log.action === 'cycle_cancelled') {
+                        actionText = `Cycle cancelled`;
+                        logType = 'cancel';
+                    } else if (log.action === 'draft_saved') {
+                        actionText = `Draft content auto-saved`;
+                        logType = 'update';
+                    }
+
+                    if (log.comments) {
+                        actionText += ` (${log.comments})`;
+                    }
+
+                    return {
+                        id: log.log_id,
+                        action: actionText,
+                        user: log.acted_by_name || 'System User',
+                        timestamp: new Date(log.acted_at).toLocaleString(),
+                        type: logType
+                    };
+                });
+                setAuditTrail(mappedLogs);
+            }
+        } catch (err) {
+            console.error("Failed to fetch logs:", err);
+        }
+    };
+
+    useEffect(() => {
+        if (isInfoOpen && workflowState.instanceId) {
+            fetchLogs();
+        }
+    }, [isInfoOpen, workflowState.instanceId]);
+
+    // Load templates on load to check if workflow is configured
+    useEffect(() => {
+        const fetchTemplate = async () => {
+            try {
+                const res = await workflowApi.getTemplates(projectId);
+                if (res.success && res.templates) {
+                    const found = res.templates.find(t => t.name === 'Minutes of Meeting');
+                    setTemplate(found || null);
+                }
+            } catch (err) {
+                console.error("Failed to load templates:", err);
+            }
+        };
+        fetchTemplate();
+    }, [projectId]);
 
     // Live Load Data
     useEffect(() => {
@@ -253,6 +336,11 @@ const MoMDetail = ({ onBack, setExtraBreadcrumbs, momId: id, canWrite }) => {
                         venue: mom.venue || '',
                         date: mom.date ? mom.date.split('T')[0] : ''
                     });
+                    
+                    // If it is mapped to a workflow instance, set it
+                    if (mom.instance_id) {
+                        setWorkflowState(prev => ({ ...prev, instanceId: mom.instance_id }));
+                    }
 
                     let loadedParticipants = [];
                     let loadedPoints = [];
@@ -302,8 +390,10 @@ const MoMDetail = ({ onBack, setExtraBreadcrumbs, momId: id, canWrite }) => {
 
                     if (loadedParticipants.length > 0) {
                         setParticipants(loadedParticipants);
+                        setOriginalParticipants(loadedParticipants);
                     } else if (id !== 'new') {
                         setParticipants([]); // ensure empty array instead of random old state
+                        setOriginalParticipants([]);
                     }
                 } catch (err) {
                     console.error("Failed to load MoM", err);
@@ -319,9 +409,112 @@ const MoMDetail = ({ onBack, setExtraBreadcrumbs, momId: id, canWrite }) => {
             }
         };
         loadMoM();
-        // Load project directory for participant selection
+        // Load project directory concurrently so it is ready before workflow content enrichment
         generalDocsApi.getDirectory(projectId).then(d => { if (d?.directory) setDirectoryContacts(d.directory); }).catch(() => {});
     }, [id, projectId]);
+
+    // Re-enrich participants if directoryContacts loaded after loadWorkflowContent already ran
+    useEffect(() => {
+        if (directoryContacts.length === 0) return;
+        setParticipants(prev => prev.map(p => {
+            if (!p.pd_id) return p;
+            if (p.organization && p.responsibility && p.representatives) return p; // already enriched
+            const dir = directoryContacts.find(d => d.pd_id === p.pd_id || d.id === p.pd_id);
+            if (!dir) return p;
+            return {
+                ...p,
+                organization: p.organization || dir.company_name || '',
+                responsibility: p.responsibility || dir.job_nature || '',
+                representatives: p.representatives || dir.contact_person || ''
+            };
+        }));
+    }, [directoryContacts]);
+
+    // Load Approved/Draft workflow content
+    const loadWorkflowContent = async () => {
+        if (!workflowState.instanceId || workflowState.notConfigured) return;
+        try {
+            if (workflowState.cycleId) {
+                try {
+                    const res = await workflowApi.getDraftContent(workflowState.instanceId);
+                    const meeting = res.content_tables?.pdoc_meeting?.[0];
+                    if (meeting) {
+                        setDetails({
+                            subject: meeting.subject || '',
+                            meetingNo: meeting.meeting_no || '',
+                            venue: meeting.venue || '',
+                            date: meeting.date ? meeting.date.split('T')[0] : ''
+                        });
+                        const parsed = meeting.content ? (typeof meeting.content === 'string' ? JSON.parse(meeting.content) : meeting.content) : [];
+                        setPoints(parsed.map((p, i) => ({
+                            id: p.id || `wf-pt-${i}-${p.no || i}`,
+                            slNo: p.no || '',
+                            description: p.description || '',
+                            status: p.status || '',
+                            targetDate: p.targetDate ? p.targetDate.split('T')[0] : '',
+                            actionBy: p.actionBy || ''
+                        })));
+                        const pList = (meeting.pdoc_meeting_participants || []).map((p, i) => {
+                            const dir = p.pd_id ? directoryContacts.find(d => d.pd_id === p.pd_id || d.id === p.pd_id) : null;
+                            return {
+                                id: p.id || p.pmp_id || `wf-p-${i}`,
+                                pd_id: p.pd_id,
+                                organization: p.company_name || p.organization || dir?.company_name || '',
+                                responsibility: p.responsibilities || p.responsibility || dir?.job_nature || '',
+                                representatives: p.contact_person || p.representatives || dir?.contact_person || ''
+                            };
+                        });
+                        setParticipants(pList);
+                        setOriginalParticipants(pList);
+                    }
+                } catch (err) {
+                    console.error("Failed to load draft content", err);
+                }
+            } else {
+                try {
+                    const res = await workflowApi.getApprovedContent(workflowState.instanceId);
+                    const meeting = res.content?.pdoc_meeting?.[0];
+                    if (meeting) {
+                        setDetails({
+                            subject: meeting.subject || '',
+                            meetingNo: meeting.meeting_no || '',
+                            venue: meeting.venue || '',
+                            date: meeting.date ? meeting.date.split('T')[0] : ''
+                        });
+                        const parsed = meeting.content ? (typeof meeting.content === 'string' ? JSON.parse(meeting.content) : meeting.content) : [];
+                        setPoints(parsed.map((p, i) => ({
+                            id: p.id || `wf-pt-${i}-${p.no || i}`,
+                            slNo: p.no || '',
+                            description: p.description || '',
+                            status: p.status || '',
+                            targetDate: p.targetDate ? p.targetDate.split('T')[0] : '',
+                            actionBy: p.actionBy || ''
+                        })));
+                        const pList = (meeting.pdoc_meeting_participants || []).map((p, i) => {
+                            const dir = p.pd_id ? directoryContacts.find(d => d.pd_id === p.pd_id || d.id === p.pd_id) : null;
+                            return {
+                                id: p.id || p.pmp_id || `wf-p-${i}`,
+                                pd_id: p.pd_id,
+                                organization: p.company_name || p.organization || dir?.company_name || '',
+                                responsibility: p.responsibilities || p.responsibility || dir?.job_nature || '',
+                                representatives: p.contact_person || p.representatives || dir?.contact_person || ''
+                            };
+                        });
+                        setParticipants(pList);
+                        setOriginalParticipants(pList);
+                    }
+                } catch (err) {
+                    console.error("Failed to load approved content", err);
+                }
+            }
+        } catch (err) {
+            console.error("Workflow loader error", err);
+        }
+    };
+
+    useEffect(() => {
+        loadWorkflowContent();
+    }, [workflowState.cycleId, workflowState.instanceId]);
 
     useEffect(() => {
         setExtraBreadcrumbs([
@@ -330,6 +523,64 @@ const MoMDetail = ({ onBack, setExtraBreadcrumbs, momId: id, canWrite }) => {
             { label: id === 'new' ? 'New MoM' : details.subject || 'Edit MoM' }
         ]);
     }, [onBack, setExtraBreadcrumbs, id, details.subject, isEditing]);
+
+    const handleInitializeWorkflow = async () => {
+        try {
+            if (!template) return;
+            toast.info('Initializing workflow...');
+
+            // Use the global template directly — no per-instance template copy
+            const targetDocId = template.document_id;
+
+            // Create instance & start cycle
+            const instRes = await workflowApi.createInstance(projectId, {
+                document_id: targetDocId,
+                title: details.subject || 'New MOM'
+            });
+            if (instRes.success) {
+                const cycleRes = await workflowApi.initiateCycle(instRes.instance_id);
+                if (cycleRes.success) {
+                    // Update database with instance_id and cycle_id
+                    await generalDocsApi.updateMom(projectId, id, {
+                        instance_id: instRes.instance_id,
+                        cycle_id: cycleRes.cycle_id
+                    });
+
+                    // Save initial content payload to draft
+                    const payload = {
+                        subject: details.subject || 'Untitled',
+                        meeting_no: details.meetingNo || '-',
+                        venue: details.venue || '-',
+                        date: details.date || new Date().toISOString().split('T')[0],
+                        participants: participants.filter(p => p.pd_id).map(p => p.pd_id),
+                        content: points.map(pt => ({
+                            no: pt.slNo,
+                            description: pt.description || '',
+                            status: pt.status || '',
+                            targetDate: pt.targetDate || '',
+                            actionBy: pt.actionBy || ''
+                        }))
+                    };
+                    await workflowApi.updateMomDraft(cycleRes.cycle_id, payload);
+                    await Promise.all(participants.filter(p => p.pd_id).map(p =>
+                        workflowApi.addMomParticipantDraft(cycleRes.cycle_id, p.pd_id)
+                    ));
+
+                    toast.success('Workflow enabled and draft cycle started!');
+                    setWorkflowState(prev => ({
+                        ...prev,
+                        instanceId: instRes.instance_id,
+                        cycleId: cycleRes.cycle_id,
+                        mode: 'edit'
+                    }));
+                    loadWorkflowContent();
+                }
+            }
+        } catch (err) {
+            console.error("Failed to enable workflow:", err);
+            toast.error("Failed to enable workflow approval");
+        }
+    };
 
     const handleSave = async () => {
         try {
@@ -348,15 +599,89 @@ const MoMDetail = ({ onBack, setExtraBreadcrumbs, momId: id, canWrite }) => {
                 }))
             };
 
-            if (id === 'new') {
-                await generalDocsApi.createMom(projectId, payload);
-                onBack();
+            // If Workflow is configured
+            if (template && !workflowState.notConfigured) {
+                if (id === 'new' || !workflowState.instanceId) {
+                    // Use the global template directly — no per-instance template copy
+                    const targetDocId = template.document_id;
+
+                    // Create instance & start cycle
+                    const instRes = await workflowApi.createInstance(projectId, {
+                        document_id: targetDocId,
+                        title: details.subject || 'New MOM'
+                    });
+                    if (instRes.success) {
+                        const cycleRes = await workflowApi.initiateCycle(instRes.instance_id);
+                        if (cycleRes.success) {
+                            await workflowApi.updateMomDraft(cycleRes.cycle_id, payload);
+                            await Promise.all(participants.filter(p => p.pd_id).map(p =>
+                                workflowApi.addMomParticipantDraft(cycleRes.cycle_id, p.pd_id)
+                            ));
+
+                            if (id !== 'new') {
+                                await generalDocsApi.updateMom(projectId, id, {
+                                    instance_id: instRes.instance_id,
+                                    cycle_id: cycleRes.cycle_id
+                                });
+                                toast.success('MOM workflow initialized successfully');
+                                setWorkflowState(prev => ({
+                                    ...prev,
+                                    instanceId: instRes.instance_id,
+                                    cycleId: cycleRes.cycle_id,
+                                    mode: 'edit'
+                                }));
+                                setIsEditing(false);
+                                loadWorkflowContent();
+                            } else {
+                                toast.success('MOM draft submitted successfully');
+                                onBack();
+                            }
+                        }
+                    }
+                } else {
+                    // Update existing draft cycle — resolve cycleId if somehow missing from state
+                    let activeCycleId = workflowState.cycleId;
+                    if (!activeCycleId && workflowState.instanceId) {
+                        console.warn('[SaveDraft] cycleId missing from state, fetching from instance...');
+                        const instRes = await workflowApi.getInstance(workflowState.instanceId);
+                        activeCycleId = instRes?.instance?.current_cycle?.cycle_id || null;
+                    }
+
+                    if (!activeCycleId) {
+                        toast.error('No active draft cycle found. Please refresh the page.');
+                        return;
+                    }
+
+                    // Update existing draft cycle
+                    await workflowApi.updateMomDraft(activeCycleId, payload);
+
+                    // Diff participants
+                    const origIds = originalParticipants.map(p => p.pd_id).filter(Boolean);
+                    const newIds = participants.map(p => p.pd_id).filter(Boolean);
+
+                    const added = participants.filter(p => p.pd_id && !origIds.includes(p.pd_id));
+                    await Promise.all(added.map(p => workflowApi.addMomParticipantDraft(activeCycleId, p.pd_id)));
+
+                    const removed = originalParticipants.filter(p => p.pd_id && !newIds.includes(p.pd_id));
+                    await Promise.all(removed.map(p =>
+                        workflowApi.removeMomParticipantDraft(activeCycleId, p.id)
+                    ));
+
+                    toast.success('MOM draft saved');
+                    loadWorkflowContent();
+                }
             } else {
-                await generalDocsApi.updateMom(projectId, id, payload);
-                setIsEditing(false);
+                // Normal fallback
+                if (id === 'new') {
+                    await generalDocsApi.createMom(projectId, payload);
+                    onBack();
+                } else {
+                    await generalDocsApi.updateMom(projectId, id, payload);
+                    setIsEditing(false);
+                }
             }
         } catch (err) {
-            alert('Failed to save MoM. Please check console for details.');
+            toast.error('Failed to save MoM');
             console.error(err);
         }
     };
@@ -437,24 +762,47 @@ const MoMDetail = ({ onBack, setExtraBreadcrumbs, momId: id, canWrite }) => {
                     <span>{isEditing && id !== 'new' ? 'Cancel' : 'Back'}</span>
                 </button>
                 <div className="flex items-center space-x-3">
-                    {!isEditing ? (
-                        canWrite && (
+                    {workflowState.instanceId && (
+                        <button
+                            onClick={() => setIsInfoOpen(true)}
+                            className="flex items-center space-x-2 bg-gray-100 hover:bg-gray-200 dark:bg-white/10 dark:hover:bg-white/20 text-gray-700 dark:text-gray-300 px-3 py-1.5 rounded-md font-medium text-sm transition-colors"
+                            title="View Audit Trail"
+                        >
+                            <Info size={16} />
+                            <span>Audit Trail</span>
+                        </button>
+                    )}
+
+                    {(!workflowState.instanceId || workflowState.notConfigured) ? (
+                        !isEditing ? (
+                            canWrite && (
+                                <button
+                                    onClick={() => setIsEditing(true)}
+                                    className="flex items-center space-x-2 bg-blue-600 hover:bg-blue-500 text-white px-4 py-1.5 rounded-md font-medium text-sm transition-colors shadow-sm"
+                                >
+                                    <Pencil size={16} />
+                                    <span>Edit MOM</span>
+                                </button>
+                            )
+                        ) : (
                             <button
-                                onClick={() => setIsEditing(true)}
-                                className="flex items-center space-x-2 bg-blue-600 hover:bg-blue-500 text-white px-4 py-1.5 rounded-md font-medium text-sm transition-colors shadow-sm"
+                                onClick={handleSave}
+                                className="flex items-center space-x-2 bg-green-600 hover:bg-green-500 text-white px-4 py-1.5 rounded-md font-medium text-sm transition-colors shadow-sm"
                             >
-                                <Pencil size={16} />
-                                <span>Edit MOM</span>
+                                <Save size={16} />
+                                <span>{id === 'new' ? 'Save MOM' : 'Save Changes'}</span>
                             </button>
                         )
                     ) : (
-                        <button
-                            onClick={handleSave}
-                            className="flex items-center space-x-2 bg-green-600 hover:bg-green-500 text-white px-4 py-1.5 rounded-md font-medium text-sm transition-colors shadow-sm"
-                        >
-                            <Save size={16} />
-                            <span>{id === 'new' ? 'Save MOM' : 'Save Changes'}</span>
-                        </button>
+                        workflowState.mode === 'edit' && (
+                            <button
+                                onClick={handleSave}
+                                className="flex items-center space-x-2 bg-green-600 hover:bg-green-500 text-white px-4 py-1.5 rounded-md font-medium text-sm transition-colors shadow-sm"
+                            >
+                                <Save size={16} />
+                                <span>Save Draft</span>
+                            </button>
+                        )
                     )}
                 </div>
             </div>
@@ -462,321 +810,441 @@ const MoMDetail = ({ onBack, setExtraBreadcrumbs, momId: id, canWrite }) => {
             <div className="flex-1 overflow-y-auto p-6 md:p-8 custom-scrollbar">
                 <div className="w-full space-y-6">
 
-                    {/* Section 1: Edit Details */}
-                    <div className="bg-gray-50 dark:bg-[#161b22] border border-gray-200 dark:border-white/10 rounded-lg overflow-hidden flex flex-col shadow-sm">
-                        <div className="px-5 py-3 border-b border-gray-200 dark:border-white/10">
-                            <h2 className="text-gray-900 dark:text-white font-bold text-[15px]">{isEditing ? 'Edit Details' : 'Meeting Details'}</h2>
+                    {id !== 'new' && !workflowState.instanceId && template && !workflowState.notConfigured && (
+                        <div className="mb-6 p-5 bg-gradient-to-r from-blue-500/10 via-indigo-500/10 to-purple-500/10 border border-blue-500/20 rounded-2xl flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
+                            <div className="flex items-center gap-3">
+                                <div className="w-10 h-10 rounded-xl bg-blue-500/20 flex items-center justify-center shrink-0">
+                                    <Shield size={20} className="text-blue-500" />
+                                </div>
+                                <div>
+                                    <h3 className="text-sm font-bold text-gray-900 dark:text-white uppercase tracking-tight">Approval Workflow Configured</h3>
+                                    <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">This document has a workflow setup ready, but approval tracking is not yet active for this item.</p>
+                                </div>
+                            </div>
+                            <button
+                                onClick={handleInitializeWorkflow}
+                                className="flex items-center gap-1.5 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-xs font-bold transition-all shadow-md shadow-blue-500/20 active:scale-95 cursor-pointer shrink-0"
+                            >
+                                <Play size={12} /> Enable Approval Workflow
+                            </button>
                         </div>
-                        <div className="p-5 grid grid-cols-1 md:grid-cols-2 gap-x-8 gap-y-4">
-                            {/* Subject */}
-                            <div className="flex flex-col space-y-1.5">
-                                <label className="text-xs text-gray-500 font-medium tracking-wide">Subject</label>
-                                <div className={`border rounded-md p-1 transition-all ${isEditing ? 'bg-white dark:bg-[#1c222b] border-gray-200 dark:border-gray-700/50 focus-within:border-blue-500/50 focus-within:ring-1 focus-within:ring-blue-500/20' : 'border-transparent'}`}>
-                                    {isEditing ? (
-                                        <input
-                                            type="text"
-                                            className="w-full bg-transparent border-none outline-none text-gray-900 dark:text-white px-2 py-1 text-sm placeholder-gray-400 dark:placeholder-gray-600"
-                                            value={details.subject}
-                                            onChange={(e) => setDetails({ ...details, subject: e.target.value })}
-                                            placeholder="Enter subject..."
-                                        />
-                                    ) : (
-                                        <div className="text-gray-900 dark:text-white px-2 py-1 text-sm font-semibold">{details.subject || '-'}</div>
-                                    )}
-                                </div>
-                            </div>
-                            {/* Meeting No */}
-                            <div className="flex flex-col space-y-1.5">
-                                <label className="text-xs text-gray-500 font-medium tracking-wide">Meeting No</label>
-                                <div className={`border rounded-md p-1 transition-all ${isEditing ? 'bg-white dark:bg-[#1c222b] border-gray-200 dark:border-gray-700/50 focus-within:border-blue-500/50 focus-within:ring-1 focus-within:ring-blue-500/20' : 'border-transparent'}`}>
-                                    {isEditing ? (
-                                        <input
-                                            type="text"
-                                            className="w-full bg-transparent border-none outline-none text-gray-900 dark:text-white px-2 py-1 text-sm placeholder-gray-400 dark:placeholder-gray-600"
-                                            value={details.meetingNo}
-                                            onChange={(e) => setDetails({ ...details, meetingNo: e.target.value })}
-                                        />
-                                    ) : (
-                                        <div className="text-gray-900 dark:text-white px-2 py-1 text-sm">{details.meetingNo || '-'}</div>
-                                    )}
-                                </div>
-                            </div>
-                            {/* Venue */}
-                            <div className="flex flex-col space-y-1.5">
-                                <label className="text-xs text-gray-500 font-medium tracking-wide">Venue</label>
-                                <div className={`border rounded-md p-1 transition-all ${isEditing ? 'bg-white dark:bg-[#1c222b] border-gray-200 dark:border-gray-700/50 focus-within:border-blue-500/50 focus-within:ring-1 focus-within:ring-blue-500/20' : 'border-transparent'}`}>
-                                    {isEditing ? (
-                                        <input
-                                            type="text"
-                                            className="w-full bg-transparent border-none outline-none text-gray-900 dark:text-white px-2 py-1 text-sm placeholder-gray-400 dark:placeholder-gray-600"
-                                            value={details.venue}
-                                            onChange={(e) => setDetails({ ...details, venue: e.target.value })}
-                                        />
-                                    ) : (
-                                        <div className="text-gray-900 dark:text-white px-2 py-1 text-sm">{details.venue || '-'}</div>
-                                    )}
-                                </div>
-                            </div>
-                            {/* Date */}
-                            <div className="flex flex-col space-y-1.5">
-                                <label className="text-xs text-gray-500 font-medium tracking-wide">Date</label>
-                                <div className={`border rounded-md p-1 transition-all ${isEditing ? 'bg-white dark:bg-[#1c222b] border-gray-200 dark:border-gray-700/50 focus-within:border-blue-500/50 focus-within:ring-1 focus-within:ring-blue-500/20 pr-2' : 'border-transparent'}`}>
-                                    {isEditing ? (
-                                        <input
-                                            type="date"
-                                            className="w-full bg-transparent border-none outline-none text-gray-900 dark:text-white px-2 py-1 text-sm placeholder-gray-400 dark:placeholder-gray-600"
-                                            value={details.date}
-                                            onChange={(e) => setDetails({ ...details, date: e.target.value })}
-                                        />
-                                    ) : (
-                                        <div className="text-gray-900 dark:text-white px-2 py-1 text-sm">{details.date ? new Date(details.date).toLocaleDateString() : '-'}</div>
-                                    )}
-                                </div>
-                            </div>
-                        </div>
-                    </div>
+                    )}
 
-                    {/* Section 2: Participants */}
-                    <div className="bg-gray-50 dark:bg-[#161b22] border border-gray-200 dark:border-white/10 rounded-lg flex flex-col shadow-sm">
-                        <div className="px-5 py-3 border-b border-gray-200 dark:border-white/10 flex justify-between items-center bg-gray-50 dark:bg-[#161b22] rounded-t-lg">
-                            <h2 className="text-gray-900 dark:text-white font-bold text-[15px]">Participants</h2>
-                            {isEditing && (
-                                <button
-                                    onClick={addParticipant}
-                                    className="flex items-center space-x-1 bg-blue-600 hover:bg-blue-500 text-white px-2 py-1 rounded-md text-xs font-medium transition-colors"
-                                >
-                                    <Plus size={14} />
-                                    <span>Add Participant</span>
-                                </button>
-                            )}
-                        </div>
-                        <div className="overflow-x-auto">
-                            <table className="w-full text-left text-sm table-fixed whitespace-nowrap">
-                                <thead>
-                                    <tr className="border-b border-gray-200 dark:border-white/10 text-gray-500 bg-gray-100 dark:bg-[#12161c]">
-                                        <th className="px-5 py-2 w-1/3 text-xs font-medium hidden sm:table-cell">Organization</th>
-                                        <th className="px-5 py-2 w-1/3 text-xs font-medium hidden sm:table-cell">Responsibility</th>
-                                        <th className="px-5 py-2 w-1/3 text-xs font-medium">Representatives</th>
-                                        <th className="px-2 py-2 w-10"></th>
-                                    </tr>
-                                </thead>
-                                <tbody>
-                                    <AnimatePresence>
-                                        {participants.map((p) => (
-                                            <motion.tr
-                                                key={p.id}
-                                                initial={{ opacity: 0, height: 0 }}
-                                                animate={{ opacity: 1, height: 'auto' }}
-                                                exit={{ opacity: 0, height: 0 }}
-                                                className="border-b border-gray-200 dark:border-white/10/50 group/row hover:bg-gray-800/10"
-                                            >
-                                                <td className="px-5 py-2">
-                                                    {isEditing ? (
-                                                        <VendorSelector
-                                                            value={p.organization}
-                                                            onChange={(v) => handleParticipantSelect(p.id, v)}
-                                                            globalVendors={directoryContacts}
-                                                        />
-                                                    ) : (
-                                                        <div className="font-medium text-gray-700 dark:text-gray-300 py-1">{p.organization || '-'}</div>
-                                                    )}
-                                                </td>
-                                                <td className="px-5 py-2 hidden sm:table-cell text-gray-600 dark:text-gray-400">
-                                                    {isEditing ? (
-                                                        <ResizableInput
-                                                            value={p.responsibility}
-                                                            onChange={(e) => updateParticipant(p.id, 'responsibility', e.target.value)}
-                                                            className="text-gray-600 dark:text-gray-400 w-full"
-                                                            minW="100%"
-                                                        />
-                                                    ) : (
-                                                        <div className="py-1">{p.responsibility || '-'}</div>
-                                                    )}
-                                                </td>
-                                                <td className="px-5 py-2 text-gray-600 dark:text-gray-400">
-                                                    {isEditing ? (
-                                                        <ResizableInput
-                                                            value={p.representatives}
-                                                            onChange={(e) => updateParticipant(p.id, 'representatives', e.target.value)}
-                                                            className="text-gray-600 dark:text-gray-400 w-full"
-                                                            minW="100%"
-                                                        />
-                                                    ) : (
-                                                        <div className="py-1">{p.representatives || '-'}</div>
-                                                    )}
-                                                </td>
-                                                <td className="px-2 py-2 text-right">
-                                                    {isEditing && (
-                                                        <button
-                                                            onClick={() => removeParticipant(p.id)}
-                                                            className="text-red-500/70 hover:text-red-500 p-1 opacity-0 group-hover/row:opacity-100 transition-all rounded hover:bg-red-500/10"
-                                                        >
-                                                            <X size={15} />
-                                                        </button>
-                                                    )}
-                                                </td>
-                                            </motion.tr>
-                                        ))}
-                                    </AnimatePresence>
-                                </tbody>
-                            </table>
-                        </div>
-                    </div>
+                    {id !== 'new' && (
+                        <WorkflowPanel
+                            projectId={projectId}
+                            templateName="Minutes of Meeting"
+                            instanceId={workflowState.instanceId}
+                            onStateChange={setWorkflowState}
+                            onRefreshContent={loadWorkflowContent}
+                        />
+                    )}
 
-                    {/* Section 3: Points */}
-                    <div className="bg-gray-50 dark:bg-[#161b22] border border-gray-200 dark:border-white/10 rounded-lg flex flex-col shadow-sm">
-                        <div className="px-5 py-3 border-b border-gray-200 dark:border-white/10 flex justify-between items-center bg-gray-50 dark:bg-[#161b22] rounded-t-lg">
-                            <h2 className="text-gray-900 dark:text-white font-bold text-[15px]">Points</h2>
-                            {isEditing && (
-                                <button
-                                    onClick={addPoint}
-                                    className="flex items-center space-x-1 bg-blue-600 hover:bg-blue-500 text-white px-3 py-1.5 rounded-md text-xs font-medium transition-colors"
-                                >
-                                    <Plus size={14} />
-                                    <span>Add Main Point</span>
-                                </button>
-                            )}
+                    {workflowState.loading ? (
+                        <div className="flex flex-col items-center justify-center py-32 space-y-4 bg-white dark:bg-[#161b22] border border-gray-200 dark:border-white/10 rounded-lg shadow-sm">
+                            <Loader2 className="w-8 h-8 text-blue-500 animate-spin" />
+                            <p className="text-sm text-gray-500 dark:text-gray-400 animate-pulse font-medium">Loading document workflow state...</p>
                         </div>
-                        <div className="px-5">
-                            <StatusLegend />
-                        </div>
-                        <div className="overflow-x-auto">
-                            <table className="w-full text-left text-sm table-fixed min-w-[800px]">
-                                <colgroup><col className="w-[60px]" /><col className="w-auto" /><col className="w-[60px]" /><col className="w-[140px]" /><col className="w-[180px]" />{isEditing && <col className="w-[100px]" />}</colgroup>
-                                <thead>
-                                    <tr className="border-b border-gray-200 dark:border-white/10 text-gray-500 bg-gray-100 dark:bg-[#12161c]">
-                                        <th className="px-4 py-3 text-xs font-medium text-center">Sl No.</th>
-                                        <th className="px-5 py-3 text-xs font-medium">Description</th>
-                                        <th className="px-2 py-3 text-xs font-medium text-center">S</th>
-                                        <th className="px-4 py-3 text-xs font-medium text-center">Target Date</th>
-                                        <th className="px-4 py-3 text-xs font-medium">Action By</th>
-                                        {isEditing && <th className="px-2 py-3 text-xs font-medium text-center">Actions</th>}
-                                    </tr>
-                                </thead>
-                                <Reorder.Group axis="y" values={points} onReorder={setPoints} as="tbody">
-                                    <AnimatePresence>
-                                        {points.map((pt) => (
-                                                <Reorder.Item
-                                                    key={pt.id}
-                                                    value={pt}
-                                                    as="tr"
-                                                    className="border-b border-gray-200 dark:border-white/10/50 group/row hover:bg-gray-800/10 align-top"
-                                                >
-                                                    <td className="px-4 py-4 text-center text-gray-600 dark:text-gray-400 font-medium align-top">
-                                                        <div className="flex flex-col items-center justify-start h-full">
-                                                            {isEditing && (
-                                                                <div className="w-4 h-4 rounded-full border border-gray-300 dark:border-gray-600 flex items-center justify-center opacity-0 group-hover/row:opacity-100 cursor-grab mb-2 transition-opacity">
-                                                                    <div className="w-1.5 h-1.5 bg-gray-500 rounded-full" />
-                                                                </div>
-                                                            )}
+                    ) : (
+                        <>
+                            {/* Section 1: Edit Details */}
+                            <div className="bg-gray-50 dark:bg-[#161b22] border border-gray-200 dark:border-white/10 rounded-lg overflow-hidden flex flex-col shadow-sm">
+                                <div className="px-5 py-3 border-b border-gray-200 dark:border-white/10">
+                                    <h2 className="text-gray-900 dark:text-white font-bold text-[15px]">{isEditing ? 'Edit Details' : 'Meeting Details'}</h2>
+                                </div>
+                                <div className="p-5 grid grid-cols-1 md:grid-cols-2 gap-x-8 gap-y-4">
+                                    {/* Subject */}
+                                    <div className="flex flex-col space-y-1.5">
+                                        <label className="text-xs text-gray-500 font-medium tracking-wide">Subject</label>
+                                        <div className={`border rounded-md p-1 transition-all ${isEditing ? 'bg-white dark:bg-[#1c222b] border-gray-200 dark:border-gray-700/50 focus-within:border-blue-500/50 focus-within:ring-1 focus-within:ring-blue-500/20' : 'border-transparent'}`}>
+                                            {isEditing ? (
+                                                <input
+                                                    type="text"
+                                                    className="w-full bg-transparent border-none outline-none text-gray-900 dark:text-white px-2 py-1 text-sm placeholder-gray-400 dark:placeholder-gray-600"
+                                                    value={details.subject}
+                                                    onChange={(e) => setDetails({ ...details, subject: e.target.value })}
+                                                    placeholder="Enter subject..."
+                                                />
+                                            ) : (
+                                                <div className="text-gray-900 dark:text-white px-2 py-1 text-sm font-semibold">{details.subject || '-'}</div>
+                                            )}
+                                        </div>
+                                    </div>
+                                    {/* Meeting No */}
+                                    <div className="flex flex-col space-y-1.5">
+                                        <label className="text-xs text-gray-500 font-medium tracking-wide">Meeting No</label>
+                                        <div className={`border rounded-md p-1 transition-all ${isEditing ? 'bg-white dark:bg-[#1c222b] border-gray-200 dark:border-gray-700/50 focus-within:border-blue-500/50 focus-within:ring-1 focus-within:ring-blue-500/20' : 'border-transparent'}`}>
+                                            {isEditing ? (
+                                                <input
+                                                    type="text"
+                                                    className="w-full bg-transparent border-none outline-none text-gray-900 dark:text-white px-2 py-1 text-sm placeholder-gray-400 dark:placeholder-gray-600"
+                                                    value={details.meetingNo}
+                                                    onChange={(e) => setDetails({ ...details, meetingNo: e.target.value })}
+                                                />
+                                            ) : (
+                                                <div className="text-gray-900 dark:text-white px-2 py-1 text-sm">{details.meetingNo || '-'}</div>
+                                            )}
+                                        </div>
+                                    </div>
+                                    {/* Venue */}
+                                    <div className="flex flex-col space-y-1.5">
+                                        <label className="text-xs text-gray-500 font-medium tracking-wide">Venue</label>
+                                        <div className={`border rounded-md p-1 transition-all ${isEditing ? 'bg-white dark:bg-[#1c222b] border-gray-200 dark:border-gray-700/50 focus-within:border-blue-500/50 focus-within:ring-1 focus-within:ring-blue-500/20' : 'border-transparent'}`}>
+                                            {isEditing ? (
+                                                <input
+                                                    type="text"
+                                                    className="w-full bg-transparent border-none outline-none text-gray-900 dark:text-white px-2 py-1 text-sm placeholder-gray-400 dark:placeholder-gray-600"
+                                                    value={details.venue}
+                                                    onChange={(e) => setDetails({ ...details, venue: e.target.value })}
+                                                />
+                                            ) : (
+                                                <div className="text-gray-900 dark:text-white px-2 py-1 text-sm">{details.venue || '-'}</div>
+                                            )}
+                                        </div>
+                                    </div>
+                                    {/* Date */}
+                                    <div className="flex flex-col space-y-1.5">
+                                        <label className="text-xs text-gray-500 font-medium tracking-wide">Date</label>
+                                        <div className={`border rounded-md p-1 transition-all ${isEditing ? 'bg-white dark:bg-[#1c222b] border-gray-200 dark:border-gray-700/50 focus-within:border-blue-500/50 focus-within:ring-1 focus-within:ring-blue-500/20 pr-2' : 'border-transparent'}`}>
+                                            {isEditing ? (
+                                                <input
+                                                    type="date"
+                                                    className="w-full bg-transparent border-none outline-none text-gray-900 dark:text-white px-2 py-1 text-sm placeholder-gray-400 dark:placeholder-gray-600"
+                                                    value={details.date}
+                                                    onChange={(e) => setDetails({ ...details, date: e.target.value })}
+                                                />
+                                            ) : (
+                                                <div className="text-gray-900 dark:text-white px-2 py-1 text-sm">{details.date ? new Date(details.date).toLocaleDateString() : '-'}</div>
+                                            )}
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+
+                            {/* Section 2: Participants */}
+                            <div className="bg-gray-50 dark:bg-[#161b22] border border-gray-200 dark:border-white/10 rounded-lg flex flex-col shadow-sm">
+                                <div className="px-5 py-3 border-b border-gray-200 dark:border-white/10 flex justify-between items-center bg-gray-50 dark:bg-[#161b22] rounded-t-lg">
+                                    <h2 className="text-gray-900 dark:text-white font-bold text-[15px]">Participants</h2>
+                                    {isEditing && (
+                                        <button
+                                            onClick={addParticipant}
+                                            className="flex items-center space-x-1 bg-blue-600 hover:bg-blue-500 text-white px-2 py-1 rounded-md text-xs font-medium transition-colors"
+                                        >
+                                            <Plus size={14} />
+                                            <span>Add Participant</span>
+                                        </button>
+                                    )}
+                                </div>
+                                <div className="overflow-x-auto">
+                                    <table className="w-full text-left text-sm whitespace-nowrap" style={{ tableLayout: 'fixed', width: '100%' }}>
+                                        <colgroup>
+                                            <col style={{ width: '38%' }} />
+                                            <col style={{ width: '28%' }} />
+                                            <col style={{ width: '28%' }} />
+                                            <col style={{ width: '6%' }} />
+                                        </colgroup>
+                                        <thead>
+                                            <tr className="border-b border-gray-200 dark:border-white/10 text-gray-500 bg-gray-100 dark:bg-[#12161c]">
+                                                <th className="px-5 py-2.5 text-xs font-medium">Organization</th>
+                                                <th className="px-5 py-2.5 text-xs font-medium">Responsibility</th>
+                                                <th className="px-5 py-2.5 text-xs font-medium">Representatives</th>
+                                                <th className="px-2 py-2.5 w-10"></th>
+                                            </tr>
+                                        </thead>
+                                        <tbody>
+                                            <AnimatePresence>
+                                                {participants.map((p) => (
+                                                    <motion.tr
+                                                        key={p.id}
+                                                        initial={{ opacity: 0, height: 0 }}
+                                                        animate={{ opacity: 1, height: 'auto' }}
+                                                        exit={{ opacity: 0, height: 0 }}
+                                                        className="border-b border-gray-200 dark:border-white/10/50 group/row hover:bg-gray-800/10 align-middle"
+                                                    >
+                                                        <td className="px-5 py-2">
                                                             {isEditing ? (
-                                                                <input
-                                                                    value={pt.slNo}
-                                                                    onChange={(e) => updatePoint(pt.id, 'slNo', e.target.value)}
-                                                                    className="w-10 bg-transparent text-center font-bold outline-none focus:bg-white dark:bg-[#1c222b] focus:ring-1 focus:ring-blue-500/50 rounded py-0.5 transition-colors text-xs"
+                                                                <VendorSelector
+                                                                    value={p.organization}
+                                                                    onChange={(v) => handleParticipantSelect(p.id, v)}
+                                                                    globalVendors={directoryContacts}
                                                                 />
                                                             ) : (
-                                                                <div className="font-bold py-0.5 text-xs">{pt.slNo}</div>
+                                                                <div className="font-medium text-gray-700 dark:text-gray-300 py-1">{p.organization || '-'}</div>
                                                             )}
-                                                        </div>
-                                                    </td>
-                                                    <td className="px-2 py-4 align-top">
-                                                        <div className={`w-full rounded-lg p-2 transition-colors border ${isEditing ? 'group-hover/row:bg-white dark:bg-[#1c222b]/30 focus-within:border-blue-500/30 focus-within:bg-white dark:bg-[#1c222b] border-transparent' : 'border-transparent'}`}>
-                                                            {isEditing ? (
-                                                                <ResizableTextarea
-                                                                    value={pt.description}
-                                                                    onChange={(e) => updatePoint(pt.id, 'description', e.target.value)}
-                                                                    className="text-gray-800 dark:text-gray-200 w-full min-h-[44px] flex-1 text-sm pt-0"
-                                                                    placeholder="Enter description..."
-                                                                />
-                                                            ) : (
-                                                                <div className={`text-gray-800 dark:text-gray-200 text-sm whitespace-pre-wrap ${pt.slNo.includes('.') ? 'ml-4' : 'font-medium'}`}>
-                                                                    {pt.description || '-'}
-                                                                </div>
-                                                            )}
-                                                        </div>
-                                                    </td>
-                                                    <td className="px-2 py-4 text-center align-top">
-                                                        <div className={`w-full flex justify-center items-center h-full`}>
-                                                            <StatusPicker 
-                                                                value={pt.status} 
-                                                                onChange={(val) => updatePoint(pt.id, 'status', val)} 
-                                                                isEditing={isEditing} 
-                                                            />
-                                                        </div>
-                                                    </td>
-                                                    <td className="px-4 py-4 text-center align-top">
-                                                        <div className={`w-full rounded-lg h-9 flex items-center justify-center transition-colors border relative ${isEditing ? 'group-hover/row:bg-white dark:bg-[#1c222b]/30 focus-within:border-blue-500/30 focus-within:bg-white dark:focus-within:bg-[#1c222b] border-transparent px-2' : 'border-transparent'}`}>
-                                                            {isEditing ? (
-                                                                <div className="relative w-full flex items-center justify-center">
-                                                                    <input
-                                                                        type="date"
-                                                                        value={pt.targetDate}
-                                                                        onChange={(e) => updatePoint(pt.id, 'targetDate', e.target.value)}
-                                                                        className="absolute inset-0 opacity-0 cursor-pointer z-10 w-full h-full"
-                                                                    />
-                                                                    <div className="flex items-center gap-2 text-gray-600 dark:text-gray-400 text-[11px] pointer-events-none">
-                                                                        <span>{pt.targetDate ? new Date(pt.targetDate).toLocaleDateString('en-GB') : 'Set Date'}</span>
-                                                                    </div>
-                                                                </div>
-                                                            ) : (
-                                                                <div className="text-gray-600 dark:text-gray-400 text-xs font-medium">{pt.targetDate ? new Date(pt.targetDate).toLocaleDateString('en-GB') : '-'}</div>
-                                                            )}
-                                                        </div>
-                                                    </td>
-                                                    <td className="px-4 py-4 align-top">
-                                                        <div className={`w-full rounded-lg p-2 transition-colors border ${isEditing ? 'group-hover/row:bg-white dark:bg-[#1c222b]/30 focus-within:border-blue-500/30 focus-within:bg-white dark:bg-[#1c222b] border-transparent' : 'border-transparent'}`}>
-                                                            {isEditing ? (
-                                                                <input
-                                                                    value={pt.actionBy}
-                                                                    onChange={(e) => updatePoint(pt.id, 'actionBy', e.target.value)}
-                                                                    className="w-full bg-transparent text-gray-600 dark:text-gray-400 outline-none focus:ring-1 focus:ring-blue-500/50 rounded transition-all text-sm"
-                                                                    placeholder="-"
-                                                                />
-                                                            ) : (
-                                                                <div className="text-gray-600 dark:text-gray-400 text-sm">{pt.actionBy || '-'}</div>
-                                                            )}
-                                                        </div>
-                                                    </td>
-                                                    {isEditing && (
-                                                        <td className="px-2 py-3">
-                                                            <div className="flex flex-col items-center justify-center space-y-2 h-full opacity-0 group-hover/row:opacity-100 transition-opacity p-2">
-                                                                <button
-                                                                    onClick={() => addSubPoint(points.findIndex(p => p.id === pt.id), pt.slNo)}
-                                                                    className="text-blue-400 hover:text-blue-300 hover:bg-blue-400/10 rounded transition-colors p-1"
-                                                                    title="Add Sub-point"
-                                                                >
-                                                                    <Plus size={16} />
-                                                                </button>
-                                                                <button
-                                                                    onClick={() => removePoint(pt.id)}
-                                                                    className="text-red-500/80 hover:text-red-500 hover:bg-red-500/10 rounded transition-colors p-1"
-                                                                    title="Delete Point"
-                                                                >
-                                                                    <Trash2 size={16} />
-                                                                </button>
-                                                            </div>
                                                         </td>
-                                                    )}
-                                                </Reorder.Item>
-                                            ))}
-                                    </AnimatePresence>
-                                </Reorder.Group>
-                            </table>
-                        </div>
-                    </div>
+                                                        <td className="px-5 py-2 text-gray-600 dark:text-gray-400">
+                                                            {isEditing ? (
+                                                                <input
+                                                                    type="text"
+                                                                    value={p.responsibility}
+                                                                    onChange={(e) => updateParticipant(p.id, 'responsibility', e.target.value)}
+                                                                    className="w-full bg-white dark:bg-[#1c222b] border border-gray-200 dark:border-gray-700/50 hover:border-blue-500/50 focus:border-blue-500 focus:ring-1 focus:ring-blue-500/20 rounded px-2 py-1 text-xs outline-none text-gray-900 dark:text-white transition-all min-h-[26px]"
+                                                                    placeholder="Enter responsibility..."
+                                                                />
+                                                            ) : (
+                                                                <div className="py-1">{p.responsibility || '-'}</div>
+                                                            )}
+                                                        </td>
+                                                        <td className="px-5 py-2 text-gray-600 dark:text-gray-400">
+                                                            {isEditing ? (
+                                                                <input
+                                                                    type="text"
+                                                                    value={p.representatives}
+                                                                    onChange={(e) => updateParticipant(p.id, 'representatives', e.target.value)}
+                                                                    className="w-full bg-white dark:bg-[#1c222b] border border-gray-200 dark:border-gray-700/50 hover:border-blue-500/50 focus:border-blue-500 focus:ring-1 focus:ring-blue-500/20 rounded px-2 py-1 text-xs outline-none text-gray-900 dark:text-white transition-all min-h-[26px]"
+                                                                    placeholder="Enter representatives..."
+                                                                />
+                                                            ) : (
+                                                                <div className="py-1">{p.representatives || '-'}</div>
+                                                            )}
+                                                        </td>
+                                                        <td className="px-2 py-2 text-right">
+                                                            {isEditing && (
+                                                                <button
+                                                                    onClick={() => removeParticipant(p.id)}
+                                                                    className="text-red-500/70 hover:text-red-500 p-1 opacity-0 group-hover/row:opacity-100 transition-all rounded hover:bg-red-500/10 cursor-pointer"
+                                                                >
+                                                                    <X size={15} />
+                                                                </button>
+                                                            )}
+                                                        </td>
+                                                    </motion.tr>
+                                                ))}
+                                            </AnimatePresence>
+                                        </tbody>
+                                    </table>
+                                </div>
+                            </div>
 
-                    {/* Legal notice block */}
-                    <div className="bg-orange-50 dark:bg-[#1e170c] border border-orange-900/50 rounded-lg p-4 shadow-sm text-orange-800 dark:text-orange-200/90 text-sm mt-2">
-                        <strong className="text-orange-500 font-bold mb-2 block text-xs">NOTE :</strong>
-                        <ol className="list-decimal pl-5 space-y-1 text-xs">
-                            <li>In case of any missing points or discrepancy, respective stakeholders are requested to highlight the issues within 24 hours of circulation of this MOM and unless notified, the contents of this MOM stands final and fully justified.</li>
-                            <li>All communications / correspondence shall be done via mail strictly. Other mode of communication will not be entertained.</li>
-                        </ol>
-                    </div>
+                            {/* Section 3: Points */}
+                            <div className="bg-gray-50 dark:bg-[#161b22] border border-gray-200 dark:border-white/10 rounded-lg flex flex-col shadow-sm">
+                                <div className="px-5 py-3 border-b border-gray-200 dark:border-white/10 flex justify-between items-center bg-gray-50 dark:bg-[#161b22] rounded-t-lg">
+                                    <h2 className="text-gray-900 dark:text-white font-bold text-[15px]">Points</h2>
+                                    {isEditing && (
+                                        <button
+                                            onClick={addPoint}
+                                            className="flex items-center space-x-1 bg-blue-600 hover:bg-blue-500 text-white px-3 py-1.5 rounded-md text-xs font-medium transition-colors"
+                                        >
+                                            <Plus size={14} />
+                                            <span>Add Main Point</span>
+                                        </button>
+                                    )}
+                                </div>
+                                <div className="px-5">
+                                    <StatusLegend />
+                                </div>
+                                <div className="overflow-x-auto">
+                                    <table className="w-full text-left text-sm table-fixed min-w-[800px]">
+                                        <colgroup><col className="w-[60px]" /><col className="w-auto" /><col className="w-[60px]" /><col className="w-[140px]" /><col className="w-[180px]" />{isEditing && <col className="w-[100px]" />}</colgroup>
+                                        <thead>
+                                            <tr className="border-b border-gray-200 dark:border-white/10 text-gray-500 bg-gray-100 dark:bg-[#12161c]">
+                                                <th className="px-4 py-3 text-xs font-medium text-center">Sl No.</th>
+                                                <th className="px-5 py-3 text-xs font-medium">Description</th>
+                                                <th className="px-2 py-3 text-xs font-medium text-center">S</th>
+                                                <th className="px-4 py-3 text-xs font-medium text-center">Target Date</th>
+                                                <th className="px-4 py-3 text-xs font-medium">Action By</th>
+                                                {isEditing && <th className="px-2 py-3 text-xs font-medium text-center">Actions</th>}
+                                            </tr>
+                                        </thead>
+                                        <Reorder.Group axis="y" values={points} onReorder={setPoints} as="tbody">
+                                            <AnimatePresence>
+                                                {points.map((pt) => (
+                                                        <Reorder.Item
+                                                            key={pt.id}
+                                                            value={pt}
+                                                            as="tr"
+                                                            className="border-b border-gray-200 dark:border-white/10/50 group/row hover:bg-gray-800/10 align-top"
+                                                        >
+                                                            <td className="px-4 py-4 text-center text-gray-600 dark:text-gray-400 font-medium align-top">
+                                                                <div className="flex flex-col items-center justify-start h-full">
+                                                                    {isEditing && (
+                                                                        <div className="w-4 h-4 rounded-full border border-gray-300 dark:border-gray-600 flex items-center justify-center opacity-0 group-hover/row:opacity-100 cursor-grab mb-2 transition-opacity">
+                                                                            <div className="w-1.5 h-1.5 bg-gray-500 rounded-full" />
+                                                                        </div>
+                                                                    )}
+                                                                    {isEditing ? (
+                                                                        <input
+                                                                            value={pt.slNo}
+                                                                            onChange={(e) => updatePoint(pt.id, 'slNo', e.target.value)}
+                                                                            className="w-10 bg-transparent text-center font-bold outline-none focus:bg-white dark:bg-[#1c222b] focus:ring-1 focus:ring-blue-500/50 rounded py-0.5 transition-colors text-xs"
+                                                                        />
+                                                                    ) : (
+                                                                        <div className="font-bold py-0.5 text-xs">{pt.slNo}</div>
+                                                                    )}
+                                                                </div>
+                                                            </td>
+                                                            <td className="px-2 py-4 align-top">
+                                                                <div className={`w-full rounded-lg p-2 transition-colors border ${isEditing ? 'group-hover/row:bg-white dark:bg-[#1c222b]/30 focus-within:border-blue-500/30 focus-within:bg-white dark:bg-[#1c222b] border-transparent' : 'border-transparent'}`}>
+                                                                    {isEditing ? (
+                                                                        <ResizableTextarea
+                                                                            value={pt.description}
+                                                                            onChange={(e) => updatePoint(pt.id, 'description', e.target.value)}
+                                                                            className="text-gray-800 dark:text-gray-200 w-full min-h-[44px] flex-1 text-sm pt-0"
+                                                                            placeholder="Enter description..."
+                                                                        />
+                                                                    ) : (
+                                                                        <div className={`text-gray-800 dark:text-gray-200 text-sm whitespace-pre-wrap ${pt.slNo.includes('.') ? 'ml-4' : 'font-medium'}`}>
+                                                                            {pt.description || '-'}
+                                                                        </div>
+                                                                    )}
+                                                                </div>
+                                                            </td>
+                                                            <td className="px-2 py-4 text-center align-top">
+                                                                <div className={`w-full flex justify-center items-center h-full`}>
+                                                                    <StatusPicker 
+                                                                        value={pt.status} 
+                                                                        onChange={(val) => updatePoint(pt.id, 'status', val)} 
+                                                                        isEditing={isEditing} 
+                                                                    />
+                                                                </div>
+                                                            </td>
+                                                            <td className="px-4 py-4 text-center align-top">
+                                                                <div className={`w-full rounded-lg h-9 flex items-center justify-center transition-colors border relative ${isEditing ? 'group-hover/row:bg-white dark:bg-[#1c222b]/30 focus-within:border-blue-500/30 focus-within:bg-white dark:focus-within:bg-[#1c222b] border-transparent px-2' : 'border-transparent'}`}>
+                                                                    {isEditing ? (
+                                                                        <div className="relative w-full flex items-center justify-center">
+                                                                            <input
+                                                                                type="date"
+                                                                                value={pt.targetDate}
+                                                                                onChange={(e) => updatePoint(pt.id, 'targetDate', e.target.value)}
+                                                                                className="absolute inset-0 opacity-0 cursor-pointer z-10 w-full h-full"
+                                                                            />
+                                                                            <div className="flex items-center gap-2 text-gray-600 dark:text-gray-400 text-[11px] pointer-events-none">
+                                                                                <span>{pt.targetDate ? new Date(pt.targetDate).toLocaleDateString('en-GB') : 'Set Date'}</span>
+                                                                            </div>
+                                                                        </div>
+                                                                    ) : (
+                                                                        <div className="text-gray-600 dark:text-gray-400 text-xs font-medium">{pt.targetDate ? new Date(pt.targetDate).toLocaleDateString('en-GB') : '-'}</div>
+                                                                    )}
+                                                                </div>
+                                                            </td>
+                                                            <td className="px-4 py-4 align-top">
+                                                                <div className={`w-full rounded-lg p-2 transition-colors border ${isEditing ? 'group-hover/row:bg-white dark:bg-[#1c222b]/30 focus-within:border-blue-500/30 focus-within:bg-white dark:bg-[#1c222b] border-transparent' : 'border-transparent'}`}>
+                                                                    {isEditing ? (
+                                                                        <input
+                                                                            value={pt.actionBy}
+                                                                            onChange={(e) => updatePoint(pt.id, 'actionBy', e.target.value)}
+                                                                            className="w-full bg-transparent text-gray-600 dark:text-gray-400 outline-none focus:ring-1 focus:ring-blue-500/50 rounded transition-all text-sm"
+                                                                            placeholder="-"
+                                                                        />
+                                                                    ) : (
+                                                                        <div className="text-gray-600 dark:text-gray-400 text-sm">{pt.actionBy || '-'}</div>
+                                                                    )}
+                                                                </div>
+                                                            </td>
+                                                            {isEditing && (
+                                                                <td className="px-2 py-3">
+                                                                    <div className="flex flex-col items-center justify-center space-y-2 h-full opacity-0 group-hover/row:opacity-100 transition-opacity p-2">
+                                                                        <button
+                                                                            onClick={() => addSubPoint(points.findIndex(p => p.id === pt.id), pt.slNo)}
+                                                                            className="text-blue-400 hover:text-blue-300 hover:bg-blue-400/10 rounded transition-colors p-1"
+                                                                            title="Add Sub-point"
+                                                                        >
+                                                                            <Plus size={16} />
+                                                                        </button>
+                                                                        <button
+                                                                            onClick={() => removePoint(pt.id)}
+                                                                            className="text-red-500/80 hover:text-red-500 hover:bg-red-500/10 rounded transition-colors p-1"
+                                                                            title="Delete Point"
+                                                                        >
+                                                                            <Trash2 size={16} />
+                                                                        </button>
+                                                                    </div>
+                                                                </td>
+                                                            )}
+                                                        </Reorder.Item>
+                                                    ))}
+                                            </AnimatePresence>
+                                        </Reorder.Group>
+                                    </table>
+                                </div>
+                            </div>
 
+                            {/* Legal notice block */}
+                            <div className="bg-orange-50 dark:bg-[#1e170c] border border-orange-900/50 rounded-lg p-4 shadow-sm text-orange-800 dark:text-orange-200/90 text-sm mt-2">
+                                <strong className="text-orange-500 font-bold mb-2 block text-xs">NOTE :</strong>
+                                <ol className="list-decimal pl-5 space-y-1 text-xs">
+                                    <li>In case of any missing points or discrepancy, respective stakeholders are requested to highlight the issues within 24 hours of circulation of this MOM and unless notified, the contents of this MOM stands final and fully justified.</li>
+                                    <li>All communications / correspondence shall be done via mail strictly. Other mode of communication will not be entertained.</li>
+                                </ol>
+                            </div>
+                        </>
+                    )}
                 </div>
             </div>
+
+            {/* Audit Trail Drawer */}
+            <AnimatePresence>
+                {isInfoOpen && (
+                    <>
+                        <motion.div
+                            initial={{ opacity: 0 }}
+                            animate={{ opacity: 1 }}
+                            exit={{ opacity: 0 }}
+                            onClick={() => setIsInfoOpen(false)}
+                            className="fixed inset-0 bg-black/40 backdrop-blur-sm z-[100]"
+                        />
+                        <motion.div
+                            initial={{ x: '100%' }}
+                            animate={{ x: 0 }}
+                            exit={{ x: '100%' }}
+                            transition={{ type: 'spring', damping: 25, stiffness: 200 }}
+                            className="fixed right-0 top-0 h-full w-[380px] bg-white dark:bg-[#0d1117] border-l border-gray-200 dark:border-white/10 shadow-2xl z-[101] flex flex-col"
+                        >
+                            <div className="p-6 border-b border-gray-200 dark:border-white/10 flex justify-between items-center bg-gray-50 dark:bg-[#161b22]">
+                                <div className="flex items-center space-x-3">
+                                    <div className="p-2 bg-blue-500/10 rounded-lg">
+                                        <Info size={20} className="text-blue-400" />
+                                    </div>
+                                    <h2 className="text-lg font-bold text-gray-900 dark:text-white tracking-tight">Audit trail & history</h2>
+                                </div>
+                                <button
+                                    onClick={() => setIsInfoOpen(false)}
+                                    className="p-2 hover:bg-gray-200 dark:hover:bg-white/10 rounded-full text-gray-500 hover:text-gray-900 dark:text-gray-400 dark:hover:text-white transition-all outline-none cursor-pointer"
+                                >
+                                    <X size={20} />
+                                </button>
+                            </div>
+
+                            <div className="flex-1 overflow-y-auto p-6 space-y-6 custom-scrollbar text-left">
+                                {auditTrail.map((log) => (
+                                    <div key={log.id} className="relative pl-8 pb-2">
+                                        <div className="absolute left-3 top-2 bottom-0 w-[1px] bg-gray-200 dark:bg-white/10" />
+                                        <div className={`absolute left-0 top-1.5 w-6 h-6 rounded-full border-4 border-white dark:border-[#0d1117] z-10 flex items-center justify-center ${log.type === 'create' ? 'bg-green-500/20 text-green-400' :
+                                            log.type === 'update' ? 'bg-blue-500/20 text-blue-400' :
+                                                'bg-purple-500/20 text-purple-400'
+                                            }`}>
+                                            <div className="w-1.5 h-1.5 rounded-full bg-current" />
+                                        </div>
+
+                                        <div className="space-y-1">
+                                            <p className="text-sm font-semibold text-gray-800 dark:text-gray-200 leading-tight">
+                                                {log.action}
+                                            </p>
+                                            <div className="flex items-center space-x-2 text-[11px] text-gray-500">
+                                                <span className="font-medium text-gray-400">{log.user}</span>
+                                                <span>•</span>
+                                                <div className="flex items-center space-x-1">
+                                                    <Clock size={10} />
+                                                    <span>{log.timestamp}</span>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                ))}
+                            </div>
+
+                            <div className="p-6 border-t border-gray-200 dark:border-white/10 bg-gray-50 dark:bg-[#161b22]/50">
+                                <button
+                                    onClick={() => setIsInfoOpen(false)}
+                                    className="w-full py-2.5 bg-gray-100 dark:bg-white/5 hover:bg-gray-200 dark:hover:bg-white/10 text-gray-700 dark:text-gray-300 rounded-md text-sm font-bold transition-all outline-none border border-gray-300 dark:border-white/10 cursor-pointer"
+                                >
+                                    Close panel
+                                </button>
+                            </div>
+                        </motion.div>
+                    </>
+                )}
+            </AnimatePresence>
         </div>
     );
 };

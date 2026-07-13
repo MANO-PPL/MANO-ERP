@@ -7,12 +7,20 @@ import { authenticateJWT, restrictTo } from '../../middleware/auth.js';
 const router = express.Router();
 const upload = multer(); // memory storage
 
-// Apply auth and role restrictions to all admin routes globally
+// Apply auth globally
 router.use(authenticateJWT);
+
+// Read-only reference data routes accessible by admin and employee
+router.get('/users', restrictTo('admin', 'employee'), adminController.listUsers);
+router.get('/departments', restrictTo('admin', 'employee'), adminController.listDepartments);
+router.get('/designations', restrictTo('admin', 'employee'), adminController.listDesignations);
+router.get('/sectors', restrictTo('admin', 'employee'), adminController.listSectors);
+router.get('/job-natures', restrictTo('admin', 'employee'), adminController.listJobNatures);
+
+// Restrict all mutation/admin-only routes below
 router.use(restrictTo('admin'));
 
-// Users
-router.get('/users', adminController.listUsers);
+// Users detail/mutation routes
 router.get('/user/:user_id', adminController.getUser);
 router.post('/user', adminController.createUser);
 router.put('/user/:user_id', upload.single('profile_image'), adminController.updateUser); // image is optional
@@ -24,22 +32,18 @@ router.post('/users/bulk-validate', adminController.bulkValidate);
 router.post('/users/bulk-json', adminController.bulkJson);
 
 // Departments
-router.get('/departments', adminController.listDepartments);
 router.post('/departments', adminController.createDepartment);
 router.delete('/departments/:id', adminController.deleteDepartment);
 
 // Designations
-router.get('/designations', adminController.listDesignations);
 router.post('/designations', adminController.createDesignation);
 router.delete('/designations/:id', adminController.deleteDesignation);
 
 // Sectors
-router.get('/sectors', adminController.listSectors);
 router.post('/sectors', adminController.createSector);
 router.delete('/sectors/:id', adminController.deleteSector);
 
 // Job Natures
-router.get('/job-natures', adminController.listJobNatures);
 router.post('/job-natures', adminController.createJobNature);
 router.delete('/job-natures/:id', adminController.deleteJobNature);
 

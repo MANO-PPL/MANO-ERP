@@ -14,6 +14,47 @@ const CONTENT_TABLES = [
 ];
 
 
+// Helper to copy/clone existing content rows to the new cycle so drafting begins with the current data
+async function cloneContentToNewCycle(trx, instanceId, cycleId, latestApprovedVersionId) {
+    for (const tableConf of CONTENT_TABLES) {
+        let query = trx(tableConf.name).where({ instance_id: instanceId });
+        if (latestApprovedVersionId) {
+            query = query.where({ version_id: latestApprovedVersionId });
+        } else {
+            query = query.whereNull('version_id').whereNull('cycle_id');
+        }
+
+        const sourceRows = await query;
+        if (sourceRows.length === 0) continue;
+
+        for (const row of sourceRows) {
+            const oldPkVal = row[tableConf.pk];
+            
+            const clonedRow = { ...row };
+            delete clonedRow[tableConf.pk]; // Remove PK for auto-increment
+            clonedRow.cycle_id = cycleId;
+            clonedRow.version_id = null;
+            
+            if (clonedRow.created_at) clonedRow.created_at = new Date();
+            if (clonedRow.updated_at) clonedRow.updated_at = new Date();
+
+            const [newPkVal] = await trx(tableConf.name).insert(clonedRow);
+
+            if (tableConf.children && newPkVal) {
+                for (const childConf of tableConf.children) {
+                    const childRows = await trx(childConf.name).where({ [childConf.fk]: oldPkVal });
+                    for (const childRow of childRows) {
+                        const clonedChild = { ...childRow };
+                        delete clonedChild[childConf.pk];
+                        clonedChild[childConf.fk] = newPkVal;
+                        await trx(childConf.name).insert(clonedChild);
+                    }
+                }
+            }
+        }
+    }
+}
+
 export async function initiateCycle(orgId, instanceId, userId) {
     return await db.transaction(async (trx) => {
         // 1. Fetch instance
@@ -28,13 +69,45 @@ export async function initiateCycle(orgId, instanceId, userId) {
             throw new AppError('Instance is currently locked by another cycle or user', 400);
         }
 
-        // 3. Verify caller has role='editor'
-        const role = await trx('wf_document_roles')
-            .where({ document_id: instance.document_id, user_id: userId, role: 'editor' })
-            .first();
+        // 3. Verify caller has permissions or is admin
+        const user = await trx('iam_users').where({ user_id: userId }).first();
+        const isUserAdmin = user && ['admin', 'super admin', 'superadmin', 'super_admin'].includes(user.user_type?.toLowerCase());
 
-        if (!role) {
-            throw new AppError('Caller must have editor role for this document', 403);
+        let hasRole = isUserAdmin;
+        if (!hasRole) {
+            // Check if any roles are defined for this document template
+            const totalRoles = await trx('wf_document_roles')
+                .where({ document_id: instance.document_id })
+                .count('* as count')
+                .first();
+
+            if (totalRoles.count === 0) {
+                // No roles defined yet - allow project members with General Documents write access
+                const member = await trx('proj_members')
+                    .where({ project_id: instance.project_id, user_id: userId, org_id: orgId })
+                    .first();
+                if (member) {
+                    let projectPerms = member.project_permissions;
+                    if (typeof projectPerms === 'string') {
+                        try { projectPerms = JSON.parse(projectPerms); } catch (e) { projectPerms = {}; }
+                    }
+                    const generalDocsLvl = projectPerms?.['General Documents'] || 'none';
+                    if (['edit', 'write'].includes(generalDocsLvl.toLowerCase())) {
+                        hasRole = true;
+                    }
+                }
+            } else {
+                // Roles are defined - check if this user is a reporter or approver
+                const role = await trx('wf_document_roles')
+                    .where({ document_id: instance.document_id, user_id: userId })
+                    .whereIn('role', ['approver', 'reporter'])
+                    .first();
+                if (role) hasRole = true;
+            }
+        }
+
+        if (!hasRole) {
+            throw new AppError('Unauthorized: You must have a configured role (approver/reporter) or edit access to initiate this cycle', 403);
         }
 
         // 4. Verify no active cycle exists
@@ -77,6 +150,9 @@ export async function initiateCycle(orgId, instanceId, userId) {
             draft_content: initialDraftContent,
             initiated_by: userId
         });
+
+        // 7.5 Copy/clone existing contents to the new cycle so drafting starts with the current data
+        await cloneContentToNewCycle(trx, instanceId, cycleId, instance.latest_approved_version_id);
 
         // 8. Update instance lock
         await trx('wf_document_instances')
@@ -216,6 +292,14 @@ async function finalizeApproval(trx, cycle, document, userId, comments) {
             locked_by: null,
             locked_at: null
         });
+
+    // 3.5 Update version_id on content tables
+    for (const tableConf of CONTENT_TABLES) {
+        await trx(tableConf.name)
+            .where({ cycle_id: cycle.cycle_id })
+            .whereNull('version_id')
+            .update({ version_id: versionId });
+    }
 
     // 4. Log the approval action
     await trx('wf_approval_logs').insert({
@@ -546,11 +630,11 @@ export async function claimRevision(orgId, cycleId, userId) {
         }
 
         const role = await trx('wf_document_roles')
-            .where({ document_id: cycle.document_id, user_id: userId, role: 'editor' })
+            .where({ document_id: cycle.document_id, user_id: userId, role: 'approver' })
             .first();
 
         if (!role) {
-            throw new AppError('Caller must have editor role for this document to claim', 403);
+            throw new AppError('Caller must have approver role for this document to claim', 403);
         }
 
         await trx('wf_approval_cycles')

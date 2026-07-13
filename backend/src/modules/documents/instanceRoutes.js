@@ -11,6 +11,7 @@ router.use(authenticateJWT);
 // Instance Metadata
 router.get('/:instance_id', instanceController.getInstance);
 router.patch('/:instance_id/archive', instanceController.archiveInstance);
+router.get('/:instance_id/logs', instanceController.getInstanceLogs);
 
 // Content Read Endpoints
 router.get('/:instance_id/content', contentController.getApprovedContent);

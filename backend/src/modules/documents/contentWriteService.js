@@ -6,7 +6,7 @@ async function verifyWriteAccess(orgId, cycleId, userId) {
     const cycle = await db('wf_approval_cycles as approval_cycles')
         .join('wf_document_instances as document_instances', 'approval_cycles.instance_id', 'document_instances.instance_id')
         .where({ 'approval_cycles.cycle_id': cycleId, 'document_instances.org_id': orgId })
-        .select('approval_cycles.*')
+        .select('approval_cycles.*', 'document_instances.project_id')
         .first();
 
     if (!cycle) throw new AppError('Cycle not found', 404);
@@ -28,6 +28,7 @@ export async function addDraftRow(orgId, cycleId, userId, tableName, data) {
 
     const insertData = {
         ...data,
+        project_id: cycle.project_id,
         instance_id: cycle.instance_id,
         cycle_id: cycleId,
         version_id: null
@@ -86,6 +87,7 @@ export async function upsertEpisodicHeader(orgId, cycleId, userId, tableName, da
     } else {
         const insertData = {
             ...data,
+            project_id: cycle.project_id,
             instance_id: cycle.instance_id,
             cycle_id: cycleId,
             version_id: null
@@ -99,6 +101,17 @@ export async function upsertEpisodicHeader(orgId, cycleId, userId, tableName, da
 export async function upsertEpisodicMeetingHeader(orgId, cycleId, userId, meetingType, data) {
     const cycle = await verifyWriteAccess(orgId, cycleId, userId);
 
+    const { participants, content, ...rest } = data;
+    if (rest.meeting_no !== undefined) {
+        const parsedNo = parseInt(rest.meeting_no, 10);
+        rest.meeting_no = isNaN(parsedNo) ? null : parsedNo;
+    }
+
+    const dbData = {
+        ...rest,
+        content: content ? (typeof content === 'string' ? content : JSON.stringify(content)) : null
+    };
+
     const existing = await db('pdoc_meeting')
         .where({ cycle_id: cycleId, meeting_type: meetingType })
         .whereNull('version_id')
@@ -108,11 +121,12 @@ export async function upsertEpisodicMeetingHeader(orgId, cycleId, userId, meetin
         await db('pdoc_meeting')
             .where({ cycle_id: cycleId, meeting_type: meetingType })
             .whereNull('version_id')
-            .update(data);
+            .update(dbData);
         return true;
     } else {
         const insertData = {
-            ...data,
+            ...dbData,
+            project_id: cycle.project_id,
             meeting_type: meetingType,
             instance_id: cycle.instance_id,
             cycle_id: cycleId,

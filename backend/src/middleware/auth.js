@@ -183,7 +183,20 @@ export const requireProjectPermission = (module) => {
                 }
             }
 
-            const userRole = projectPerms?.[module] || 'none';
+            // Map General Documents sub-resources to the parent 'General Documents' page permission if not explicitly set
+            const generalDocsMapping = {
+                'directory': 'General Documents',
+                'vendors': 'General Documents',
+                'staff': 'General Documents',
+                'summary': 'General Documents',
+                'agenda': 'General Documents',
+                'mom': 'General Documents',
+                'org': 'General Documents',
+                'instances': 'General Documents'
+            };
+
+            const mappedModule = generalDocsMapping[module] || module;
+            const userRole = projectPerms?.[module] || projectPerms?.[mappedModule] || 'none';
 
             if (hasAccess(userRole, requiredLevel)) {
                 return next();

@@ -7,10 +7,39 @@ import AppError from '../../../utils/AppError.js';
 export async function fetchProjectAgendas(projectId) {
     if (!projectId) throw new AppError('projectId is required', 400);
 
-    const agendas = await db('pdoc_meeting')
-        .where({ project_id: projectId, meeting_type: 'agenda' })
-        .select(['meeting_id as agenda_id', 'subject', 'meeting_no', 'date', 'venue'])
-        .orderBy('date', 'desc');
+    const rawAgendas = await db('pdoc_meeting as pm')
+        .leftJoin('wf_document_instances as wdi', 'pm.instance_id', 'wdi.instance_id')
+        .where({ 'pm.project_id': projectId, 'pm.meeting_type': 'agenda' })
+        .select([
+            'pm.meeting_id as agenda_id',
+            'pm.subject',
+            'pm.meeting_no',
+            'pm.date',
+            'pm.venue',
+            'pm.instance_id',
+            'wdi.instance_status'
+        ]);
+
+    const grouped = {};
+    const agendas = [];
+
+    for (const m of rawAgendas) {
+        if (!m.instance_id) {
+            agendas.push(m);
+        } else {
+            if (!grouped[m.instance_id] || m.agenda_id > grouped[m.instance_id].agenda_id) {
+                grouped[m.instance_id] = m;
+            }
+        }
+    }
+
+    agendas.push(...Object.values(grouped));
+
+    agendas.sort((a, b) => {
+        const dateA = a.date ? new Date(a.date) : new Date(0);
+        const dateB = b.date ? new Date(b.date) : new Date(0);
+        return dateB - dateA;
+    });
 
     return { agendas, count: agendas.length };
 }
@@ -35,7 +64,8 @@ export async function fetchAgendaById(projectId, agendaId) {
             'pa.venue',
             'pa.date',
             'pa.meeting_no',
-            'pa.content'
+            'pa.content',
+            'pa.instance_id'
         ])
         .first();
 
@@ -97,13 +127,18 @@ export async function createAgenda(projectId, data) {
 -------------------------------------------------------- */
 export async function updateAgenda(projectId, agendaId, data) {
     await db.transaction(async (trx) => {
-        const allowedFields = ["subject", "venue", "date", "meeting_no"];
+        const allowedFields = ["subject", "venue", "date", "meeting_no", "instance_id", "cycle_id"];
         const updateData = {};
 
         for (const field of allowedFields) {
             if (data[field] !== undefined) {
                 updateData[field] = data[field];
             }
+        }
+
+        if (updateData.meeting_no !== undefined) {
+            const parsedNo = parseInt(updateData.meeting_no, 10);
+            updateData.meeting_no = isNaN(parsedNo) ? null : parsedNo;
         }
 
         if (data.content !== undefined) {

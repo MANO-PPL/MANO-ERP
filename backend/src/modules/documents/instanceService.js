@@ -90,11 +90,16 @@ export async function getInstanceDetail(orgId, instanceId) {
         .where({ document_id: instance.document_id })
         .first();
 
-    // Check for an active approval cycle
-    const currentCycle = await db('wf_approval_cycles')
-        .where({ instance_id: instanceId })
-        .whereNotIn('status', ['approved', 'rejected', 'cancelled'])
-        .orderBy('created_at', 'desc')
+    // Check for an active approval cycle — join users to get holder name
+    const currentCycle = await db('wf_approval_cycles as ac')
+        .leftJoin('iam_users as holder', 'ac.current_holder_id', 'holder.user_id')
+        .select(
+            'ac.*',
+            'holder.user_name as holder_name'
+        )
+        .where({ 'ac.instance_id': instanceId })
+        .whereNotIn('ac.status', ['approved', 'rejected', 'cancelled'])
+        .orderBy('ac.created_at', 'desc')
         .first();
 
     return {
@@ -127,9 +132,34 @@ export async function archiveInstance(orgId, instanceId) {
     return true;
 }
 
+/**
+ * Get all approval logs for a document instance.
+ */
+export async function getInstanceLogs(orgId, instanceId) {
+    const instance = await db('wf_document_instances')
+        .where({ instance_id: instanceId, org_id: orgId })
+        .first();
+
+    if (!instance) {
+        throw new AppError('Document instance not found', 404);
+    }
+
+    return await db('wf_approval_logs as logs')
+        .join('wf_approval_cycles as cycles', 'logs.cycle_id', 'cycles.cycle_id')
+        .leftJoin('iam_users as users', 'logs.acted_by', 'users.user_id')
+        .select(
+            'logs.*',
+            'users.user_name as acted_by_name',
+            'cycles.version_number'
+        )
+        .where('cycles.instance_id', instanceId)
+        .orderBy('logs.acted_at', 'desc');
+}
+
 export default {
     createInstance,
     listProjectInstances,
     getInstanceDetail,
-    archiveInstance
+    archiveInstance,
+    getInstanceLogs
 };

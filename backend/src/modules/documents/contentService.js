@@ -14,7 +14,6 @@ const CONTENT_TABLES = [
 ];
 
 
-// Helper to verify user access
 async function verifyAccess(orgId, instanceId, userId) {
     const instance = await db('wf_document_instances')
         .where({ instance_id: instanceId, org_id: orgId })
@@ -22,16 +21,39 @@ async function verifyAccess(orgId, instanceId, userId) {
 
     if (!instance) throw new AppError('Document instance not found', 404);
 
-    const role = await db('wf_document_roles')
-        .where({ document_id: instance.document_id, user_id: userId })
-        .whereIn('role', ['editor', 'approver', 'reporter'])
-        .first();
-
-    if (!role) {
-        throw new AppError('Unauthorized: You do not have access to read this document', 403);
+    // 1. Allow if user is an admin
+    const user = await db('iam_users').where({ user_id: userId }).first();
+    const isUserAdmin = user && ['admin', 'super admin', 'superadmin', 'super_admin'].includes(user.user_type?.toLowerCase());
+    if (isUserAdmin) {
+        return instance;
     }
 
-    return instance;
+    // 2. Allow if user is an assigned workflow participant (approver/reporter)
+    const role = await db('wf_document_roles')
+        .where({ document_id: instance.document_id, user_id: userId })
+        .whereIn('role', ['approver', 'reporter'])
+        .first();
+    if (role) {
+        return instance;
+    }
+
+    // 3. Allow if user is assigned to the project and has 'General Documents' read/write permission
+    const member = await db('proj_members')
+        .where({ project_id: instance.project_id, user_id: userId, org_id: orgId })
+        .first();
+    if (member) {
+        let projectPerms = member.project_permissions;
+        if (typeof projectPerms === 'string') {
+            try { projectPerms = JSON.parse(projectPerms); } catch (e) { projectPerms = {}; }
+        }
+        const generalDocsLvl = projectPerms?.['General Documents'] || 'none';
+        const hasReadAccess = ['view', 'edit', 'read', 'write'].includes(generalDocsLvl.toLowerCase());
+        if (hasReadAccess) {
+            return instance;
+        }
+    }
+
+    throw new AppError('Unauthorized: You do not have access to read this document', 403);
 }
 
 export async function getApprovedContent(orgId, instanceId, userId, versionIdParam) {
@@ -43,7 +65,11 @@ export async function getApprovedContent(orgId, instanceId, userId, versionIdPar
     }
 
     if (!targetVersionId) {
-        throw new AppError('Document has not been approved yet.', 404);
+        return {
+            metadata: null,
+            content: {},
+            message: 'Document has not been approved yet.'
+        };
     }
 
     const versionMeta = await db('wf_document_versions as document_versions')

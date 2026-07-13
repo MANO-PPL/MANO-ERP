@@ -30,7 +30,22 @@ export const archiveInstance = catchAsync(async (req, res) => {
     });
 });
 
+export const getInstanceLogs = catchAsync(async (req, res) => {
+    const { instance_id } = req.params;
+    if (!instance_id || isNaN(parseInt(instance_id))) {
+        throw new AppError('Invalid Instance ID', 400);
+    }
+    
+    const logs = await instanceService.getInstanceLogs(req.user.org_id, instance_id);
+    
+    res.json({
+        success: true,
+        logs
+    });
+});
+
 export default {
     getInstance,
-    archiveInstance
+    archiveInstance,
+    getInstanceLogs
 };

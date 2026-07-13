@@ -41,7 +41,19 @@ const ProjectDetails = () => {
                 const res = await projectApi.getProject(id);
                 if (res.success) {
                     setProject(res.project);
-                    setProjectPermissions(res.projectPermissions || {});
+                    
+                    // Normalize permission levels from string format to numbers
+                    const rawPerms = res.projectPermissions || {};
+                    const normalizedPerms = {};
+                    const map = { 'none': 0, 'view': 1, 'edit': 2, 'read': 1, 'write': 2 };
+                    for (const [k, v] of Object.entries(rawPerms)) {
+                        if (typeof v === 'string') {
+                            normalizedPerms[k] = map[v.toLowerCase()] ?? 0;
+                        } else {
+                            normalizedPerms[k] = v;
+                        }
+                    }
+                    setProjectPermissions(normalizedPerms);
                 }
             } catch (err) {
                 console.error(err);

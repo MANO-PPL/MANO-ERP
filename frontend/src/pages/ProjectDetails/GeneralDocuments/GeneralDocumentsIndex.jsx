@@ -74,13 +74,13 @@ const GeneralDocumentsIndex = ({ setExtraBreadcrumbs, canWrite }) => {
     }
 
     const categories = [
-        { name: 'Project Vendor List', icon: <FileSpreadsheet size={24} />, view: 'vendor-list' },
-        { name: 'Project Directory', icon: <FileText size={24} />, view: 'directory' },
-        { name: "MANO's Staff Role & Responsibilities", icon: <FileStack size={24} />, view: 'staff-roles' },
-        { name: 'Project Summary', icon: <FileText size={24} />, view: 'project-summary' },
-        { name: 'Agenda of Meeting', icon: <FileText size={24} />, view: 'agenda-list' },
-        { name: 'Minutes of Meeting', icon: <FileText size={24} />, view: 'mom-list' },
-        { name: 'Organisation Chart', icon: <FileImage size={24} />, view: 'org-chart' },
+        { name: 'Project Vendor List', icon: <FileSpreadsheet size={24} />, view: 'vendor-list', type: 'Single Instance' },
+        { name: 'Project Directory', icon: <FileText size={24} />, view: 'directory', type: 'Single Instance' },
+        { name: "MANO's Staff Role & Responsibilities", icon: <FileStack size={24} />, view: 'staff-roles', type: 'Single Instance' },
+        { name: 'Project Summary', icon: <FileText size={24} />, view: 'project-summary', type: 'Single Instance' },
+        { name: 'Agenda of Meeting', icon: <FileText size={24} />, view: 'agenda-list', type: 'Episodic' },
+        { name: 'Minutes of Meeting', icon: <FileText size={24} />, view: 'mom-list', type: 'Episodic' },
+        { name: 'Organisation Chart', icon: <FileImage size={24} />, view: 'org-chart', type: 'Single Instance' },
     ];
 
     return (
@@ -112,10 +112,17 @@ const GeneralDocumentsIndex = ({ setExtraBreadcrumbs, canWrite }) => {
                                     </div>
 
                                     <div className="ml-8 flex-1 text-left">
-                                        <div className="flex items-center space-x-3 mb-1.5">
+                                        <div className="flex items-center gap-3 mb-1.5 flex-wrap">
                                             <h3 className="text-lg font-bold text-gray-900 dark:text-white tracking-tight leading-tight group-hover:text-blue-500 transition-colors uppercase font-black">
                                                 {cat.name}
                                             </h3>
+                                            <span className={`px-2.5 py-0.5 text-[9px] font-bold uppercase tracking-wider rounded-full border ${
+                                                cat.type === 'Single Instance'
+                                                    ? 'bg-blue-500/10 text-blue-500 border-blue-500/20'
+                                                    : 'bg-purple-500/10 text-purple-500 border-purple-500/20'
+                                            }`}>
+                                                {cat.type}
+                                            </span>
                                         </div>
                                         <div className="flex items-center space-x-3">
                                             <span className="text-[10px] font-bold text-gray-400 dark:text-gray-500 uppercase tracking-[0.2em] group-hover:text-gray-300 transition-colors">Click to explore archive</span>

@@ -4,19 +4,15 @@ import AppError from '../../utils/AppError.js';
 /**
  * Create a new document template.
  */
-export async function createTemplate(orgId, userId, { name, doc_type, approval_type, description, project_id = null, publishing_config = null }) {
-    if (!name || !doc_type || !approval_type) {
-        throw new AppError('name, doc_type, and approval_type are required', 400);
+export async function createTemplate(orgId, userId, { name, doc_type, description, project_id = null, publishing_config = null }) {
+    if (!name || !doc_type) {
+        throw new AppError('name and doc_type are required', 400);
     }
 
     const validDocTypes = ['singleton', 'episodic'];
-    const validApprovalTypes = ['serial', 'parallel'];
 
     if (!validDocTypes.includes(doc_type)) {
         throw new AppError(`doc_type must be one of: ${validDocTypes.join(', ')}`, 400);
-    }
-    if (!validApprovalTypes.includes(approval_type)) {
-        throw new AppError(`approval_type must be one of: ${validApprovalTypes.join(', ')}`, 400);
     }
 
     const [document_id] = await db('wf_documents').insert({
@@ -24,7 +20,6 @@ export async function createTemplate(orgId, userId, { name, doc_type, approval_t
         project_id: project_id || null,
         name,
         doc_type,
-        approval_type,
         description: description || null,
         created_by: userId,
         publishing_config: publishing_config ? (typeof publishing_config === 'string' ? publishing_config : JSON.stringify(publishing_config)) : null
@@ -87,17 +82,15 @@ export async function updateTemplate(orgId, document_id, data) {
     if (data.description !== undefined) updates.description = data.description;
     if (data.is_active !== undefined) updates.is_active = data.is_active;
 
-    // Check if trying to change doc_type or approval_type
+    // Check if trying to change doc_type
     const checkDocType = data.doc_type && data.doc_type !== document.doc_type;
-    const checkApprovalType = data.approval_type && data.approval_type !== document.approval_type;
 
-    if (checkDocType || checkApprovalType) {
+    if (checkDocType) {
         const instancesExist = await db('wf_document_instances').where('document_id', document_id).first();
         if (instancesExist) {
-            throw new AppError('Cannot change doc_type or approval_type when instances exist', 400);
+            throw new AppError('Cannot change doc_type when instances exist', 400);
         }
-        if (checkDocType) updates.doc_type = data.doc_type;
-        if (checkApprovalType) updates.approval_type = data.approval_type;
+        updates.doc_type = data.doc_type;
     }
 
     if (Object.keys(updates).length === 0) return true;
@@ -170,7 +163,7 @@ export async function assignDocumentRole(orgId, document_id, { user_id, role, le
         throw new AppError('user_id and role are required', 400);
     }
 
-    const validRoles = ['editor', 'approver', 'reporter'];
+    const validRoles = ['approver', 'reporter'];
     if (!validRoles.includes(role)) {
         throw new AppError(`role must be one of: ${validRoles.join(', ')}`, 400);
     }
@@ -191,9 +184,13 @@ export async function assignDocumentRole(orgId, document_id, { user_id, role, le
     }
 
     // Check duplicate
-    const duplicate = await db('wf_document_roles').where({ document_id, user_id, role }).first();
+    const duplicateQuery = { document_id, user_id, role };
+    if (role === 'approver') {
+        duplicateQuery.level_id = level_id;
+    }
+    const duplicate = await db('wf_document_roles').where(duplicateQuery).first();
     if (duplicate) {
-        throw new AppError(`User already has the role '${role}' for this document`, 400);
+        throw new AppError(`User already has the role '${role}' for this document${role === 'approver' ? ' at this level' : ''}`, 400);
     }
 
     const [role_id] = await db('wf_document_roles').insert({
@@ -223,7 +220,21 @@ export async function removeDocumentRole(orgId, document_id, role_id) {
     return true;
 }
 
+export async function initializeDocumentsSchema() {
+    const hasTable = await db.schema.hasTable('wf_documents');
+    if (hasTable) {
+        const hasCol = await db.schema.hasColumn('wf_documents', 'approval_type');
+        if (hasCol) {
+            await db.schema.table('wf_documents', table => {
+                table.dropColumn('approval_type');
+            });
+            console.log('Dropped approval_type column from wf_documents table');
+        }
+    }
+}
+
 export default {
+    initializeDocumentsSchema,
     createTemplate,
     getTemplates,
     getTemplateById,

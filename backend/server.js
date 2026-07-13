@@ -8,6 +8,7 @@ import app from './src/app.js';
 import { initializePermissionsSchema } from './src/modules/admin/permissionService.js';
 import { initializeTasksSchema } from './src/modules/projects/tasks/tasksService.js';
 import { initializeCrmSchema } from './src/modules/clients/clientService.js';
+import { initializeDocumentsSchema } from './src/modules/documents/documentService.js';
 
 
 const __filename = fileURLToPath(import.meta.url);
@@ -45,6 +46,7 @@ server.listen(PORT, '0.0.0.0', async () => {
     await initializePermissionsSchema();
     await initializeTasksSchema();
     await initializeCrmSchema();
+    await initializeDocumentsSchema();
     
     // Auto-start Python AI Microservice
     const pythonDir = path.join(__dirname, 'src', 'modules', 'ai', 'python_engine');
@@ -76,3 +78,5 @@ server.listen(PORT, '0.0.0.0', async () => {
     process.on('SIGINT', shutdown);
     process.on('SIGTERM', shutdown);
 });
+
+// Nodemon restart trigger comment
