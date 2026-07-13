@@ -14,6 +14,31 @@ const CONTENT_TABLES = [
 ];
 
 
+// Enrich pdoc_vendors rows with details from crm_contacts
+async function enrichVendorRows(rows) {
+    if (!rows || rows.length === 0) return rows;
+    const vendorIds = rows.map(r => r.vendors_id).filter(Boolean);
+    if (vendorIds.length === 0) return rows;
+
+    const contacts = await db('crm_contacts as c')
+        .leftJoin('crm_job_nature as jn', 'c.job_nature_id', 'jn.job_id')
+        .whereIn('c.id', vendorIds)
+        .where('c.type', 'vendor')
+        .select('c.id', 'c.name', 'c.contact_person', 'c.mobile', 'c.email', 'jn.job_name as job_nature');
+
+    const contactMap = {};
+    for (const c of contacts) contactMap[c.id] = c;
+
+    return rows.map(row => ({
+        ...row,
+        name: contactMap[row.vendors_id]?.name || null,
+        contact_person: contactMap[row.vendors_id]?.contact_person || null,
+        mobile: contactMap[row.vendors_id]?.mobile || null,
+        email: contactMap[row.vendors_id]?.email || null,
+        job_nature: contactMap[row.vendors_id]?.job_nature || null
+    }));
+}
+
 async function verifyAccess(orgId, instanceId, userId) {
     const instance = await db('wf_document_instances')
         .where({ instance_id: instanceId, org_id: orgId })
@@ -83,12 +108,16 @@ export async function getApprovedContent(orgId, instanceId, userId, versionIdPar
     const contentData = {};
 
     for (const tableConf of CONTENT_TABLES) {
-        const rows = await db(tableConf.name).where({
+        let rows = await db(tableConf.name).where({
             instance_id: instanceId,
             version_id: targetVersionId
         });
 
         if (rows.length > 0) {
+            // Enrich vendor rows with details from crm_contacts
+            if (tableConf.name === 'pdoc_vendors') {
+                rows = await enrichVendorRows(rows);
+            }
             if (tableConf.children) {
                 // Fetch and attach child rows
                 for (let row of rows) {
@@ -127,11 +156,15 @@ export async function getDraftContent(orgId, instanceId, userId) {
     const contentData = {};
 
     for (const tableConf of CONTENT_TABLES) {
-        const rows = await db(tableConf.name)
+        let rows = await db(tableConf.name)
             .where({ instance_id: instanceId, cycle_id: activeCycle.cycle_id })
             .whereNull('version_id');
 
         if (rows.length > 0) {
+            // Enrich vendor rows with details from crm_contacts
+            if (tableConf.name === 'pdoc_vendors') {
+                rows = await enrichVendorRows(rows);
+            }
             if (tableConf.children) {
                 for (let row of rows) {
                     for (const childConf of tableConf.children) {

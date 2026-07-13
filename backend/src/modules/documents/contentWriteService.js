@@ -22,6 +22,28 @@ async function verifyWriteAccess(orgId, cycleId, userId) {
     return cycle;
 }
 
+// Map of allowed columns per table to filter out frontend-supplied UI helper properties before database operations
+const ALLOWED_COLUMNS = {
+    pdoc_vendors: ['pv_id', 'project_id', 'instance_id', 'cycle_id', 'version_id', 'vendors_id', 'created_at', 'updated_at'],
+    pdoc_directory: ['pd_id', 'project_id', 'instance_id', 'cycle_id', 'version_id', 'pv_id', 'contact_person', 'designation', 'responsibilities', 'mobile_no', 'email', 'address_line', 'created_at', 'updated_at'],
+    pdoc_staff_responsible: ['psrr_id', 'project_id', 'instance_id', 'cycle_id', 'version_id', 'name', 'designation', 'responsibilities', 'mobile', 'email', 'created_at', 'updated_at'],
+    pdoc_summary: ['id', 'project_id', 'instance_id', 'cycle_id', 'version_id', 'section_name', 'summary_text', 'created_at', 'updated_at'],
+    pdoc_meeting: ['meeting_id', 'project_id', 'instance_id', 'cycle_id', 'version_id', 'meeting_type', 'meeting_no', 'date', 'time', 'location', 'subject', 'content', 'created_at', 'updated_at'],
+    pdoc_meeting_participants: ['id', 'meeting_id', 'pd_id', 'created_at', 'updated_at']
+};
+
+function filterTableColumns(tableName, data) {
+    const allowed = ALLOWED_COLUMNS[tableName];
+    if (!allowed) return data;
+    const filtered = {};
+    for (const key of Object.keys(data)) {
+        if (allowed.includes(key)) {
+            filtered[key] = data[key];
+        }
+    }
+    return filtered;
+}
+
 // Generic helpers
 export async function addDraftRow(orgId, cycleId, userId, tableName, data) {
     const cycle = await verifyWriteAccess(orgId, cycleId, userId);
@@ -34,18 +56,20 @@ export async function addDraftRow(orgId, cycleId, userId, tableName, data) {
         version_id: null
     };
 
-    const [newId] = await db(tableName).insert(insertData);
+    const filteredInsert = filterTableColumns(tableName, insertData);
+    const [newId] = await db(tableName).insert(filteredInsert);
     return newId;
 }
 
 export async function updateDraftRow(orgId, cycleId, userId, tableName, pkColumn, pkValue, data) {
     await verifyWriteAccess(orgId, cycleId, userId);
 
+    const filteredUpdate = filterTableColumns(tableName, data);
     const updated = await db(tableName)
         .where(pkColumn, pkValue)
         .where({ cycle_id: cycleId })
         .whereNull('version_id')
-        .update(data);
+        .update(filteredUpdate);
 
     if (!updated) {
         throw new AppError('Draft row not found or cannot be modified', 404);
@@ -77,16 +101,18 @@ export async function upsertEpisodicHeader(orgId, cycleId, userId, tableName, da
         .whereNull('version_id')
         .first();
 
+    const filteredData = filterTableColumns(tableName, data);
+
     if (existing) {
         // Assume pk is the first key or known. Since we just update where cycle_id matches
         await db(tableName)
             .where({ cycle_id: cycleId })
             .whereNull('version_id')
-            .update(data);
+            .update(filteredData);
         return true;
     } else {
         const insertData = {
-            ...data,
+            ...filteredData,
             project_id: cycle.project_id,
             instance_id: cycle.instance_id,
             cycle_id: cycleId,
@@ -117,15 +143,17 @@ export async function upsertEpisodicMeetingHeader(orgId, cycleId, userId, meetin
         .whereNull('version_id')
         .first();
 
+    const filteredData = filterTableColumns('pdoc_meeting', dbData);
+
     if (existing) {
         await db('pdoc_meeting')
             .where({ cycle_id: cycleId, meeting_type: meetingType })
             .whereNull('version_id')
-            .update(dbData);
+            .update(filteredData);
         return true;
     } else {
         const insertData = {
-            ...dbData,
+            ...filteredData,
             project_id: cycle.project_id,
             meeting_type: meetingType,
             instance_id: cycle.instance_id,

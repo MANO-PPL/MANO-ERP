@@ -2,8 +2,8 @@ import { db } from '../../config/database.js';
 import AppError from '../../utils/AppError.js';
 
 const CONTENT_TABLES = [
-    { name: 'pdoc_directory', pk: 'pd_id' },
     { name: 'pdoc_vendors', pk: 'pv_id' },
+    { name: 'pdoc_directory', pk: 'pd_id' },
     { name: 'pdoc_staff_responsible', pk: 'psrr_id' },
     { name: 'pdoc_summary', pk: 'id' },
     {
@@ -15,13 +15,20 @@ const CONTENT_TABLES = [
 
 
 // Helper to copy/clone existing content rows to the new cycle so drafting begins with the current data
-async function cloneContentToNewCycle(trx, instanceId, cycleId, latestApprovedVersionId) {
+async function cloneContentToNewCycle(trx, instanceId, cycleId, latestApprovedVersionId, projectId) {
+    const pvIdMap = new Map();
+
     for (const tableConf of CONTENT_TABLES) {
-        let query = trx(tableConf.name).where({ instance_id: instanceId });
+        let query;
         if (latestApprovedVersionId) {
-            query = query.where({ version_id: latestApprovedVersionId });
+            query = trx(tableConf.name).where({ instance_id: instanceId, version_id: latestApprovedVersionId });
         } else {
-            query = query.whereNull('version_id').whereNull('cycle_id');
+            // First cycle: select from base project rows (where instance_id is null)
+            query = trx(tableConf.name)
+                .where({ project_id: projectId })
+                .whereNull('instance_id')
+                .whereNull('cycle_id')
+                .whereNull('version_id');
         }
 
         const sourceRows = await query;
@@ -32,13 +39,26 @@ async function cloneContentToNewCycle(trx, instanceId, cycleId, latestApprovedVe
             
             const clonedRow = { ...row };
             delete clonedRow[tableConf.pk]; // Remove PK for auto-increment
+            clonedRow.instance_id = instanceId;
             clonedRow.cycle_id = cycleId;
             clonedRow.version_id = null;
             
             if (clonedRow.created_at) clonedRow.created_at = new Date();
             if (clonedRow.updated_at) clonedRow.updated_at = new Date();
 
+            // Sibling mapping: If this is pdoc_directory and references a pv_id, update it to the cloned pv_id
+            if (tableConf.name === 'pdoc_directory' && clonedRow.pv_id) {
+                if (pvIdMap.has(clonedRow.pv_id)) {
+                    clonedRow.pv_id = pvIdMap.get(clonedRow.pv_id);
+                }
+            }
+
             const [newPkVal] = await trx(tableConf.name).insert(clonedRow);
+
+            // Sibling mapping: Store mapping of old pv_id to new pv_id
+            if (tableConf.name === 'pdoc_vendors' && newPkVal) {
+                pvIdMap.set(oldPkVal, newPkVal);
+            }
 
             if (tableConf.children && newPkVal) {
                 for (const childConf of tableConf.children) {
@@ -152,7 +172,7 @@ export async function initiateCycle(orgId, instanceId, userId) {
         });
 
         // 7.5 Copy/clone existing contents to the new cycle so drafting starts with the current data
-        await cloneContentToNewCycle(trx, instanceId, cycleId, instance.latest_approved_version_id);
+        await cloneContentToNewCycle(trx, instanceId, cycleId, instance.latest_approved_version_id, instance.project_id);
 
         // 8. Update instance lock
         await trx('wf_document_instances')
