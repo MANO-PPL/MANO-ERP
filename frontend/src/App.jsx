@@ -147,6 +147,13 @@ function App() {
               </ProtectedRoute>
             } />
           </Route>
+          <Route path="/drawing-viewer" element={
+            <ProtectedRoute>
+              <Suspense fallback={<PageSkeleton variant="table" />}>
+                <DrawingTest />
+              </Suspense>
+            </ProtectedRoute>
+          } />
         </Routes>
       </Router>
     </AuthProvider>
