@@ -13,7 +13,7 @@ const DashboardCard = ({ title, value, subtext, icon: Icon, color, index }) => (
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.3, delay: index * 0.05 }}
         whileHover={{ y: -3, transition: { duration: 0.15 } }}
-        className="bg-white dark:bg-[#1A2232] p-6 rounded-xl shadow-sm border border-gray-100 dark:border-[#2A3445] transition-colors relative overflow-hidden group cursor-default"
+        className="bg-white dark:bg-gh-subtle p-6 rounded-xl shadow-sm border border-gray-100 dark:border-gh-border transition-colors relative overflow-hidden group cursor-default"
     >
         <div className="flex justify-between items-start">
             <div>
@@ -56,16 +56,9 @@ const Dashboard = () => {
     // Render Admin Layout
     if (isAdmin || role === '') {
         return (
-            <div className="p-6 space-y-6 max-w-[1600px] mx-auto">
-                <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
-                    <div>
-                        <h1 className="text-xl font-bold text-gray-900 dark:text-white">Admin Operations Control</h1>
-                        <p className="text-xs text-gray-500 dark:text-[#7A8AAB]">Real-time organization-wide project metrics & financials</p>
-                    </div>
-                </div>
-
+            <div className="p-4 space-y-4 w-full">
                 {/* KPI Grid */}
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
                     <DashboardCard
                         title="Total Contract Value"
                         value="₹69.7L"
@@ -101,9 +94,9 @@ const Dashboard = () => {
                 </div>
 
                 {/* Two Column Section */}
-                <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+                <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
                     {/* Project Health Table */}
-                    <div className="lg:col-span-2 bg-white dark:bg-[#1A2232] rounded-xl shadow-sm border border-gray-100 dark:border-[#2A3445] p-6 transition-colors">
+                    <div className="lg:col-span-2 bg-white dark:bg-gh-subtle rounded-xl shadow-sm border border-gray-100 dark:border-gh-border p-6 transition-colors">
                         <div className="flex justify-between items-center mb-4">
                             <h2 className="text-base font-bold text-gray-900 dark:text-white">Project Health Overview</h2>
                             <button className="text-xs text-blue-600 hover:text-blue-500 dark:text-blue-400 font-semibold flex items-center gap-0.5">
@@ -113,7 +106,7 @@ const Dashboard = () => {
                         <div className="overflow-x-auto">
                             <table className="w-full text-left">
                                 <thead>
-                                    <tr className="border-b border-gray-100 dark:border-[#2A3445] text-xs font-semibold text-gray-400 uppercase tracking-wider">
+                                    <tr className="border-b border-gray-100 dark:border-gh-border text-xs font-semibold text-gray-400 uppercase tracking-wider">
                                         <th className="pb-3">Project Name</th>
                                         <th className="pb-3">Status</th>
                                         <th className="pb-3">Progress</th>
@@ -121,8 +114,8 @@ const Dashboard = () => {
                                         <th className="pb-3 text-right">Due Date</th>
                                     </tr>
                                 </thead>
-                                <tbody className="divide-y divide-gray-50 dark:divide-[#2A3445] text-sm text-gray-600 dark:text-[#7A8AAB]">
-                                    <tr className="group hover:bg-gray-50 dark:hover:bg-[#202A3C] transition-colors">
+                                <tbody className="divide-y divide-gray-50 dark:divide-gh-border text-sm text-gray-600 dark:text-[#7A8AAB]">
+                                    <tr className="group hover:bg-gray-50 dark:hover:bg-gh-hover transition-colors">
                                         <td className="py-4 font-semibold text-gray-900 dark:text-white">Metro Station B2</td>
                                         <td className="py-4">
                                             <span className="px-2.5 py-0.5 bg-emerald-50 dark:bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 rounded-full text-xs font-semibold">
@@ -140,7 +133,7 @@ const Dashboard = () => {
                                         <td className="py-4 text-right font-semibold text-emerald-600 dark:text-emerald-400">-₹1.2L</td>
                                         <td className="py-4 text-right text-xs">Dec 2026</td>
                                     </tr>
-                                    <tr className="group hover:bg-gray-50 dark:hover:bg-[#202A3C] transition-colors">
+                                    <tr className="group hover:bg-gray-50 dark:hover:bg-gh-hover transition-colors">
                                         <td className="py-4 font-semibold text-gray-900 dark:text-white">Skyline Tower</td>
                                         <td className="py-4">
                                             <span className="px-2.5 py-0.5 bg-rose-50 dark:bg-rose-500/10 text-rose-600 dark:text-rose-400 rounded-full text-xs font-semibold">
@@ -158,7 +151,7 @@ const Dashboard = () => {
                                         <td className="py-4 text-right font-semibold text-rose-600 dark:text-rose-400">+₹45.0L</td>
                                         <td className="py-4 text-right text-xs">Aug 2026</td>
                                     </tr>
-                                    <tr className="group hover:bg-gray-50 dark:hover:bg-[#202A3C] transition-colors">
+                                    <tr className="group hover:bg-gray-50 dark:hover:bg-gh-hover transition-colors">
                                         <td className="py-4 font-semibold text-gray-900 dark:text-white">City Bridge Repair</td>
                                         <td className="py-4">
                                             <span className="px-2.5 py-0.5 bg-amber-50 dark:bg-amber-500/10 text-amber-600 dark:text-amber-400 rounded-full text-xs font-semibold">
@@ -182,7 +175,7 @@ const Dashboard = () => {
                     </div>
 
                     {/* Alerts / Notifications */}
-                    <div className="bg-white dark:bg-[#1A2232] rounded-xl shadow-sm border border-gray-100 dark:border-[#2A3445] p-6 transition-colors">
+                    <div className="bg-white dark:bg-gh-subtle rounded-xl shadow-sm border border-gray-100 dark:border-gh-border p-6 transition-colors">
                         <h2 className="text-base font-bold text-gray-900 dark:text-white mb-4">Critical Site Alerts</h2>
                         <div className="space-y-4">
                             <div className="flex items-start p-4 bg-rose-50 dark:bg-rose-500/5 rounded-lg border border-rose-100/50 dark:border-rose-500/20">
@@ -216,16 +209,9 @@ const Dashboard = () => {
     // Render Client Layout
     if (isClient) {
         return (
-            <div className="p-6 space-y-6 max-w-[1600px] mx-auto">
-                <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
-                    <div>
-                        <h1 className="text-xl font-bold text-gray-900 dark:text-white">Client Progress Center</h1>
-                        <p className="text-xs text-gray-500 dark:text-[#7A8AAB]">High-level project roadmap, milestones, and shared updates</p>
-                    </div>
-                </div>
-
+            <div className="p-4 space-y-4 w-full">
                 {/* KPI Grid */}
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
                     <DashboardCard
                         title="Active Under Construction"
                         value="3 Projects"
@@ -261,11 +247,11 @@ const Dashboard = () => {
                 </div>
 
                 {/* Main section */}
-                <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+                <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
                     {/* Milestone Roadmap */}
-                    <div className="lg:col-span-2 bg-white dark:bg-[#1A2232] rounded-xl shadow-sm border border-gray-100 dark:border-[#2A3445] p-6">
+                    <div className="lg:col-span-2 bg-white dark:bg-gh-subtle rounded-xl shadow-sm border border-gray-100 dark:border-gh-border p-6">
                         <h2 className="text-base font-bold text-gray-900 dark:text-white mb-6">Upcoming Milestone Roadmap</h2>
-                        <div className="relative border-l border-gray-100 dark:border-[#2A3445] ml-4 pl-6 space-y-6">
+                        <div className="relative border-l border-gray-100 dark:border-gh-border ml-4 pl-6 space-y-6">
                             
                             {/* Milestone 1 */}
                             <div className="relative">
@@ -299,7 +285,7 @@ const Dashboard = () => {
 
                             {/* Milestone 3 */}
                             <div className="relative">
-                                <div className="absolute -left-[31.5px] top-1 border-2 border-gray-200 dark:border-gray-700 bg-white dark:bg-[#1A2232] rounded-full w-4.5 h-4.5 flex items-center justify-center text-[10px] font-bold" />
+                                <div className="absolute -left-[31.5px] top-1 border-2 border-gray-200 dark:border-gray-700 bg-white dark:bg-gh-subtle rounded-full w-4.5 h-4.5 flex items-center justify-center text-[10px] font-bold" />
                                 <div className="space-y-1">
                                     <div className="flex items-center gap-2">
                                         <h3 className="text-sm font-bold text-gray-500 dark:text-[#7A8AAB]">Milestone 3 — MEP Rough-Ins & Piping</h3>
@@ -313,7 +299,7 @@ const Dashboard = () => {
                     </div>
 
                     {/* Shared docs / approvals */}
-                    <div className="bg-white dark:bg-[#1A2232] rounded-xl shadow-sm border border-gray-100 dark:border-[#2A3445] p-6">
+                    <div className="bg-white dark:bg-gh-subtle rounded-xl shadow-sm border border-gray-100 dark:border-gh-border p-6">
                         <h2 className="text-base font-bold text-gray-900 dark:text-white mb-4">Pending Client Actions</h2>
                         <div className="space-y-4">
                             
@@ -328,7 +314,7 @@ const Dashboard = () => {
                                 </div>
                             </div>
 
-                            <div className="p-4 bg-gray-50 dark:bg-[#202A3C] rounded-lg border border-gray-200 dark:border-[#2A3445]">
+                            <div className="p-4 bg-gray-50 dark:bg-gh-bg rounded-lg border border-gray-200 dark:border-gh-border">
                                 <h4 className="text-xs font-bold text-gray-500 dark:text-gray-400 uppercase tracking-wide">Recent Documents Shared</h4>
                                 <div className="mt-3 space-y-2">
                                     <div className="flex items-center gap-2 text-xs text-gray-600 dark:text-[#7A8AAB]">
@@ -351,16 +337,9 @@ const Dashboard = () => {
 
     // Render Employee Layout
     return (
-        <div className="p-6 space-y-6 max-w-[1600px] mx-auto">
-            <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
-                <div>
-                    <h1 className="text-xl font-bold text-gray-900 dark:text-white">Workspace Dashboard</h1>
-                    <p className="text-xs text-gray-500 dark:text-[#7A8AAB]">My assigned tasks, safety check-in, and site activities</p>
-                </div>
-            </div>
-
+        <div className="p-4 space-y-4 w-full">
             {/* KPI Grid */}
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
                 <DashboardCard
                     title="My Pending Tasks"
                     value={employeeTasks.filter(t => !t.completed).length.toString()}
@@ -396,10 +375,10 @@ const Dashboard = () => {
             </div>
 
             {/* Content body */}
-            <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+            <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
                 
                 {/* Task Checklist */}
-                <div className="lg:col-span-2 bg-white dark:bg-[#1A2232] rounded-xl shadow-sm border border-gray-100 dark:border-[#2A3445] p-6">
+                <div className="lg:col-span-2 bg-white dark:bg-gh-subtle rounded-xl shadow-sm border border-gray-100 dark:border-gh-border p-6">
                     <div className="flex justify-between items-center mb-4">
                         <h2 className="text-base font-bold text-gray-900 dark:text-white">My Daily Task Checklist</h2>
                         <span className="text-xs font-semibold px-2 py-0.5 bg-blue-50 dark:bg-blue-500/10 text-blue-600 dark:text-blue-400 rounded">
@@ -407,12 +386,12 @@ const Dashboard = () => {
                         </span>
                     </div>
 
-                    <div className="divide-y divide-gray-50 dark:divide-[#2A3445] space-y-1">
+                    <div className="divide-y divide-gray-50 dark:divide-gh-border space-y-1">
                         {employeeTasks.map(t => (
                             <div 
                                 key={t.id} 
                                 onClick={() => toggleTask(t.id)}
-                                className="flex items-center gap-3 py-3 px-2 rounded-lg hover:bg-gray-50 dark:hover:bg-[#202A3C] transition-colors cursor-pointer group"
+                                className="flex items-center gap-3 py-3 px-2 rounded-lg hover:bg-gray-50 dark:hover:bg-gh-hover transition-colors cursor-pointer group"
                             >
                                 <div className={`w-5 h-5 rounded flex items-center justify-center border transition-all ${t.completed ? 'bg-blue-600 border-blue-600 text-white' : 'border-gray-300 dark:border-white/20'}`}>
                                     {t.completed && (
@@ -440,7 +419,7 @@ const Dashboard = () => {
                 <div className="space-y-6">
                     
                     {/* Safety compliance Panel */}
-                    <div className="bg-white dark:bg-[#1A2232] rounded-xl shadow-sm border border-gray-100 dark:border-[#2A3445] p-6">
+                    <div className="bg-white dark:bg-gh-subtle rounded-xl shadow-sm border border-gray-100 dark:border-gh-border p-6">
                         <div className="flex items-center gap-2 mb-4">
                             <ShieldAlert className="text-amber-500 w-5 h-5" />
                             <h2 className="text-base font-bold text-gray-900 dark:text-white">Safety Compliance</h2>
@@ -461,10 +440,10 @@ const Dashboard = () => {
                     </div>
 
                     {/* Announcement card */}
-                    <div className="bg-white dark:bg-[#1A2232] rounded-xl shadow-sm border border-gray-100 dark:border-[#2A3445] p-6">
+                    <div className="bg-white dark:bg-gh-subtle rounded-xl shadow-sm border border-gray-100 dark:border-gh-border p-6">
                         <h2 className="text-base font-bold text-gray-900 dark:text-white mb-3">Notice Board</h2>
                         <div className="text-xs space-y-3">
-                            <div className="pb-3 border-b border-gray-100 dark:border-[#2A3445]">
+                            <div className="pb-3 border-b border-gray-100 dark:border-gh-border">
                                 <span className="text-[10px] font-bold text-blue-600 dark:text-blue-400 uppercase">HR Announcement</span>
                                 <p className="font-semibold text-gray-950 dark:text-white mt-0.5">Quarterly Site-Audit Review Schedule</p>
                                 <p className="text-gray-400 mt-1">Review sessions are planned from July 10 to July 15. Maintain task logs.</p>

@@ -3,7 +3,7 @@ import { useAuth } from '../context/AuthContext';
 import { workflowApi } from '../services/workflowApi';
 import { 
     Shield, CheckCircle2, AlertCircle, Clock, Play, 
-    Send, Check, RotateCcw, X, Lock, Unlock, Loader2 
+    Send, Check, RotateCcw, X, Lock, Unlock, Loader2, Save 
 } from 'lucide-react';
 import { toast } from 'react-toastify';
 
@@ -17,6 +17,7 @@ const WorkflowPanel = ({ projectId, templateName, instanceId: propInstanceId, on
     const [allCycles, setAllCycles] = useState([]);
     const [versions, setVersions] = useState([]);
     const [templateDetail, setTemplateDetail] = useState(null);
+    const [loadedKey, setLoadedKey] = useState('');
 
     // Modals & Comment states
     const [modalOpen, setModalOpen] = useState(false);
@@ -24,73 +25,36 @@ const WorkflowPanel = ({ projectId, templateName, instanceId: propInstanceId, on
     const [comments, setComments] = useState('');
     const [changesSummary, setChangesSummary] = useState('');
 
-    const loadWorkflowData = async () => {
-        try {
+    const loadWorkflowData = async (silent = false) => {
+        const key = `${projectId}-${templateName}`;
+        const isNewDoc = loadedKey !== key;
+
+        if (isNewDoc && !silent) {
             setLoading(true);
-            
-            // 1. Fetch document templates to find matching templateName
-            const templatesRes = await workflowApi.getTemplates(projectId);
-            if (!templatesRes.success || !templatesRes.templates) {
-                setLoading(false);
-                return;
-            }
-            const foundTemplate = templatesRes.templates.find(t => t.name === templateName);
-            if (!foundTemplate) {
-                setLoading(false);
-                return; // Workflow template not created/configured
-            }
-            setTemplate(foundTemplate);
+            setTemplate(null);
+            setInstance(null);
+            setCurrentCycle(null);
+        }
 
-            // Fetch template details with roles
-            const templateDetailRes = await workflowApi.getTemplate(foundTemplate.document_id).catch(() => null);
-            if (templateDetailRes && templateDetailRes.success) {
-                setTemplateDetail(templateDetailRes.template);
-            }
-
-            let activeInstance = null;
-            let currentInstId = propInstanceId;
-
-            // 2. If it's a singleton, fetch or find the instance for this template
-            if (foundTemplate.doc_type === 'singleton') {
-                const instancesRes = await workflowApi.listProjectInstances(projectId, { document_id: foundTemplate.document_id });
-                if (instancesRes.success && instancesRes.instances) {
-                    const inst = instancesRes.instances.find(i => i.document_id === foundTemplate.document_id && i.instance_status === 'active');
-                    if (inst) {
-                        currentInstId = inst.instance_id;
-                    }
+        try {
+            const res = await workflowApi.getTemplateWorkflowStatus(projectId, templateName, propInstanceId);
+            if (res.success) {
+                if (res.notConfigured) {
+                    setTemplate(null);
+                    setTemplateDetail(null);
+                    setInstance(null);
+                    setCurrentCycle(null);
+                    setVersions([]);
+                    setAllCycles([]);
+                } else {
+                    setTemplate(res.template);
+                    setTemplateDetail(res.templateDetail);
+                    setInstance(res.instance);
+                    setCurrentCycle(res.instance?.current_cycle || null);
+                    setVersions(res.versions || []);
+                    setAllCycles(res.allCycles || []);
                 }
-            }
-
-            if (currentInstId) {
-                // 3. Fetch instance detail
-                const detailRes = await workflowApi.getInstance(currentInstId);
-                if (detailRes.success && detailRes.instance) {
-                    const instDetail = detailRes.instance;
-                    setInstance(instDetail);
-                    setCurrentCycle(instDetail.current_cycle);
-
-                    // Fetch detailed template with roles for this specific instance's template
-                    if (instDetail.template?.document_id) {
-                        const instTemplateDetailRes = await workflowApi.getTemplate(instDetail.template.document_id).catch(() => null);
-                        if (instTemplateDetailRes && instTemplateDetailRes.success) {
-                            setTemplateDetail(instTemplateDetailRes.template);
-                        }
-                    }
-
-                    // Fetch version history & all cycles in parallel
-                    const [versionsRes, cyclesRes] = await Promise.all([
-                        workflowApi.listVersions(currentInstId).catch(() => ({ success: false })),
-                        workflowApi.listCycles(currentInstId).catch(() => ({ success: false }))
-                    ]);
-
-                    if (versionsRes.success) setVersions(versionsRes.versions || []);
-                    if (cyclesRes.success) setAllCycles(cyclesRes.cycles || []);
-                }
-            } else {
-                setInstance(null);
-                setCurrentCycle(null);
-                setAllCycles([]);
-                setVersions([]);
+                setLoadedKey(key);
             }
         } catch (error) {
             console.error('Error loading workflow status:', error);
@@ -99,8 +63,16 @@ const WorkflowPanel = ({ projectId, templateName, instanceId: propInstanceId, on
         }
     };
 
+    const loadInstanceData = async (instId, silent = false) => {
+        await loadWorkflowData(silent);
+    };
+
     useEffect(() => {
         if (projectId && templateName) {
+            // Avoid redundant fetches if the instance ID matches the currently loaded instance
+            if (propInstanceId && instance && propInstanceId === instance.instance_id) {
+                return;
+            }
             loadWorkflowData();
         }
     }, [projectId, templateName, propInstanceId]);
@@ -122,7 +94,7 @@ const WorkflowPanel = ({ projectId, templateName, instanceId: propInstanceId, on
         // If a cycle is active and current user is holder:
         if (currentCycle) {
             const isHolder = currentCycle.current_holder_id === user?.user_id || currentCycle.current_holder_id === user?.id;
-            const isEditingState = ['drafting', 'revision_requested', 'in_review'].includes(currentCycle.status);
+            const isEditingState = ['drafting', 'revision_requested'].includes(currentCycle.status);
             
             if (isHolder && isEditingState) {
                 onStateChange({ mode: 'edit', cycleId: currentCycle.cycle_id, instanceId: instance.instance_id, loading: false });
@@ -161,8 +133,8 @@ const WorkflowPanel = ({ projectId, templateName, instanceId: propInstanceId, on
             const res = await workflowApi.initiateCycle(instance.instance_id);
             if (res.success) {
                 toast.success('New draft cycle initiated');
-                await loadWorkflowData();
-                if (onRefreshContent) onRefreshContent();
+                await loadInstanceData(instance.instance_id, true);
+                if (onRefreshContent) onRefreshContent(true);
             }
         } catch (error) {
             toast.error(error.response?.data?.message || 'Failed to start revision');
@@ -179,10 +151,29 @@ const WorkflowPanel = ({ projectId, templateName, instanceId: propInstanceId, on
             const res = await workflowApi.claimRevision(currentCycle.cycle_id);
             if (res.success) {
                 toast.success('Revision cycle claimed successfully');
-                await loadWorkflowData();
+                await loadInstanceData(instance.instance_id, true);
+                if (onRefreshContent) onRefreshContent(true);
             }
         } catch (error) {
             toast.error(error.response?.data?.message || 'Failed to claim revision');
+        } finally {
+            setActionLoading(false);
+        }
+    };
+
+    // Save draft changes
+    const handleSaveDraftChanges = async () => {
+        if (!currentCycle) return;
+        try {
+            setActionLoading(true);
+            const res = await workflowApi.saveDraft(currentCycle.cycle_id, {});
+            if (res.success) {
+                toast.success('Draft changes saved successfully');
+                await loadInstanceData(instance.instance_id, true);
+                if (onRefreshContent) onRefreshContent(true);
+            }
+        } catch (error) {
+            toast.error(error.response?.data?.message || 'Failed to save changes');
         } finally {
             setActionLoading(false);
         }
@@ -222,8 +213,8 @@ const WorkflowPanel = ({ projectId, templateName, instanceId: propInstanceId, on
             if (res && res.success) {
                 toast.success(`Cycle ${modalAction} completed successfully`);
                 setModalOpen(false);
-                await loadWorkflowData();
-                if (onRefreshContent) onRefreshContent();
+                await loadInstanceData(instance.instance_id, true);
+                if (onRefreshContent) onRefreshContent(true);
             }
         } catch (error) {
             toast.error(error.response?.data?.message || `Failed to ${modalAction}`);
@@ -256,7 +247,6 @@ const WorkflowPanel = ({ projectId, templateName, instanceId: propInstanceId, on
             return (
                 <div className="min-h-[72px] p-4 bg-blue-500/5 border border-blue-500/10 rounded-2xl flex items-center justify-between text-xs text-blue-600 dark:text-blue-400">
                     <div className="flex items-center gap-2">
-                        <Lock size={15} className="opacity-70" />
                         <span>Workflow setup ready. The document template needs to be initialized.</span>
                     </div>
                     <button
@@ -276,15 +266,16 @@ const WorkflowPanel = ({ projectId, templateName, instanceId: propInstanceId, on
     // Determine workflow state elements
     const isHolder = currentCycle?.current_holder_id === user?.user_id || currentCycle?.current_holder_id === user?.id;
     const isUserAdmin = user && ['admin', 'super admin', 'superadmin', 'super_admin'].includes(user.user_type?.toLowerCase());
+    const isUserApprover = (templateDetail?.document_roles || []).some(r => r.user_id === (user?.user_id || user?.id) && r.role === 'approver');
     const totalReporters = (templateDetail?.document_roles || []).filter(r => r.role === 'reporter').length;
-    const isUserReporter = isUserAdmin || (totalReporters === 0) || (templateDetail?.document_roles || []).some(r => r.user_id === (user?.user_id || user?.id) && r.role === 'reporter');
+    const isUserReporter = !isUserApprover && (isUserAdmin || totalReporters === 0 || (templateDetail?.document_roles || []).some(r => r.user_id === (user?.user_id || user?.id) && r.role === 'reporter'));
 
     let badgeColor = 'bg-gray-100 text-gray-800 dark:bg-white/5 dark:text-gray-400';
     let statusText = 'Finalized / Read Only';
     let statusDesc = instance?.latest_approved_version_id
         ? 'Latest approved content is published and locked. Revisions must be initiated by a reporter.'
         : 'Latest approved content is published and visible.';
-    let icon = <CheckCircle2 size={16} className="text-emerald-500" />;
+    let icon = null;
 
     if (currentCycle) {
         if (currentCycle.status === 'drafting') {
@@ -293,7 +284,7 @@ const WorkflowPanel = ({ projectId, templateName, instanceId: propInstanceId, on
             statusDesc = isHolder 
                 ? 'You are currently drafting revisions. Edits will save as draft content.'
                 : `Locked by ${currentCycle.holder_name || 'author'} for editing.`;
-            icon = isHolder ? <Unlock size={16} className="text-blue-500 animate-pulse" /> : <Lock size={16} className="text-gray-400" />;
+            icon = null;
         } else if (currentCycle.status === 'in_review') {
             badgeColor = 'bg-yellow-500/15 text-yellow-600 dark:text-yellow-400 border border-yellow-500/30';
             statusText = isHolder ? 'Pending Your Review' : 'In Review';
@@ -315,9 +306,6 @@ const WorkflowPanel = ({ projectId, templateName, instanceId: propInstanceId, on
         <div className="min-h-[72px] mb-4 bg-white dark:bg-[#161b22] border border-gray-200 dark:border-white/5 rounded-2xl shadow-sm overflow-hidden anim-fade-in text-left">
             <div className="px-5 py-4 flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
                 <div className="flex items-center gap-3">
-                    <div className="w-9 h-9 rounded-xl bg-gray-100 dark:bg-white/5 flex items-center justify-center shrink-0">
-                        <Shield size={18} className="text-blue-500" />
-                    </div>
                     <div>
                         <div className="flex items-center gap-2 flex-wrap">
                             <span className="text-xs font-bold text-gray-900 dark:text-white uppercase tracking-tight">{templateName} Workflow</span>
@@ -349,9 +337,16 @@ const WorkflowPanel = ({ projectId, templateName, instanceId: propInstanceId, on
                             <button
                                 disabled={actionLoading}
                                 onClick={() => openCommentModal('submit')}
-                                className="flex items-center gap-1.5 px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-xs font-bold transition-all active:scale-95 disabled:opacity-50 cursor-pointer"
+                                className="flex items-center gap-1.5 px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-xs font-bold transition-all active:scale-95 disabled:opacity-50 cursor-pointer"
                             >
                                 <Send size={12} /> Submit Approval
+                            </button>
+                            <button
+                                disabled={actionLoading}
+                                onClick={handleSaveDraftChanges}
+                                className="flex items-center gap-1.5 px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-xs font-bold transition-all active:scale-95 disabled:opacity-50 cursor-pointer"
+                            >
+                                <Save size={12} /> Save Changes
                             </button>
                             <button
                                 disabled={actionLoading}
@@ -460,6 +455,21 @@ const WorkflowPanel = ({ projectId, templateName, instanceId: propInstanceId, on
                             >
                                 {actionLoading ? 'Processing...' : 'Confirm'}
                             </button>
+                        </div>
+                    </div>
+                </div>
+            )}
+            {actionLoading && (
+                <div className="fixed inset-0 z-[2000] flex flex-col items-center justify-center bg-black/60 backdrop-blur-sm transition-all">
+                    <div className="flex flex-col items-center space-y-4 p-8 bg-[#161b22]/95 border border-white/10 rounded-2xl shadow-2xl animate-scale-in">
+                        <div className="relative w-16 h-16 flex items-center justify-center">
+                            <div className="absolute inset-0 rounded-full border-4 border-t-blue-500 border-r-transparent border-b-transparent border-l-transparent animate-spin"></div>
+                            <div className="absolute inset-2 rounded-full border-4 border-b-emerald-500 border-t-transparent border-r-transparent border-l-transparent animate-spin" style={{ animationDirection: 'reverse' }}></div>
+                            <div className="w-6 h-6 rounded-full bg-blue-500/20 animate-pulse"></div>
+                        </div>
+                        <div className="text-center space-y-1">
+                            <h3 className="text-sm font-bold text-white tracking-wide">Processing Workflow Action</h3>
+                            <p className="text-xs text-gray-400">Please wait while the system updates the database...</p>
                         </div>
                     </div>
                 </div>
