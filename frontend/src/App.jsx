@@ -104,13 +104,7 @@ function App() {
                 </Suspense>
               </ProtectedRoute>
             } />
-            <Route path="units" element={
-              <ProtectedRoute pageId="units">
-                <Suspense fallback={<PageSkeleton variant="table" />}>
-                  <UnitsList />
-                </Suspense>
-              </ProtectedRoute>
-            } />
+            <Route path="units" element={<Navigate to="/resources" replace />} />
             <Route path="collaboration" element={
               <ProtectedRoute pageId="collaboration">
                 <Suspense fallback={<PageSkeleton variant="table" />}>
@@ -147,6 +141,13 @@ function App() {
               </ProtectedRoute>
             } />
           </Route>
+          <Route path="/drawing-viewer" element={
+            <ProtectedRoute>
+              <Suspense fallback={<PageSkeleton variant="table" />}>
+                <DrawingTest />
+              </Suspense>
+            </ProtectedRoute>
+          } />
         </Routes>
       </Router>
     </AuthProvider>

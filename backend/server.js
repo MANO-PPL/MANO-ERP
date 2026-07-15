@@ -9,6 +9,7 @@ import { initializePermissionsSchema } from './src/modules/admin/permissionServi
 import { initializeTasksSchema } from './src/modules/projects/tasks/tasksService.js';
 import { initializeCrmSchema } from './src/modules/clients/clientService.js';
 import { initializeDocumentsSchema } from './src/modules/documents/documentService.js';
+import { initializeDrawingsSchema } from './src/modules/projects/drawings/drawingsService.js';
 
 
 const __filename = fileURLToPath(import.meta.url);
@@ -47,6 +48,7 @@ server.listen(PORT, '0.0.0.0', async () => {
     await initializeTasksSchema();
     await initializeCrmSchema();
     await initializeDocumentsSchema();
+    await initializeDrawingsSchema();
     
     // Auto-start Python AI Microservice
     const pythonDir = path.join(__dirname, 'src', 'modules', 'ai', 'python_engine');
