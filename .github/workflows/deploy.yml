@@ -76,12 +76,12 @@ jobs:
           
           # Restart backend process using PM2
           cd /home/ubuntu/MANO-ERP/backend
-          if pm2 describe "mano-erp-backend" > /dev/null 2>&1; then
+          if pm2 describe "MANO-ERP-BACKEND" > /dev/null 2>&1; then
             echo "🔄 Reloading backend with PM2..."
-            pm2 reload "mano-erp-backend" --update-env
+            pm2 reload "MANO-ERP-BACKEND" --update-env
           else
             echo "🚀 Starting new backend process under PM2..."
-            pm2 start server.js --name "mano-erp-backend" --update-env
+            pm2 start server.js --name "MANO-ERP-BACKEND" --update-env
           fi
 
       - name: Deploy Frontend to Nginx Target
