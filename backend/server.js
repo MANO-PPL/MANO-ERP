@@ -10,6 +10,7 @@ import { initializeTasksSchema } from './src/modules/projects/tasks/tasksService
 import { initializeCrmSchema } from './src/modules/clients/clientService.js';
 import { initializeDocumentsSchema } from './src/modules/documents/documentService.js';
 import { initializeDrawingsSchema } from './src/modules/projects/drawings/drawingsService.js';
+import { initializeTokenSchema } from './src/modules/auth/tokenService.js';
 
 
 const __filename = fileURLToPath(import.meta.url);
@@ -44,6 +45,7 @@ io.on('connection', (socket) => {
 
 server.listen(PORT, '0.0.0.0', async () => {
     console.log(`Backend server running on http://localhost:${PORT}`);
+    await initializeTokenSchema();
     await initializePermissionsSchema();
     await initializeTasksSchema();
     await initializeCrmSchema();

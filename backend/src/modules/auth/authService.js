@@ -39,7 +39,7 @@ function formatUserResponse(user) {
  * Authenticate user with email/phone and password
  * Returns access token, refresh token and user data
  */
-export async function authenticateUser(userInput, password, req) {
+export async function authenticateUser(userInput, password, req, rememberMe = false) {
     const user = await db('iam_users as users')
         .leftJoin('iam_departments as departments', 'users.dept_id', 'departments.dept_id')
         .leftJoin('iam_designations as designations', 'users.desg_id', 'designations.desg_id')
@@ -81,7 +81,7 @@ export async function authenticateUser(userInput, password, req) {
     const ipAddress = req.ip || req.connection.remoteAddress;
     const userAgent = req.get('User-Agent') || 'Unknown';
 
-    await TokenService.saveRefreshToken(user.user_id, refreshToken, ipAddress, userAgent);
+    await TokenService.saveRefreshToken(user.user_id, refreshToken, ipAddress, userAgent, rememberMe);
 
     EventBus.emitActivityLog({
         user_id: user.user_id,
@@ -164,6 +164,9 @@ export async function refreshAccessToken(refreshToken, req) {
 
     const newAccessToken = jwt.sign(payload, process.env.JWT_SECRET, { expiresIn: ACCESS_TOKEN_EXPIRY });
 
+    // Propagate rememberMe setting from current token or grace replacement token
+    const isRememberMe = !!(result.refreshTokenRecord && result.refreshTokenRecord.remember_me);
+
     let newRefreshToken = refreshToken;
     if (result.gracePeriodActive && result.activeRefreshToken) {
         newRefreshToken = result.activeRefreshToken;
@@ -171,12 +174,17 @@ export async function refreshAccessToken(refreshToken, req) {
         newRefreshToken = TokenService.generateRefreshToken();
         const ipAddress = req.ip || req.connection.remoteAddress;
         const userAgent = req.get('User-Agent') || 'Unknown';
-        await TokenService.saveRefreshToken(user.user_id, newRefreshToken, ipAddress, userAgent);
+        await TokenService.saveRefreshToken(user.user_id, newRefreshToken, ipAddress, userAgent, isRememberMe);
         await TokenService.revokeRefreshToken(refreshToken, newRefreshToken);
     }
 
     const userProfile = await getUserProfile(user.user_id);
-    return { accessToken: newAccessToken, refreshToken: newRefreshToken, user: userProfile };
+    return { 
+        accessToken: newAccessToken, 
+        refreshToken: newRefreshToken, 
+        user: userProfile,
+        rememberMe: isRememberMe
+    };
 }
 
 /**
