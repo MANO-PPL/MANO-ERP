@@ -1,8 +1,11 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
-import { Plus, Edit2, Trash2, ZoomIn, ZoomOut, Maximize, Save, X, User, Briefcase, Building, Info, Clock } from 'lucide-react';
+import { Plus, Edit2, Trash2, ZoomIn, ZoomOut, Maximize, Save, X, User, Briefcase, Building, Info, Clock, ArrowLeft, Search, Loader2 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useParams } from 'react-router-dom';
 import { generalDocsApi } from '../../../services/generalDocsApi';
+import WorkflowPanel from '../../../components/WorkflowPanel';
+import { workflowApi } from '../../../services/workflowApi';
+import { toast } from 'react-toastify';
 
 // --- Default Hierarchy Data ---
 const INITIAL_DATA = {
@@ -134,7 +137,7 @@ const NodeCard = React.memo(({ node, onSelect, onEdit, onDelete, selectedNodeId,
                 initial={{ opacity: 0, scale: 0.85, y: 20 }}
                 animate={{ opacity: 1, scale: 1, y: 0 }}
                 transition={{ duration: 0.4, ease: "easeOut" }}
-                onClick={(e) => { e.stopPropagation(); onSelect(node); canWrite && onEdit(node); }}
+                onClick={(e) => { e.stopPropagation(); onSelect(node); canWrite && String(node.id).startsWith('dir-') && onEdit(node); }}
                 className={`
                     px-7 py-5 rounded-2xl border transition-all duration-300 relative
                     ${isProject ? 'bg-blue-600 border-blue-400 text-white min-w-[220px]' : ''}
@@ -170,13 +173,17 @@ const NodeCard = React.memo(({ node, onSelect, onEdit, onDelete, selectedNodeId,
 
                 {/* Quick Actions */}
                 {canWrite && (
-                    <div className="absolute -right-2 -top-2 flex flex-col space-y-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                        <button onClick={(e) => { e.stopPropagation(); onEdit(node); }} className="p-1.5 bg-blue-600 rounded-full text-white shadow-lg hover:bg-blue-500 scale-75 hover:scale-100 transition-transform">
-                            <Edit2 size={12} />
-                        </button>
-                        <button onClick={(e) => { e.stopPropagation(); onDelete(node.id); }} className="p-1.5 bg-red-600 rounded-full text-white shadow-lg shadow-red-500/20 hover:bg-red-500 scale-75 hover:scale-100 transition-transform">
-                            <Trash2 size={12} />
-                        </button>
+                    <div className="absolute -right-2 -top-2 flex flex-col space-y-1 opacity-0 group-hover:opacity-100 transition-opacity z-20">
+                        {String(node.id).startsWith('dir-') && (
+                            <button onClick={(e) => { e.stopPropagation(); onEdit(node); }} className="p-1.5 bg-blue-600 rounded-full text-white shadow-lg hover:bg-blue-500 scale-75 hover:scale-100 transition-transform cursor-pointer" title="Edit details">
+                                <Edit2 size={12} />
+                            </button>
+                        )}
+                        {(String(node.id).startsWith('dir-') || String(node.id).startsWith('vendor-')) && (
+                            <button onClick={(e) => { e.stopPropagation(); onDelete(node.id); }} className="p-1.5 bg-red-600 rounded-full text-white shadow-lg shadow-red-500/20 hover:bg-red-500 scale-75 hover:scale-100 transition-transform cursor-pointer" title={String(node.id).startsWith('vendor-') ? "Remove vendor from project" : "Delete contact"}>
+                                <Trash2 size={12} />
+                            </button>
+                        )}
                     </div>
                 )}
             </motion.div>
@@ -214,6 +221,82 @@ const NodeCard = React.memo(({ node, onSelect, onEdit, onDelete, selectedNodeId,
 // --- Main Container Component ---
 const OrganisationChart = ({ onBack, setExtraBreadcrumbs, canWrite }) => {
     const { id: projectId } = useParams();
+    const [data, setData] = useState(null);
+    const [loadingChart, setLoadingChart] = useState(true);
+    const [zoom, setZoom] = useState(1);
+    const [selectedNodeId, setSelectedNodeId] = useState('root');
+    const [isEditing, setIsEditing] = useState(false);
+    const [isInfoOpen, setIsInfoOpen] = useState(false);
+    const [activeNode, setActiveNode] = useState(null); // The node currently being edited in modal
+    const [editForm, setEditForm] = useState({ name: '', role: '', type: 'staff', location: '', subRole: '' });
+    const [workflowState, setWorkflowState] = useState({ mode: 'read', cycleId: null, loading: true });
+    const [auditTrail, setAuditTrail] = useState([]);
+    
+    const [projectVendors, setProjectVendors] = useState([]);
+    const [globalVendors, setGlobalVendors] = useState([]);
+    const [isAddingVendor, setIsAddingVendor] = useState(false);
+    const [vendorSearchTerm, setVendorSearchTerm] = useState('');
+
+    const containerRef = useRef(null);
+
+    const isEditable = canWrite && (workflowState.notConfigured || (workflowState.mode === 'edit' && workflowState.cycleId));
+
+    const fetchLogs = async (instanceId) => {
+        if (!instanceId) return;
+        try {
+            const res = await workflowApi.getInstanceLogs(instanceId);
+            if (res.success && res.logs) {
+                const mappedLogs = res.logs.map(log => {
+                    let actionText = log.action;
+                    let logType = 'update';
+                    
+                    if (log.action === 'cycle_initiated') {
+                        actionText = `Revision cycle V${log.version_number} started`;
+                        logType = 'create';
+                    } else if (log.action === 'submitted') {
+                        actionText = `Submitted for Level ${log.level_order} Approval`;
+                        logType = 'update';
+                    } else if (log.action === 'revision_requested') {
+                        actionText = `Revision requested at Level ${log.level_order}`;
+                        logType = 'cancel';
+                    } else if (log.action === 'approved') {
+                        actionText = `Approved and sealed V${log.version_number}`;
+                        logType = 'create';
+                    } else if (log.action === 'rejected') {
+                        actionText = `Rejected at Level ${log.level_order}`;
+                        logType = 'cancel';
+                    } else if (log.action === 'cycle_cancelled') {
+                        actionText = `Cycle cancelled`;
+                        logType = 'cancel';
+                    } else if (log.action === 'draft_saved') {
+                        actionText = `Draft content auto-saved`;
+                        logType = 'update';
+                    }
+
+                    if (log.comments) {
+                        actionText += ` (${log.comments})`;
+                    }
+
+                    return {
+                        id: log.log_id,
+                        action: actionText,
+                        user: log.acted_by_name || 'System User',
+                        timestamp: new Date(log.acted_at).toLocaleString(),
+                        type: logType
+                    };
+                });
+                setAuditTrail(mappedLogs);
+            }
+        } catch (err) {
+            console.error("Failed to fetch logs:", err);
+        }
+    };
+
+    useEffect(() => {
+        if (isInfoOpen && workflowState.instanceId) {
+            fetchLogs(workflowState.instanceId);
+        }
+    }, [isInfoOpen, workflowState.instanceId]);
 
     useEffect(() => {
         setExtraBreadcrumbs([
@@ -222,30 +305,61 @@ const OrganisationChart = ({ onBack, setExtraBreadcrumbs, canWrite }) => {
         ]);
     }, [onBack, setExtraBreadcrumbs, projectId]);
 
-    const [data, setData] = useState(null);
-    const [zoom, setZoom] = useState(1);
-    const [selectedNodeId, setSelectedNodeId] = useState('root');
-    const [isEditing, setIsEditing] = useState(false);
-    const [isInfoOpen, setIsInfoOpen] = useState(false);
-    const [activeNode, setActiveNode] = useState(null); // The node currently being edited in modal
-    const [editForm, setEditForm] = useState({ name: '', role: '', type: 'staff' });
+    const fetchGlobalVendors = async () => {
+        try {
+            const data = await generalDocsApi.getGlobalVendors({ limit: 5000 });
+            if (data && data.vendors) {
+                setGlobalVendors(data.vendors);
+            }
+        } catch (error) {
+            console.error("Failed to fetch global vendors:", error);
+        }
+    };
 
-    const auditTrail = [
-        { id: 1, action: "API Connected Session", user: "Auto Generator", timestamp: new Date().toLocaleString(), type: "update" },
-    ];
-    const containerRef = useRef(null);
+    useEffect(() => {
+        if (isAddingVendor && globalVendors.length === 0) {
+            fetchGlobalVendors();
+        }
+    }, [isAddingVendor, globalVendors.length]);
+
+    const handleAddVendor = async (vendorId) => {
+        try {
+            if (workflowState && workflowState.cycleId) {
+                const gv = globalVendors.find(v => v.id === vendorId);
+                await workflowApi.addVendorDraft(workflowState.cycleId, {
+                    vendors_id: vendorId,
+                    name: gv?.name,
+                    contact_person: gv?.contact_person,
+                    mobile: gv?.mobile,
+                    email: gv?.email,
+                    job_nature: gv?.job_nature
+                });
+            } else {
+                await generalDocsApi.addVendor(projectId, [vendorId]);
+            }
+            toast.success("Vendor added successfully");
+            await fetchOrgChart();
+            setIsAddingVendor(false);
+            setVendorSearchTerm('');
+        } catch (error) {
+            console.error("Failed to add vendor:", error);
+            toast.error("Failed to add vendor to project");
+        }
+    };
 
     const mapOrgApiToTree = useCallback((apiData) => {
-        const { client_name, project_name, project_location, vendors = [], directory = [] } = apiData;
+        const { client_name, project_name, project_location } = apiData;
+        const vendors = apiData.vendors || apiData.pdoc_vendors || [];
+        const directory = apiData.directory || apiData.pdoc_directory || [];
 
         // Group directory by vendor tracking ID
         const dirByVendor = {};
         const standaloneDir = [];
         
         directory.forEach(d => {
-            if (d.vendor_id) {
-                if (!dirByVendor[d.vendor_id]) dirByVendor[d.vendor_id] = [];
-                dirByVendor[d.vendor_id].push(d);
+            if (d.pv_id) {
+                if (!dirByVendor[d.pv_id]) dirByVendor[d.pv_id] = [];
+                dirByVendor[d.pv_id].push(d);
             } else {
                 standaloneDir.push(d);
             }
@@ -256,21 +370,24 @@ const OrganisationChart = ({ onBack, setExtraBreadcrumbs, canWrite }) => {
         vendors.forEach(v => {
             const vendorNode = {
                 id: `vendor-${v.pv_id || v.vendor_id}`,
-                name: v.company_name || 'Unknown Vendor',
-                role: v.job_nature || 'Contractor',
+                name: v.company_name || v.name || 'Unknown Vendor',
+                role: v.job_nature || v.trade || 'Contractor',
                 type: 'company',
                 children: []
             };
             
             // Add its directory members underneath
-            const associatedDir = dirByVendor[v.pv_id || v.vendor_id] || dirByVendor[v.vendor_id] || [];
+            const associatedDir = dirByVendor[v.pv_id] || [];
             associatedDir.forEach(d => {
                 vendorNode.children.push({
                     id: `dir-${d.pd_id}`,
                     name: d.contact_person || 'N/A',
                     role: d.designation || 'Staff',
                     type: 'staff',
-                    subRole: d.mobile_no || ''
+                    subRole: d.mobile_no || '',
+                    email: d.email || '',
+                    responsibilities: d.responsibilities || '',
+                    address: d.address_line || ''
                 });
             });
 
@@ -290,7 +407,10 @@ const OrganisationChart = ({ onBack, setExtraBreadcrumbs, canWrite }) => {
                         name: d.contact_person || 'N/A',
                         role: d.designation || 'Staff',
                         type: 'staff',
-                        subRole: d.mobile_no || ''
+                        subRole: d.mobile_no || '',
+                        email: d.email || '',
+                        responsibilities: d.responsibilities || '',
+                        address: d.address_line || ''
                     }
                 ]
             });
@@ -316,8 +436,65 @@ const OrganisationChart = ({ onBack, setExtraBreadcrumbs, canWrite }) => {
 
     const fetchOrgChart = useCallback(async () => {
         try {
+            setLoadingChart(true);
+            // Check if workflow is active and has an instance
+            if (workflowState && workflowState.instanceId && !workflowState.notConfigured) {
+                try {
+                    let response = null;
+                    if (workflowState.cycleId) {
+                        try {
+                            const res = await workflowApi.getDraftContent(workflowState.instanceId);
+                            response = {
+                                success: true,
+                                project_name: '',
+                                project_location: '',
+                                client_name: '',
+                                vendors: res.content_tables?.pdoc_vendors || [],
+                                directory: res.content_tables?.pdoc_directory || []
+                            };
+                        } catch (err) {
+                            const res = await workflowApi.getApprovedContent(workflowState.instanceId);
+                            response = {
+                                success: true,
+                                project_name: '',
+                                project_location: '',
+                                client_name: '',
+                                vendors: res.content?.pdoc_vendors || [],
+                                directory: res.content?.pdoc_directory || []
+                            };
+                        }
+                    } else {
+                        const res = await workflowApi.getApprovedContent(workflowState.instanceId);
+                        response = {
+                            success: true,
+                            project_name: '',
+                            project_location: '',
+                            client_name: '',
+                            vendors: res.content?.pdoc_vendors || [],
+                            directory: res.content?.pdoc_directory || []
+                        };
+                    }
+
+                    // Fall back to base project details
+                    const baseDetails = await generalDocsApi.getOrgChart(projectId);
+                    response.project_name = baseDetails.project_name;
+                    response.project_location = baseDetails.project_location;
+                    response.client_name = baseDetails.client_name;
+
+                    setProjectVendors(response.vendors || []);
+                    const tree = mapOrgApiToTree(response);
+                    setData(tree);
+                    setSelectedNodeId('root');
+                    return;
+                } catch (err) {
+                    console.log("No approved/draft workflow content, falling back to base API", err);
+                }
+            }
+
+            // Fallback legacy behavior
             const response = await generalDocsApi.getOrgChart(projectId);
             if (response && response.success) {
+                setProjectVendors(response.vendors || []);
                 const tree = mapOrgApiToTree(response);
                 setData(tree);
                 setSelectedNodeId('root');
@@ -325,12 +502,15 @@ const OrganisationChart = ({ onBack, setExtraBreadcrumbs, canWrite }) => {
         } catch(err) {
             console.error("Failed to fetch Org Chart API, falling back to dummy", err);
             setData(INITIAL_DATA);
+        } finally {
+            setLoadingChart(false);
         }
-    }, [projectId, mapOrgApiToTree]);
+    }, [projectId, mapOrgApiToTree, workflowState]);
 
     useEffect(() => {
+        if (workflowState.loading) return;
         fetchOrgChart();
-    }, [fetchOrgChart]);
+    }, [projectId, workflowState.loading, workflowState.instanceId, workflowState.cycleId, fetchOrgChart]);
 
     // Helpers for Tree Mutation
     const findNode = (nodes, id) => {
@@ -390,31 +570,116 @@ const OrganisationChart = ({ onBack, setExtraBreadcrumbs, canWrite }) => {
         setIsEditing(true);
     }, []);
 
-    const handleDelete = useCallback((id) => {
-        if (id === data?.id) {
-            setData(null);
-            setSelectedNodeId(null);
-            return;
+    const handleDelete = useCallback(async (id) => {
+        try {
+            const idStr = String(id);
+            if (idStr.startsWith('dir-')) {
+                const pdId = idStr.replace('dir-child-', '').replace('dir-solo-', '').replace('dir-', '');
+                if (workflowState && workflowState.cycleId) {
+                    await workflowApi.deleteDirectoryDraft(workflowState.cycleId, pdId);
+                } else {
+                    await generalDocsApi.deleteDirectoryItem(projectId, pdId);
+                }
+            } else if (idStr.startsWith('vendor-')) {
+                const pvId = idStr.replace('vendor-', '');
+                if (workflowState && workflowState.cycleId) {
+                    await workflowApi.deleteVendorDraft(workflowState.cycleId, pvId);
+                } else {
+                    await generalDocsApi.deleteVendor(projectId, pvId);
+                }
+            }
+            setData(prev => findAndDelete(prev, id));
+            if (selectedNodeId === id) setSelectedNodeId(null);
+            await fetchOrgChart();
+        } catch (error) {
+            console.error("Failed to delete node:", error);
+            toast.error("Failed to delete node");
         }
-        setData(prev => findAndDelete(prev, id));
-        if (selectedNodeId === id) setSelectedNodeId(null);
-    }, [data, selectedNodeId]);
+    }, [projectId, selectedNodeId, workflowState, fetchOrgChart]);
 
-    const handleAddChild = (type) => {
+    const handleAddChild = async (type) => {
         if (!selectedNodeId) return;
-        const newNode = {
-            id: `node-${Date.now()}`,
-            name: `New ${type.charAt(0).toUpperCase() + type.slice(1)}`,
-            role: 'ROLE / DESIGNATION',
-            type: type,
-            children: []
-        };
-        setData(prev => findAndAdd(prev, selectedNodeId, newNode));
+
+        // If type is staff, we can add a new directory item!
+        if (type === 'staff') {
+            try {
+                // Find parent vendor id if parent is a vendor
+                const parentNode = findNode(data, selectedNodeId);
+                let pvId = null;
+                if (parentNode && String(parentNode.id).startsWith('vendor-')) {
+                    pvId = String(parentNode.id).replace('vendor-', '');
+                }
+
+                const payload = {
+                    pv_id: pvId,
+                    contact_person: 'New Staff',
+                    designation: 'Staff',
+                    mobile_no: '',
+                    email: '',
+                    responsibilities: '',
+                    address_line: ''
+                };
+
+                let newPdId;
+                if (workflowState && workflowState.cycleId) {
+                    const res = await workflowApi.addDirectoryDraft(workflowState.cycleId, payload);
+                    newPdId = res.pd_id;
+                } else {
+                    const res = await generalDocsApi.addDirectoryItem(projectId, payload);
+                    newPdId = res.pd_id;
+                }
+
+                await fetchOrgChart();
+                setSelectedNodeId(`dir-${newPdId}`);
+            } catch (error) {
+                console.error("Failed to add staff:", error);
+                toast.error("Failed to add staff member to directory");
+            }
+        } else {
+            // Fallback local mutation
+            const newNode = {
+                id: `node-${Date.now()}`,
+                name: `New ${type.charAt(0).toUpperCase() + type.slice(1)}`,
+                role: 'ROLE / DESIGNATION',
+                type: type,
+                children: []
+            };
+            setData(prev => findAndAdd(prev, selectedNodeId, newNode));
+        }
     };
 
-    const handleSave = () => {
-        setData(prev => findAndUpdate(prev, activeNode.id, editForm));
-        setIsEditing(false);
+    const handleSave = async () => {
+        try {
+            const idStr = String(activeNode.id);
+            if (idStr.startsWith('dir-')) {
+                const pdId = idStr.replace('dir-child-', '').replace('dir-solo-', '').replace('dir-', '');
+                const payload = {
+                    contact_person: editForm.name,
+                    designation: editForm.role,
+                    mobile_no: editForm.subRole || null
+                };
+
+                // Fetch original node details to preserve unspecified values
+                const originalNode = findNode(data, activeNode.id);
+                if (originalNode) {
+                    payload.email = originalNode.email || null;
+                    payload.responsibilities = originalNode.responsibilities || null;
+                    payload.address_line = originalNode.address || null;
+                }
+
+                if (workflowState && workflowState.cycleId) {
+                    await workflowApi.updateDirectoryDraft(workflowState.cycleId, pdId, payload);
+                } else {
+                    await generalDocsApi.updateDirectoryItem(projectId, pdId, payload);
+                }
+            }
+            setData(prev => findAndUpdate(prev, activeNode.id, editForm));
+            setIsEditing(false);
+            await fetchOrgChart();
+        } catch (error) {
+            console.error("Failed to save node details:", error);
+            toast.error("Failed to save node updates");
+        }
     };
 
     const handleAddRoot = () => {
@@ -423,7 +688,7 @@ const OrganisationChart = ({ onBack, setExtraBreadcrumbs, canWrite }) => {
         setSelectedNodeId(root.id);
     };
 
-    // Recursive rendering helper defined inside but outside of loop
+    // Recursive rendering helper
     const renderChart = (node, level = 0, isFirst = true, isLast = true, parentHasMany = false) => {
         if (!node) return null;
         return (
@@ -438,260 +703,339 @@ const OrganisationChart = ({ onBack, setExtraBreadcrumbs, canWrite }) => {
                 onSelect={handleSelect}
                 onEdit={handleEdit}
                 onDelete={handleDelete}
-                canWrite={canWrite}
+                canWrite={isEditable}
             />
         );
     };
 
     return (
-        <div className="flex-1 flex flex-col h-full bg-gray-50 dark:bg-[#0d1117] overflow-hidden anim-fade-in Poppins select-none relative">
-            {/* Floating Toolbar */}
-            <div className="absolute top-4 right-4 flex items-center space-x-4 z-30">
-                <div className="flex items-center bg-white dark:bg-[#161b22] border border-gray-200 dark:border-white/10 rounded-xl p-1 shadow-sm">
-                    <button onClick={() => setZoom(z => Math.max(0.3, z - 0.1))} className="p-2 text-gray-500 hover:text-gray-900 dark:hover:text-white transition-all hover:bg-gray-100 dark:hover:bg-white/5 rounded-lg active:scale-90">
-                        <ZoomOut size={16} />
+        <div className="flex-1 flex flex-col h-full bg-white dark:bg-[#0d1117] overflow-hidden anim-fade-in Poppins text-left relative select-none">
+            {/* Toolbar Area */}
+            <div className="flex justify-between items-center px-8 py-4 border-b border-gray-100 dark:border-white/5 bg-white dark:bg-[#0d1117] z-20 flex-shrink-0">
+                <div className="flex items-center space-x-4">
+                    <button
+                        onClick={onBack}
+                        className="p-2 -ml-2 bg-gray-100 dark:bg-white/10 hover:bg-gray-200 dark:hover:bg-white/20 text-gray-700 dark:text-gray-300 rounded-lg transition-all active:scale-95 group cursor-pointer"
+                        title="Back to list"
+                    >
+                        <ArrowLeft size={18} className="group-hover:-translate-x-0.5 transition-transform" />
                     </button>
-                    <span className="text-[10px] font-mono w-12 text-center text-blue-500 font-bold">{Math.round(zoom * 100)}%</span>
-                    <button onClick={() => setZoom(z => Math.min(2.5, z + 0.1))} className="p-2 text-gray-500 hover:text-gray-900 dark:hover:text-white transition-all hover:bg-gray-100 dark:hover:bg-white/5 rounded-lg active:scale-90">
-                        <ZoomIn size={16} />
+                    <div>
+                        <h1 className="text-2xl font-medium text-gray-900 dark:text-white">Organisation Chart</h1>
+                        <p className="text-sm text-gray-500 dark:text-gray-400">Interactive structural view of client, vendors, and team roles.</p>
+                    </div>
+                </div>
+                <div className="flex items-center space-x-3">
+                    <button
+                        onClick={() => setIsInfoOpen(true)}
+                        className="flex items-center space-x-2 px-3 py-2 bg-gray-100 dark:bg-white/5 hover:bg-gray-200 dark:hover:bg-white/10 text-gray-700 dark:text-gray-300 border border-gray-300 dark:border-white/10 rounded-md transition-all active:scale-95 cursor-pointer text-[12px] font-medium"
+                        title="View Audit Trail"
+                    >
+                        <Info size={16} />
+                        <span>Audit trails</span>
                     </button>
                 </div>
-                {canWrite && (
-                    <button
-                        onClick={() => { setData(INITIAL_DATA); setSelectedNodeId('root'); }}
-                        className="px-4 py-2 bg-white dark:bg-[#161b22] hover:bg-gray-50 dark:hover:bg-[#1e293b] text-gray-700 dark:text-gray-300 rounded-md text-[11px] font-bold border border-gray-200 dark:border-white/10 transition-all shadow-sm active:scale-95"
-                    >
-                        Reset to Default
-                    </button>
-                )}
-                <button
-                    onClick={() => setIsInfoOpen(true)}
-                    className="p-2 bg-white dark:bg-[#161b22] hover:bg-gray-50 dark:hover:bg-[#1e293b] text-gray-700 dark:text-gray-300 border border-gray-200 dark:border-white/10 rounded-md transition-all active:scale-95 shadow-sm"
-                    title="View Audit Trail"
-                >
-                    <Info size={16} />
-                </button>
             </div>
 
-            {/* Main Interactive Stage */}
-            <div ref={containerRef} className="flex-1 overflow-auto relative custom-scrollbar bg-[radial-gradient(#e5e7eb_1px,transparent_1px)] dark:bg-[radial-gradient(#1e293b_1px,transparent_1px)] [background-size:32px_32px]">
-                {data ? (
-                    <div
-                        className="p-48 min-w-max flex justify-center origin-top will-change-transform"
-                        style={{ transform: `scale(${zoom})`, transition: 'transform 0.1s linear' }}
-                        onClick={() => setSelectedNodeId(null)} // Click background to deselect
-                    >
-                        {renderChart(data)}
+            {/* Workflow Banner Area */}
+            <div className="px-8 pt-4 bg-gray-50 dark:bg-[#0d1117] flex-shrink-0">
+                <WorkflowPanel 
+                    projectId={projectId} 
+                    templateName="Organisation Chart" 
+                    instanceId={workflowState.instanceId}
+                    onStateChange={setWorkflowState} 
+                    onRefreshContent={fetchOrgChart} 
+                />
+            </div>
+
+            {/* Stage Outer Wrapper */}
+            <div className="flex-1 flex flex-col min-h-0 bg-gray-50 dark:bg-[#0d1117] relative">
+                {/* Floating stage controls */}
+                <div className="absolute top-4 right-4 flex items-center space-x-4 z-30">
+                    <div className="flex items-center bg-white dark:bg-[#161b22] border border-gray-200 dark:border-white/10 rounded-xl p-1 shadow-sm">
+                        <button onClick={() => setZoom(z => Math.max(0.3, z - 0.1))} className="p-2 text-gray-500 hover:text-gray-900 dark:hover:text-white transition-all hover:bg-gray-100 dark:hover:bg-white/5 rounded-lg active:scale-95 cursor-pointer">
+                            <ZoomOut size={16} />
+                        </button>
+                        <span className="text-[10px] font-mono w-12 text-center text-blue-500 font-bold">{Math.round(zoom * 100)}%</span>
+                        <button onClick={() => setZoom(z => Math.min(2.5, z + 0.1))} className="p-2 text-gray-500 hover:text-gray-900 dark:hover:text-white transition-all hover:bg-gray-100 dark:hover:bg-white/5 rounded-lg active:scale-95 cursor-pointer">
+                            <ZoomIn size={16} />
+                        </button>
                     </div>
-                ) : (
-                    <div className="flex flex-col items-center justify-center h-full">
-                        <motion.div
-                            initial={{ scale: 0.9, opacity: 0 }}
-                            animate={{ scale: 1, opacity: 1 }}
-                            className="p-16 border border-gray-200 dark:border-white/5 rounded-2xl flex flex-col items-center text-center max-w-sm bg-white dark:bg-[#161b22]/80 backdrop-blur-xl shadow-lg"
+                    {isEditable && (
+                        <button
+                            onClick={() => { setData(INITIAL_DATA); setSelectedNodeId('root'); }}
+                            className="px-4 py-2 bg-white dark:bg-[#161b22] hover:bg-gray-50 dark:hover:bg-[#1e293b] text-gray-700 dark:text-gray-300 rounded-md text-[11px] font-bold border border-gray-200 dark:border-white/10 transition-all shadow-sm active:scale-95 cursor-pointer"
                         >
-                            <div className="w-20 h-20 bg-blue-500/10 rounded-2xl flex items-center justify-center mb-8 text-blue-600">
-                                <Building size={40} />
-                            </div>
-                            <h3 className="text-gray-900 dark:text-white font-bold text-xl tracking-tight mb-2">Blank Canvas</h3>
-                            <p className="text-gray-500 text-sm mb-10 leading-relaxed">Great organizations are built brick by brick. Start your project structure today.</p>
-                            {canWrite && (
-                                <button
-                                    onClick={handleAddRoot}
-                                    className="w-full py-4 bg-blue-600 hover:bg-blue-500 text-white rounded-2xl text-sm font-black transition-all shadow-xl shadow-blue-600/20 active:scale-95 flex items-center justify-center space-x-2"
-                                >
-                                    <Plus size={20} />
-                                    <span>Create Root Node</span>
-                                </button>
-                            )}
-                        </motion.div>
-                    </div>
-                )}
-
-                {/* The "Construction Kit" - macOS Glassmorphism & Draggable */}
-                <AnimatePresence>
-                    {data && canWrite && (
-                        <motion.div
-                            drag
-                            dragConstraints={containerRef}
-                            dragElastic={0.1}
-                            dragMomentum={false}
-                            initial={{ x: -20, opacity: 0 }}
-                            animate={{ x: 0, opacity: 1 }}
-                            whileDrag={{ scale: 1.02, boxShadow: "0 10px 30px -5px rgba(0, 0, 0, 0.2)" }}
-                            className="absolute left-8 bottom-8 p-6 bg-white/90 dark:bg-[#161b22]/90 backdrop-blur-md border border-gray-200 dark:border-white/10 rounded-2xl shadow-lg z-40 w-64 cursor-grab active:cursor-grabbing group/kit"
-                        >
-                            {/* Drag Handle Indicator */}
-                            <div className="absolute top-2 left-1/2 -translate-x-1/2 w-8 h-1 bg-gray-300 dark:bg-white/10 rounded-full group-hover/kit:bg-gray-400 dark:group-hover/kit:bg-white/20 transition-colors" />
-
-                            <div className="mb-5 mt-1">
-                                <div className="flex items-center mb-1">
-                                    <h4 className="text-[11px] text-gray-900 dark:text-white/90 font-medium tracking-widest flex items-center whitespace-nowrap">
-                                        <Plus className="text-blue-400 mr-2" size={12} />
-                                        Construction kit
-                                    </h4>
-                                </div>
-                                <div className={`mt-3 p-3 rounded-md border transition-all duration-300 flex items-center space-x-3
-                                    ${selectedNodeId ? 'bg-white/90 border-gray-200 dark:bg-white/5 dark:border-white/10 shadow-sm' : 'bg-gray-100 border-gray-200 dark:bg-black/20 dark:border-white/5 opacity-80'}
-                                `}>
-                                    <div className={`w-2 h-2 rounded-full ${selectedNodeId ? 'bg-blue-500' : 'bg-gray-400 dark:bg-gray-700'}`} />
-                                    <span className={`text-[10px] font-medium truncate max-w-[150px]
-                                        ${selectedNodeId ? 'text-gray-700 dark:text-white/80' : 'text-gray-500 italic'}
-                                    `}>
-                                        {selectedNodeId ? `Parent: ${findNode(data, selectedNodeId)?.name || 'Building...'}` : 'Pick a parent first'}
-                                    </span>
-                                </div>
-                            </div>
-
-                            <div className="grid grid-cols-1 gap-2.5">
-                                {[
-                                    { type: 'project', label: 'PROJECT', color: 'bg-blue-400', desc: 'Main worksite' },
-                                    { type: 'company', label: 'COMPANY', color: 'bg-blue-500', desc: 'Partner / Client' },
-                                    { type: 'department', label: 'DEPARTMENT', color: 'bg-emerald-500', desc: 'Functional unit' },
-                                    { type: 'staff', label: 'STAFF / TRADE', color: 'bg-gray-400', desc: 'Personnel member' }
-                                ].map((item) => (
-                                    <button
-                                        key={item.type}
-                                        onClick={() => handleAddChild(item.type)}
-                                        disabled={!selectedNodeId}
-                                        className={`
-                                            group w-full flex items-center justify-between p-3.5 rounded-md border transition-all active:scale-95
-                                            ${selectedNodeId
-                                                ? 'bg-white/5 border-gray-200 dark:border-white/5 hover:border-white/20 hover:bg-gray-200 dark:bg-white/10 shadow-sm'
-                                                : 'bg-black/10 border-transparent cursor-not-allowed opacity-20'}
-                                        `}
-                                    >
-                                        <div className="flex items-center space-x-3">
-                                            <div className={`w-3.5 h-3.5 rounded-full ${item.color} shadow-lg ring-2 ring-black/20 group-hover:scale-110 transition-transform`} />
-                                            <div className="text-left">
-                                                <div className="text-[11px] font-medium tracking-wide text-gray-700 dark:text-white/80 group-hover:text-blue-600 dark:group-hover:text-white capitalize">{item.label}</div>
-                                                <div className="text-[9px] text-gray-500 dark:text-white/40 font-light group-hover:text-gray-600 dark:group-hover:text-white/60">{item.desc}</div>
-                                            </div>
-                                        </div>
-                                        <Plus size={14} className={`transition-all ${selectedNodeId ? 'text-gray-400 dark:text-white/20 group-hover:text-blue-600 dark:group-hover:text-blue-400' : 'text-gray-300 dark:text-white/10'}`} />
-                                    </button>
-                                ))}
-                            </div>
-
-                            {!selectedNodeId && (
-                                <div className="mt-4 pt-4 border-t border-gray-200 dark:border-white/5 text-center">
-                                    <p className="text-[10px] text-gray-400 dark:text-white/40 font-medium">Select a chart node to unlock</p>
-                                </div>
-                            )}
-                        </motion.div>
+                            Reset to Default
+                        </button>
                     )}
-                </AnimatePresence>
+                </div>
+
+                {/* Main Interactive Stage */}
+                <div ref={containerRef} className="flex-1 overflow-auto relative no-scrollbar bg-[radial-gradient(#e5e7eb_1px,transparent_1px)] dark:bg-[radial-gradient(#1e293b_1px,transparent_1px)] [background-size:32px_32px]">
+                    {loadingChart ? (
+                        <div className="flex flex-col items-center justify-center h-full space-y-6">
+                            <div className="relative w-16 h-16 flex items-center justify-center">
+                                <div className="absolute inset-0 rounded-full border-4 border-t-blue-500 border-r-transparent border-b-transparent border-l-transparent animate-spin"></div>
+                                <div className="absolute inset-2 rounded-full border-4 border-b-emerald-500 border-t-transparent border-r-transparent border-l-transparent animate-spin" style={{ animationDirection: 'reverse', animationDuration: '1.5s' }}></div>
+                                <div className="w-8 h-8 rounded-full bg-blue-500/10 flex items-center justify-center text-blue-500">
+                                    <Loader2 size={16} className="animate-spin" />
+                                </div>
+                            </div>
+                            <div className="text-center space-y-1">
+                                <h3 className="text-sm font-bold text-gray-900 dark:text-white tracking-wide animate-pulse">Rendering Organization Chart</h3>
+                                <p className="text-xs text-gray-500 dark:text-gray-400">Loading company layout and contacts...</p>
+                            </div>
+                        </div>
+                    ) : data ? (
+                        <div
+                            className="p-48 min-w-max flex justify-center origin-top will-change-transform"
+                            style={{ transform: `scale(${zoom})`, transition: 'transform 0.1s linear' }}
+                            onClick={() => setSelectedNodeId(null)} // Click background to deselect
+                        >
+                            {renderChart(data)}
+                        </div>
+                    ) : (
+                        <div className="flex flex-col items-center justify-center h-full">
+                            <motion.div
+                                initial={{ scale: 0.9, opacity: 0 }}
+                                animate={{ scale: 1, opacity: 1 }}
+                                className="p-16 border border-gray-200 dark:border-white/5 rounded-2xl flex flex-col items-center text-center max-w-sm bg-white dark:bg-[#161b22]/80 backdrop-blur-xl shadow-lg"
+                            >
+                                <div className="w-20 h-20 bg-blue-500/10 rounded-2xl flex items-center justify-center mb-8 text-blue-600">
+                                    <Building size={40} />
+                                </div>
+                                <h3 className="text-gray-900 dark:text-white font-bold text-xl tracking-tight mb-2">Blank Canvas</h3>
+                                <p className="text-gray-500 text-sm mb-10 leading-relaxed">Great organizations are built brick by brick. Start your project structure today.</p>
+                                {isEditable && (
+                                    <button
+                                        onClick={handleAddRoot}
+                                        className="w-full py-4 bg-blue-600 hover:bg-blue-500 text-white rounded-2xl text-sm font-black transition-all shadow-xl shadow-blue-600/20 active:scale-95 flex items-center justify-center space-x-2 cursor-pointer"
+                                    >
+                                        <Plus size={20} />
+                                        <span>Create Root Node</span>
+                                    </button>
+                                )}
+                            </motion.div>
+                        </div>
+                    )}
+
+                    {/* The "Construction Kit" - macOS Glassmorphism & Draggable */}
+                    <AnimatePresence>
+                        {data && isEditable && (
+                            <motion.div
+                                drag
+                                dragConstraints={containerRef}
+                                dragElastic={0.1}
+                                dragMomentum={false}
+                                initial={{ x: -20, opacity: 0 }}
+                                animate={{ x: 0, opacity: 1 }}
+                                whileDrag={{ scale: 1.02, boxShadow: "0 10px 30px -5px rgba(0, 0, 0, 0.2)" }}
+                                className="absolute left-8 bottom-8 p-6 bg-white/90 dark:bg-[#161b22]/90 backdrop-blur-md border border-gray-200 dark:border-white/10 rounded-2xl shadow-lg z-40 w-64 cursor-grab active:cursor-grabbing group/kit"
+                            >
+                                {/* Drag Handle Indicator */}
+                                <div className="absolute top-2 left-1/2 -translate-x-1/2 w-8 h-1 bg-gray-300 dark:bg-white/10 rounded-full group-hover/kit:bg-gray-400 dark:group-hover/kit:bg-white/20 transition-colors" />
+
+                                <div className="mb-5 mt-1">
+                                    <div className="flex items-center mb-1">
+                                        <h4 className="text-[11px] text-gray-900 dark:text-white/90 font-medium tracking-widest flex items-center whitespace-nowrap">
+                                            <Plus className="text-blue-400 mr-2" size={12} />
+                                            Construction kit
+                                        </h4>
+                                    </div>
+                                    <div className={`mt-3 p-3 rounded-md border transition-all duration-300 flex items-center space-x-3
+                                        ${selectedNodeId ? 'bg-white/90 border-gray-200 dark:bg-white/5 dark:border-white/10 shadow-sm' : 'bg-gray-100 border-gray-200 dark:bg-black/20 dark:border-white/5 opacity-80'}
+                                    `}>
+                                        <div className={`w-2 h-2 rounded-full ${selectedNodeId ? 'bg-blue-500' : 'bg-gray-400 dark:bg-gray-700'}`} />
+                                        <span className={`text-[10px] font-medium truncate max-w-[150px]
+                                            ${selectedNodeId ? 'text-gray-700 dark:text-white/80' : 'text-gray-500 italic'}
+                                        `}>
+                                            {selectedNodeId ? `Parent: ${findNode(data, selectedNodeId)?.name || 'Building...'}` : 'Pick a parent first'}
+                                        </span>
+                                    </div>
+                                </div>
+
+                                <div className="grid grid-cols-1 gap-2.5">
+                                    {selectedNodeId === 'client' ? (
+                                        <>
+                                            <button
+                                                onClick={() => setIsAddingVendor(true)}
+                                                className="group w-full flex items-center justify-between p-3.5 bg-white/5 border border-gray-200 dark:border-white/5 hover:border-white/20 hover:bg-gray-200 dark:hover:bg-white/10 shadow-sm rounded-md transition-all active:scale-95 cursor-pointer"
+                                            >
+                                                <div className="flex items-center space-x-3">
+                                                    <div className="w-3.5 h-3.5 rounded-full bg-blue-500 shadow-lg ring-2 ring-black/20 group-hover:scale-110 transition-transform" />
+                                                    <div className="text-left">
+                                                        <div className="text-[11px] font-medium tracking-wide text-gray-700 dark:text-white/80 group-hover:text-blue-600 dark:group-hover:text-white">Add Project Vendor</div>
+                                                        <div className="text-[9px] text-gray-500 dark:text-white/40 font-light">Add a company from CRM</div>
+                                                    </div>
+                                                </div>
+                                                <Plus size={14} className="text-gray-400 dark:text-white/20 group-hover:text-blue-600 dark:group-hover:text-blue-400" />
+                                            </button>
+
+                                            <button
+                                                onClick={() => handleAddChild('staff')}
+                                                className="group w-full flex items-center justify-between p-3.5 bg-white/5 border border-gray-200 dark:border-white/5 hover:border-white/20 hover:bg-gray-200 dark:hover:bg-white/10 shadow-sm rounded-md transition-all active:scale-95 cursor-pointer"
+                                            >
+                                                <div className="flex items-center space-x-3">
+                                                    <div className="w-3.5 h-3.5 rounded-full bg-emerald-500 shadow-lg ring-2 ring-black/20 group-hover:scale-110 transition-transform" />
+                                                    <div className="text-left">
+                                                        <div className="text-[11px] font-medium tracking-wide text-gray-700 dark:text-white/80 group-hover:text-emerald-600 dark:group-hover:text-white">Add Standalone Contact</div>
+                                                        <div className="text-[9px] text-gray-500 dark:text-white/40 font-light">Add contact without a vendor</div>
+                                                    </div>
+                                                </div>
+                                                <Plus size={14} className="text-gray-400 dark:text-white/20 group-hover:text-emerald-600 dark:group-hover:text-emerald-400" />
+                                            </button>
+                                        </>
+                                    ) : selectedNodeId && String(selectedNodeId).startsWith('vendor-') ? (
+                                        <button
+                                            onClick={() => handleAddChild('staff')}
+                                            className="group w-full flex items-center justify-between p-3.5 bg-white/5 border border-gray-200 dark:border-white/5 hover:border-white/20 hover:bg-gray-200 dark:hover:bg-white/10 shadow-sm rounded-md transition-all active:scale-95 cursor-pointer"
+                                        >
+                                            <div className="flex items-center space-x-3">
+                                                <div className="w-3.5 h-3.5 rounded-full bg-emerald-500 shadow-lg ring-2 ring-black/20 group-hover:scale-110 transition-transform" />
+                                                <div className="text-left">
+                                                    <div className="text-[11px] font-medium tracking-wide text-gray-700 dark:text-white/80 group-hover:text-emerald-600 dark:group-hover:text-white">Add Staff Contact</div>
+                                                    <div className="text-[9px] text-gray-500 dark:text-white/40 font-light">Add staff member under this vendor</div>
+                                                </div>
+                                            </div>
+                                            <Plus size={14} className="text-gray-400 dark:text-white/20 group-hover:text-emerald-600 dark:group-hover:text-emerald-400" />
+                                        </button>
+                                    ) : (
+                                        <div className="text-center text-[10px] text-gray-400 dark:text-white/30 font-medium py-2.5">
+                                            Select the Client node or a Vendor node to add children.
+                                        </div>
+                                    )}
+                                </div>
+
+                                {!selectedNodeId && (
+                                    <div className="mt-4 pt-4 border-t border-gray-200 dark:border-white/5 text-center">
+                                        <p className="text-[10px] text-gray-400 dark:text-white/40 font-medium">Select a chart node to unlock</p>
+                                    </div>
+                                )}
+                            </motion.div>
+                        )}
+                    </AnimatePresence>
+                </div>
             </div>
 
             {/* Edit Drawer (Same Premium Design) */}
             <AnimatePresence>
                 {isEditing && (
-                    <motion.div
-                        initial={{ x: '100%', opacity: 0 }}
-                        animate={{ x: 0, opacity: 1 }}
-                        exit={{ x: '100%', opacity: 0 }}
-                        transition={{ type: 'spring', damping: 20 }}
-                        className="absolute right-0 top-0 bottom-0 w-96 bg-white dark:bg-[#0d1117] border-l border-gray-200 dark:border-white/5 z-50 p-8 flex flex-col"
-                    >
-                        <div className="flex justify-between items-center mb-10">
-                            <div>
-                                <h2 className="text-gray-900 dark:text-white font-normal text-lg tracking-tight flex items-center space-x-3">
-                                    <div className="p-2 bg-blue-500/10 rounded-lg">
-                                        <Edit2 size={18} className="text-blue-500" />
+                    <>
+                        <motion.div
+                            initial={{ opacity: 0 }}
+                            animate={{ opacity: 1 }}
+                            exit={{ opacity: 0 }}
+                            onClick={() => setIsEditing(false)}
+                            className="fixed inset-0 bg-black/40 backdrop-blur-sm z-[100]"
+                        />
+                        <motion.div
+                            initial={{ x: '100%' }}
+                            animate={{ x: 0 }}
+                            exit={{ x: '100%' }}
+                            transition={{ type: 'spring', damping: 25, stiffness: 200 }}
+                            className="fixed right-0 top-0 h-full w-96 bg-white dark:bg-[#0d1117] border-l border-gray-200 dark:border-white/10 shadow-2xl z-[101] flex flex-col p-8 text-left"
+                        >
+                            <div className="flex justify-between items-center mb-10">
+                                <div>
+                                    <h2 className="text-gray-900 dark:text-white font-normal text-lg tracking-tight flex items-center space-x-3">
+                                        <div className="p-2 bg-blue-500/10 rounded-lg">
+                                            <Edit2 size={18} className="text-blue-500" />
+                                        </div>
+                                        <span>Node Editor</span>
+                                    </h2>
+                                    <p className="text-[10px] text-gray-500 dark:text-white/40 mt-1 tracking-widest font-light italic">Configure identity & location</p>
+                                </div>
+                                <button onClick={() => setIsEditing(false)} className="p-2 text-gray-600 hover:text-white transition-colors bg-gray-50 dark:bg-[#161b22] rounded-xl border border-gray-200 dark:border-white/5 cursor-pointer">
+                                    <X size={20} />
+                                </button>
+                            </div>
+
+                            <div className="space-y-6 flex-1 overflow-y-auto pr-2 custom-scrollbar">
+                                <div className="space-y-2">
+                                    <label className="text-[10px] text-gray-600 dark:text-white/50 font-normal tracking-widest pl-1">Target Entity Type</label>
+                                    <select
+                                        className="w-full bg-gray-50 dark:bg-[#161b22] border border-gray-200 dark:border-white/10 rounded-xl py-3.5 px-4 text-sm text-gray-900 dark:text-white/90 font-light outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500/50 appearance-none shadow-inner"
+                                        value={editForm.type}
+                                        onChange={(e) => setEditForm({ ...editForm, type: e.target.value })}
+                                    >
+                                        <option value="project">Project / Location</option>
+                                        <option value="company">Contractor / Firm</option>
+                                        <option value="department">Internal Dept</option>
+                                        <option value="staff">Staff Member / Personnel</option>
+                                    </select>
+                                </div>
+
+                                <div className="space-y-2">
+                                    <label className="text-[10px] text-gray-600 dark:text-white/50 font-normal tracking-widest pl-1">Legal Name</label>
+                                    <input
+                                        type="text"
+                                        placeholder="Enter entity name..."
+                                        className="w-full bg-gray-50 dark:bg-[#161b22] border border-gray-200 dark:border-white/10 rounded-xl py-3.5 px-4 text-sm text-gray-900 dark:text-white/90 font-light outline-none focus:border-blue-500 shadow-inner placeholder:text-gray-400 dark:placeholder:text-white/20"
+                                        value={editForm.name}
+                                        onChange={(e) => setEditForm({ ...editForm, name: e.target.value })}
+                                    />
+                                </div>
+
+                                <div className="space-y-2">
+                                    <label className="text-[10px] text-gray-600 dark:text-white/50 font-normal tracking-widest pl-1">Primary Job Title / Role</label>
+                                    <input
+                                        type="text"
+                                        placeholder="General Manager, Architect, etc..."
+                                        className="w-full bg-gray-50 dark:bg-[#161b22] border border-gray-200 dark:border-white/10 rounded-xl py-3.5 px-4 text-sm text-gray-900 dark:text-white/90 font-light outline-none focus:border-blue-500 shadow-inner placeholder:text-gray-400 dark:placeholder:text-white/20"
+                                        value={editForm.role}
+                                        onChange={(e) => setEditForm({ ...editForm, role: e.target.value })}
+                                    />
+                                </div>
+
+                                {editForm.type === 'project' && (
+                                    <div className="space-y-2">
+                                        <label className="text-[10px] text-gray-600 dark:text-white/50 font-normal tracking-widest pl-1">Geographical Site</label>
+                                        <input
+                                            type="text"
+                                            placeholder="City, Country..."
+                                            className="w-full bg-gray-50 dark:bg-[#161b22] border border-gray-200 dark:border-white/10 rounded-xl py-3.5 px-4 text-sm text-gray-900 dark:text-white/90 font-light outline-none focus:border-blue-500 shadow-inner placeholder:text-gray-400 dark:placeholder:text-white/20"
+                                            value={editForm.location}
+                                            onChange={(e) => setEditForm({ ...editForm, location: e.target.value })}
+                                        />
                                     </div>
-                                    <span>Node Editor</span>
-                                </h2>
-                                <p className="text-[10px] text-gray-500 dark:text-white/40 mt-1 tracking-widest font-light italic">Configure identity & location</p>
-                            </div>
-                            <button onClick={() => setIsEditing(false)} className="p-2 text-gray-600 hover:text-white transition-colors bg-gray-50 dark:bg-[#161b22] rounded-xl border border-gray-200 dark:border-white/5">
-                                <X size={20} />
-                            </button>
-                        </div>
+                                )}
 
-                        <div className="space-y-6 flex-1 overflow-y-auto pr-2 custom-scrollbar">
-                            <div className="space-y-2">
-                                <label className="text-[10px] text-gray-600 dark:text-white/50 font-normal tracking-widest pl-1">Target Entity Type</label>
-                                <select
-                                    className="w-full bg-gray-50 dark:bg-[#161b22] border border-gray-200 dark:border-white/10 rounded-xl py-3.5 px-4 text-sm text-gray-900 dark:text-white/90 font-light outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500/50 appearance-none shadow-inner"
-                                    value={editForm.type}
-                                    onChange={(e) => setEditForm({ ...editForm, type: e.target.value })}
+                                {(editForm.type === 'company' || editForm.type === 'department') && (
+                                    <div className="space-y-2">
+                                        <label className="text-[10px] text-gray-600 dark:text-white/50 font-normal tracking-widest pl-1">Operational Header</label>
+                                        <input
+                                            type="text"
+                                            placeholder="Managed by (e.g. Director)..."
+                                            className="w-full bg-gray-50 dark:bg-[#161b22] border border-gray-200 dark:border-white/10 rounded-xl py-3.5 px-4 text-sm text-gray-900 dark:text-white/90 font-light outline-none focus:border-blue-500 shadow-inner placeholder:text-gray-400 dark:placeholder:text-white/20"
+                                            value={editForm.subRole}
+                                            onChange={(e) => setEditForm({ ...editForm, subRole: e.target.value })}
+                                        />
+                                    </div>
+                                )}
+                            </div>
+
+                            <div className="pt-8 border-t border-gray-200 dark:border-white/5 mt-8 space-y-3">
+                                <button
+                                    onClick={handleSave}
+                                    className="w-full bg-blue-600 hover:bg-blue-500 text-white rounded-2xl py-4 text-lg font-light shadow-2xl shadow-blue-600/20 transition-all flex items-center justify-center space-x-3 active:scale-[0.98] ring-1 ring-white/10 cursor-pointer"
                                 >
-                                    <option value="project">Project / Location</option>
-                                    <option value="company">Contractor / Firm</option>
-                                    <option value="department">Internal Dept</option>
-                                    <option value="staff">Staff Member / Personnel</option>
-                                </select>
+                                    <Save size={20} />
+                                    <span>Save System Updates</span>
+                                </button>
+                                <button
+                                    onClick={() => {
+                                        handleDelete(activeNode.id);
+                                        setIsEditing(false);
+                                    }}
+                                    className="w-full bg-red-600/10 hover:bg-red-600 text-red-500 hover:text-white rounded-2xl py-4 text-lg font-light transition-all flex items-center justify-center space-x-3 active:scale-[0.98] border border-red-500/20 hover:border-red-600 shadow-lg cursor-pointer"
+                                >
+                                    <Trash2 size={20} />
+                                    <span>Delete This Node</span>
+                                </button>
                             </div>
-
-                            <div className="space-y-2">
-                                <label className="text-[10px] text-gray-600 dark:text-white/50 font-normal tracking-widest pl-1">Legal Name</label>
-                                <input
-                                    type="text"
-                                    placeholder="Enter entity name..."
-                                    className="w-full bg-gray-50 dark:bg-[#161b22] border border-gray-200 dark:border-white/10 rounded-xl py-3.5 px-4 text-sm text-gray-900 dark:text-white/90 font-light outline-none focus:border-blue-500 shadow-inner placeholder:text-gray-400 dark:placeholder:text-white/20"
-                                    value={editForm.name}
-                                    onChange={(e) => setEditForm({ ...editForm, name: e.target.value })}
-                                />
-                            </div>
-
-                            <div className="space-y-2">
-                                <label className="text-[10px] text-gray-600 dark:text-white/50 font-normal tracking-widest pl-1">Primary Job Title / Role</label>
-                                <input
-                                    type="text"
-                                    placeholder="General Manager, Architect, etc..."
-                                    className="w-full bg-gray-50 dark:bg-[#161b22] border border-gray-200 dark:border-white/10 rounded-xl py-3.5 px-4 text-sm text-gray-900 dark:text-white/90 font-light outline-none focus:border-blue-500 shadow-inner placeholder:text-gray-400 dark:placeholder:text-white/20"
-                                    value={editForm.role}
-                                    onChange={(e) => setEditForm({ ...editForm, role: e.target.value })}
-                                />
-                            </div>
-
-                            {editForm.type === 'project' && (
-                                <div className="space-y-2">
-                                    <label className="text-[10px] text-gray-600 dark:text-white/50 font-normal tracking-widest pl-1">Geographical Site</label>
-                                    <input
-                                        type="text"
-                                        placeholder="City, Country..."
-                                        className="w-full bg-gray-50 dark:bg-[#161b22] border border-gray-200 dark:border-white/10 rounded-xl py-3.5 px-4 text-sm text-gray-900 dark:text-white/90 font-light outline-none focus:border-blue-500 shadow-inner placeholder:text-gray-400 dark:placeholder:text-white/20"
-                                        value={editForm.location}
-                                        onChange={(e) => setEditForm({ ...editForm, location: e.target.value })}
-                                    />
-                                </div>
-                            )}
-
-                            {(editForm.type === 'company' || editForm.type === 'department') && (
-                                <div className="space-y-2">
-                                    <label className="text-[10px] text-gray-600 dark:text-white/50 font-normal tracking-widest pl-1">Operational Header</label>
-                                    <input
-                                        type="text"
-                                        placeholder="Managed by (e.g. Director)..."
-                                        className="w-full bg-gray-50 dark:bg-[#161b22] border border-gray-200 dark:border-white/10 rounded-xl py-3.5 px-4 text-sm text-gray-900 dark:text-white/90 font-light outline-none focus:border-blue-500 shadow-inner placeholder:text-gray-400 dark:placeholder:text-white/20"
-                                        value={editForm.subRole}
-                                        onChange={(e) => setEditForm({ ...editForm, subRole: e.target.value })}
-                                    />
-                                </div>
-                            )}
-                        </div>
-
-                        <div className="pt-8 border-t border-gray-200 dark:border-white/5 mt-8 space-y-3">
-                            <button
-                                onClick={handleSave}
-                                className="w-full bg-blue-600 hover:bg-blue-500 text-white rounded-2xl py-4 text-lg font-light shadow-2xl shadow-blue-600/20 transition-all flex items-center justify-center space-x-3 active:scale-[0.98] ring-1 ring-white/10"
-                            >
-                                <Save size={20} />
-                                <span>Save System Updates</span>
-                            </button>
-                            <button
-                                onClick={() => {
-                                    handleDelete(activeNode.id);
-                                    setIsEditing(false);
-                                }}
-                                className="w-full bg-red-600/10 hover:bg-red-600 text-red-500 hover:text-white rounded-2xl py-4 text-lg font-light transition-all flex items-center justify-center space-x-3 active:scale-[0.98] border border-red-500/20 hover:border-red-600 shadow-lg"
-                            >
-                                <Trash2 size={20} />
-                                <span>Delete This Node</span>
-                            </button>
-                        </div>
-                    </motion.div>
+                        </motion.div>
+                    </>
                 )}
             </AnimatePresence>
 
@@ -722,48 +1066,145 @@ const OrganisationChart = ({ onBack, setExtraBreadcrumbs, canWrite }) => {
                                 </div>
                                 <button
                                     onClick={() => setIsInfoOpen(false)}
-                                    className="p-2 hover:bg-gray-200 dark:hover:bg-white/10 rounded-full text-gray-500 hover:text-gray-900 dark:text-gray-400 dark:hover:text-white transition-all outline-none"
+                                    className="p-2 hover:bg-gray-200 dark:hover:bg-white/10 rounded-full text-gray-500 hover:text-gray-900 dark:text-gray-400 dark:hover:text-white transition-all outline-none cursor-pointer"
                                 >
                                     <X size={20} />
                                 </button>
                             </div>
 
                             <div className="flex-1 overflow-y-auto p-6 space-y-6 custom-scrollbar">
-                                {auditTrail.map((log) => (
-                                    <div key={log.id} className="relative pl-8 pb-2">
-                                        {/* Activity Line */}
-                                        <div className="absolute left-3 top-2 bottom-0 w-[1px] bg-gray-200 dark:bg-white/10" />
+                                {auditTrail.length > 0 ? (
+                                    auditTrail.map((log) => (
+                                        <div key={log.id} className="relative pl-8 pb-2">
+                                            {/* Activity Line */}
+                                            <div className="absolute left-3 top-2 bottom-0 w-[1px] bg-gray-200 dark:bg-white/10" />
 
-                                        {/* Activity Icon */}
-                                        <div className={`absolute left-0 top-1.5 w-6 h-6 rounded-full border-4 border-white dark:border-[#0d1117] z-10 flex items-center justify-center ${log.type === 'create' ? 'bg-green-500/20 text-green-400' :
-                                            'bg-blue-500/20 text-blue-400'
-                                            }`}>
-                                            <div className="w-1.5 h-1.5 rounded-full bg-current" />
-                                        </div>
+                                            {/* Activity Icon */}
+                                            <div className={`absolute left-0 top-1.5 w-6 h-6 rounded-full border-4 border-white dark:border-[#0d1117] z-10 flex items-center justify-center ${log.type === 'create' ? 'bg-green-500/20 text-green-400' :
+                                                'bg-blue-500/20 text-blue-400'
+                                                }`}>
+                                                <div className="w-1.5 h-1.5 rounded-full bg-current" />
+                                            </div>
 
-                                        <div className="space-y-1">
-                                            <p className="text-sm font-semibold text-gray-800 dark:text-gray-200 leading-tight">
-                                                {log.action}
-                                            </p>
-                                            <div className="flex items-center space-x-2 text-[11px] text-gray-500">
-                                                <span className="font-medium text-gray-400">{log.user}</span>
-                                                <span>•</span>
-                                                <div className="flex items-center space-x-1">
-                                                    <Clock size={10} />
-                                                    <span>{log.timestamp}</span>
+                                            <div className="space-y-1">
+                                                <p className="text-sm font-semibold text-gray-800 dark:text-gray-200 leading-tight">
+                                                    {log.action}
+                                                </p>
+                                                <div className="flex items-center space-x-2 text-[11px] text-gray-500">
+                                                    <span className="font-medium text-gray-400">{log.user}</span>
+                                                    <span>•</span>
+                                                    <div className="flex items-center space-x-1">
+                                                        <Clock size={10} />
+                                                        <span>{log.timestamp}</span>
+                                                    </div>
                                                 </div>
                                             </div>
                                         </div>
+                                    ))
+                                ) : (
+                                    <div className="text-center text-gray-400 text-xs py-8">
+                                        No logs available for this instance.
                                     </div>
-                                ))}
+                                )}
                             </div>
 
                             <div className="p-6 border-t border-gray-200 dark:border-white/10 bg-gray-50 dark:bg-[#161b22]/50">
                                 <button
                                     onClick={() => setIsInfoOpen(false)}
-                                    className="w-full py-2.5 bg-gray-100 dark:bg-white/5 hover:bg-gray-200 dark:hover:bg-white/10 text-gray-700 dark:text-gray-300 rounded-md text-sm font-bold transition-all outline-none border border-gray-300 dark:border-white/10"
+                                    className="w-full py-2.5 bg-gray-100 dark:bg-white/5 hover:bg-gray-200 dark:hover:bg-white/10 text-gray-700 dark:text-gray-300 rounded-md text-sm font-bold transition-all outline-none border border-gray-300 dark:border-white/10 cursor-pointer"
                                 >
                                     Close panel
+                                </button>
+                            </div>
+                        </motion.div>
+                    </>
+                )}
+            </AnimatePresence>
+
+            {/* Vendor Selection Modal */}
+            <AnimatePresence>
+                {isAddingVendor && (
+                    <>
+                        <motion.div
+                            initial={{ opacity: 0 }}
+                            animate={{ opacity: 1 }}
+                            exit={{ opacity: 0 }}
+                            onClick={() => setIsAddingVendor(false)}
+                            className="fixed inset-0 bg-black/40 backdrop-blur-sm z-[100]"
+                        />
+                        <motion.div
+                            initial={{ scale: 0.95, opacity: 0 }}
+                            animate={{ scale: 1, opacity: 1 }}
+                            exit={{ scale: 0.95, opacity: 0 }}
+                            transition={{ type: 'spring', damping: 25, stiffness: 200 }}
+                            className="fixed left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 w-[420px] bg-white dark:bg-[#0d1117] border border-gray-200 dark:border-white/10 rounded-2xl shadow-2xl z-[101] flex flex-col overflow-hidden text-left"
+                        >
+                            <div className="p-6 border-b border-gray-200 dark:border-white/10 flex justify-between items-center bg-gray-50/50 dark:bg-[#161b22]/50">
+                                <div className="flex items-center space-x-3">
+                                    <div className="p-2 bg-blue-500/10 rounded-lg">
+                                        <Building size={20} className="text-blue-500" />
+                                    </div>
+                                    <h2 className="text-lg font-bold text-gray-900 dark:text-white tracking-tight">Select Project Vendor</h2>
+                                </div>
+                                <button
+                                    onClick={() => setIsAddingVendor(false)}
+                                    className="p-2 hover:bg-gray-200 dark:hover:bg-white/10 rounded-full text-gray-500 hover:text-gray-900 dark:text-gray-400 dark:hover:text-white transition-all outline-none cursor-pointer"
+                                >
+                                    <X size={20} />
+                                </button>
+                            </div>
+
+                            <div className="p-4 border-b border-gray-100 dark:border-white/5 bg-gray-50/20 dark:bg-[#0d1117]/20">
+                                <div className="relative">
+                                    <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
+                                    <input
+                                        autoFocus
+                                        type="text"
+                                        placeholder="Search approved vendors..."
+                                        className="w-full pl-9 pr-4 py-2.5 bg-white dark:bg-[#161b22] border border-gray-200 dark:border-white/10 rounded-lg text-xs outline-none focus:border-blue-500 transition-all dark:text-white"
+                                        value={vendorSearchTerm}
+                                        onChange={(e) => setVendorSearchTerm(e.target.value)}
+                                    />
+                                </div>
+                            </div>
+
+                            <div className="overflow-y-auto max-h-80 custom-scrollbar flex-1 p-2">
+                                {(() => {
+                                    const filtered = globalVendors.filter(gv => {
+                                        const alreadyInProject = projectVendors.some(pv => pv.vendor_id === gv.id);
+                                        const matchesSearch = gv.name?.toLowerCase().includes(vendorSearchTerm.toLowerCase()) || 
+                                                             gv.job_nature?.toLowerCase().includes(vendorSearchTerm.toLowerCase());
+                                        return !alreadyInProject && matchesSearch;
+                                    });
+
+                                    return filtered.length > 0 ? (
+                                        filtered.map(gv => (
+                                            <button
+                                                key={gv.id}
+                                                onClick={() => handleAddVendor(gv.id)}
+                                                className="w-full px-4 py-3 flex flex-col items-start hover:bg-blue-50 dark:hover:bg-blue-900/20 transition-colors border-b border-gray-50 dark:border-white/5 text-left group cursor-pointer rounded-lg"
+                                            >
+                                                <div className="flex items-center justify-between w-full">
+                                                    <span className="text-sm font-bold text-gray-900 dark:text-white group-hover:text-blue-600 dark:group-hover:text-blue-400 transition-colors">{gv.name}</span>
+                                                    <Plus size={12} className="text-gray-400 opacity-0 group-hover:opacity-100 transition-opacity" />
+                                                </div>
+                                                <span className="text-[10px] text-gray-500 dark:text-gray-400 mt-0.5">Trade: {gv.job_nature || 'General'}</span>
+                                            </button>
+                                        ))
+                                    ) : (
+                                        <div className="px-4 py-8 text-center text-xs text-gray-400">
+                                            No eligible vendors found.
+                                        </div>
+                                    );
+                                })()}
+                            </div>
+
+                            <div className="p-4 border-t border-gray-200 dark:border-white/10 bg-gray-50 dark:bg-[#161b22]/30 flex justify-end space-x-2">
+                                <button
+                                    onClick={() => setIsAddingVendor(false)}
+                                    className="px-4 py-2 bg-gray-100 dark:bg-white/5 hover:bg-gray-200 dark:hover:bg-white/10 text-gray-700 dark:text-gray-300 rounded-md text-xs font-bold transition-all outline-none border border-gray-300 dark:border-white/10 cursor-pointer"
+                                >
+                                    Cancel
                                 </button>
                             </div>
                         </motion.div>

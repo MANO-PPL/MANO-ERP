@@ -229,7 +229,7 @@ const ResizableTextarea = ({ value, onChange, placeholder = "", className = "" }
 
 const AgendaDetail = ({ onBack, setExtraBreadcrumbs, agendaId: id, canWrite }) => {
     const { id: projectId } = useParams();
-    const [workflowState, setWorkflowState] = useState({ mode: 'read', cycleId: null, instanceId: null });
+    const [workflowState, setWorkflowState] = useState({ mode: 'read', cycleId: null, instanceId: null, loading: id !== 'new' });
     // Guard: track which instanceId+cycleId we've already loaded workflow content for
     const loadedWorkflowKey = useRef(null);
     const [template, setTemplate] = useState(null);
@@ -769,10 +769,11 @@ const AgendaDetail = ({ onBack, setExtraBreadcrumbs, agendaId: id, canWrite }) =
                     {workflowState.instanceId && (
                         <button
                             onClick={() => setIsInfoOpen(true)}
-                            className="p-2 bg-gray-100 dark:bg-white/5 hover:bg-gray-200 dark:hover:bg-white/10 text-gray-700 dark:text-gray-300 border border-gray-300 dark:border-white/10 rounded-md transition-all active:scale-95 cursor-pointer"
+                            className="flex items-center space-x-2 px-3 py-1.5 bg-gray-100 dark:bg-white/5 hover:bg-gray-200 dark:hover:bg-white/10 text-gray-700 dark:text-gray-300 border border-gray-300 dark:border-white/10 rounded-md transition-all active:scale-95 cursor-pointer text-xs font-medium"
                             title="View Audit Trail"
                         >
-                            <Info size={16} />
+                            <Info size={14} />
+                            <span>Audit trails</span>
                         </button>
                     )}
 

@@ -3,6 +3,9 @@ import { Plus, Edit2, GripVertical, Trash2, Info, X, Clock, ArrowLeft } from 'lu
 import { Reorder, AnimatePresence, motion } from 'framer-motion';
 import { useParams } from 'react-router-dom';
 import { generalDocsApi } from '../../../services/generalDocsApi';
+import WorkflowPanel from '../../../components/WorkflowPanel';
+import { workflowApi } from '../../../services/workflowApi';
+import { toast } from 'react-toastify';
 
 const ResizableInput = ({ value, onChange, autoFocus, className = "", minW = "60px" }) => (
     <div className="inline-grid w-fit max-w-full items-center align-middle relative">
@@ -36,27 +39,151 @@ const StaffRoles = ({ onBack, setExtraBreadcrumbs, canWrite }) => {
     const { id: projectId } = useParams();
     const [staffs, setStaffs] = useState([]);
     const [loading, setLoading] = useState(true);
+    const [workflowState, setWorkflowState] = useState({ mode: 'read', cycleId: null, loading: true });
 
     const [editingId, setEditingId] = useState(null);
     const [editData, setEditData] = useState(null);
     const [hoveredRow, setHoveredRow] = useState(null);
     const [isInfoOpen, setIsInfoOpen] = useState(false);
+    const [auditTrail, setAuditTrail] = useState([]);
 
-    const auditTrail = [
-        { id: 1, action: "API Connected Session", user: "Active User", timestamp: new Date().toLocaleString(), type: "update" },
-    ];
+    const isEditable = canWrite && (workflowState.notConfigured || (workflowState.mode === 'edit' && workflowState.cycleId));
+
+    const fetchLogs = async (instanceId) => {
+        if (!instanceId) return;
+        try {
+            const res = await workflowApi.getInstanceLogs(instanceId);
+            if (res.success && res.logs) {
+                const mappedLogs = res.logs.map(log => {
+                    let actionText = log.action;
+                    let logType = 'update';
+                    
+                    if (log.action === 'cycle_initiated') {
+                        actionText = `Revision cycle V${log.version_number} started`;
+                        logType = 'create';
+                    } else if (log.action === 'submitted') {
+                        actionText = `Submitted for Level ${log.level_order} Approval`;
+                        logType = 'update';
+                    } else if (log.action === 'revision_requested') {
+                        actionText = `Revision requested at Level ${log.level_order}`;
+                        logType = 'cancel';
+                    } else if (log.action === 'approved') {
+                        actionText = `Approved and sealed V${log.version_number}`;
+                        logType = 'create';
+                    } else if (log.action === 'rejected') {
+                        actionText = `Rejected at Level ${log.level_order}`;
+                        logType = 'cancel';
+                    } else if (log.action === 'cycle_cancelled') {
+                        actionText = `Cycle cancelled`;
+                        logType = 'cancel';
+                    } else if (log.action === 'draft_saved') {
+                        actionText = `Draft content auto-saved`;
+                        logType = 'update';
+                    }
+
+                    if (log.comments) {
+                        actionText += ` (${log.comments})`;
+                    }
+
+                    return {
+                        id: log.log_id,
+                        action: actionText,
+                        user: log.acted_by_name || 'System User',
+                        timestamp: new Date(log.acted_at).toLocaleString(),
+                        type: logType
+                    };
+                });
+                setAuditTrail(mappedLogs);
+            }
+        } catch (err) {
+            console.error("Failed to fetch logs:", err);
+        }
+    };
+
+    useEffect(() => {
+        if (isInfoOpen && workflowState.instanceId) {
+            fetchLogs(workflowState.instanceId);
+        }
+    }, [isInfoOpen, workflowState.instanceId]);
 
     useEffect(() => {
         setExtraBreadcrumbs([
             { label: 'General Documents', onClick: onBack },
             { label: "MANO's Staff Role & Responsibilities" }
         ]);
-        fetchStaff();
     }, [onBack, setExtraBreadcrumbs, projectId]);
 
-    const fetchStaff = async () => {
+    useEffect(() => {
+        if (workflowState.loading) return;
+        fetchStaff();
+    }, [projectId, workflowState.loading, workflowState.instanceId, workflowState.cycleId]);
+
+    const fetchStaff = async (silent = false) => {
+        let isSilent = silent;
+        if (typeof silent === 'boolean') {
+            isSilent = silent;
+        } else {
+            isSilent = false;
+        }
+
         try {
-            setLoading(true);
+            if (staffs.length === 0 && !isSilent) setLoading(true);
+
+            // Check if workflow is active and has an instance
+            if (workflowState && workflowState.instanceId && !workflowState.notConfigured) {
+                try {
+                    let rows = [];
+                    // Try getting draft content if there is an active cycle
+                    if (workflowState.cycleId) {
+                        try {
+                            const res = await workflowApi.getDraftContent(workflowState.instanceId);
+                            rows = res.content_tables?.pdoc_staff_responsible || [];
+                        } catch (err) {
+                            // Fall back to approved if draft is not accessible
+                            const res = await workflowApi.getApprovedContent(workflowState.instanceId);
+                            rows = res.content?.pdoc_staff_responsible || [];
+                        }
+                    } else {
+                        const res = await workflowApi.getApprovedContent(workflowState.instanceId);
+                        rows = res.content?.pdoc_staff_responsible || [];
+                    }
+
+                    // If no workflow content yet, fall back to base project staff
+                    if (rows.length === 0) {
+                        const data = await generalDocsApi.getStaff(projectId);
+                        if (data && data.staff) {
+                            const mappedStaff = data.staff.map(s => ({
+                                id: s.psrr_id,
+                                name: s.name,
+                                designation: s.designation,
+                                responsibilities: s.responsibilities,
+                                phone: s.mobile,
+                                email: s.email
+                            }));
+                            setStaffs(mappedStaff);
+                            setLoading(false);
+                            return;
+                        }
+                    }
+
+                    const mappedStaff = rows.map(s => ({
+                        id: s.psrr_id,
+                        name: s.name,
+                        designation: s.designation,
+                        responsibilities: s.responsibilities,
+                        phone: s.mobile,
+                        email: s.email
+                    }));
+                    setStaffs(mappedStaff);
+                    setLoading(false);
+                    return;
+                } catch (err) {
+                    console.log("No approved/draft workflow content, falling back to base API", err);
+                    // Fall through to base API below
+                }
+            }
+
+            // Normal fallback if workflow is not configured/initialized
             const data = await generalDocsApi.getStaff(projectId);
             if (data && data.staff) {
                 const mappedStaff = data.staff.map(s => ({
@@ -77,7 +204,7 @@ const StaffRoles = ({ onBack, setExtraBreadcrumbs, canWrite }) => {
     };
 
     const handleAdd = () => {
-        if (!canWrite) return;
+        if (!isEditable) return;
         const newRecord = {
             id: `new-${Date.now()}`,
             name: '',
@@ -93,7 +220,7 @@ const StaffRoles = ({ onBack, setExtraBreadcrumbs, canWrite }) => {
     };
 
     const handleEdit = (staff) => {
-        if (!canWrite) return;
+        if (!isEditable) return;
         setEditingId(staff.id);
         setEditData({ ...staff });
     };
@@ -108,16 +235,25 @@ const StaffRoles = ({ onBack, setExtraBreadcrumbs, canWrite }) => {
                 email: editData.email
             };
             
-            if (editData.isNew) {
-                await generalDocsApi.addStaff(projectId, payload);
+            if (workflowState && workflowState.cycleId) {
+                if (editData.isNew) {
+                    await workflowApi.addStaffDraft(workflowState.cycleId, payload);
+                } else {
+                    await workflowApi.updateStaffDraft(workflowState.cycleId, editData.id, payload);
+                }
             } else {
-                await generalDocsApi.updateStaff(projectId, editData.id, payload);
+                if (editData.isNew) {
+                    await generalDocsApi.addStaff(projectId, payload);
+                } else {
+                    await generalDocsApi.updateStaff(projectId, editData.id, payload);
+                }
             }
             await fetchStaff();
             setEditingId(null);
             setEditData(null);
         } catch (error) {
             console.error("Failed to save staff record:", error);
+            toast.error("Failed to save staff record");
         }
     };
 
@@ -131,10 +267,15 @@ const StaffRoles = ({ onBack, setExtraBreadcrumbs, canWrite }) => {
 
     const handleDelete = async (id) => {
         try {
-            await generalDocsApi.deleteStaff(projectId, id);
+            if (workflowState && workflowState.cycleId) {
+                await workflowApi.deleteStaffDraft(workflowState.cycleId, id);
+            } else {
+                await generalDocsApi.deleteStaff(projectId, id);
+            }
             await fetchStaff();
         } catch (error) {
             console.error("Failed to delete staff record:", error);
+            toast.error("Failed to delete staff record");
         }
     };
 
@@ -145,7 +286,7 @@ const StaffRoles = ({ onBack, setExtraBreadcrumbs, canWrite }) => {
                 <div className="flex items-center space-x-4">
                     <button
                         onClick={onBack}
-                        className="p-2 -ml-2 bg-gray-100 dark:bg-white/10 hover:bg-gray-200 dark:hover:bg-white/20 text-gray-700 dark:text-gray-300 rounded-lg transition-all active:scale-95 group"
+                        className="p-2 -ml-2 bg-gray-100 dark:bg-white/10 hover:bg-gray-200 dark:hover:bg-white/20 text-gray-700 dark:text-gray-300 rounded-lg transition-all active:scale-95 group cursor-pointer"
                         title="Back to list"
                     >
                         <ArrowLeft size={18} className="group-hover:-translate-x-0.5 transition-transform" />
@@ -156,34 +297,37 @@ const StaffRoles = ({ onBack, setExtraBreadcrumbs, canWrite }) => {
                     </div>
                 </div>
                 <div className="flex items-center space-x-3">
-                    {canWrite && (
-                        <>
-                            <button className="flex items-center space-x-2 px-4 py-2 bg-gray-100 dark:bg-white/5 hover:bg-gray-200 dark:hover:bg-white/10 text-gray-700 dark:text-gray-300 border border-gray-300 dark:border-white/10 rounded-md text-[12px] font-medium transition-all">
-                                <Edit2 size={16} />
-                                <span>Edit</span>
-                            </button>
-                            <button onClick={handleAdd} className="flex items-center space-x-2 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-md text-[12px] font-medium shadow-lg shadow-blue-500/20 transition-all active:scale-95">
-                                <Plus size={16} />
-                                <span>Add staff</span>
-                            </button>
-                        </>
+                    {isEditable && (
+                        <button onClick={handleAdd} className="flex items-center space-x-2 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-md text-[12px] font-medium shadow-lg shadow-blue-500/20 transition-all active:scale-95 cursor-pointer">
+                            <Plus size={16} />
+                            <span>Add staff</span>
+                        </button>
                     )}
                     <button
                         onClick={() => setIsInfoOpen(true)}
-                        className="p-2 bg-gray-100 dark:bg-white/5 hover:bg-gray-200 dark:hover:bg-white/10 text-gray-700 dark:text-gray-300 border border-gray-300 dark:border-white/10 rounded-md transition-all active:scale-95"
+                        className="flex items-center space-x-2 px-3 py-2 bg-gray-100 dark:bg-white/5 hover:bg-gray-200 dark:hover:bg-white/10 text-gray-700 dark:text-gray-300 border border-gray-300 dark:border-white/10 rounded-md transition-all active:scale-95 cursor-pointer text-[12px] font-medium"
                         title="View Audit Trail"
                     >
-                        <Info size={18} />
+                        <Info size={16} />
+                        <span>Audit trails</span>
                     </button>
                 </div>
             </div>
 
             {/* List View - Task Theme Style */}
-            <div className="flex-1 overflow-auto custom-scrollbar">
+            <div className="flex-1 overflow-auto no-scrollbar p-6">
+                <WorkflowPanel 
+                    projectId={projectId} 
+                    templateName="Staff Roles" 
+                    instanceId={workflowState.instanceId}
+                    onStateChange={setWorkflowState} 
+                    onRefreshContent={fetchStaff} 
+                />
+
                 {loading ? (
                     <div className="flex items-center justify-center h-48 opacity-50 dark:text-white">Loading data...</div>
                 ) : (
-                    <div className="min-w-full inline-block align-middle pb-20">
+                    <div className="min-w-full inline-block align-middle pb-20 mt-4">
                         <table className="w-full text-left whitespace-nowrap text-[13px] border-collapse bg-white dark:bg-[#0d1117]">
                             <thead className="bg-[#f9fafb] dark:bg-[#161b22] text-gray-500 dark:text-gray-400 sticky top-0 z-10 border-b border-gray-200 dark:border-white/5 tracking-wide">
                                 <tr>
@@ -194,10 +338,10 @@ const StaffRoles = ({ onBack, setExtraBreadcrumbs, canWrite }) => {
                                     <th className="px-4 py-3 font-medium capitalize text-[10px] tracking-widest border-r border-gray-100 dark:border-white/5 whitespace-normal">Responsibilities</th>
                                     <th className="px-4 py-3 font-medium capitalize text-[10px] tracking-widest border-r border-gray-100 dark:border-white/5">Mobile no</th>
                                     <th className="px-4 py-3 font-medium capitalize text-[10px] tracking-widest border-r border-gray-100 dark:border-white/5">Email id</th>
-                                    {canWrite && <th className="px-4 py-3 font-medium capitalize text-[10px] tracking-widest text-center">Actions</th>}
+                                    {isEditable && <th className="px-4 py-3 font-medium capitalize text-[10px] tracking-widest text-center">Actions</th>}
                                 </tr>
                             </thead>
-                            <Reorder.Group axis="y" values={staffs} onReorder={canWrite ? setStaffs : () => {}} as="tbody" className="divide-y divide-gray-100 dark:divide-white/[0.03]">
+                            <Reorder.Group axis="y" values={staffs} onReorder={isEditable ? setStaffs : () => {}} as="tbody" className="divide-y divide-gray-100 dark:divide-white/[0.03]">
                                 <AnimatePresence initial={false}>
                                     {staffs.map((staff, idx) => {
                                         const isEditing = editingId === staff.id;
@@ -212,7 +356,7 @@ const StaffRoles = ({ onBack, setExtraBreadcrumbs, canWrite }) => {
                                             >
                                                 <td className="px-3 py-2 text-center w-6 min-w-[40px]">
                                                     <div className="flex items-center justify-center">
-                                                        <GripVertical size={14} className="text-gray-300 dark:text-gray-700 group-hover/row:text-blue-500 transition-colors cursor-grab active:cursor-grabbing" />
+                                                        <GripVertical size={14} className={`text-gray-300 dark:text-gray-700 group-hover/row:text-blue-500 transition-colors ${isEditable ? 'cursor-grab active:cursor-grabbing' : 'pointer-events-none'}`} />
                                                     </div>
                                                 </td>
                                                 <td className="px-4 py-2 text-gray-500 dark:text-gray-600 font-mono text-[11px] border-r border-gray-100 dark:border-white/[0.03] text-center w-16">
@@ -289,43 +433,43 @@ const StaffRoles = ({ onBack, setExtraBreadcrumbs, canWrite }) => {
                                                     )}
                                                 </td>
 
-                                                    {canWrite && (
-                                                        <td className="px-4 py-2 text-center min-w-[120px]">
-                                                            {isEditing ? (
-                                                                <div className="flex items-center justify-center space-x-2">
-                                                                    <button
-                                                                        onClick={(e) => { e.stopPropagation(); handleSave(); }}
-                                                                        className="px-2.5 py-1 bg-blue-600 text-white rounded text-[11px] font-medium hover:bg-blue-700 transition-all shadow-md shadow-blue-500/20"
-                                                                    >
-                                                                        Save
-                                                                    </button>
-                                                                    <button
-                                                                        onClick={(e) => { e.stopPropagation(); handleCancel(); }}
-                                                                        className="px-2.5 py-1 bg-gray-100 dark:bg-white/5 text-gray-600 dark:text-gray-400 rounded text-[11px] font-medium hover:bg-gray-200 dark:hover:bg-white/10 transition-all"
-                                                                    >
-                                                                        Cancel
-                                                                    </button>
-                                                                </div>
-                                                            ) : (
-                                                                <div className={`flex items-center justify-center space-x-3 transition-opacity duration-200 opacity-100`}>
-                                                                    <button
-                                                                        onClick={(e) => { e.stopPropagation(); handleEdit(staff); }}
-                                                                        className="text-gray-400 hover:text-blue-500 transition-colors p-1"
-                                                                        title="Edit"
-                                                                    >
-                                                                        <Edit2 size={14} />
-                                                                    </button>
-                                                                    <button
-                                                                        onClick={(e) => { e.stopPropagation(); handleDelete(staff.id); }}
-                                                                        className="text-gray-400 hover:text-red-500 transition-colors p-1"
-                                                                        title="Delete"
-                                                                    >
-                                                                        <Trash2 size={14} />
-                                                                    </button>
-                                                                </div>
-                                                            )}
-                                                        </td>
-                                                    )}
+                                                {isEditable && (
+                                                    <td className="px-4 py-2 text-center min-w-[120px]">
+                                                        {isEditing ? (
+                                                            <div className="flex items-center justify-center space-x-2">
+                                                                <button
+                                                                    onClick={(e) => { e.stopPropagation(); handleSave(); }}
+                                                                    className="px-2.5 py-1 bg-blue-600 text-white rounded text-[11px] font-medium hover:bg-blue-700 transition-all shadow-md shadow-blue-500/20 cursor-pointer"
+                                                                >
+                                                                    Save
+                                                                </button>
+                                                                <button
+                                                                    onClick={(e) => { e.stopPropagation(); handleCancel(); }}
+                                                                    className="px-2.5 py-1 bg-gray-100 dark:bg-white/5 text-gray-600 dark:text-gray-400 rounded text-[11px] font-medium hover:bg-gray-200 dark:hover:bg-white/10 transition-all cursor-pointer"
+                                                                >
+                                                                    Cancel
+                                                                </button>
+                                                            </div>
+                                                        ) : (
+                                                            <div className={`flex items-center justify-center space-x-3 transition-opacity duration-200 opacity-100`}>
+                                                                <button
+                                                                    onClick={(e) => { e.stopPropagation(); handleEdit(staff); }}
+                                                                    className="text-gray-400 hover:text-blue-500 transition-colors p-1 cursor-pointer"
+                                                                    title="Edit"
+                                                                >
+                                                                    <Edit2 size={14} />
+                                                                </button>
+                                                                <button
+                                                                    onClick={(e) => { e.stopPropagation(); handleDelete(staff.id); }}
+                                                                    className="text-gray-400 hover:text-red-500 transition-colors p-1 cursor-pointer"
+                                                                    title="Delete"
+                                                                >
+                                                                    <Trash2 size={14} />
+                                                                </button>
+                                                            </div>
+                                                        )}
+                                                    </td>
+                                                )}
                                             </Reorder.Item>
                                         );
                                     })}
@@ -363,44 +507,50 @@ const StaffRoles = ({ onBack, setExtraBreadcrumbs, canWrite }) => {
                                 </div>
                                 <button
                                     onClick={() => setIsInfoOpen(false)}
-                                    className="p-2 hover:bg-gray-200 dark:hover:bg-white/10 rounded-full text-gray-500 hover:text-gray-900 dark:text-gray-400 dark:hover:text-white transition-all outline-none"
+                                    className="p-2 hover:bg-gray-200 dark:hover:bg-white/10 rounded-full text-gray-500 hover:text-gray-900 dark:text-gray-400 dark:hover:text-white transition-all outline-none cursor-pointer"
                                 >
                                     <X size={20} />
                                 </button>
                             </div>
 
                             <div className="flex-1 overflow-y-auto p-6 space-y-6 custom-scrollbar">
-                                {auditTrail.map((log) => (
-                                    <div key={log.id} className="relative pl-8 pb-2">
-                                        <div className="absolute left-3 top-2 bottom-0 w-[1px] bg-gray-200 dark:bg-white/10" />
-                                        <div className={`absolute left-0 top-1.5 w-6 h-6 rounded-full border-4 border-white dark:border-[#0d1117] z-10 flex items-center justify-center ${log.type === 'create' ? 'bg-green-500/20 text-green-400' :
-                                            log.type === 'update' ? 'bg-blue-500/20 text-blue-400' :
-                                                'bg-purple-500/20 text-purple-400'
-                                            }`}>
-                                            <div className="w-1.5 h-1.5 rounded-full bg-current" />
-                                        </div>
+                                {auditTrail.length > 0 ? (
+                                    auditTrail.map((log) => (
+                                        <div key={log.id} className="relative pl-8 pb-2">
+                                            <div className="absolute left-3 top-2 bottom-0 w-[1px] bg-gray-200 dark:bg-white/10" />
+                                            <div className={`absolute left-0 top-1.5 w-6 h-6 rounded-full border-4 border-white dark:border-[#0d1117] z-10 flex items-center justify-center ${log.type === 'create' ? 'bg-green-500/20 text-green-400' :
+                                                log.type === 'update' ? 'bg-blue-500/20 text-blue-400' :
+                                                    'bg-purple-500/20 text-purple-400'
+                                                }`}>
+                                                <div className="w-1.5 h-1.5 rounded-full bg-current" />
+                                            </div>
 
-                                        <div className="space-y-1">
-                                            <p className="text-sm font-semibold text-gray-800 dark:text-gray-200 leading-tight">
-                                                {log.action}
-                                            </p>
-                                            <div className="flex items-center space-x-2 text-[11px] text-gray-500">
-                                                <span className="font-medium text-gray-400">{log.user}</span>
-                                                <span>•</span>
-                                                <div className="flex items-center space-x-1">
-                                                    <Clock size={10} />
-                                                    <span>{log.timestamp}</span>
+                                            <div className="space-y-1">
+                                                <p className="text-sm font-semibold text-gray-800 dark:text-gray-200 leading-tight">
+                                                    {log.action}
+                                                </p>
+                                                <div className="flex items-center space-x-2 text-[11px] text-gray-500">
+                                                    <span className="font-medium text-gray-400">{log.user}</span>
+                                                    <span>•</span>
+                                                    <div className="flex items-center space-x-1">
+                                                        <Clock size={10} />
+                                                        <span>{log.timestamp}</span>
+                                                    </div>
                                                 </div>
                                             </div>
                                         </div>
+                                    ))
+                                ) : (
+                                    <div className="text-center text-gray-400 text-xs py-8">
+                                        No logs available for this instance.
                                     </div>
-                                ))}
+                                )}
                             </div>
 
                             <div className="p-6 border-t border-gray-200 dark:border-white/10 bg-gray-50 dark:bg-[#161b22]/50">
                                 <button
                                     onClick={() => setIsInfoOpen(false)}
-                                    className="w-full py-2.5 bg-gray-100 dark:bg-white/5 hover:bg-gray-200 dark:hover:bg-white/10 text-gray-700 dark:text-gray-300 rounded-md text-sm font-bold transition-all outline-none border border-gray-300 dark:border-white/10"
+                                    className="w-full py-2.5 bg-gray-100 dark:bg-white/5 hover:bg-gray-200 dark:hover:bg-white/10 text-gray-700 dark:text-gray-300 rounded-md text-sm font-bold transition-all outline-none border border-gray-300 dark:border-white/10 cursor-pointer"
                                 >
                                     Close panel
                                 </button>

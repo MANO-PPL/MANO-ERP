@@ -229,7 +229,7 @@ const ResizableTextarea = ({ value, onChange, placeholder = "", className = "" }
 
 const MoMDetail = ({ onBack, setExtraBreadcrumbs, momId: id, canWrite }) => {
     const { id: projectId } = useParams();
-    const [workflowState, setWorkflowState] = useState({ mode: 'read', cycleId: null, instanceId: null });
+    const [workflowState, setWorkflowState] = useState({ mode: 'read', cycleId: null, instanceId: null, loading: id !== 'new' });
     const [template, setTemplate] = useState(null);
     const [isEditing, setIsEditing] = useState(id === 'new' && canWrite);
 
@@ -769,7 +769,7 @@ const MoMDetail = ({ onBack, setExtraBreadcrumbs, momId: id, canWrite }) => {
                             title="View Audit Trail"
                         >
                             <Info size={16} />
-                            <span>Audit Trail</span>
+                            <span>Audit trails</span>
                         </button>
                     )}
 
