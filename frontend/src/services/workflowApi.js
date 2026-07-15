@@ -1,6 +1,12 @@
 import api from './api';
 
 export const workflowApi = {
+    // Get optimized workflow status for a template in a project in a single call
+    getTemplateWorkflowStatus: async (projectId, templateName, instanceId) => {
+        const response = await api.get(`/v1/instances/project/${projectId}/template-status`, { params: { template_name: templateName, instance_id: instanceId } });
+        return response.data;
+    },
+
     // List document templates (can optionally filter by project_id)
     getTemplates: async (projectId) => {
         const response = await api.get('/v1/documents', { params: { project_id: projectId } });
@@ -123,6 +129,18 @@ export const workflowApi = {
     },
 
     // ─── Cycle Content Write APIs (Draft Mode) ──────────────────────────────
+    addDirectoryDraft: async (cycleId, data) => {
+        const response = await api.post(`/v1/cycles/${cycleId}/directory`, data);
+        return response.data;
+    },
+    updateDirectoryDraft: async (cycleId, pdId, data) => {
+        const response = await api.put(`/v1/cycles/${cycleId}/directory/${pdId}`, data);
+        return response.data;
+    },
+    deleteDirectoryDraft: async (cycleId, pdId) => {
+        const response = await api.delete(`/v1/cycles/${cycleId}/directory/${pdId}`);
+        return response.data;
+    },
     addVendorDraft: async (cycleId, data) => {
         const response = await api.post(`/v1/cycles/${cycleId}/vendors`, data);
         return response.data;
@@ -153,6 +171,32 @@ export const workflowApi = {
     },
     removeMomParticipantDraft: async (cycleId, pmpId) => {
         const response = await api.delete(`/v1/cycles/${cycleId}/mom/participants/${pmpId}`);
+        return response.data;
+    },
+    // Staff Roles Draft APIs
+    addStaffDraft: async (cycleId, data) => {
+        const response = await api.post(`/v1/cycles/${cycleId}/staff`, data);
+        return response.data;
+    },
+    updateStaffDraft: async (cycleId, psrrId, data) => {
+        const response = await api.put(`/v1/cycles/${cycleId}/staff/${psrrId}`, data);
+        return response.data;
+    },
+    deleteStaffDraft: async (cycleId, psrrId) => {
+        const response = await api.delete(`/v1/cycles/${cycleId}/staff/${psrrId}`);
+        return response.data;
+    },
+    // Project Summary Draft APIs
+    addSummaryDraft: async (cycleId, data) => {
+        const response = await api.post(`/v1/cycles/${cycleId}/summary`, data);
+        return response.data;
+    },
+    updateSummaryDraft: async (cycleId, id, data) => {
+        const response = await api.put(`/v1/cycles/${cycleId}/summary/${id}`, data);
+        return response.data;
+    },
+    deleteSummaryDraft: async (cycleId, id) => {
+        const response = await api.delete(`/v1/cycles/${cycleId}/summary/${id}`);
         return response.data;
     }
 };

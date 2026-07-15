@@ -9,6 +9,7 @@ const router = express.Router();
 router.use(authenticateJWT);
 
 // Instance Metadata
+router.get('/project/:projectId/template-status', instanceController.getTemplateWorkflowStatus);
 router.get('/:instance_id', instanceController.getInstance);
 router.patch('/:instance_id/archive', instanceController.archiveInstance);
 router.get('/:instance_id/logs', instanceController.getInstanceLogs);

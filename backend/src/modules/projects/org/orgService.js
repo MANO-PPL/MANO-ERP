@@ -57,6 +57,7 @@ export async function getProjectOrgChart(projectId) {
         .where('pd.project_id', projectId)
         .select([
             'pd.pd_id',
+            'pd.pv_id',
             'pv.vendors_id as vendor_id',
             'c.name as company_name',
             'jn.job_name as job_nature',
