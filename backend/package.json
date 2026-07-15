@@ -30,12 +30,12 @@
     "socket.io": "^4.8.3",
     "stream": "^0.0.3",
     "zod": "^4.4.3",
-    "zod-to-json-schema": "^3.25.2"
+    "zod-to-json-schema": "^3.25.2",
+    "exceljs": "^4.1.1"
   },
   "type": "module",
   "devDependencies": {
     "concurrently": "^10.0.3",
-    "exceljs": "^4.1.1",
     "nodemon": "^1.0.2"
   }
 }
