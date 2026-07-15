@@ -3,7 +3,7 @@ import express from 'express';
 // New route modules (migrated to src/)
 import authRoutes from './auth/authRoutes.js';
 import adminRoutes from './admin/adminRoutes.js';
-import unitRoutes from './inventory/unitRoutes.js';
+import unitRoutes from './units/unitRoutes.js';
 import resourceRoutes from './inventory/resourceRoutes.js';
 import projectRoutes from './projects/projectRoutes.js';
 import vendorRoutes from './vendors/vendorRoutes.js';

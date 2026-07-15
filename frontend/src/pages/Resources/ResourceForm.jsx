@@ -36,10 +36,11 @@ const ResourceForm = ({ resource, units, onClose, onSave }) => {
         // Fetch materials for composition builder
         const fetchMaterials = async () => {
             try {
-                const res = await resourceApi.getResources({ type: 'material' });
-                setAllResources(res.resources || []);
+                const res = await resourceApi.getResources();
+                const components = (res.resources || []).filter(r => r.type === 'material' || r.type === 'labour');
+                setAllResources(components);
             } catch (err) {
-                console.error("Failed to fetch materials", err);
+                console.error("Failed to fetch composition components", err);
             }
         };
         fetchMaterials();
@@ -138,6 +139,7 @@ const ResourceForm = ({ resource, units, onClose, onSave }) => {
                                 <select required name="type" value={formData.type} onChange={handleChange} disabled={!!resource} className="w-full bg-white dark:bg-[#0d1117] border border-gray-300 dark:border-white/10 rounded-lg px-3 py-2 text-sm text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:opacity-50">
                                     <option value="material">Material</option>
                                     <option value="item">Item</option>
+                                    <option value="labour">Labour</option>
                                 </select>
                                 {resource && <span className="text-[10px] text-gray-400 mt-1">Type cannot be changed after creation.</span>}
                             </div>

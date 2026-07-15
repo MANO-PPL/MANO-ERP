@@ -1,0 +1,56 @@
+{
+  "resources": [
+    {
+      "name": "Filtered Water",
+      "code": "ING-WATER",
+      "type": "material",
+      "base_unit_code": "L",
+      "description": "Standard water mixing resource",
+      "rate": { "rate": 0.05, "unit_code": "L" }
+    },
+    {
+      "name": "Fresh Lemon Juice",
+      "code": "ING-LEMON-JUICE",
+      "type": "material",
+      "base_unit_code": "ml",
+      "description": "Squeezed lemon juice pulp",
+      "rate": { "rate": 0.15, "unit_code": "ml" }
+    },
+    {
+      "name": "Refined White Sugar",
+      "code": "ING-SUGAR",
+      "type": "material",
+      "base_unit_code": "g",
+      "description": "Granulated table sugar",
+      "conversions": [
+        { "name": "Bag", "quantity": 1000, "unit_code": "g" }
+      ],
+      "rate": { "rate": 0.08, "unit_code": "g" }
+    },
+    {
+      "name": "Kitchen Chef Labor",
+      "code": "LBR-CHEF",
+      "type": "labour",
+      "base_unit_code": "min",
+      "description": "Hourly chef rate scaled to minutes",
+      "rate": { "rate": 6.00, "unit_code": "min" }
+    },
+    {
+      "name": "Classic Sweet Lemonade (1L Mix)",
+      "code": "MIX-LEMONADE-1L",
+      "type": "item",
+      "base_unit_code": "L",
+      "description": "Standard recipe mix for 1L Lemonade",
+      "conversions": [
+        { "name": "Glass", "quantity": 0.25, "unit_code": "L" }
+      ],
+      "rate": { "rate": 18.00, "unit_code": "L" },
+      "compositions": [
+        { "component_code": "ING-WATER", "quantity": 0.75, "unit_code": "L" },
+        { "component_code": "ING-LEMON-JUICE", "quantity": 150.0, "unit_code": "ml" },
+        { "component_code": "ING-SUGAR", "quantity": 100.0, "unit_code": "g" },
+        { "component_code": "LBR-CHEF", "quantity": 5.0, "unit_code": "min" }
+      ]
+    }
+  ]
+}
