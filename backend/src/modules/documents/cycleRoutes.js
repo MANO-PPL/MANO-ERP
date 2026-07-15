@@ -42,6 +42,8 @@ router.post('/:cycle_id/agenda/participants', contentWriteController.addAgendaPa
 router.delete('/:cycle_id/agenda/participants/:pap_id', contentWriteController.removeAgendaParticipant);
 
 // Summary
-router.put('/:cycle_id/summary', contentWriteController.updateSummary);
+router.post('/:cycle_id/summary', contentWriteController.addSummary);
+router.put('/:cycle_id/summary/:id', contentWriteController.updateSummary);
+router.delete('/:cycle_id/summary/:id', contentWriteController.deleteSummary);
 
 export default router;

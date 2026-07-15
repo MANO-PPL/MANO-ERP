@@ -27,7 +27,7 @@ const ALLOWED_COLUMNS = {
     pdoc_vendors: ['pv_id', 'project_id', 'instance_id', 'cycle_id', 'version_id', 'vendors_id', 'created_at', 'updated_at'],
     pdoc_directory: ['pd_id', 'project_id', 'instance_id', 'cycle_id', 'version_id', 'pv_id', 'contact_person', 'designation', 'responsibilities', 'mobile_no', 'email', 'address_line', 'created_at', 'updated_at'],
     pdoc_staff_responsible: ['psrr_id', 'project_id', 'instance_id', 'cycle_id', 'version_id', 'name', 'designation', 'responsibilities', 'mobile', 'email', 'created_at', 'updated_at'],
-    pdoc_summary: ['id', 'project_id', 'instance_id', 'cycle_id', 'version_id', 'section_name', 'summary_text', 'created_at', 'updated_at'],
+    pdoc_summary: ['id', 'project_id', 'instance_id', 'cycle_id', 'version_id', 'title', 'details', 'status', 'date', 'created_at', 'updated_at'],
     pdoc_meeting: ['meeting_id', 'project_id', 'instance_id', 'cycle_id', 'version_id', 'meeting_type', 'meeting_no', 'date', 'time', 'location', 'subject', 'content', 'created_at', 'updated_at'],
     pdoc_meeting_participants: ['id', 'meeting_id', 'pd_id', 'created_at', 'updated_at']
 };
@@ -253,7 +253,9 @@ export const agenda = {
 
 
 export const summary = {
-    update: (orgId, cycleId, userId, data) => upsertEpisodicHeader(orgId, cycleId, userId, 'pdoc_summary', data)
+    add: (orgId, cycleId, userId, data) => addDraftRow(orgId, cycleId, userId, 'pdoc_summary', data),
+    update: (orgId, cycleId, userId, id, data) => updateDraftRow(orgId, cycleId, userId, 'pdoc_summary', 'id', id, data),
+    delete: (orgId, cycleId, userId, id) => deleteDraftRow(orgId, cycleId, userId, 'pdoc_summary', 'id', id)
 };
 
 export default {

@@ -100,10 +100,22 @@ export const removeAgendaParticipant = catchAsync(async (req, res) => {
 });
 
 // --- Summary ---
+export const addSummary = catchAsync(async (req, res) => {
+    const cycleId = getCycleId(req);
+    const newId = await contentWriteService.summary.add(req.user.org_id, cycleId, req.user.id, req.body);
+    res.status(201).json({ success: true, id: newId });
+});
+
 export const updateSummary = catchAsync(async (req, res) => {
     const cycleId = getCycleId(req);
-    await contentWriteService.summary.update(req.user.org_id, cycleId, req.user.id, req.body);
+    await contentWriteService.summary.update(req.user.org_id, cycleId, req.user.id, req.params.id, req.body);
     res.json({ success: true, message: 'Summary updated' });
+});
+
+export const deleteSummary = catchAsync(async (req, res) => {
+    const cycleId = getCycleId(req);
+    await contentWriteService.summary.delete(req.user.org_id, cycleId, req.user.id, req.params.id);
+    res.json({ success: true, message: 'Summary deleted' });
 });
 
 export default {
@@ -112,5 +124,5 @@ export default {
     addStaff, updateStaff, deleteStaff,
     updateMom, addMomParticipant, removeMomParticipant,
     updateAgenda, addAgendaParticipant, removeAgendaParticipant,
-    updateSummary
+    addSummary, updateSummary, deleteSummary
 };

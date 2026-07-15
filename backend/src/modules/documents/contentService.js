@@ -149,10 +149,6 @@ export async function getDraftContent(orgId, instanceId, userId) {
         throw new AppError('No active draft cycle exists for this instance', 404);
     }
 
-    if (activeCycle.current_holder_id !== userId) {
-        throw new AppError('Only the current holder of the cycle can view the draft', 403);
-    }
-
     const contentData = {};
 
     for (const tableConf of CONTENT_TABLES) {

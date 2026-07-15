@@ -44,8 +44,29 @@ export const getInstanceLogs = catchAsync(async (req, res) => {
     });
 });
 
+export const getTemplateWorkflowStatus = catchAsync(async (req, res) => {
+    const { projectId } = req.params;
+    const { template_name, instance_id } = req.query;
+    if (!projectId || isNaN(parseInt(projectId))) {
+        throw new AppError('Invalid Project ID', 400);
+    }
+    if (!template_name) {
+        throw new AppError('template_name is required', 400);
+    }
+
+    const data = await instanceService.getTemplateWorkflowStatus(
+        req.user.org_id, 
+        projectId, 
+        template_name, 
+        instance_id ? parseInt(instance_id) : null
+    );
+
+    res.json(data);
+});
+
 export default {
     getInstance,
     archiveInstance,
-    getInstanceLogs
+    getInstanceLogs,
+    getTemplateWorkflowStatus
 };
