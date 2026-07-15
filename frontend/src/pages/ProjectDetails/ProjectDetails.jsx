@@ -136,7 +136,7 @@ const ProjectDetails = () => {
     };
 
     return (
-        <div className="flex flex-col h-[calc(100vh-7vh)] w-full text-gray-900 dark:text-gray-300 bg-white dark:bg-[#0d1117] font-sans">
+        <div className="flex flex-col h-full w-full text-gray-900 dark:text-gray-300 bg-white dark:bg-[#0d1117] font-sans">
             {/* Minimal Header */}
             <div className="flex justify-between items-center px-5 py-3 border-b border-gray-200 dark:border-gh-border bg-[#f9fafb] dark:bg-gh-bg transition-colors">
                 <div className="flex items-center space-x-2 text-xs">

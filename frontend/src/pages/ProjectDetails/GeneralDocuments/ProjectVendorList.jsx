@@ -11,7 +11,7 @@ const ProjectVendorList = ({ onBack, setExtraBreadcrumbs, canWrite }) => {
     const { id: projectId } = useParams();
     const [vendors, setVendors] = useState([]);
     const [loading, setLoading] = useState(true);
-    const [workflowState, setWorkflowState] = useState({ mode: 'read', cycleId: null });
+    const [workflowState, setWorkflowState] = useState({ mode: 'read', cycleId: null, loading: true });
 
     const [isAdding, setIsAdding] = useState(false);
     const [globalVendors, setGlobalVendors] = useState([]);
@@ -24,10 +24,10 @@ const ProjectVendorList = ({ onBack, setExtraBreadcrumbs, canWrite }) => {
 
     const [auditTrail, setAuditTrail] = useState([]);
 
-    const fetchLogs = async () => {
-        if (!workflowState.instanceId) return;
+    const fetchLogs = async (instanceId) => {
+        if (!instanceId) return;
         try {
-            const res = await workflowApi.getInstanceLogs(workflowState.instanceId);
+            const res = await workflowApi.getInstanceLogs(instanceId);
             if (res.success && res.logs) {
                 const mappedLogs = res.logs.map(log => {
                     let actionText = log.action;
@@ -77,7 +77,7 @@ const ProjectVendorList = ({ onBack, setExtraBreadcrumbs, canWrite }) => {
 
     useEffect(() => {
         if (isInfoOpen && workflowState.instanceId) {
-            fetchLogs();
+            fetchLogs(workflowState.instanceId);
         }
     }, [isInfoOpen, workflowState.instanceId]);
 
@@ -86,12 +86,18 @@ const ProjectVendorList = ({ onBack, setExtraBreadcrumbs, canWrite }) => {
             { label: 'General Documents', onClick: onBack },
             { label: 'Project Vendor List' }
         ]);
-        fetchGlobalVendors();
     }, [onBack, setExtraBreadcrumbs, projectId]);
 
     useEffect(() => {
+        if (isAdding && globalVendors.length === 0) {
+            fetchGlobalVendors();
+        }
+    }, [isAdding, globalVendors.length]);
+
+    useEffect(() => {
+        if (workflowState.loading) return;
         fetchVendors();
-    }, [workflowState, projectId]);
+    }, [projectId, workflowState.loading, workflowState.instanceId, workflowState.cycleId]);
 
     // Handle clicking outside of dropdown to close it
     useEffect(() => {
@@ -104,9 +110,16 @@ const ProjectVendorList = ({ onBack, setExtraBreadcrumbs, canWrite }) => {
         return () => document.removeEventListener("mousedown", handleClickOutside);
     }, []);
 
-    const fetchVendors = async () => {
+    const fetchVendors = async (silent = false) => {
+        let isSilent = silent;
+        if (typeof silent === 'boolean') {
+            isSilent = silent;
+        } else {
+            isSilent = false;
+        }
+
         try {
-            setLoading(true);
+            if (vendors.length === 0 && !isSilent) setLoading(true);
             
             // Check if workflow is active and has an instance
             if (workflowState && workflowState.instanceId && !workflowState.notConfigured) {
@@ -319,10 +332,11 @@ const ProjectVendorList = ({ onBack, setExtraBreadcrumbs, canWrite }) => {
 
                     <button
                         onClick={() => setIsInfoOpen(true)}
-                        className="p-2 bg-gray-100 dark:bg-white/5 hover:bg-gray-200 dark:hover:bg-white/10 text-gray-700 dark:text-gray-300 border border-gray-300 dark:border-white/10 rounded-md transition-all active:scale-95 cursor-pointer"
+                        className="flex items-center space-x-2 px-3 py-2 bg-gray-100 dark:bg-white/5 hover:bg-gray-200 dark:hover:bg-white/10 text-gray-700 dark:text-gray-300 border border-gray-300 dark:border-white/10 rounded-md transition-all active:scale-95 cursor-pointer text-[12px] font-medium"
                         title="View Audit Trail"
                     >
-                        <Info size={18} />
+                        <Info size={16} />
+                        <span>Audit trails</span>
                     </button>
                 </div>
             </div>
@@ -332,6 +346,7 @@ const ProjectVendorList = ({ onBack, setExtraBreadcrumbs, canWrite }) => {
                 <WorkflowPanel 
                     projectId={projectId} 
                     templateName="Project Vendor List" 
+                    instanceId={workflowState.instanceId}
                     onStateChange={setWorkflowState} 
                     onRefreshContent={fetchVendors} 
                 />
