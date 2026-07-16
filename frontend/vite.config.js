@@ -7,6 +7,12 @@ export default defineConfig({
     react(),
     tailwindcss(),
   ],
+  esbuild: {
+    keepNames: true,
+  },
+  build: {
+    minify: false,
+  },
   server: {
     host: '0.0.0.0',
     port: 5173,
