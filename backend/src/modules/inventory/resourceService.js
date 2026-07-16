@@ -107,7 +107,47 @@ export async function getResourceById(orgId, id) {
  * Create a resource.
  * For items, optionally pass compositions: [{ component_resource_id, quantity, unit_code }]
  */
-export async function createResource(orgId, { name, code, type, base_unit_code, description, remarks, compositions = [] }) {
+async function _replaceConversions(orgId, resourceId, conversions, baseUnit, dbClient = db) {
+    for (const conv of conversions) {
+        if (!conv.name || !conv.quantity || !conv.unit_code) {
+            throw new AppError('Each conversion must have name, quantity, and unit_code', 400);
+        }
+        
+        let targetUnit;
+        try {
+            targetUnit = getUnit(conv.unit_code);
+        } catch (err) {
+            throw new AppError(err.message, 400);
+        }
+
+        if (targetUnit.type !== baseUnit.type) {
+            throw new AppError(`Incompatible unit category: Conversion target unit "${conv.unit_code}" (${targetUnit.type}) must match resource base unit "${baseUnit.symbol}" (${baseUnit.type})`, 400);
+        }
+    }
+
+    await dbClient('res_conversions').where('resource_id', resourceId).del();
+
+    if (conversions.length > 0) {
+        const rows = conversions.map(conv => ({
+            org_id: orgId,
+            resource_id: resourceId,
+            name: conv.name,
+            quantity: conv.quantity,
+            unit_code: conv.unit_code
+        }));
+        await dbClient('res_conversions').insert(rows);
+    }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Create
+// ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * Create a resource.
+ * For items, optionally pass compositions: [{ component_resource_id, quantity, unit_code }]
+ */
+export async function createResource(orgId, { name, code, type, base_unit_code, description, remarks, compositions = [], conversions = [] }) {
     if (!name || !type || !base_unit_code) {
         throw new AppError('name, type, and base_unit_code are required', 400);
     }
@@ -116,26 +156,36 @@ export async function createResource(orgId, { name, code, type, base_unit_code, 
     }
 
     // App-level validation for standard units
+    let unit;
     try {
-        getUnit(base_unit_code);
+        unit = getUnit(base_unit_code);
     } catch (err) {
         throw new AppError(err.message, 400);
     }
 
-    const [insertId] = await db('res_resources').insert({
-        org_id: orgId,
-        name,
-        code: code || null,
-        type,
-        base_unit_code,
-        description: description || null,
-        remarks: remarks || null
-    });
+    const insertId = await db.transaction(async (trx) => {
+        const [id] = await trx('res_resources').insert({
+            org_id: orgId,
+            name,
+            code: code || null,
+            type,
+            base_unit_code,
+            description: description || null,
+            remarks: remarks || null
+        });
 
-    // If item, insert compositions
-    if (type === 'item' && compositions.length > 0) {
-        await _replaceCompositions(orgId, insertId, compositions);
-    }
+        // Insert conversions
+        if (conversions.length > 0) {
+            await _replaceConversions(orgId, id, conversions, unit, trx);
+        }
+
+        // If item, insert compositions
+        if (type === 'item' && compositions.length > 0) {
+            await _replaceCompositions(orgId, id, compositions, trx);
+        }
+
+        return id;
+    });
 
     return insertId;
 }
@@ -144,13 +194,15 @@ export async function createResource(orgId, { name, code, type, base_unit_code, 
 // Update
 // ─────────────────────────────────────────────────────────────────────────────
 
-export async function updateResource(orgId, id, { name, code, base_unit_code, description, remarks, compositions }) {
+export async function updateResource(orgId, id, { name, code, base_unit_code, description, remarks, compositions, conversions }) {
     const resource = await ensureResourceExists(orgId, id);
 
     await db.transaction(async (trx) => {
         const updates = {};
         if (name !== undefined) updates.name = name;
         if (code !== undefined) updates.code = code;
+        
+        let activeBaseUnitCode = resource.base_unit_code;
         if (base_unit_code !== undefined) {
             try {
                 getUnit(base_unit_code);
@@ -158,12 +210,20 @@ export async function updateResource(orgId, id, { name, code, base_unit_code, de
                 throw new AppError(err.message, 400);
             }
             updates.base_unit_code = base_unit_code;
+            activeBaseUnitCode = base_unit_code;
         }
         if (description !== undefined) updates.description = description;
         if (remarks !== undefined) updates.remarks = remarks;
 
         if (Object.keys(updates).length > 0) {
             await trx('res_resources').where({ id, org_id: orgId }).update(updates);
+        }
+
+        const baseUnit = getUnit(activeBaseUnitCode);
+
+        // Replace conversions if provided
+        if (conversions !== undefined) {
+            await _replaceConversions(orgId, id, conversions, baseUnit, trx);
         }
 
         // Replace compositions if provided (items only)

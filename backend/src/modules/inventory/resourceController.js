@@ -53,8 +53,6 @@ export const deleteResource = catchAsync(async (req, res) => {
     res.json({ success: true, message: 'Resource deleted successfully' });
 });
 
-// ─── Compositions ─────────────────────────────────────────────────────────────
-
 export const setCompositions = catchAsync(async (req, res) => {
     const { id } = req.params;
     if (!id || isNaN(parseInt(id))) throw new AppError('Invalid Resource ID', 400);
@@ -64,13 +62,19 @@ export const setCompositions = catchAsync(async (req, res) => {
     res.json({ success: true, message: 'Compositions updated' });
 });
 
-// ─── Conversions ──────────────────────────────────────────────────────────────
-
 export const addConversion = catchAsync(async (req, res) => {
     const { id } = req.params;
     if (!id || isNaN(parseInt(id))) throw new AppError('Invalid Resource ID', 400);
-    const { name, quantity, unit_id } = req.body;
-    const convId = await resourceService.addConversion(req.user.org_id, id, { name, quantity, unit_id });
+    
+    const { name, quantity, unit_id, unit_code } = req.body;
+    const resolvedUnitCode = unit_code || unit_id;
+
+    const convId = await resourceService.addConversion(req.user.org_id, id, { 
+        name, 
+        quantity, 
+        unit_code: resolvedUnitCode 
+    });
+    
     res.status(201).json({ success: true, message: 'Conversion added', id: convId });
 });
 
