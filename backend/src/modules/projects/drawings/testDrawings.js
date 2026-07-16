@@ -19,14 +19,14 @@ router.get('/proxy', async (req, res) => {
             return res.status(response.status).json({ error: `S3 request failed: ${response.statusText}` });
         }
 
+        const arrayBuffer = await response.arrayBuffer();
+        const buffer = Buffer.from(arrayBuffer);
+
         res.setHeader('Content-Type', response.headers.get('content-type') || 'application/octet-stream');
-        const contentLength = response.headers.get('content-length');
-        if (contentLength) {
-            res.setHeader('Content-Length', contentLength);
-        }
+        res.setHeader('Content-Length', buffer.length);
         res.setHeader('Access-Control-Allow-Origin', '*');
 
-        Readable.fromWeb(response.body).pipe(res);
+        res.send(buffer);
     } catch (err) {
         console.error('Drawing Proxy Error:', err.message);
         return res.status(500).json({ error: 'Failed to proxy S3 file: ' + err.message });
