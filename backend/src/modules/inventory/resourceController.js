@@ -31,7 +31,18 @@ export const createResource = catchAsync(async (req, res) => {
 export const updateResource = catchAsync(async (req, res) => {
     const { id } = req.params;
     if (!id || isNaN(parseInt(id))) throw new AppError('Invalid Resource ID', 400);
-    await resourceService.updateResource(req.user.org_id, id, req.body);
+    
+    const { name, code, base_unit_id, base_unit_code, description, remarks, compositions } = req.body;
+    const resolvedUnitCode = base_unit_code || base_unit_id;
+
+    await resourceService.updateResource(req.user.org_id, id, {
+        name,
+        code,
+        base_unit_code: resolvedUnitCode,
+        description,
+        remarks,
+        compositions
+    });
     res.json({ success: true, message: 'Resource updated successfully' });
 });
 

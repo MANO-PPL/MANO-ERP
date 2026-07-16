@@ -144,26 +144,34 @@ export async function createResource(orgId, { name, code, type, base_unit_code, 
 // Update
 // ─────────────────────────────────────────────────────────────────────────────
 
-export async function updateResource(orgId, id, { name, code, base_unit_code, description, remarks }) {
-    await ensureResourceExists(orgId, id);
+export async function updateResource(orgId, id, { name, code, base_unit_code, description, remarks, compositions }) {
+    const resource = await ensureResourceExists(orgId, id);
 
-    const updates = {};
-    if (name !== undefined) updates.name = name;
-    if (code !== undefined) updates.code = code;
-    if (base_unit_code !== undefined) {
-        try {
-            getUnit(base_unit_code);
-        } catch (err) {
-            throw new AppError(err.message, 400);
+    await db.transaction(async (trx) => {
+        const updates = {};
+        if (name !== undefined) updates.name = name;
+        if (code !== undefined) updates.code = code;
+        if (base_unit_code !== undefined) {
+            try {
+                getUnit(base_unit_code);
+            } catch (err) {
+                throw new AppError(err.message, 400);
+            }
+            updates.base_unit_code = base_unit_code;
         }
-        updates.base_unit_code = base_unit_code;
-    }
-    if (description !== undefined) updates.description = description;
-    if (remarks !== undefined) updates.remarks = remarks;
+        if (description !== undefined) updates.description = description;
+        if (remarks !== undefined) updates.remarks = remarks;
 
-    if (Object.keys(updates).length > 0) {
-        await db('res_resources').where({ id, org_id: orgId }).update(updates);
-    }
+        if (Object.keys(updates).length > 0) {
+            await trx('res_resources').where({ id, org_id: orgId }).update(updates);
+        }
+
+        // Replace compositions if provided (items only)
+        if (compositions !== undefined && resource.type === 'item') {
+            await _replaceCompositions(orgId, id, compositions, trx);
+        }
+    });
+
     return true;
 }
 
@@ -196,7 +204,7 @@ export async function deleteResource(orgId, id) {
 /**
  * Internal helper — replaces ALL compositions for a resource.
  */
-async function _replaceCompositions(orgId, parentResourceId, compositions) {
+async function _replaceCompositions(orgId, parentResourceId, compositions, dbClient = db) {
     for (const c of compositions) {
         if (!c.component_resource_id || !c.quantity || !c.unit_code) {
             throw new AppError('Each composition row must have component_resource_id, quantity, and unit_code', 400);
@@ -209,10 +217,10 @@ async function _replaceCompositions(orgId, parentResourceId, compositions) {
             throw new AppError(err.message, 400);
         }
 
-        const comp = await db('res_resources').where({ id: c.component_resource_id, org_id: orgId }).first();
+        const comp = await dbClient('res_resources').where({ id: c.component_resource_id, org_id: orgId }).first();
         if (!comp) throw new AppError(`Component resource id ${c.component_resource_id} not found in your organization`, 400);
-        if (comp.type !== 'material') {
-            throw new AppError(`Component resource "${comp.name}" must be of type 'material'`, 400);
+        if (comp.type !== 'material' && comp.type !== 'labour') {
+            throw new AppError(`Component resource "${comp.name}" must be of type 'material' or 'labour'`, 400);
         }
 
         // Validate that the recipe unit matches the child component's unit category
@@ -222,7 +230,7 @@ async function _replaceCompositions(orgId, parentResourceId, compositions) {
         }
     }
 
-    await db('res_compositions').where('parent_resource_id', parentResourceId).del();
+    await dbClient('res_compositions').where('parent_resource_id', parentResourceId).del();
 
     if (compositions.length > 0) {
         const rows = compositions.map(c => ({
@@ -231,7 +239,7 @@ async function _replaceCompositions(orgId, parentResourceId, compositions) {
             quantity: c.quantity,
             unit_code: c.unit_code
         }));
-        await db('res_compositions').insert(rows);
+        await dbClient('res_compositions').insert(rows);
     }
 }
 
