@@ -301,6 +301,122 @@ export async function removeConversion(orgId, conversionId) {
     return true;
 }
 
+export async function bulkInsertResources(orgId, resources) {
+    if (!Array.isArray(resources)) {
+        throw new AppError('Input must be an array of resources', 400);
+    }
+
+    const report = {
+        successCount: 0,
+        insertedIds: [],
+        errors: []
+    };
+
+    // Run in transaction to guarantee consistency
+    await db.transaction(async (trx) => {
+        for (let i = 0; i < resources.length; i++) {
+            const res = resources[i];
+            const { name, code, type, base_unit_code, description, remarks, compositions, conversions } = res;
+
+            try {
+                if (!name || !type || !base_unit_code) {
+                    throw new Error('name, type, and base_unit_code are required');
+                }
+                if (!['material', 'item', 'labour'].includes(type)) {
+                    throw new Error('type must be "material", "item", or "labour"');
+                }
+
+                // App-level validation
+                const unit = getUnit(base_unit_code);
+
+                // Insert resource
+                const [insertId] = await trx('res_resources').insert({
+                    org_id: orgId,
+                    name,
+                    code: code || null,
+                    type,
+                    base_unit_code,
+                    description: description || null,
+                    remarks: remarks || null
+                });
+
+                // Handle custom conversions if provided
+                if (Array.isArray(conversions) && conversions.length > 0) {
+                    for (const conv of conversions) {
+                        const { name: convName, quantity: convQty, unit_code: convUnitCode } = conv;
+                        if (!convName || !convQty || !convUnitCode) {
+                            throw new Error('Each conversion must have name, quantity, and unit_code');
+                        }
+                        
+                        const convUnit = getUnit(convUnitCode);
+                        if (convUnit.type !== unit.type) {
+                            throw new Error(`Incompatible unit category: Conversion target unit "${convUnitCode}" (${convUnit.type}) must match resource base unit "${base_unit_code}" (${unit.type})`);
+                        }
+
+                        await trx('res_conversions').insert({
+                            org_id: orgId,
+                            resource_id: insertId,
+                            name: convName,
+                            quantity: convQty,
+                            unit_code: convUnitCode
+                        });
+                    }
+                }
+
+                // Handle compositions if provided (items only)
+                if (type === 'item' && Array.isArray(compositions) && compositions.length > 0) {
+                    for (const comp of compositions) {
+                        const { component_resource_id, quantity: compQty, unit_code: compUnitCode } = comp;
+                        if (!component_resource_id || !compQty || !compUnitCode) {
+                            throw new Error('Each composition must have component_resource_id, quantity, and unit_code');
+                        }
+
+                        const compUnit = getUnit(compUnitCode);
+
+                        // Fetch component
+                        const component = await trx('res_resources').where({ id: component_resource_id, org_id: orgId }).first();
+                        if (!component) {
+                            throw new Error(`Component resource id ${component_resource_id} not found in this organization`);
+                        }
+                        if (component.type !== 'material' && component.type !== 'labour') {
+                            throw new Error(`Component resource "${component.name}" must be of type 'material' or 'labour'`);
+                        }
+
+                        const compBaseUnit = getUnit(component.base_unit_code);
+                        if (compUnit.type !== compBaseUnit.type) {
+                            throw new Error(`Incompatible unit category: Recipe unit "${compUnitCode}" (${compUnit.type}) must match component base unit "${component.base_unit_code}" (${compBaseUnit.type})`);
+                        }
+
+                        await trx('res_compositions').insert({
+                            parent_resource_id: insertId,
+                            component_resource_id,
+                            quantity: compQty,
+                            unit_code: compUnitCode
+                        });
+                    }
+                }
+
+                report.successCount++;
+                report.insertedIds.push(insertId);
+
+            } catch (err) {
+                // Report the error details
+                report.errors.push({
+                    index: i,
+                    name: name || 'Unknown',
+                    error: err.message
+                });
+                // Throw to trigger rollback
+                throw err;
+            }
+        }
+    }).catch(err => {
+        console.warn("Bulk import transaction rolled back due to error:", err.message);
+    });
+
+    return report;
+}
+
 export default {
     getResources,
     getResourceById,
@@ -309,5 +425,6 @@ export default {
     deleteResource,
     setCompositions,
     addConversion,
-    removeConversion
+    removeConversion,
+    bulkInsertResources
 };

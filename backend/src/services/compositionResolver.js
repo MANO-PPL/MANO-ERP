@@ -11,7 +11,7 @@ async function checkCycles(resourceId, dbClient, visited = new Set()) {
     }
 
     const resource = await dbClient('res_resources').where('id', resourceId).first();
-    if (!resource || resource.type === 'material') {
+    if (!resource || resource.type === 'material' || resource.type === 'labour') {
         return;
     }
 
@@ -28,7 +28,7 @@ async function checkCycles(resourceId, dbClient, visited = new Set()) {
 
 /**
  * Resolves the immediate components of a resource.
- * - If resource is a material: returns itself with factor 1.0.
+ * - If resource is a material or labor: returns itself with factor 1.0.
  * - If resource is an item: returns its immediate composition elements.
  * - Guard: Throws if a circular reference is found anywhere in the tree.
  * 
@@ -41,7 +41,7 @@ export async function resolveComponents(resourceId, dbClient = defaultDb) {
         throw new Error(`Resource with ID ${resourceId} not found`);
     }
 
-    if (resource.type === 'material') {
+    if (resource.type === 'material' || resource.type === 'labour') {
         return [{
             resourceId: resource.id,
             quantity: 1.0,
