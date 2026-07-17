@@ -22,7 +22,4 @@ router.put('/:id/compositions', resourceController.setCompositions);
 router.post('/:id/conversions', resourceController.addConversion);
 router.delete('/:id/conversions/:conv_id', resourceController.removeConversion);
 
-// Bulk Operations
-router.post('/bulk-upload', resourceController.bulkUploadResources);
-
 export default router;

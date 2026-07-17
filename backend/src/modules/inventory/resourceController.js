@@ -23,8 +23,46 @@ export const getResource = catchAsync(async (req, res) => {
 });
 
 export const createResource = catchAsync(async (req, res) => {
-    const { name, code, type, base_unit_id, description, remarks, compositions } = req.body;
-    const id = await resourceService.createResource(req.user.org_id, { name, code, type, base_unit_id, description, remarks, compositions: compositions || [] });
+    // If the payload is an array, treat it as a bulk upload
+    if (Array.isArray(req.body)) {
+        const result = await resourceService.bulkInsertResources(req.user.org_id, req.body);
+        if (result.errors.length > 0) {
+            return res.status(400).json({
+                success: false,
+                message: 'Bulk insert failed and was rolled back.',
+                report: result
+            });
+        }
+        return res.status(201).json({ success: true, report: result });
+    }
+
+    // Otherwise, treat it as a single resource creation
+    const { name, code, type, base_unit_id, base_unit_code, description, remarks, compositions, conversions } = req.body;
+    const resolvedUnitCode = base_unit_code || base_unit_id;
+    
+    const comps = (compositions || []).map(c => ({
+        component_resource_id: c.component_resource_id,
+        quantity: c.quantity,
+        unit_code: c.unit_code || c.unit_id
+    }));
+
+    const convs = (conversions || []).map(c => ({
+        name: c.name,
+        quantity: c.quantity,
+        unit_code: c.unit_code || c.unit_id
+    }));
+
+    const id = await resourceService.createResource(req.user.org_id, { 
+        name, 
+        code, 
+        type, 
+        base_unit_code: resolvedUnitCode, 
+        description, 
+        remarks, 
+        compositions: comps,
+        conversions: convs 
+    });
+    
     res.status(201).json({ success: true, message: 'Resource created successfully', id });
 });
 
