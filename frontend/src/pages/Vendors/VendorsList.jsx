@@ -192,32 +192,13 @@ const VendorsList = () => {
                 <div className="flex flex-wrap items-center gap-3">
                     <div className="flex space-x-2">
                         <div className="relative">
-                            <input
-                                type="text" placeholder="Company.."
-                                className="w-36 bg-gray-50 dark:bg-white/[0.02] border border-gray-200 dark:border-white/10 rounded-lg px-3 py-2 text-xs text-gray-900 dark:text-white focus:outline-none focus:ring-1 focus:ring-blue-500 placeholder-gray-400"
-                                value={searchFilters.company} onChange={e => setSearchFilters(prev => ({ ...prev, company: e.target.value }))}
-                            />
-                        </div>
-                        <div className="relative">
-                            <input
-                                type="text" placeholder="Job Nature.."
-                                className="w-36 bg-gray-50 dark:bg-white/[0.02] border border-gray-200 dark:border-white/10 rounded-lg px-3 py-2 text-xs text-gray-900 dark:text-white focus:outline-none focus:ring-1 focus:ring-blue-500 placeholder-gray-400"
-                                value={searchFilters.jobNature} onChange={e => setSearchFilters(prev => ({ ...prev, jobNature: e.target.value }))}
-                            />
-                        </div>
-                        <div className="relative">
-                            <input
-                                type="text" placeholder="Person.."
-                                className="w-36 bg-gray-50 dark:bg-white/[0.02] border border-gray-200 dark:border-white/10 rounded-lg px-3 py-2 text-xs text-gray-900 dark:text-white focus:outline-none focus:ring-1 focus:ring-blue-500 placeholder-gray-400"
-                                value={searchFilters.person} onChange={e => setSearchFilters(prev => ({ ...prev, person: e.target.value }))}
-                            />
-                        </div>
-                        <div className="relative">
-                            <input
-                                type="text" placeholder="Location.."
-                                className="w-32 bg-gray-50 dark:bg-white/[0.02] border border-gray-200 dark:border-white/10 rounded-lg px-3 py-2 text-xs text-gray-900 dark:text-white focus:outline-none focus:ring-1 focus:ring-blue-500 placeholder-gray-400"
-                                value={searchFilters.location} onChange={e => setSearchFilters(prev => ({ ...prev, location: e.target.value }))}
-                            />
+                        <input
+                            type="text"
+                            placeholder="Search vendors..."
+                            className="w-full pl-9 pr-3 py-2 bg-gray-50 dark:bg-white/[0.02] border border-gray-200 dark:border-white/10 rounded-lg text-xs text-gray-900 dark:text-white focus:outline-none focus:ring-1 focus:ring-blue-500 placeholder-gray-400"
+                            value={searchFilters.company}
+                            onChange={e => setSearchFilters(prev => ({ ...prev, company: e.target.value }))}
+                        />
                         </div>
                     </div>
 
@@ -287,15 +268,24 @@ const VendorsList = () => {
                             <th className="px-4 py-2.5">CONTACT NO</th>
                             <th className="px-4 py-2.5">EMAIL ID</th>
                             <th className="px-4 py-2.5 border-l border-gray-100 dark:border-white/5">ADDRESS</th>
-                            <th className="px-4 py-2.5 text-center">ACTIONS</th>
                         </tr>
                     </thead>
                     <tbody className="divide-y divide-gray-100 dark:divide-white/5 bg-white dark:bg-[#0d1117]">
-                        {vendors.length > 0 ? (
+                        {isLoading ? (
+                            Array.from({ length: 5 }).map((_, i) => (
+                                <tr key={i} className="animate-pulse">
+                                    {Array.from({ length: 8 }).map((_, j) => (
+                                        <td key={j} className="px-4 py-3">
+                                            <div className="h-3 bg-gray-200 dark:bg-white/10 rounded"></div>
+                                        </td>
+                                    ))}
+                                </tr>
+                            ))
+                        ) : vendors.length > 0 ? (
                             vendors.map((vendor, idx) => (
                                 <tr
                                     key={vendor.id}
-                                    className="hover:bg-blue-50/30 dark:hover:bg-white/[0.02] transition-colors group/row text-gray-700 dark:text-gray-300 relative"
+                                    className="hover:bg-blue-50/30 dark:hover:bg-white/[0.02] transition-colors group/row text-gray-700 dark:text-gray-300 relative cursor-pointer"
                                     onMouseEnter={() => setHoveredRow(idx)}
                                     onMouseLeave={() => setHoveredRow(null)}
                                     onClick={() => setViewingVendor(vendor)}
@@ -308,44 +298,13 @@ const VendorsList = () => {
                                     <td className="px-4 py-1.5">{vendor.job_name}</td>
                                     <td className="px-4 py-1.5">{vendor.contact_person}</td>
                                     <td className="px-4 py-1.5 font-mono text-xs">{vendor.contact_no}</td>
-                                    <td className="px-4 py-1.5 text-blue-600 dark:text-blue-400 cursor-pointer hover:underline" onClick={e => e.stopPropagation()}>
-                                        <a href={`mailto:${vendor.email}`}>{vendor.email}</a>
-                                    </td>
+                                    <td className="px-4 py-1.5 text-gray-700 dark:text-gray-300">{vendor.email}</td>
                                     <td className="px-4 py-1.5 truncate max-w-[200px]" title={vendor.address}>{vendor.address}</td>
-                                    <td className="px-4 py-1.5 text-center" onClick={e => e.stopPropagation()}>
-                                        <div className={`flex items-center justify-center space-x-2 transition-opacity duration-200 ${hoveredRow === idx ? 'opacity-100' : 'opacity-0'}`}>
-                                            <button
-                                                onClick={() => setViewingVendor(vendor)}
-                                                className="p-1.5 text-gray-400 hover:text-blue-500 hover:bg-blue-50 dark:hover:bg-blue-900/20 rounded transition-all"
-                                                title="View Details"
-                                            >
-                                                <Info size={16} />
-                                            </button>
-                                            {canWrite && (
-                                                <>
-                                                    <button
-                                                        onClick={() => { setEditingVendor(vendor); setIsAddModalOpen(true); }}
-                                                        className="p-1.5 text-gray-400 hover:text-green-500 hover:bg-green-50 dark:hover:bg-green-900/20 rounded transition-all"
-                                                        title="Edit Vendor"
-                                                    >
-                                                        <Pencil size={16} />
-                                                    </button>
-                                                    <button
-                                                        onClick={() => handleDeleteVendor(vendor.id)}
-                                                        className="p-1.5 text-gray-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 rounded transition-all"
-                                                        title="Delete Vendor"
-                                                    >
-                                                        <Trash2 size={16} />
-                                                    </button>
-                                                </>
-                                            )}
-                                        </div>
-                                    </td>
                                 </tr>
                             ))
                         ) : (
                             <tr>
-                                <td colSpan="9" className="py-12 text-center text-gray-500 dark:text-gray-400">
+                                <td colSpan="8" className="py-12 text-center text-gray-500 dark:text-gray-400">
                                     <div className="flex flex-col items-center justify-center">
                                         <div className="w-16 h-16 bg-gray-50 dark:bg-white/5 rounded-full flex items-center justify-center mb-4">
                                             <Search size={24} className="text-gray-400" />
@@ -420,6 +379,9 @@ const VendorsList = () => {
                 isOpen={!!viewingVendor}
                 onClose={() => setViewingVendor(null)}
                 vendor={viewingVendor}
+                onEdit={(v) => { setViewingVendor(null); setEditingVendor(v); setIsAddModalOpen(true); }}
+                onDelete={(id) => { setViewingVendor(null); handleDeleteVendor(id); }}
+                canWrite={canWrite}
             />
 
             <ManageMetadataModal

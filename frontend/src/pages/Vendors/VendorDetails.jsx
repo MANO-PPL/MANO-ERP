@@ -1,7 +1,7 @@
 import React from 'react';
-import { X, Copy } from 'lucide-react';
+import { X, Copy, Pencil, Trash2 } from 'lucide-react';
 
-const VendorDetails = ({ isOpen, onClose, vendor }) => {
+const VendorDetails = ({ isOpen, onClose, vendor, onEdit, onDelete, canWrite }) => {
     if (!isOpen || !vendor) return null;
 
     const handleCopy = () => {
@@ -20,7 +20,6 @@ Address: ${vendor.address}
 Reference: ${vendor.reference || '-'}
         `.trim();
         navigator.clipboard.writeText(detailsText);
-        // Could add a toast here
     };
 
     return (
@@ -66,7 +65,7 @@ Reference: ${vendor.reference || '-'}
                         </div>
                         <div>
                             <p className="text-[10px] uppercase tracking-widest text-gray-400 font-bold mb-1">Email</p>
-                            <a href={`mailto:${vendor.email}`} className="text-sm font-medium text-blue-600 dark:text-blue-400 hover:underline">{vendor.email || '-'}</a>
+                            <p className="text-sm font-medium text-gray-900 dark:text-gray-200">{vendor.email || '-'}</p>
                         </div>
 
                         <div>
@@ -109,8 +108,8 @@ Reference: ${vendor.reference || '-'}
                     )}
                 </div>
 
-                {/* Footer */}
-                <div className="px-6 py-4 border-t border-gray-100 dark:border-white/5 flex justify-end">
+                {/* Footer Actions */}
+                <div className="px-6 py-4 border-t border-gray-100 dark:border-white/5 flex justify-between items-center gap-3">
                     <button
                         onClick={handleCopy}
                         className="flex items-center space-x-2 px-4 py-2 bg-gray-100 hover:bg-gray-200 dark:bg-white/5 dark:hover:bg-white/10 text-gray-700 dark:text-gray-300 rounded-lg text-sm font-medium transition-colors"
@@ -118,6 +117,29 @@ Reference: ${vendor.reference || '-'}
                         <Copy size={16} />
                         <span>Copy Details</span>
                     </button>
+
+                    {canWrite && (
+                        <div className="flex items-center space-x-2">
+                            {onEdit && (
+                                <button
+                                    onClick={() => onEdit(vendor)}
+                                    className="flex items-center space-x-1.5 px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-sm font-semibold transition-all shadow-sm"
+                                >
+                                    <Pencil size={15} />
+                                    <span>Edit</span>
+                                </button>
+                            )}
+                            {onDelete && (
+                                <button
+                                    onClick={() => onDelete(vendor.id)}
+                                    className="flex items-center space-x-1.5 px-4 py-2 bg-red-600 hover:bg-red-700 text-white rounded-lg text-sm font-semibold transition-all shadow-sm"
+                                >
+                                    <Trash2 size={15} />
+                                    <span>Delete</span>
+                                </button>
+                            )}
+                        </div>
+                    )}
                 </div>
             </div>
         </div>
