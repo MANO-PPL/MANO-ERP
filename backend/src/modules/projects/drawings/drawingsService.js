@@ -359,15 +359,23 @@ export async function uploadDrawingRecord(projectId, { categoryId, title, descri
     };
 }
 
-export async function updateDrawingTitle(projectId, categoryId, drawingGroupId, { title }) {
-    if (!title || !title.trim()) {
-        throw new AppError('Drawing title is required', 400);
+export async function updateDrawingTitle(projectId, categoryId, drawingGroupId, { title, description }) {
+    const updateData = {};
+    if (title && title.trim()) {
+        updateData.title = title.trim();
+    }
+    if (description !== undefined) {
+        updateData.description = description ? description.trim() : '';
     }
 
-    // Since we maintain title across revisions, we update the title column on ALL rows with the same drawing_group_id!
+    if (Object.keys(updateData).length === 0) {
+        throw new AppError('Nothing to update', 400);
+    }
+
+    // Since we maintain title and remarks across revisions, we update matching rows with the same drawing_group_id!
     const affected = await db('proj_drawings')
         .where({ drawing_group_id: drawingGroupId, category_id: categoryId, project_id: projectId })
-        .update({ title: title.trim() });
+        .update(updateData);
 
     if (affected === 0) {
         throw new AppError('Drawing not found or does not belong to this project/category', 404);

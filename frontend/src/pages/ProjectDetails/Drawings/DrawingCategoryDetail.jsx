@@ -1,19 +1,21 @@
 import React, { useEffect, useState } from 'react';
 import { 
     Plus, GripVertical, ChevronDown, Check, X, Info, Edit2, Trash2, 
-    Clock, User, FileText, History, Loader2, Download, Eye, Upload 
+    Clock, User, FileText, History, Loader2, Download, Eye, Upload, Search
 } from 'lucide-react';
 import { Reorder, AnimatePresence, motion } from 'framer-motion';
+import { toast } from 'react-toastify';
 
 const DrawingCategoryDetail = ({ category, projectId, onBack, setExtraBreadcrumbs, canWrite }) => {
     const [activeTab, setActiveTab] = useState('management'); // 'management' or 'planned'
     const [drawings, setDrawings] = useState([]);
     const [loading, setLoading] = useState(true);
-    const [error, setError] = useState(null);
 
-    // Editing states
-    const [editingTargetId, setEditingTargetId] = useState(null); // ID of drawing being renamed inline
+    // Inline Double-Click Editing states
+    const [editingTargetId, setEditingTargetId] = useState(null);
+    const [editingField, setEditingField] = useState('title'); // 'title' or 'description'
     const [editingTitle, setEditingTitle] = useState('');
+    const [editingDescription, setEditingDescription] = useState('');
 
     // Add Record Drawer States
     const [addDrawerOpen, setAddDrawerOpen] = useState(false);
@@ -25,7 +27,7 @@ const DrawingCategoryDetail = ({ category, projectId, onBack, setExtraBreadcrumb
     const [pdfFile, setPdfFile] = useState(null);
     const [submitting, setSubmitting] = useState(false);
 
-    // Version Control Drawer States
+    // Version Control Popup Drawer States
     const [infoDrawerOpen, setInfoDrawerOpen] = useState(false);
     const [selectedDrawing, setSelectedDrawing] = useState(null);
     const [activeLogIndex, setActiveLogIndex] = useState(0);
@@ -33,12 +35,12 @@ const DrawingCategoryDetail = ({ category, projectId, onBack, setExtraBreadcrumb
     // Toolbar Filters
     const [searchQuery, setSearchQuery] = useState('');
 
-    // Mock State for Section 2: Drawing Planned vs Achieved
+    // Planned vs Achieved State
     const [plannedDrawings, setPlannedDrawings] = useState([
-        { id: 'p1', name: 'NEW Architectural layout', plannedDate: '26/01/2026', receivedDate: '27/01/2026', status: 'In Review', remarks: 'Under validation', priority: 'High' },
-        { id: 'p2', name: 'Plumbing schematics', plannedDate: '23/12/2025', receivedDate: '23/12/2025', status: 'Completed', remarks: 'Approved by PM', priority: 'Low' },
-        { id: 'p3', name: 'HVAC Duct layout', plannedDate: '01/01/2028', receivedDate: '09/01/2026', status: 'In Review', remarks: 'Awaiting engineer remarks', priority: 'High' },
-        { id: 'p4', name: 'Fire escape blueprint', plannedDate: '24/12/2025', receivedDate: '31/12/2025', status: 'In Review', remarks: 'Pending fire marshal review', priority: 'Medium' },
+        { id: 'p1', name: 'Architectural Layout Blueprint', plannedDate: '2026-01-26', receivedDate: '2026-01-27', status: 'In Review', remarks: 'Under engineer validation', priority: 'High' },
+        { id: 'p2', name: 'Plumbing & Drainage Schematics', plannedDate: '2025-12-23', receivedDate: '2025-12-23', status: 'Completed', remarks: 'Approved by PM', priority: 'Low' },
+        { id: 'p3', name: 'HVAC Duct & Ventilation Plan', plannedDate: '2026-02-01', receivedDate: '2026-02-09', status: 'In Review', remarks: 'Awaiting MEP team signoff', priority: 'High' },
+        { id: 'p4', name: 'Fire Exit & Safety Blueprint', plannedDate: '2025-12-24', receivedDate: '2025-12-31', status: 'In Review', remarks: 'Pending safety clearance', priority: 'Medium' }
     ]);
 
     const categoryPrefix = category.name.trim().replace(/[\u{1F300}-\u{1F9FF}]/gu, '').trim().charAt(0).toUpperCase() || 'D';
@@ -49,13 +51,13 @@ const DrawingCategoryDetail = ({ category, projectId, onBack, setExtraBreadcrumb
             const response = await fetch(`/api/projects/${projectId}/drawings/categories/${category.id}/drawings`);
             const data = await response.json();
             if (data.success) {
-                setDrawings(data.drawings);
+                setDrawings(data.drawings || []);
             } else {
-                throw new Error(data.message || 'Failed to load drawings list');
+                toast.error(data.message || 'Failed to load drawings');
             }
         } catch (e) {
             console.error(e);
-            setError(e.message);
+            toast.error('Error loading drawings list');
         } finally {
             setLoading(false);
         }
@@ -74,11 +76,10 @@ const DrawingCategoryDetail = ({ category, projectId, onBack, setExtraBreadcrumb
 
     // Handle re-ordering
     const handleReorderDrawings = async (newOrderList) => {
-        // Optimistically update frontend state so serial numbers adjust instantly
         setDrawings(newOrderList);
 
         const payload = newOrderList.map((d, index) => ({
-            id: d.id, // drawing group ID
+            id: d.id,
             sort_order: index + 1
         }));
 
@@ -90,8 +91,8 @@ const DrawingCategoryDetail = ({ category, projectId, onBack, setExtraBreadcrumb
             });
             const data = await response.json();
             if (!data.success) {
-                console.error('Failed to sync reorder on backend:', data.message);
-                fetchDrawings(); // Revert on failure
+                toast.error('Failed to sync order');
+                fetchDrawings();
             }
         } catch (e) {
             console.error('Error reordering drawings:', e);
@@ -99,23 +100,19 @@ const DrawingCategoryDetail = ({ category, projectId, onBack, setExtraBreadcrumb
         }
     };
 
-    // Handle upload submit (create new or add revision)
+    // Upload Submit Handler
     const handleUploadSubmit = async (e) => {
         e.preventDefault();
         if (submitting) return;
 
-        // Validation
         if (!selectedDrawingForRevision && !title.trim()) {
-            alert('Drawing title is required.');
-            return;
+            return toast.error('Drawing title is required.');
         }
         if (fileType === 'dwg' && !dwgFile) {
-            alert('Please attach a DWG file.');
-            return;
+            return toast.error('Please attach a DWG file.');
         }
         if (fileType === 'pdf' && !pdfFile) {
-            alert('Please attach a PDF file.');
-            return;
+            return toast.error('Please attach a PDF file.');
         }
 
         try {
@@ -126,7 +123,7 @@ const DrawingCategoryDetail = ({ category, projectId, onBack, setExtraBreadcrumb
 
             if (selectedDrawingForRevision) {
                 formData.append('drawingGroupId', selectedDrawingForRevision.id);
-                formData.append('title', selectedDrawingForRevision.title); // Inherited
+                formData.append('title', selectedDrawingForRevision.title);
             } else {
                 formData.append('title', title.trim());
             }
@@ -141,7 +138,7 @@ const DrawingCategoryDetail = ({ category, projectId, onBack, setExtraBreadcrumb
             const data = await response.json();
 
             if (data.success) {
-                // Reset form
+                toast.success(selectedDrawingForRevision ? 'Revision uploaded successfully' : 'Drawing created successfully');
                 setTitle('');
                 setDescription('');
                 setDwgFile(null);
@@ -149,42 +146,65 @@ const DrawingCategoryDetail = ({ category, projectId, onBack, setExtraBreadcrumb
                 setAddDrawerOpen(false);
                 fetchDrawings();
             } else {
-                alert(data.message || 'Upload failed');
+                toast.error(data.message || 'Upload failed');
             }
         } catch (err) {
             console.error(err);
-            alert('Error during upload: ' + err.message);
+            toast.error('Error uploading file');
         } finally {
             setSubmitting(false);
         }
     };
 
-    // Handle Inline rename save
-    const handleSaveTitle = async (drawingGroupId) => {
-        if (!editingTitle.trim()) return;
+    // Title Save
+    const handleSaveTitle = async (drawingGroupId, customTitle = editingTitle) => {
+        if (!customTitle || !customTitle.trim()) return;
         try {
             const response = await fetch(`/api/projects/${projectId}/drawings/categories/${category.id}/drawings/${drawingGroupId}`, {
                 method: 'PUT',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ title: editingTitle.trim() })
+                body: JSON.stringify({ title: customTitle.trim() })
             });
             const data = await response.json();
             if (data.success) {
+                toast.success('Title updated');
                 setEditingTargetId(null);
                 fetchDrawings();
             } else {
-                alert(data.message || 'Failed to update title');
+                toast.error(data.message || 'Failed to update title');
             }
         } catch (e) {
             console.error(e);
-            alert('Error saving title: ' + e.message);
+            toast.error('Error saving title');
         }
     };
 
-    // Handle Delete Drawing
+    // Remarks/Description Save
+    const handleSaveDescription = async (drawingGroupId, customDesc = editingDescription) => {
+        try {
+            const response = await fetch(`/api/projects/${projectId}/drawings/categories/${category.id}/drawings/${drawingGroupId}`, {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ description: (customDesc || '').trim() })
+            });
+            const data = await response.json();
+            if (data.success) {
+                toast.success('Remarks updated');
+                setEditingTargetId(null);
+                fetchDrawings();
+            } else {
+                toast.error(data.message || 'Failed to update remarks');
+            }
+        } catch (e) {
+            console.error(e);
+            toast.error('Error saving remarks');
+        }
+    };
+
+    // Delete Drawing
     const handleDeleteDrawing = async (drawingGroupId) => {
         const proceed = window.confirm(
-            "Are you sure you want to permanently delete this drawing? All historical revisions and attached files will be permanently lost."
+            "Permanently delete this drawing? All historical revisions and attached files will be deleted."
         );
         if (!proceed) return;
 
@@ -194,16 +214,17 @@ const DrawingCategoryDetail = ({ category, projectId, onBack, setExtraBreadcrumb
             });
             const data = await response.json();
             if (data.success) {
+                toast.success('Drawing deleted');
                 fetchDrawings();
                 if (selectedDrawing && selectedDrawing.id === drawingGroupId) {
                     setInfoDrawerOpen(false);
                 }
             } else {
-                alert(data.message || 'Failed to delete drawing');
+                toast.error(data.message || 'Failed to delete drawing');
             }
         } catch (e) {
             console.error(e);
-            alert('Error deleting drawing: ' + e.message);
+            toast.error('Error deleting drawing');
         }
     };
 
@@ -212,180 +233,203 @@ const DrawingCategoryDetail = ({ category, projectId, onBack, setExtraBreadcrumb
         window.open(targetUrl, '_blank');
     };
 
-    // Filter drawings list by search query
     const filteredDrawings = drawings.filter(d => 
-        d.title.toLowerCase().includes(searchQuery.toLowerCase())
+        (d.title || '').toLowerCase().includes(searchQuery.toLowerCase())
     );
 
     const renderManagementTable = () => (
         <div className="overflow-x-auto w-full">
-            <table className="w-full text-[12px] text-left table-fixed min-w-[800px]">
-                <thead className="text-[10px] font-bold text-gray-500 uppercase bg-gray-50 dark:bg-[#161b22] border-y border-gray-200 dark:border-white/5 sticky top-0 z-10 transition-colors">
+            <table className="w-full text-xs text-left border-collapse bg-white dark:bg-[#0d1117] min-w-[750px]">
+                <thead className="bg-[#f9fafb] dark:bg-[#161b22] text-gray-500 dark:text-gray-400 sticky top-0 z-10 border-b border-gray-200 dark:border-gh-border font-semibold uppercase text-[10px] tracking-wider">
                     <tr>
-                        <th className="px-4 py-2 w-10 text-center"></th>
-                        <th className="px-4 py-2 w-16">SR</th>
-                        <th className="px-4 py-2 w-20">NUMBER</th>
-                        <th className="px-4 py-2 w-28">DATE</th>
-                        <th className="px-4 py-2 w-1/3">TITLE</th>
-                        <th className="px-4 py-2 w-20 text-center">REV</th>
-                        <th className="px-4 py-2 w-48 text-center">FILES</th>
-                        <th className="px-4 py-2 w-48">REMARKS</th>
-                        <th className="px-4 py-2 w-28 text-center">ACTIONS</th>
+                        <th className="px-2.5 py-2 w-8 text-center"></th>
+                        <th className="px-3 py-2 w-14">SR</th>
+                        <th className="px-3 py-2 w-20">CODE</th>
+                        <th className="px-3 py-2 w-24">DATE</th>
+                        <th className="px-3 py-2 min-w-[220px]">DRAWING TITLE</th>
+                        <th className="px-3 py-2 w-16 text-center">REV</th>
+                        <th className="px-3 py-2 w-44 text-center">FILES</th>
+                        <th className="px-3 py-2 min-w-[180px]">REMARKS</th>
                     </tr>
                 </thead>
-                <Reorder.Group as="tbody" axis="y" values={drawings} onReorder={handleReorderDrawings}>
+                <Reorder.Group as="tbody" axis="y" values={drawings} onReorder={handleReorderDrawings} className="divide-y divide-gray-100 dark:divide-gh-border/50">
                     {filteredDrawings.map((drawing, idx) => {
                         const drawingNum = `${categoryPrefix}${idx + 1}`;
                         const dateStr = drawing.latestUploadedAt 
                             ? new Date(drawing.latestUploadedAt).toLocaleDateString('en-GB') 
                             : 'N/A';
-                        const isRenaming = editingTargetId === drawing.id;
+
+                        const isEditingThisTitle = editingTargetId === drawing.id && editingField === 'title';
+                        const isEditingThisDesc = editingTargetId === drawing.id && editingField === 'description';
 
                         return (
                             <Reorder.Item 
                                 as="tr"
                                 key={drawing.id} 
                                 value={drawing}
-                                className="group/row bg-white dark:bg-[#0d1117] hover:bg-gray-50/50 dark:hover:bg-white/[0.02] border-b border-gray-200 dark:border-white/5 relative h-[42px] transition-colors"
+                                className="group/row hover:bg-blue-50/20 dark:hover:bg-gh-hover/60 transition-colors border-b border-gray-100 dark:border-gh-border/30 h-[40px]"
                             >
-                                <td className="px-3 py-2 text-center text-gray-400 cursor-grab active:cursor-grabbing">
+                                <td className="px-2.5 py-1.5 text-center text-gray-300 dark:text-gray-600 group-hover/row:text-blue-500 cursor-grab active:cursor-grabbing">
                                     <GripVertical size={14} className="mx-auto" />
                                 </td>
-                                <td className="px-4 py-2 font-mono text-gray-500">
+                                <td className="px-3 py-1.5 font-mono text-[11px] text-gray-500">
                                     {String(idx + 1).padStart(2, '0')}
                                 </td>
-                                <td className="px-4 py-2 font-mono font-bold text-gray-700 dark:text-gray-300">
+                                <td className="px-3 py-1.5 font-mono font-bold text-gray-900 dark:text-white">
                                     {drawingNum}
                                 </td>
-                                <td className="px-4 py-2 text-gray-500">
+                                <td className="px-3 py-1.5 text-gray-500 text-[11px]">
                                     {dateStr}
                                 </td>
-                                <td className="px-4 py-2 text-gray-900 dark:text-gray-200 font-medium">
-                                    {isRenaming ? (
+
+                                {/* DRAWING TITLE CELL (Click for Popup, Double-click for inline edit) */}
+                                <td className="px-3 py-1.5 text-gray-900 dark:text-gray-200 font-medium">
+                                    {isEditingThisTitle ? (
                                         <div className="flex items-center gap-1.5 w-full max-w-sm">
                                             <input
                                                 type="text"
                                                 autoFocus
                                                 value={editingTitle}
                                                 onChange={e => setEditingTitle(e.target.value)}
-                                                onKeyDown={e => e.key === 'Enter' && handleSaveTitle(drawing.id)}
-                                                className="bg-gray-50 dark:bg-[#161b22] border border-blue-500 rounded px-2 py-1 text-xs text-gray-950 dark:text-white outline-none w-full"
+                                                onKeyDown={e => {
+                                                    if (e.key === 'Enter') handleSaveTitle(drawing.id);
+                                                    if (e.key === 'Escape') setEditingTargetId(null);
+                                                }}
+                                                className="bg-white dark:bg-[#161b22] border border-blue-500 rounded px-2 py-0.5 text-xs text-gray-900 dark:text-white outline-none w-full shadow-xs"
                                             />
                                             <button 
                                                 onClick={() => handleSaveTitle(drawing.id)}
-                                                className="p-1 rounded bg-blue-600 text-white hover:bg-blue-500 transition-colors shrink-0"
+                                                className="p-1 rounded bg-blue-600 text-white hover:bg-blue-700 transition-colors shrink-0 cursor-pointer"
                                             >
-                                                <Check size={12} />
+                                                <Check size={13} />
                                             </button>
                                             <button 
                                                 onClick={() => setEditingTargetId(null)}
-                                                className="p-1 rounded bg-gray-200 dark:bg-white/10 text-gray-500 dark:text-gray-400 hover:bg-gray-300 transition-colors shrink-0"
+                                                className="p-1 rounded bg-gray-200 dark:bg-gray-800 text-gray-600 dark:text-gray-300 transition-colors shrink-0 cursor-pointer"
                                             >
-                                                <X size={12} />
+                                                <X size={13} />
                                             </button>
                                         </div>
                                     ) : (
-                                        <span className="truncate block max-w-xs">{drawing.title}</span>
+                                        <span 
+                                            className="cursor-pointer hover:text-blue-600 dark:hover:text-blue-400 truncate block font-semibold transition-colors"
+                                            title="Click to view Popup Drawer • Double-click to edit Title"
+                                            onClick={() => {
+                                                setSelectedDrawing(drawing);
+                                                setActiveLogIndex(0);
+                                                setInfoDrawerOpen(true);
+                                            }}
+                                            onDoubleClick={(e) => {
+                                                e.stopPropagation();
+                                                if (canWrite) {
+                                                    setEditingTargetId(drawing.id);
+                                                    setEditingField('title');
+                                                    setEditingTitle(drawing.title);
+                                                }
+                                            }}
+                                        >
+                                            {drawing.title}
+                                        </span>
                                     )}
                                 </td>
-                                <td className="px-4 py-2 text-center font-mono text-blue-500 font-semibold">
+
+                                {/* REVISION CODE */}
+                                <td className="px-3 py-1.5 text-center font-mono font-bold text-blue-600 dark:text-blue-400 text-xs">
                                     R{drawing.latestRevision}
                                 </td>
-                                <td className="px-4 py-2 text-center">
-                                    <div className="flex items-center justify-center gap-2">
-                                        {drawing.latestDwgUrl ? (
-                                            <div className="flex items-center bg-gray-100 dark:bg-white/5 border border-gray-200 dark:border-white/10 rounded px-1.5 py-0.5 select-none">
-                                                <span className="font-mono text-[9px] text-gray-400 mr-2">DWG</span>
+
+                                {/* FILES */}
+                                <td className="px-3 py-1.5 text-center">
+                                    <div className="flex items-center justify-center gap-1.5">
+                                        {drawing.latestDwgUrl && (
+                                            <div className="flex items-center bg-blue-50 dark:bg-blue-950/50 border border-blue-200 dark:border-blue-800 px-2 py-0.5 rounded text-[10px] font-bold text-blue-600 dark:text-blue-300 space-x-1">
+                                                <span>DWG</span>
                                                 <button
                                                     onClick={() => handlePreviewDwg(drawing.latestDwgUrl, drawing.title)}
-                                                    className="p-0.5 text-blue-500 hover:bg-blue-500/10 rounded"
-                                                    title="View DWG File in New Tab"
+                                                    className="p-0.5 hover:text-blue-800 dark:hover:text-white rounded"
+                                                    title="View DWG File"
                                                 >
                                                     <Eye size={12} />
                                                 </button>
                                                 <a 
                                                     href={drawing.latestDwgUrl} 
                                                     download 
-                                                    className="p-0.5 text-gray-500 hover:text-gray-700 dark:hover:text-white rounded"
+                                                    className="p-0.5 hover:text-blue-800 dark:hover:text-white rounded"
                                                     title="Download DWG"
                                                 >
                                                     <Download size={12} />
                                                 </a>
                                             </div>
-                                        ) : null}
+                                        )}
 
-                                        {drawing.latestPdfUrl ? (
-                                            <div className="flex items-center bg-gray-100 dark:bg-white/5 border border-gray-200 dark:border-white/10 rounded px-1.5 py-0.5 select-none">
-                                                <span className="font-mono text-[9px] text-gray-400 mr-2">PDF</span>
+                                        {drawing.latestPdfUrl && (
+                                            <div className="flex items-center bg-purple-50 dark:bg-purple-950/50 border border-purple-200 dark:border-purple-800 px-2 py-0.5 rounded text-[10px] font-bold text-purple-600 dark:text-purple-300 space-x-1">
+                                                <span>PDF</span>
                                                 <a 
                                                     href={drawing.latestPdfUrl} 
                                                     target="_blank" 
                                                     rel="noreferrer"
-                                                    className="p-0.5 text-purple-500 hover:bg-purple-500/10 rounded"
-                                                    title="Open PDF File in New Tab"
+                                                    className="p-0.5 hover:text-purple-800 dark:hover:text-white rounded"
+                                                    title="Open PDF"
                                                 >
                                                     <Eye size={12} />
                                                 </a>
                                                 <a 
                                                     href={drawing.latestPdfUrl} 
                                                     download 
-                                                    className="p-0.5 text-gray-500 hover:text-gray-700 dark:hover:text-white rounded"
+                                                    className="p-0.5 hover:text-purple-800 dark:hover:text-white rounded"
                                                     title="Download PDF"
                                                 >
                                                     <Download size={12} />
                                                 </a>
                                             </div>
-                                        ) : null}
-                                    </div>
-                                </td>
-                                <td className="px-4 py-2 text-gray-500 truncate max-w-[200px]" title={drawing.latestDescription}>
-                                    {drawing.latestDescription || '-'}
-                                </td>
-                                <td className="px-4 py-2 text-center">
-                                    <div className="flex items-center justify-center gap-1.5 opacity-0 group-hover/row:opacity-100 transition-opacity">
-                                        <button 
-                                            onClick={() => {
-                                                setSelectedDrawing(drawing);
-                                                setActiveLogIndex(0);
-                                                setInfoDrawerOpen(true);
-                                            }}
-                                            className="p-1 rounded bg-gray-50 dark:bg-[#161b22] hover:bg-gray-100 dark:hover:bg-white/10 text-gray-500 dark:text-gray-400 border border-gray-100 dark:border-white/5 shadow-sm"
-                                            title="Revision History / Log"
-                                        >
-                                            <Info size={13} />
-                                        </button>
-                                        {canWrite && (
-                                            <>
-                                                <button 
-                                                    onClick={() => {
-                                                        setSelectedDrawingForRevision(drawing);
-                                                        setAddDrawerOpen(true);
-                                                    }}
-                                                    className="p-1 rounded bg-blue-500/10 hover:bg-blue-500/20 text-blue-500 border border-blue-500/20"
-                                                    title="Upload Revision"
-                                                >
-                                                    <Upload size={13} />
-                                                </button>
-                                                <button 
-                                                    onClick={() => {
-                                                        setEditingTargetId(drawing.id);
-                                                        setEditingTitle(drawing.title);
-                                                    }}
-                                                    className="p-1 rounded bg-gray-50 dark:bg-[#161b22] hover:bg-gray-100 dark:hover:bg-white/10 text-gray-500 dark:text-gray-400 border border-gray-100 dark:border-white/5 shadow-sm"
-                                                    title="Rename Title"
-                                                >
-                                                    <Edit2 size={13} />
-                                                </button>
-                                                <button 
-                                                    onClick={() => handleDeleteDrawing(drawing.id)}
-                                                    className="p-1 rounded bg-red-500/10 hover:bg-red-500/20 text-red-500 border border-red-500/20"
-                                                    title="Delete Drawing"
-                                                >
-                                                    <Trash2 size={13} />
-                                                </button>
-                                            </>
                                         )}
                                     </div>
+                                </td>
+
+                                {/* REMARKS CELL (Double-click inline editing) */}
+                                <td className="px-3 py-1.5 text-gray-500 text-[11px]">
+                                    {isEditingThisDesc ? (
+                                        <div className="flex items-center gap-1.5 w-full max-w-sm">
+                                            <input
+                                                type="text"
+                                                autoFocus
+                                                value={editingDescription}
+                                                onChange={e => setEditingDescription(e.target.value)}
+                                                onKeyDown={e => {
+                                                    if (e.key === 'Enter') handleSaveDescription(drawing.id);
+                                                    if (e.key === 'Escape') setEditingTargetId(null);
+                                                }}
+                                                className="bg-white dark:bg-[#161b22] border border-blue-500 rounded px-2 py-0.5 text-xs text-gray-900 dark:text-white outline-none w-full shadow-xs"
+                                            />
+                                            <button 
+                                                onClick={() => handleSaveDescription(drawing.id)}
+                                                className="p-1 rounded bg-blue-600 text-white hover:bg-blue-700 transition-colors shrink-0 cursor-pointer"
+                                            >
+                                                <Check size={13} />
+                                            </button>
+                                            <button 
+                                                onClick={() => setEditingTargetId(null)}
+                                                className="p-1 rounded bg-gray-200 dark:bg-gray-800 text-gray-600 dark:text-gray-300 transition-colors shrink-0 cursor-pointer"
+                                            >
+                                                <X size={13} />
+                                            </button>
+                                        </div>
+                                    ) : (
+                                        <span
+                                            className={`truncate block ${canWrite ? 'cursor-pointer hover:text-blue-600 dark:hover:text-blue-400' : ''}`}
+                                            title="Double-click to edit remarks"
+                                            onDoubleClick={() => {
+                                                if (canWrite) {
+                                                    setEditingTargetId(drawing.id);
+                                                    setEditingField('description');
+                                                    setEditingDescription(drawing.latestDescription || '');
+                                                }
+                                            }}
+                                        >
+                                            {drawing.latestDescription || '-'}
+                                        </span>
+                                    )}
                                 </td>
                             </Reorder.Item>
                         );
@@ -397,30 +441,30 @@ const DrawingCategoryDetail = ({ category, projectId, onBack, setExtraBreadcrumb
 
     const renderPlannedTable = () => (
         <div className="overflow-x-auto w-full">
-            <table className="w-full text-[12px] text-left table-fixed min-w-[800px]">
-                <thead className="text-[10px] font-bold text-gray-500 uppercase bg-gray-50 dark:bg-[#161b22] border-y border-gray-200 dark:border-white/5 sticky top-0 z-10">
+            <table className="w-full text-xs text-left border-collapse bg-white dark:bg-[#0d1117] min-w-[800px]">
+                <thead className="bg-[#f9fafb] dark:bg-[#161b22] text-gray-500 dark:text-gray-400 sticky top-0 z-10 border-b border-gray-200 dark:border-gh-border font-semibold uppercase text-[10px] tracking-wider">
                     <tr>
-                        <th className="px-4 py-2 w-16">SR</th>
-                        <th className="px-4 py-2 w-1/3">DRAWING NAME</th>
-                        <th className="px-4 py-2 w-32">PLANNED DATE</th>
-                        <th className="px-4 py-2 w-32">RECEIVED DATE</th>
-                        <th className="px-4 py-2 w-32">STATUS</th>
-                        <th className="px-4 py-2 flex-1">REMARKS</th>
+                        <th className="px-3 py-2 w-14">SR</th>
+                        <th className="px-3 py-2 min-w-[220px]">DRAWING NAME</th>
+                        <th className="px-3 py-2 w-32">PLANNED DATE</th>
+                        <th className="px-3 py-2 w-32">RECEIVED DATE</th>
+                        <th className="px-3 py-2 w-32">STATUS</th>
+                        <th className="px-3 py-2 min-w-[180px]">REMARKS</th>
                     </tr>
                 </thead>
-                <tbody>
+                <tbody className="divide-y divide-gray-100 dark:divide-gh-border/50">
                     {plannedDrawings.map((drawing, idx) => (
-                        <tr key={drawing.id} className="bg-white dark:bg-[#0d1117] hover:bg-gray-50/50 dark:hover:bg-white/[0.02] border-b border-gray-200 dark:border-white/5 h-[42px] transition-colors">
-                            <td className="px-4 py-2 font-mono text-gray-500">{String(idx + 1).padStart(2, '0')}</td>
-                            <td className="px-4 py-2 text-gray-900 dark:text-gray-200 font-medium truncate">{drawing.name}</td>
-                            <td className="px-4 py-2 text-gray-500">{drawing.plannedDate}</td>
-                            <td className="px-4 py-2 text-gray-500">{drawing.receivedDate}</td>
-                            <td className="px-4 py-2">
-                                <span className={`px-2.5 py-0.5 rounded-full text-[9px] font-bold uppercase ${drawing.status === 'Completed' ? 'bg-blue-500/20 text-blue-400' : 'bg-purple-500/20 text-purple-400'}`}>
+                        <tr key={drawing.id} className="hover:bg-blue-50/20 dark:hover:bg-gh-hover/60 border-b border-gray-100 dark:border-gh-border/30 h-[40px] transition-colors">
+                            <td className="px-3 py-2 font-mono text-gray-500">{String(idx + 1).padStart(2, '0')}</td>
+                            <td className="px-3 py-2 text-gray-900 dark:text-gray-200 font-semibold">{drawing.name}</td>
+                            <td className="px-3 py-2 text-gray-500">{drawing.plannedDate}</td>
+                            <td className="px-3 py-2 text-gray-500">{drawing.receivedDate}</td>
+                            <td className="px-3 py-2">
+                                <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold uppercase ${drawing.status === 'Completed' ? 'bg-green-100 text-green-700 dark:bg-green-950 dark:text-green-300' : 'bg-blue-100 text-blue-700 dark:bg-blue-950 dark:text-blue-300'}`}>
                                     {drawing.status}
                                 </span>
                             </td>
-                            <td className="px-4 py-2 text-gray-500 truncate">{drawing.remarks}</td>
+                            <td className="px-3 py-2 text-gray-500 text-[11px]">{drawing.remarks}</td>
                         </tr>
                     ))}
                 </tbody>
@@ -428,137 +472,123 @@ const DrawingCategoryDetail = ({ category, projectId, onBack, setExtraBreadcrumb
         </div>
     );
 
-    if (loading && drawings.length === 0) {
-        return (
-            <div className="flex-grow flex items-center justify-center min-h-[400px]">
-                <Loader2 className="animate-spin text-blue-500" size={32} />
-            </div>
-        );
-    }
-
     return (
-        <div className="flex-grow flex flex-col h-full bg-white dark:bg-[#0d1117] transition-colors Poppins text-left select-none relative">
-            {/* Back Header */}
-            <div className="flex items-center justify-between px-6 pt-5 pb-3 border-b border-gray-200 dark:border-white/5 shrink-0 bg-gray-50/50 dark:bg-[#161b22]/20">
-                <div className="flex items-center gap-3">
-                    <button 
-                        onClick={onBack}
-                        className="px-3 py-1.5 bg-gray-100 hover:bg-gray-200 dark:bg-white/5 dark:hover:bg-white/10 border border-gray-200 dark:border-white/10 rounded-xl text-xs font-bold text-gray-700 dark:text-gray-300 transition-all active:scale-95"
-                    >
-                        ← Back to Categories
-                    </button>
-                    <span className="text-gray-300 dark:text-white/10">|</span>
-                    <div>
-                        <h2 className="text-sm font-bold text-gray-900 dark:text-white uppercase tracking-wider">{category.name}</h2>
-                        <p className="text-[10px] text-gray-400 mt-0.5">{drawings.length} drawing records in archive</p>
-                    </div>
+        <div className="flex-1 flex flex-col h-full bg-white dark:bg-[#0d1117] transition-colors font-sans text-left relative overflow-hidden">
+            
+            {/* Category Header */}
+            <div className="flex items-center justify-between px-3 py-2 border-b border-gray-200 dark:border-gh-border bg-[#f9fafb] dark:bg-gh-bg shrink-0">
+                <div>
+                    <h2 className="text-sm font-bold text-gray-900 dark:text-white uppercase tracking-wider">{category.name}</h2>
+                    <p className="text-[11px] text-gray-500 dark:text-gray-400 font-medium">{drawings.length} Drawings in Archive</p>
                 </div>
             </div>
 
-            {/* Local Tab Switcher & Global Filters */}
-            <div className="flex flex-col bg-white dark:bg-[#0d1117] border-b border-gray-200 dark:border-white/5 z-20 shrink-0">
-                <div className="px-5 mx-1 py-3 flex justify-between items-center">
-                    <div className="inline-flex p-0.5 bg-gray-100 dark:bg-white/5 border border-gray-200 dark:border-white/10 rounded-lg">
-                        {[
-                            { id: 'management', label: 'Drawing Management', count: drawings.length },
-                            { id: 'planned', label: 'Drawing Planned vs Achieved', count: plannedDrawings.length }
-                        ].map((tab) => (
-                            <button
-                                key={tab.id}
-                                onClick={() => setActiveTab(tab.id)}
-                                className={`flex items-center space-x-1.5 px-4 py-1 text-xs font-semibold rounded-md transition-all duration-200 ${activeTab === tab.id
-                                    ? 'bg-white dark:bg-white/10 text-blue-600 dark:text-blue-400 shadow-sm'
-                                    : 'text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200'
-                                    }`}
-                            >
-                                <span>{tab.label}</span>
-                                {tab.count > 0 && (
-                                    <span className={`flex items-center justify-center min-w-[16px] h-4 px-1 text-[9px] font-bold rounded-full ml-1 ${activeTab === tab.id
-                                        ? 'bg-blue-100 text-blue-600 dark:bg-blue-900/30 dark:text-blue-400'
-                                        : 'bg-red-500 text-white'
-                                        }`}>
-                                        {tab.count}
-                                    </span>
-                                )}
-                            </button>
-                        ))}
-                    </div>
+            {/* Tab Switcher & Search Bar */}
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between px-3 py-2 border-b border-gray-200 dark:border-gh-border bg-white dark:bg-[#0d1117] gap-3 shrink-0">
+                
+                {/* Tabs */}
+                <div className="flex items-center bg-gray-100 dark:bg-[#161b22] p-0.5 rounded-lg border border-gray-200 dark:border-gh-border">
+                    <button
+                        onClick={() => setActiveTab('management')}
+                        className={`flex items-center space-x-1.5 px-3 py-1.5 rounded-md text-xs font-semibold transition-all ${activeTab === 'management' ? 'bg-white dark:bg-[#21262d] text-blue-600 dark:text-blue-400 shadow-xs' : 'text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white'}`}
+                    >
+                        <span>Drawing Management</span>
+                        <span className="bg-blue-100 dark:bg-blue-950 text-blue-600 dark:text-blue-400 px-1.5 py-0.2 rounded-full text-[10px] font-bold">
+                            {drawings.length}
+                        </span>
+                    </button>
+                    <button
+                        onClick={() => setActiveTab('planned')}
+                        className={`flex items-center space-x-1.5 px-3 py-1.5 rounded-md text-xs font-semibold transition-all ${activeTab === 'planned' ? 'bg-white dark:bg-[#21262d] text-blue-600 dark:text-blue-400 shadow-xs' : 'text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white'}`}
+                    >
+                        <span>Planned vs Achieved</span>
+                        <span className="bg-gray-200 dark:bg-gray-800 text-gray-700 dark:text-gray-300 px-1.5 py-0.2 rounded-full text-[10px] font-bold">
+                            {plannedDrawings.length}
+                        </span>
+                    </button>
+                </div>
 
-                    <div className="flex items-center gap-3">
-                        {activeTab === 'management' && (
+                {/* Search & Actions */}
+                <div className="flex items-center gap-3">
+                    {activeTab === 'management' && (
+                        <div className="relative min-w-[200px]">
+                            <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
                             <input
                                 type="text"
                                 value={searchQuery}
                                 onChange={e => setSearchQuery(e.target.value)}
                                 placeholder="Search by title..."
-                                className="bg-gray-50 dark:bg-white/5 border border-gray-200 dark:border-white/10 rounded-lg px-3 py-1.5 text-xs text-gray-850 dark:text-gray-200 outline-none w-48 focus:ring-1 focus:ring-blue-500"
+                                className="w-full pl-9 pr-7 py-1.5 text-xs bg-gray-50 dark:bg-[#161b22] border border-gray-200 dark:border-gh-border rounded-lg outline-none focus:border-blue-500 text-gray-900 dark:text-white transition-all placeholder:text-gray-400"
                             />
-                        )}
-                        {canWrite && (
-                            <button 
-                                onClick={() => {
-                                    setSelectedDrawingForRevision(null);
-                                    setAddDrawerOpen(true);
-                                    setFileType('dwg');
-                                    setDwgFile(null);
-                                    setPdfFile(null);
-                                }}
-                                className="flex items-center space-x-1.5 px-3 py-1.5 bg-blue-600 hover:bg-blue-500 text-white rounded-lg text-xs font-bold transition-all shadow-md shadow-blue-500/10 active:scale-95"
-                            >
-                                <Plus size={14} />
-                                <span>Add Record</span>
-                            </button>
-                        )}
-                    </div>
+                            {searchQuery && (
+                                <button onClick={() => setSearchQuery('')} className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 dark:hover:text-white">
+                                    <X size={12} />
+                                </button>
+                            )}
+                        </div>
+                    )}
+                    {canWrite && (
+                        <button 
+                            onClick={() => {
+                                setSelectedDrawingForRevision(null);
+                                setAddDrawerOpen(true);
+                                setFileType('dwg');
+                                setDwgFile(null);
+                                setPdfFile(null);
+                            }}
+                            className="bg-blue-600 hover:bg-blue-700 text-white px-3.5 py-1.5 rounded-lg text-xs font-semibold transition-all flex items-center shadow-xs cursor-pointer"
+                        >
+                            <Plus size={14} className="mr-1" />
+                            <span>Add Record</span>
+                        </button>
+                    )}
                 </div>
             </div>
 
-            {/* List Content */}
-            <div className="flex-grow overflow-y-auto custom-scrollbar bg-gray-50/20 dark:bg-transparent">
+            {/* Content Area */}
+            <div className="flex-1 overflow-y-auto bg-[#f9fafb] dark:bg-gh-bg">
                 {activeTab === 'management' ? (
                     drawings.length === 0 ? (
-                        <div className="flex flex-col items-center justify-center min-h-[300px] p-8">
-                            <FileText className="text-gray-300 dark:text-white/10 mb-4" size={48} />
-                            <h4 className="font-bold text-gray-700 dark:text-gray-300 text-sm">No drawings uploaded yet</h4>
-                            <p className="text-xs text-gray-400 mt-1">Add drawings using the "Add Record" button.</p>
+                        <div className="flex flex-col items-center justify-center min-h-[300px] border-2 border-dashed border-gray-200 dark:border-gh-border rounded-xl m-6 p-8 bg-white dark:bg-[#0d1117]">
+                            <FileText className="text-gray-300 dark:text-gray-600 mb-3" size={44} />
+                            <h4 className="font-bold text-gray-700 dark:text-gray-300 text-xs">No drawings uploaded yet</h4>
+                            <p className="text-[11px] text-gray-400 mt-1">Click 'Add Record' to upload DWG or PDF blueprints.</p>
                         </div>
                     ) : renderManagementTable()
                 ) : renderPlannedTable()}
             </div>
 
-            {/* Add Record & Revision Upload Drawer */}
-            <AnimatePresence>
-                {addDrawerOpen && (
-                    <>
-                        {/* Backdrop */}
-                        <div className="fixed inset-0 z-[200] bg-black/30 backdrop-blur-sm" onClick={() => setAddDrawerOpen(false)} />
-                        
-                        {/* Drawer */}
-                        <div className="fixed top-0 right-0 h-full w-[440px] z-[201] bg-white dark:bg-[#161b22] shadow-2xl flex flex-col transition-transform duration-300 ease-in-out">
-                            <div className="flex items-center justify-between px-6 py-4 border-b border-gray-100 dark:border-white/10 bg-gray-50 dark:bg-[#161b22]">
+            {/* ADD RECORD & REVISION UPLOAD DRAWER */}
+            {addDrawerOpen && (
+                <div className="fixed inset-0 z-[150] overflow-hidden">
+                    <div className="absolute inset-0 bg-black/40 backdrop-blur-xs transition-opacity anim-fade-in" onClick={() => setAddDrawerOpen(false)}></div>
+
+                    <div className="absolute inset-y-0 right-0 max-w-full flex pl-10">
+                        <div className="w-screen max-w-md bg-white dark:bg-[#161b22] shadow-2xl border-l border-gray-200 dark:border-gh-border flex flex-col text-left">
+                            
+                            <div className="px-5 py-4 border-b border-gray-200 dark:border-gh-border flex items-center justify-between bg-gray-50 dark:bg-[#0d1117]">
                                 <div>
                                     <h3 className="text-sm font-bold text-gray-900 dark:text-white">
-                                        {selectedDrawingForRevision ? `Upload Revision on: ${selectedDrawingForRevision.title}` : 'Add New Drawing'}
+                                        {selectedDrawingForRevision ? `Upload Revision: ${selectedDrawingForRevision.title}` : 'Add New Drawing'}
                                     </h3>
-                                    <p className="text-xs text-gray-400">
-                                        {selectedDrawingForRevision ? 'Increments version and updates S3 archives' : 'Create drawing record with R1 revision'}
+                                    <p className="text-xs text-gray-500 dark:text-gray-400">
+                                        {selectedDrawingForRevision ? 'Increments version and stores historical DWG/PDF' : 'Create drawing record with R1 revision'}
                                     </p>
                                 </div>
-                                <button onClick={() => setAddDrawerOpen(false)} className="p-1.5 rounded-lg hover:bg-gray-100 dark:hover:bg-white/10 text-gray-400">
+                                <button onClick={() => setAddDrawerOpen(false)} className="p-1 rounded-md text-gray-400 hover:text-gray-600 dark:hover:text-white">
                                     <X size={16} />
                                 </button>
                             </div>
 
-                            <form onSubmit={handleUploadSubmit} className="flex-1 overflow-y-auto p-6 space-y-5 custom-scrollbar text-left">
-                                {/* Title */}
+                            <form onSubmit={handleUploadSubmit} className="flex-1 overflow-y-auto p-5 space-y-4 text-xs">
                                 <div>
-                                    <label className="text-xs font-bold text-gray-500 uppercase tracking-wider block mb-1.5">Drawing Title *</label>
+                                    <label className="block text-gray-500 dark:text-gray-400 font-semibold mb-1 uppercase text-[10px]">Drawing Title *</label>
                                     {selectedDrawingForRevision ? (
                                         <input
                                             type="text"
                                             disabled
                                             value={selectedDrawingForRevision.title}
-                                            className="w-full bg-gray-100 dark:bg-white/5 border border-gray-200 dark:border-white/10 rounded-xl px-3 py-2 text-xs text-gray-405 cursor-not-allowed outline-none font-bold"
+                                            className="w-full bg-gray-100 dark:bg-[#0d1117] border border-gray-200 dark:border-gh-border rounded-lg px-3 py-2 text-xs font-bold text-gray-500 cursor-not-allowed outline-none"
                                         />
                                     ) : (
                                         <input
@@ -566,54 +596,52 @@ const DrawingCategoryDetail = ({ category, projectId, onBack, setExtraBreadcrumb
                                             required
                                             value={title}
                                             onChange={e => setTitle(e.target.value)}
-                                            placeholder="e.g. Foundation layout plan..."
-                                            className="w-full bg-gray-50 dark:bg-white/5 border border-gray-200 dark:border-white/10 rounded-xl px-3 py-2 text-xs text-gray-800 dark:text-gray-200 outline-none focus:ring-1 focus:ring-blue-500 transition-all font-medium"
+                                            placeholder="e.g. Structural Foundation Layout..."
+                                            className="w-full bg-gray-50 dark:bg-[#0d1117] border border-gray-200 dark:border-gh-border rounded-lg px-3 py-2 text-xs text-gray-900 dark:text-white outline-none focus:border-blue-500"
                                         />
                                     )}
                                 </div>
 
-                                {/* Revisions Display */}
-                                <div className="grid grid-cols-2 gap-4">
+                                <div className="grid grid-cols-2 gap-3">
                                     <div>
-                                        <label className="text-xs font-bold text-gray-500 uppercase tracking-wider block mb-1.5">Revision Code</label>
+                                        <label className="block text-gray-500 dark:text-gray-400 font-semibold mb-1 uppercase text-[10px]">Revision Code</label>
                                         <input
                                             type="text"
                                             disabled
                                             value={selectedDrawingForRevision ? `R${selectedDrawingForRevision.latestRevision + 1}` : 'R1'}
-                                            className="w-full bg-gray-100 dark:bg-white/5 border border-gray-200 dark:border-white/10 rounded-xl px-3 py-2 text-xs text-blue-500 cursor-not-allowed outline-none font-mono font-bold"
+                                            className="w-full bg-gray-100 dark:bg-[#0d1117] border border-gray-200 dark:border-gh-border rounded-lg px-3 py-2 text-xs text-blue-600 font-mono font-bold cursor-not-allowed outline-none"
                                         />
                                     </div>
                                     <div>
-                                        <label className="text-xs font-bold text-gray-500 uppercase tracking-wider block mb-1.5">Upload Date</label>
+                                        <label className="block text-gray-500 dark:text-gray-400 font-semibold mb-1 uppercase text-[10px]">Upload Date</label>
                                         <input
                                             type="text"
                                             disabled
                                             value={new Date().toLocaleDateString('en-GB')}
-                                            className="w-full bg-gray-100 dark:bg-white/5 border border-gray-200 dark:border-white/10 rounded-xl px-3 py-2 text-xs text-gray-400 cursor-not-allowed outline-none font-medium"
+                                            className="w-full bg-gray-100 dark:bg-[#0d1117] border border-gray-200 dark:border-gh-border rounded-lg px-3 py-2 text-xs text-gray-400 cursor-not-allowed outline-none"
                                         />
                                     </div>
                                 </div>
 
-                                {/* Choose either DWG or PDF Option toggle */}
                                 <div>
-                                    <label className="text-xs font-bold text-gray-500 uppercase tracking-wider block mb-1.5">Upload File Type *</label>
-                                    <div className="flex gap-2 p-0.5 bg-gray-100 dark:bg-white/5 border border-gray-200 dark:border-white/10 rounded-lg">
+                                    <label className="block text-gray-500 dark:text-gray-400 font-semibold mb-1 uppercase text-[10px]">File Type *</label>
+                                    <div className="flex gap-2 p-0.5 bg-gray-100 dark:bg-[#0d1117] border border-gray-200 dark:border-gh-border rounded-lg">
                                         <button
                                             type="button"
                                             onClick={() => { setFileType('dwg'); setPdfFile(null); }}
                                             className={`flex-1 py-1.5 text-xs font-semibold rounded-md transition-all ${fileType === 'dwg'
-                                                ? 'bg-white dark:bg-white/10 text-blue-600 dark:text-blue-400 shadow-sm'
-                                                : 'text-gray-500 hover:text-gray-700 dark:text-gray-400'
+                                                ? 'bg-white dark:bg-[#21262d] text-blue-600 dark:text-blue-400 shadow-xs'
+                                                : 'text-gray-600 dark:text-gray-400'
                                             }`}
                                         >
-                                            DWG File
+                                            DWG CAD File
                                         </button>
                                         <button
                                             type="button"
                                             onClick={() => { setFileType('pdf'); setDwgFile(null); }}
                                             className={`flex-1 py-1.5 text-xs font-semibold rounded-md transition-all ${fileType === 'pdf'
-                                                ? 'bg-white dark:bg-white/10 text-blue-600 dark:text-blue-400 shadow-sm'
-                                                : 'text-gray-500 hover:text-gray-700 dark:text-gray-400'
+                                                ? 'bg-white dark:bg-[#21262d] text-blue-600 dark:text-blue-400 shadow-xs'
+                                                : 'text-gray-600 dark:text-gray-400'
                                             }`}
                                         >
                                             PDF File
@@ -621,11 +649,10 @@ const DrawingCategoryDetail = ({ category, projectId, onBack, setExtraBreadcrumb
                                     </div>
                                 </div>
 
-                                {/* File Input Box based on Type */}
                                 {fileType === 'dwg' ? (
                                     <div>
-                                        <label className="text-xs font-bold text-gray-500 uppercase tracking-wider block mb-1.5">DWG File (.dwg, .dxf) *</label>
-                                        <div className="relative border border-dashed border-gray-200 dark:border-white/10 rounded-xl p-4 bg-gray-50/50 dark:bg-white/[0.01] hover:bg-gray-100/50 dark:hover:bg-white/[0.03] transition-colors flex flex-col items-center justify-center text-center cursor-pointer">
+                                        <label className="block text-gray-500 dark:text-gray-400 font-semibold mb-1 uppercase text-[10px]">DWG File (.dwg, .dxf) *</label>
+                                        <div className="relative border-2 border-dashed border-gray-200 dark:border-gh-border rounded-lg p-4 bg-gray-50 dark:bg-[#0d1117] flex flex-col items-center justify-center text-center cursor-pointer">
                                             <input
                                                 type="file"
                                                 required={!selectedDrawingForRevision || fileType === 'dwg'}
@@ -633,17 +660,17 @@ const DrawingCategoryDetail = ({ category, projectId, onBack, setExtraBreadcrumb
                                                 onChange={e => setDwgFile(e.target.files[0] || null)}
                                                 className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
                                             />
-                                            <Upload size={18} className="text-gray-400 mb-1.5" />
-                                            <span className="text-[10px] font-bold text-gray-750 dark:text-gray-300">
-                                                {dwgFile ? dwgFile.name : 'Select or drop DWG/DXF file'}
+                                            <Upload size={20} className="text-gray-400 mb-1" />
+                                            <span className="text-xs font-bold text-gray-900 dark:text-white">
+                                                {dwgFile ? dwgFile.name : 'Select DWG/DXF file'}
                                             </span>
-                                            <span className="text-[8px] text-gray-400 mt-0.5">Maximum size: 25MB</span>
+                                            <span className="text-[10px] text-gray-400 mt-0.5">Max size: 25MB</span>
                                         </div>
                                     </div>
                                 ) : (
                                     <div>
-                                        <label className="text-xs font-bold text-gray-500 uppercase tracking-wider block mb-1.5">PDF File (.pdf) *</label>
-                                        <div className="relative border border-dashed border-gray-200 dark:border-white/10 rounded-xl p-4 bg-gray-50/50 dark:bg-white/[0.01] hover:bg-gray-100/50 dark:hover:bg-white/[0.03] transition-colors flex flex-col items-center justify-center text-center cursor-pointer">
+                                        <label className="block text-gray-500 dark:text-gray-400 font-semibold mb-1 uppercase text-[10px]">PDF File (.pdf) *</label>
+                                        <div className="relative border-2 border-dashed border-gray-200 dark:border-gh-border rounded-lg p-4 bg-gray-50 dark:bg-[#0d1117] flex flex-col items-center justify-center text-center cursor-pointer">
                                             <input
                                                 type="file"
                                                 required={!selectedDrawingForRevision || fileType === 'pdf'}
@@ -651,237 +678,200 @@ const DrawingCategoryDetail = ({ category, projectId, onBack, setExtraBreadcrumb
                                                 onChange={e => setPdfFile(e.target.files[0] || null)}
                                                 className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
                                             />
-                                            <Upload size={18} className="text-gray-400 mb-1.5" />
-                                            <span className="text-[10px] font-bold text-gray-750 dark:text-gray-300">
-                                                {pdfFile ? pdfFile.name : 'Select or drop PDF file'}
+                                            <Upload size={20} className="text-gray-400 mb-1" />
+                                            <span className="text-xs font-bold text-gray-900 dark:text-white">
+                                                {pdfFile ? pdfFile.name : 'Select PDF file'}
                                             </span>
-                                            <span className="text-[8px] text-gray-400 mt-0.5">Maximum size: 25MB</span>
+                                            <span className="text-[10px] text-gray-400 mt-0.5">Max size: 25MB</span>
                                         </div>
                                     </div>
                                 )}
 
-                                {/* Notes/Remarks */}
                                 <div>
-                                    <label className="text-xs font-bold text-gray-500 uppercase tracking-wider block mb-1.5">Notes / Remarks</label>
+                                    <label className="block text-gray-500 dark:text-gray-400 font-semibold mb-1 uppercase text-[10px]">Notes / Change Summary</label>
                                     <textarea
                                         value={description}
                                         onChange={e => setDescription(e.target.value)}
-                                        placeholder="Add revision updates, change details, or notes..."
+                                        placeholder="Enter details about this revision..."
                                         rows={3}
-                                        className="w-full bg-gray-50 dark:bg-white/5 border border-gray-200 dark:border-white/10 rounded-xl px-3 py-2 text-xs text-gray-800 dark:text-gray-200 outline-none focus:ring-1 focus:ring-blue-500 transition-all resize-none"
+                                        className="w-full bg-gray-50 dark:bg-[#0d1117] border border-gray-200 dark:border-gh-border rounded-lg px-3 py-2 text-xs text-gray-900 dark:text-white outline-none focus:border-blue-500 resize-none"
                                     />
                                 </div>
 
-                                {/* Form Action Buttons */}
-                                <div className="pt-4 flex gap-2 border-t border-gray-100 dark:border-white/10">
+                                <div className="pt-3 border-t border-gray-200 dark:border-gh-border flex justify-end space-x-2">
+                                    <button
+                                        type="button"
+                                        onClick={() => setAddDrawerOpen(false)}
+                                        className="px-3 py-1.5 bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-300 rounded-lg text-xs font-semibold"
+                                    >
+                                        Cancel
+                                    </button>
                                     <button
                                         type="submit"
                                         disabled={submitting}
-                                        className="flex-1 flex items-center justify-center gap-2 py-2 bg-blue-600 hover:bg-blue-700 disabled:opacity-40 text-white text-xs font-bold rounded-xl transition-all"
+                                        className="px-4 py-1.5 bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white rounded-lg text-xs font-bold shadow-xs flex items-center space-x-1"
                                     >
-                                        {submitting ? (
-                                            <>
-                                                <Loader2 className="animate-spin" size={13} />
-                                                <span>Uploading file...</span>
-                                            </>
-                                        ) : (
-                                            <>
-                                                <Check size={13} />
-                                                <span>{selectedDrawingForRevision ? 'Upload Revision' : 'Create Drawing'}</span>
-                                            </>
-                                        )}
-                                    </button>
-                                    <button 
-                                        type="button" 
-                                        onClick={() => setAddDrawerOpen(false)}
-                                        className="px-4 py-2 border border-gray-200 dark:border-white/10 text-gray-500 dark:text-gray-400 text-xs font-semibold hover:bg-gray-50 dark:hover:bg-white/5 rounded-xl"
-                                    >
-                                        Cancel
+                                        {submitting ? <Loader2 size={13} className="animate-spin" /> : <Check size={13} />}
+                                        <span>{selectedDrawingForRevision ? 'Upload Revision' : 'Create Record'}</span>
                                     </button>
                                 </div>
                             </form>
                         </div>
-                    </>
-                )}
-            </AnimatePresence>
+                    </div>
+                </div>
+            )}
 
-            {/* Info / Version Control Drawer */}
-            <AnimatePresence>
-                {infoDrawerOpen && selectedDrawing && (
-                    <>
-                        {/* Backdrop */}
-                        <div 
-                            className="absolute inset-0 bg-black/40 backdrop-blur-sm z-[150]"
-                            onClick={() => setInfoDrawerOpen(false)}
-                        />
-                        {/* Drawer Content */}
-                        <motion.div
-                            initial={{ x: '100%' }}
-                            animate={{ x: 0 }}
-                            exit={{ x: '100%' }}
-                            transition={{ type: 'spring', damping: 25, stiffness: 200 }}
-                            className="absolute right-0 top-0 bottom-0 w-[400px] bg-white dark:bg-[#0d1117] border-l border-gray-200 dark:border-white/10 shadow-2xl z-[160] flex flex-col overflow-hidden"
-                        >
-                            <div className="p-6 border-b border-gray-200 dark:border-white/10 flex justify-between items-center bg-gray-50 dark:bg-[#161b22]">
-                                <div className="flex items-center space-x-3 text-left">
-                                    <div className="p-2 bg-blue-500/10 rounded-lg text-blue-400">
-                                        <History size={20} />
-                                    </div>
-                                    <div>
-                                        <h2 className="text-sm font-bold text-gray-900 dark:text-white tracking-tight">Version Control Log</h2>
-                                        <p className="text-[10px] text-gray-400">Complete revision timeline</p>
-                                    </div>
+            {/* VERSION CONTROL & ACTIONS POPUP DRAWER */}
+            {infoDrawerOpen && selectedDrawing && (
+                <div className="fixed inset-0 z-[150] overflow-hidden">
+                    <div className="absolute inset-0 bg-black/40 backdrop-blur-xs transition-opacity anim-fade-in" onClick={() => setInfoDrawerOpen(false)}></div>
+
+                    <div className="absolute inset-y-0 right-0 max-w-full flex pl-10">
+                        <div className="w-screen max-w-md bg-white dark:bg-[#161b22] shadow-2xl border-l border-gray-200 dark:border-gh-border flex flex-col text-left">
+                            
+                            <div className="px-5 py-4 border-b border-gray-200 dark:border-gh-border flex items-center justify-between bg-gray-50 dark:bg-[#0d1117]">
+                                <div className="flex items-center space-x-2">
+                                    <History size={16} className="text-blue-500" />
+                                    <h3 className="text-sm font-bold text-gray-900 dark:text-white">Drawing Details & Revisions</h3>
                                 </div>
-                                <button onClick={() => setInfoDrawerOpen(false)} className="p-2 text-gray-500 hover:text-gray-900 dark:hover:text-white transition-colors">
-                                    <X size={18} />
+                                <button onClick={() => setInfoDrawerOpen(false)} className="p-1 rounded-md text-gray-400 hover:text-gray-600 dark:hover:text-white">
+                                    <X size={16} />
                                 </button>
                             </div>
 
-                            <div className="flex-1 overflow-y-auto p-6 space-y-6 custom-scrollbar text-left">
+                            <div className="flex-1 overflow-y-auto p-5 space-y-5 text-xs">
                                 {(() => {
-                                    const activeLog = selectedDrawing.revisions[activeLogIndex] || selectedDrawing.revisions[0];
+                                    const revisions = selectedDrawing.revisions || [];
+                                    const activeLog = revisions[activeLogIndex] || revisions[0];
                                     if (!activeLog) return null;
 
                                     return (
                                         <>
-                                            {/* Current/Selected Revision Box */}
-                                            <section>
-                                                <label className="text-[9px] text-gray-500 font-bold uppercase tracking-[0.2em] block mb-2.5">
-                                                    Viewing Revision: {activeLog.rev}
+                                            {/* Action Bar Inside Popup Drawer */}
+                                            {canWrite && (
+                                                <div className="p-3 bg-gray-50 dark:bg-[#0d1117] border border-gray-200 dark:border-gh-border rounded-lg flex items-center justify-between gap-2">
+                                                    <button
+                                                        onClick={() => {
+                                                            setInfoDrawerOpen(false);
+                                                            setSelectedDrawingForRevision(selectedDrawing);
+                                                            setAddDrawerOpen(true);
+                                                        }}
+                                                        className="flex-1 py-1.5 bg-blue-600 hover:bg-blue-700 text-white rounded-md text-xs font-bold transition-all shadow-xs flex items-center justify-center space-x-1 cursor-pointer"
+                                                    >
+                                                        <Upload size={13} />
+                                                        <span>Upload Revision</span>
+                                                    </button>
+                                                    <button
+                                                        onClick={() => {
+                                                            const newTitle = prompt('Rename Drawing Title:', selectedDrawing.title);
+                                                            if (newTitle && newTitle.trim()) {
+                                                                handleSaveTitle(selectedDrawing.id, newTitle.trim());
+                                                                setSelectedDrawing(prev => ({ ...prev, title: newTitle.trim() }));
+                                                            }
+                                                        }}
+                                                        className="py-1.5 px-3 bg-gray-200 dark:bg-gray-800 hover:bg-gray-300 dark:hover:bg-gray-700 text-gray-800 dark:text-gray-200 rounded-md text-xs font-semibold flex items-center space-x-1 cursor-pointer"
+                                                    >
+                                                        <Edit2 size={13} />
+                                                        <span>Rename</span>
+                                                    </button>
+                                                    <button
+                                                        onClick={() => handleDeleteDrawing(selectedDrawing.id)}
+                                                        className="py-1.5 px-3 bg-red-100 dark:bg-red-950/60 hover:bg-red-200 dark:hover:bg-red-900 text-red-600 dark:text-red-300 rounded-md text-xs font-semibold flex items-center space-x-1 cursor-pointer"
+                                                    >
+                                                        <Trash2 size={13} />
+                                                        <span>Delete</span>
+                                                    </button>
+                                                </div>
+                                            )}
+
+                                            <div>
+                                                <label className="block text-gray-500 dark:text-gray-400 font-semibold mb-1 uppercase text-[10px]">
+                                                    Viewing Revision {activeLog.rev}
                                                 </label>
-                                                <div className="bg-gray-50 dark:bg-[#161b22] border border-gray-200 dark:border-white/10 rounded-xl p-4 space-y-3.5 shadow-inner transition-all duration-300">
-                                                    <div className="flex flex-col space-y-1.5">
-                                                        <div className="flex items-center justify-between">
-                                                            <span className="text-xs font-bold text-gray-900 dark:text-white truncate block max-w-[220px]">
-                                                                {selectedDrawing.title}
-                                                            </span>
-                                                            <span className="px-2 py-0.5 text-[8px] font-bold rounded border tracking-wider shrink-0 bg-blue-500/10 text-blue-500 border-blue-500/20 font-mono">
-                                                                {activeLog.rev} {activeLogIndex === 0 ? 'LATEST' : 'ARCHIVED'}
-                                                            </span>
-                                                        </div>
-                                                        <span className="text-[10px] text-gray-500 font-mono">
-                                                            Group Ref ID: #{selectedDrawing.id}
+                                                <div className="p-4 bg-gray-50 dark:bg-[#0d1117] border border-gray-200 dark:border-gh-border rounded-lg space-y-2">
+                                                    <div className="flex items-center justify-between">
+                                                        <span className="font-bold text-gray-900 dark:text-white text-sm truncate">
+                                                            {selectedDrawing.title}
+                                                        </span>
+                                                        <span className="px-2 py-0.5 bg-blue-100 text-blue-700 dark:bg-blue-950 dark:text-blue-300 font-mono font-bold rounded text-[10px]">
+                                                            {activeLog.rev} {activeLogIndex === 0 ? '(Latest)' : '(Archived)'}
                                                         </span>
                                                     </div>
 
-                                                    <div className="border-t border-gray-200 dark:border-white/10 pt-3 space-y-2 text-xs">
-                                                        <div className="flex items-center space-x-2.5 text-gray-700 dark:text-gray-300">
-                                                            <Clock size={14} className="text-gray-500" />
-                                                            <span>Uploaded: {new Date(activeLog.uploadedAt).toLocaleString('en-GB')}</span>
-                                                        </div>
-                                                        <div className="flex items-center space-x-2.5 text-gray-700 dark:text-gray-300">
-                                                            <User size={14} className="text-gray-500" />
-                                                            <span className="truncate">By: {activeLog.uploaderName}</span>
-                                                        </div>
+                                                    <div className="text-[11px] text-gray-500 dark:text-gray-400 space-y-1 pt-1">
+                                                        <p>Uploaded: {new Date(activeLog.uploadedAt).toLocaleString('en-GB')}</p>
+                                                        <p>Author: {activeLog.uploaderName || 'System User'}</p>
+                                                        <p>Remarks: {activeLog.description || '-'}</p>
                                                     </div>
 
-                                                    {/* Revision-specific Files */}
-                                                    <div className="border-t border-gray-200 dark:border-white/10 pt-3 flex flex-wrap gap-2">
+                                                    <div className="pt-2 flex gap-2">
                                                         {activeLog.dwgUrl && (
-                                                            <div className="flex items-center bg-gray-100 dark:bg-white/5 border border-gray-200 dark:border-white/10 rounded px-2 py-1 select-none">
-                                                                <span className="font-mono text-[9px] text-gray-400 mr-2">DWG</span>
-                                                                <button
-                                                                    onClick={() => handlePreviewDwg(activeLog.dwgUrl, selectedDrawing.title)}
-                                                                    className="p-0.5 text-blue-500 hover:bg-blue-500/10 rounded mr-1"
-                                                                    title="View DWG File in New Tab"
-                                                                >
-                                                                    <Eye size={12} />
-                                                                </button>
-                                                                <a 
-                                                                    href={activeLog.dwgUrl} 
-                                                                    download 
-                                                                    className="p-0.5 text-gray-500 hover:text-white rounded"
-                                                                    title="Download DWG"
-                                                                >
-                                                                    <Download size={12} />
-                                                                </a>
-                                                            </div>
+                                                            <button
+                                                                onClick={() => handlePreviewDwg(activeLog.dwgUrl, selectedDrawing.title)}
+                                                                className="px-2.5 py-1 bg-blue-600 hover:bg-blue-700 text-white rounded text-[11px] font-bold flex items-center space-x-1 cursor-pointer"
+                                                            >
+                                                                <Eye size={12} />
+                                                                <span>View DWG</span>
+                                                            </button>
                                                         )}
                                                         {activeLog.pdfUrl && (
-                                                            <div className="flex items-center bg-gray-100 dark:bg-white/5 border border-gray-200 dark:border-white/10 rounded px-2 py-1 select-none">
-                                                                <span className="font-mono text-[9px] text-gray-400 mr-2">PDF</span>
-                                                                <a 
-                                                                    href={activeLog.pdfUrl} 
-                                                                    target="_blank" 
-                                                                    rel="noreferrer"
-                                                                    className="p-0.5 text-purple-500 hover:bg-purple-500/10 rounded mr-1"
-                                                                    title="Open PDF File in New Tab"
-                                                                >
-                                                                    <Eye size={12} />
-                                                                </a>
-                                                                <a 
-                                                                    href={activeLog.pdfUrl} 
-                                                                    download 
-                                                                    className="p-0.5 text-gray-500 hover:text-white rounded"
-                                                                    title="Download PDF"
-                                                                >
-                                                                    <Download size={12} />
-                                                                </a>
-                                                            </div>
+                                                            <a
+                                                                href={activeLog.pdfUrl}
+                                                                target="_blank"
+                                                                rel="noreferrer"
+                                                                className="px-2.5 py-1 bg-purple-600 hover:bg-purple-700 text-white rounded text-[11px] font-bold flex items-center space-x-1 cursor-pointer"
+                                                            >
+                                                                <Eye size={12} />
+                                                                <span>View PDF</span>
+                                                            </a>
                                                         )}
                                                     </div>
                                                 </div>
-                                            </section>
+                                            </div>
 
-                                            {/* Revision Log History Timeline */}
-                                            <section className="flex-1">
-                                                <label className="text-[9px] text-gray-500 font-bold uppercase tracking-[0.2em] block mb-3.5">
-                                                    Revision History
+                                            <div>
+                                                <label className="block text-gray-500 dark:text-gray-400 font-semibold mb-2 uppercase text-[10px]">
+                                                    Revision History Timeline
                                                 </label>
-                                                <div className="space-y-4 relative">
-                                                    {selectedDrawing.revisions.map((log, i) => (
+                                                <div className="space-y-3">
+                                                    {revisions.map((log, i) => (
                                                         <div
-                                                            key={log.id}
+                                                            key={log.id || i}
                                                             onClick={() => setActiveLogIndex(i)}
-                                                            className="flex relative pl-6 group cursor-pointer"
+                                                            className={`p-3 rounded-lg border cursor-pointer transition-all ${activeLogIndex === i ? 'border-blue-500 bg-blue-50/40 dark:bg-blue-900/20' : 'border-gray-200 dark:border-gh-border bg-white dark:bg-[#0d1117] hover:border-gray-300'}`}
                                                         >
-                                                            {/* Timeline Vertical Line */}
-                                                            <div className="absolute left-1.5 top-2.5 bottom-[-24px] w-[2px] bg-gray-200 dark:bg-white/10 group-last:hidden" />
-                                                            {/* Timeline Dot indicator */}
-                                                            <div className={`absolute left-[-2px] top-1.5 w-[16px] h-[16px] rounded-full border-[3px] border-white dark:border-[#0d1117] shadow-sm transition-all duration-300 z-10 ${activeLogIndex === i ? 'bg-blue-500 scale-110' : (i === 0 ? 'bg-blue-400' : 'bg-gray-400 dark:bg-gray-600')}`} />
-
-                                                            <div className={`flex-1 pb-5 transition-all duration-300 ${activeLogIndex === i ? 'scale-[1.01] origin-left opacity-100' : 'opacity-65 group-hover:opacity-100'}`}>
-                                                                <div className="flex items-center justify-between mb-1 text-[11px]">
-                                                                    <span className={`font-bold ${i === 0 ? 'text-blue-600 dark:text-blue-400' : 'text-gray-900 dark:text-gray-300'}`}>
-                                                                        {log.rev} {i === 0 && '(Latest)'}
-                                                                    </span>
-                                                                    <span className={`text-[9px] ${activeLogIndex === i ? 'text-blue-500 font-semibold' : 'text-gray-500'}`}>
-                                                                        {new Date(log.uploadedAt).toLocaleDateString('en-GB')}
-                                                                    </span>
-                                                                </div>
-                                                                <p className={`text-xs leading-relaxed mb-2.5 break-all ${activeLogIndex === i ? 'text-gray-900 dark:text-gray-200 font-medium' : 'text-gray-600 dark:text-gray-400'}`}>
-                                                                    {log.description || 'No changes or notes specified.'}
-                                                                </p>
-                                                                <div className="flex items-center space-x-1.5 text-[9px] text-gray-500">
-                                                                    <User size={11} className={activeLogIndex === i ? 'text-blue-500' : 'text-gray-400'} />
-                                                                    <span className="uppercase tracking-wider font-semibold truncate max-w-[200px]">Auth: {log.uploaderName}</span>
-                                                                </div>
+                                                            <div className="flex items-center justify-between font-semibold text-xs mb-1">
+                                                                <span className={i === 0 ? 'text-blue-600 dark:text-blue-400 font-bold' : 'text-gray-900 dark:text-white'}>
+                                                                    {log.rev} {i === 0 && '(Latest)'}
+                                                                </span>
+                                                                <span className="text-[10px] text-gray-400">
+                                                                    {new Date(log.uploadedAt).toLocaleDateString('en-GB')}
+                                                                </span>
                                                             </div>
+                                                            <p className="text-[11px] text-gray-600 dark:text-gray-400">{log.description || 'No notes specified.'}</p>
                                                         </div>
                                                     ))}
                                                 </div>
-                                            </section>
-
-                                            {/* Approvals & Remarks Section */}
-                                            <section className="shrink-0 pt-3 border-t border-gray-100 dark:border-white/10">
-                                                <div className={`border rounded-xl p-3 bg-gray-50 dark:bg-white/[0.02] ${activeLogIndex === 0 ? 'border-blue-500/10' : 'border-gray-200 dark:border-white/5'}`}>
-                                                    <div className="flex items-center space-x-2 mb-1.5 font-bold text-[9px] tracking-wider uppercase text-gray-400">
-                                                        <FileText size={12} />
-                                                        <span>Remarks / Version Description</span>
-                                                    </div>
-                                                    <p className="text-xs italic leading-relaxed text-gray-700 dark:text-gray-300">
-                                                        "{activeLog.description || 'No description remarks provided for this version.'}"
-                                                    </p>
-                                                </div>
-                                            </section>
+                                            </div>
                                         </>
                                     );
                                 })()}
                             </div>
-                        </motion.div>
-                    </>
-                )}
-            </AnimatePresence>
+
+                            <div className="p-4 border-t border-gray-200 dark:border-gh-border bg-gray-50 dark:bg-[#0d1117] flex justify-end">
+                                <button
+                                    onClick={() => setInfoDrawerOpen(false)}
+                                    className="px-4 py-1.5 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-xs font-bold shadow-xs cursor-pointer"
+                                >
+                                    Done
+                                </button>
+                            </div>
+
+                        </div>
+                    </div>
+                </div>
+            )}
+
         </div>
     );
 };

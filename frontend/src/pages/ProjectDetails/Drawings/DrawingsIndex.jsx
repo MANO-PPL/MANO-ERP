@@ -1,25 +1,27 @@
 import React, { useState, useEffect } from 'react';
 import { 
     ChevronRight, PenTool, Layers, Droplets, Zap, Flame, Plus, X, Check, FolderPlus,
-    Building2, Wrench, Construction, Ruler, Lightbulb, Shield, Edit2, Trash2, Loader2 
+    Building2, Wrench, Construction, Ruler, Lightbulb, Shield, Edit2, Trash2, Search,
+    FileText, Layers3, Folder
 } from 'lucide-react';
 import { useSearchParams } from 'react-router-dom';
+import { toast } from 'react-toastify';
 import DrawingsDetail from './DrawingCategoryDetail';
 
-// ─── Icon options for new/edited categories ──────────────────────────────────────────
+// Icon options for new/edited categories
 const ICON_MAP = {
-    PenTool: <PenTool size={24} />,
-    Layers: <Layers size={24} />,
-    Droplets: <Droplets size={24} />,
-    Zap: <Zap size={24} />,
-    Flame: <Flame size={24} />,
-    Folder: <FolderPlus size={24} />,
-    Building2: <Building2 size={24} />,
-    Wrench: <Wrench size={24} />,
-    Construction: <Construction size={24} />,
-    Ruler: <Ruler size={24} />,
-    Lightbulb: <Lightbulb size={24} />,
-    Shield: <Shield size={24} />,
+    PenTool: <PenTool size={22} />,
+    Layers: <Layers size={22} />,
+    Droplets: <Droplets size={22} />,
+    Zap: <Zap size={22} />,
+    Flame: <Flame size={22} />,
+    Folder: <FolderPlus size={22} />,
+    Building2: <Building2 size={22} />,
+    Wrench: <Wrench size={22} />,
+    Construction: <Construction size={22} />,
+    Ruler: <Ruler size={22} />,
+    Lightbulb: <Lightbulb size={22} />,
+    Shield: <Shield size={22} />,
 };
 
 const ICON_OPTIONS = [
@@ -37,7 +39,7 @@ const ICON_OPTIONS = [
     { key: 'Shield', label: '🛡️' }
 ];
 
-// ─── Category Drawer (Create & Edit) ──────────────────────────────────────────
+// Category Drawer (Create & Edit)
 const CategoryDrawer = ({ open, onClose, onAdd, onEdit, editingCategory }) => {
     const [name, setName] = useState('');
     const [iconKey, setIconKey] = useState('Folder');
@@ -66,66 +68,67 @@ const CategoryDrawer = ({ open, onClose, onAdd, onEdit, editingCategory }) => {
 
     return (
         <>
-            {open && <div className="fixed inset-0 z-[200] bg-black/30 backdrop-blur-sm" onClick={onClose} />}
-            <div className={`fixed top-0 right-0 h-full w-[400px] z-[201] bg-white dark:bg-[#161b22] shadow-2xl flex flex-col transition-transform duration-300 ease-in-out ${open ? 'translate-x-0' : 'translate-x-full'}`}>
+            {open && <div className="fixed inset-0 z-[200] bg-black/40 backdrop-blur-xs transition-opacity anim-fade-in" onClick={onClose} />}
+            <div className={`fixed top-0 right-0 h-full w-[400px] z-[201] bg-white dark:bg-[#161b22] border-l border-gray-200 dark:border-gh-border shadow-2xl flex flex-col transition-transform duration-300 ease-in-out ${open ? 'translate-x-0' : 'translate-x-full'}`}>
                 {/* Header */}
-                <div className="flex items-center justify-between px-6 py-4 border-b border-gray-100 dark:border-white/10">
+                <div className="flex items-center justify-between px-6 py-4 border-b border-gray-200 dark:border-gh-border bg-gray-50 dark:bg-[#0d1117]">
                     <div className="flex items-center gap-3">
-                        <div className="w-8 h-8 rounded-xl bg-blue-50 dark:bg-blue-500/10 flex items-center justify-center">
-                            <FolderPlus size={16} className="text-blue-500" />
+                        <div className="w-8 h-8 rounded-lg bg-blue-50 dark:bg-blue-950 flex items-center justify-center">
+                            <FolderPlus size={16} className="text-blue-600 dark:text-blue-400" />
                         </div>
                         <div>
                             <h3 className="text-sm font-bold text-gray-900 dark:text-white">
                                 {editingCategory ? 'Edit Category' : 'New Drawing Category'}
                             </h3>
-                            <p className="text-xs text-gray-400">
+                            <p className="text-xs text-gray-500 dark:text-gray-400">
                                 {editingCategory ? 'Modify category name or icon' : 'Add a custom drawing section'}
                             </p>
                         </div>
                     </div>
-                    <button onClick={onClose} className="p-1.5 rounded-lg hover:bg-gray-100 dark:hover:bg-white/10 text-gray-400 transition-colors">
-						<X size={16} />
+                    <button onClick={onClose} className="p-1 rounded-md hover:bg-gray-200 dark:hover:bg-gray-800 text-gray-400 hover:text-gray-600 dark:hover:text-white transition-colors cursor-pointer">
+                        <X size={16} />
                     </button>
                 </div>
 
-                <div className="flex-1 overflow-y-auto px-6 py-5 space-y-6">
-                    {/* Preview */}
-                    <div className="flex items-center gap-4 p-4 bg-gray-50 dark:bg-white/[0.03] rounded-2xl border border-gray-100 dark:border-white/5">
-                        <div className="w-14 h-14 bg-gray-100 dark:bg-white/5 rounded-2xl flex items-center justify-center text-gray-500 dark:text-gray-400 text-xl shrink-0">
-                            {ICON_MAP[iconKey] || <FolderPlus size={24} />}
+                <div className="flex-1 overflow-y-auto px-6 py-5 space-y-6 text-left text-xs">
+                    {/* Live Preview */}
+                    <div className="flex items-center gap-4 p-4 bg-gray-50 dark:bg-[#0d1117] rounded-xl border border-gray-200 dark:border-gh-border">
+                        <div className="w-12 h-12 bg-white dark:bg-[#161b22] border border-gray-200 dark:border-gh-border rounded-xl flex items-center justify-center text-gray-700 dark:text-gray-300 text-xl shrink-0 shadow-xs">
+                            {ICON_MAP[iconKey] || <FolderPlus size={22} />}
                         </div>
                         <div>
-                            <p className="text-xs text-gray-400 mb-1">Preview</p>
-                            <p className="text-sm font-bold text-gray-800 dark:text-white">{name || 'Category Name'}</p>
-                            <p className="text-[10px] text-gray-400 mt-0.5 uppercase tracking-wider">Click to explore archive</p>
+                            <p className="text-[10px] text-gray-400 uppercase font-bold tracking-wider mb-0.5">Live Preview</p>
+                            <p className="text-sm font-bold text-gray-900 dark:text-white">{name || 'Category Name'}</p>
+                            <p className="text-[10px] text-blue-600 dark:text-blue-400 font-semibold mt-0.5">0 Drawing Records</p>
                         </div>
                     </div>
 
-                    {/* Name */}
+                    {/* Category Name */}
                     <div>
-                        <label className="text-xs font-bold text-gray-500 uppercase tracking-wider block mb-2">Category Name *</label>
+                        <label className="text-[10px] font-bold text-gray-500 dark:text-gray-400 uppercase tracking-wider block mb-1.5">Category Name *</label>
                         <input
                             type="text"
                             value={name}
                             onChange={e => setName(e.target.value)}
                             onKeyDown={e => e.key === 'Enter' && handleSubmit()}
-                            placeholder="e.g. Structural Drawings, MEP Coordination..."
+                            placeholder="e.g. Structural Drawings, Architectural Layouts..."
                             autoFocus
-                            className="w-full bg-gray-50 dark:bg-white/5 border border-gray-200 dark:border-white/10 rounded-xl px-3 py-2.5 text-sm text-gray-800 dark:text-gray-200 outline-none focus:ring-2 ring-blue-400 transition-all"
+                            className="w-full bg-gray-50 dark:bg-[#0d1117] border border-gray-200 dark:border-gh-border rounded-lg px-3 py-2 text-xs text-gray-900 dark:text-white outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500/20 transition-all placeholder:text-gray-400"
                         />
                     </div>
 
-                    {/* Icon */}
+                    {/* Icon Selection Grid */}
                     <div>
-                        <label className="text-xs font-bold text-gray-500 uppercase tracking-wider block mb-2">Icon</label>
-                        <div className="flex gap-2 flex-wrap">
+                        <label className="text-[10px] font-bold text-gray-500 dark:text-gray-400 uppercase tracking-wider block mb-2">Icon Iconography</label>
+                        <div className="grid grid-cols-4 gap-2">
                             {ICON_OPTIONS.map(opt => (
                                 <button
                                     key={opt.key}
+                                    type="button"
                                     onClick={() => setIconKey(opt.key)}
-                                    className={`w-11 h-11 rounded-xl flex items-center justify-center text-lg border-2 transition-all ${iconKey === opt.key
-                                        ? 'border-blue-500 bg-blue-50 dark:bg-blue-900/20 scale-110 shadow-md'
-                                        : 'border-gray-200 dark:border-white/10 hover:border-blue-300 bg-white dark:bg-white/5'
+                                    className={`h-10 rounded-lg flex items-center justify-center text-base border transition-all cursor-pointer ${iconKey === opt.key
+                                        ? 'border-blue-500 bg-blue-50 dark:bg-blue-900/30 ring-1 ring-blue-500/20 shadow-xs'
+                                        : 'border-gray-200 dark:border-gh-border hover:border-gray-300 dark:hover:border-gray-700 bg-white dark:bg-[#0d1117]'
                                         }`}
                                 >
                                     {opt.label}
@@ -135,16 +138,19 @@ const CategoryDrawer = ({ open, onClose, onAdd, onEdit, editingCategory }) => {
                     </div>
                 </div>
 
-                {/* Footer */}
-                <div className="px-6 py-4 border-t border-gray-100 dark:border-white/10 flex gap-2">
+                {/* Drawer Footer */}
+                <div className="px-6 py-4 border-t border-gray-200 dark:border-gh-border bg-gray-50 dark:bg-[#0d1117] flex gap-2">
                     <button
                         onClick={handleSubmit}
                         disabled={!name.trim()}
-                        className="flex-1 flex items-center justify-center gap-2 py-2.5 bg-blue-600 hover:bg-blue-700 disabled:opacity-40 disabled:cursor-not-allowed text-white text-sm font-bold rounded-xl transition-all"
+                        className="flex-1 flex items-center justify-center gap-1.5 py-2 bg-blue-600 hover:bg-blue-700 disabled:opacity-40 disabled:cursor-not-allowed text-white text-xs font-bold rounded-lg transition-all shadow-xs cursor-pointer"
                     >
-                        <Check size={15} /> {editingCategory ? 'Save Changes' : 'Create Category'}
+                        <Check size={14} /> {editingCategory ? 'Save Changes' : 'Create Category'}
                     </button>
-                    <button onClick={onClose} className="px-4 py-2.5 rounded-xl border border-gray-200 dark:border-white/10 text-gray-500 text-sm font-semibold hover:bg-gray-50 dark:hover:bg-white/5 transition-all">
+                    <button 
+                        onClick={onClose} 
+                        className="px-4 py-2 rounded-lg border border-gray-200 dark:border-gh-border text-gray-600 dark:text-gray-300 text-xs font-semibold hover:bg-gray-100 dark:hover:bg-gray-800 transition-all cursor-pointer"
+                    >
                         Cancel
                     </button>
                 </div>
@@ -153,12 +159,12 @@ const CategoryDrawer = ({ open, onClose, onAdd, onEdit, editingCategory }) => {
     );
 };
 
-// ─── Drawings Index ───────────────────────────────────────────────────────────
+// Drawings Index Component
 const DrawingsIndex = ({ setExtraBreadcrumbs, project, canWrite }) => {
     const [searchParams, setSearchParams] = useSearchParams();
     const [categories, setCategories] = useState([]);
     const [loading, setLoading] = useState(true);
-    const [error, setError] = useState(null);
+    const [searchTerm, setSearchTerm] = useState('');
     const [drawerOpen, setDrawerOpen] = useState(false);
     const [editingCategory, setEditingCategory] = useState(null);
 
@@ -173,13 +179,13 @@ const DrawingsIndex = ({ setExtraBreadcrumbs, project, canWrite }) => {
             const response = await fetch(`/api/projects/${project.id}/drawings/categories`);
             const data = await response.json();
             if (data.success) {
-                setCategories(data.categories);
+                setCategories(data.categories || []);
             } else {
-                throw new Error(data.message || 'Failed to load categories');
+                toast.error(data.message || 'Failed to load categories');
             }
         } catch (e) {
             console.error(e);
-            setError(e.message);
+            toast.error('Error loading drawing categories');
         } finally {
             setLoading(false);
         }
@@ -213,13 +219,14 @@ const DrawingsIndex = ({ setExtraBreadcrumbs, project, canWrite }) => {
             });
             const data = await response.json();
             if (data.success) {
+                toast.success('Category created successfully');
                 fetchCategories();
             } else {
-                alert(data.message || 'Failed to create category');
+                toast.error(data.message || 'Failed to create category');
             }
         } catch (e) {
             console.error(e);
-            alert('Error creating category: ' + e.message);
+            toast.error('Error creating category');
         }
     };
 
@@ -232,13 +239,14 @@ const DrawingsIndex = ({ setExtraBreadcrumbs, project, canWrite }) => {
             });
             const data = await response.json();
             if (data.success) {
+                toast.success('Category updated');
                 fetchCategories();
             } else {
-                alert(data.message || 'Failed to update category');
+                toast.error(data.message || 'Failed to update category');
             }
         } catch (e) {
             console.error(e);
-            alert('Error updating category: ' + e.message);
+            toast.error('Error updating category');
         }
     };
 
@@ -251,6 +259,7 @@ const DrawingsIndex = ({ setExtraBreadcrumbs, project, canWrite }) => {
             const data = await response.json();
             
             if (data.success) {
+                toast.success('Category deleted');
                 fetchCategories();
             } else if (data.hasDrawings) {
                 const proceed = window.confirm(
@@ -260,11 +269,11 @@ const DrawingsIndex = ({ setExtraBreadcrumbs, project, canWrite }) => {
                     handleDeleteCategory(cat, true);
                 }
             } else {
-                alert(data.message || 'Failed to delete category');
+                toast.error(data.message || 'Failed to delete category');
             }
         } catch (e) {
             console.error(e);
-            alert('Error deleting category: ' + e.message);
+            toast.error('Error deleting category');
         }
     };
 
@@ -291,16 +300,10 @@ const DrawingsIndex = ({ setExtraBreadcrumbs, project, canWrite }) => {
         );
     }
 
-    if (loading && categories.length === 0) {
-        return (
-            <div className="flex-grow flex items-center justify-center min-h-[400px]">
-                <Loader2 className="animate-spin text-blue-500" size={32} />
-            </div>
-        );
-    }
+    const filteredCategories = categories.filter(c => (c.name || '').toLowerCase().includes(searchTerm.toLowerCase()));
 
     return (
-        <div className="flex-1 flex flex-col h-full bg-white dark:bg-[#0d1117] overflow-hidden anim-fade-in Poppins text-left">
+        <div className="flex-1 flex flex-col h-full bg-white dark:bg-[#0d1117] overflow-hidden anim-fade-in font-sans text-left">
             <CategoryDrawer
                 open={drawerOpen}
                 onClose={() => setDrawerOpen(false)}
@@ -309,84 +312,146 @@ const DrawingsIndex = ({ setExtraBreadcrumbs, project, canWrite }) => {
                 editingCategory={editingCategory}
             />
 
-            {/* Header */}
-            <div className="flex items-center justify-between px-8 pt-8 pb-2 shrink-0">
-                <div>
-                    <h2 className="text-sm font-black text-gray-800 dark:text-white uppercase tracking-widest">Drawings</h2>
-                    <p className="text-xs text-gray-400 mt-0.5">{categories.length} categories · Click any to open</p>
+            {/* STATS OVERVIEW BAR */}
+            <div className="px-3 py-2.5 border-b border-gray-200 dark:border-gh-border bg-[#f9fafb] dark:bg-gh-bg">
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                    <div className="p-3 rounded-lg border border-gray-200 dark:border-gh-border bg-white dark:bg-[#161b22]">
+                        <div className="flex items-center justify-between text-xs text-gray-500 dark:text-gray-400 font-medium">
+                            <span>Categories</span>
+                            <Folder size={14} className="text-blue-500" />
+                        </div>
+                        <div className="mt-1 flex items-baseline justify-between">
+                            <span className="text-xl font-bold text-gray-900 dark:text-white">{categories.length}</span>
+                            <span className="text-[10px] text-gray-400">Drawing Sections</span>
+                        </div>
+                    </div>
+
+                    <div className="p-3 rounded-lg border border-gray-200 dark:border-gh-border bg-white dark:bg-[#161b22]">
+                        <div className="flex items-center justify-between text-xs text-gray-500 dark:text-gray-400 font-medium">
+                            <span>DWG Vault</span>
+                            <PenTool size={14} className="text-purple-500" />
+                        </div>
+                        <div className="mt-1 flex items-baseline justify-between">
+                            <span className="text-xl font-bold text-purple-600 dark:text-purple-400">Ready</span>
+                            <span className="text-[10px] text-gray-400">CAD Viewing</span>
+                        </div>
+                    </div>
+
+                    <div className="p-3 rounded-lg border border-gray-200 dark:border-gh-border bg-white dark:bg-[#161b22]">
+                        <div className="flex items-center justify-between text-xs text-gray-500 dark:text-gray-400 font-medium">
+                            <span>PDF Archives</span>
+                            <FileText size={14} className="text-green-500" />
+                        </div>
+                        <div className="mt-1 flex items-baseline justify-between">
+                            <span className="text-xl font-bold text-green-600 dark:text-green-400">Active</span>
+                            <span className="text-[10px] text-gray-400">Version Control</span>
+                        </div>
+                    </div>
+
+                    <div className="p-3 rounded-lg border border-gray-200 dark:border-gh-border bg-white dark:bg-[#161b22]">
+                        <div className="flex items-center justify-between text-xs text-gray-500 dark:text-gray-400 font-medium">
+                            <span>Revisions</span>
+                            <Layers3 size={14} className="text-orange-500" />
+                        </div>
+                        <div className="mt-1 flex items-baseline justify-between">
+                            <span className="text-xl font-bold text-orange-600 dark:text-orange-400">Enabled</span>
+                            <span className="text-[10px] text-gray-400">Log Tracking</span>
+                        </div>
+                    </div>
                 </div>
+            </div>
+
+            {/* CONTROL TOOLBAR */}
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between px-3 py-2 border-b border-gray-200 dark:border-gh-border bg-white dark:bg-[#0d1117] gap-3">
+                <div className="relative min-w-[240px]">
+                    <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
+                    <input
+                        type="text"
+                        placeholder="Search categories..."
+                        value={searchTerm}
+                        onChange={(e) => setSearchTerm(e.target.value)}
+                        className="w-full pl-9 pr-8 py-1.5 text-xs bg-gray-50 dark:bg-[#161b22] border border-gray-200 dark:border-gh-border rounded-lg outline-none focus:border-blue-500 text-gray-900 dark:text-white transition-all placeholder:text-gray-400"
+                    />
+                    {searchTerm && (
+                        <button onClick={() => setSearchTerm('')} className="absolute right-2.5 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 dark:hover:text-white">
+                            <X size={13} />
+                        </button>
+                    )}
+                </div>
+
                 {canWrite && (
                     <button
                         onClick={handleNewCategoryClick}
-                        className="flex items-center gap-2 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold rounded-xl transition-colors shadow-md shadow-blue-500/20"
+                        className="bg-blue-600 hover:bg-blue-700 text-white px-3.5 py-1.5 rounded-lg text-xs font-semibold transition-all flex items-center shadow-xs active:scale-95 cursor-pointer self-end sm:self-auto"
                     >
-                        <Plus size={14} /> New Category
+                        <Plus size={14} className="mr-1" /> New Category
                     </button>
                 )}
             </div>
 
-            <div className="flex-1 overflow-y-auto p-6 md:p-10 custom-scrollbar bg-gray-50/20 dark:bg-transparent">
-                {categories.length === 0 ? (
-                    <div className="flex flex-col items-center justify-center min-h-[300px] border border-dashed border-gray-200 dark:border-white/10 rounded-[2rem] p-8">
-                        <FolderPlus className="text-gray-300 dark:text-white/10 mb-4" size={48} />
-                        <h4 className="font-bold text-gray-700 dark:text-gray-300 text-sm">No categories created yet</h4>
-                        <p className="text-xs text-gray-400 mt-1">Create a category to begin uploading drawings.</p>
+            {/* CATEGORY GRID */}
+            <div className="flex-1 overflow-y-auto p-3.5 bg-[#f9fafb] dark:bg-gh-bg">
+                {filteredCategories.length === 0 ? (
+                    <div className="flex flex-col items-center justify-center min-h-[300px] border-2 border-dashed border-gray-200 dark:border-gh-border rounded-xl p-8 bg-white dark:bg-[#0d1117]">
+                        <FolderPlus className="text-gray-300 dark:text-gray-600 mb-3" size={44} />
+                        <h4 className="font-bold text-gray-700 dark:text-gray-300 text-xs">No categories found</h4>
+                        <p className="text-[11px] text-gray-400 mt-1">Create a category to store drawing records.</p>
                     </div>
                 ) : (
-                    <div className="grid grid-cols-1 xl:grid-cols-2 gap-5">
-                        {categories.map((cat) => (
+                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                        {filteredCategories.map((cat) => (
                             <div
                                 key={cat.id}
                                 onClick={() => handleCategoryClick(cat)}
-                                className="group relative bg-white dark:bg-[#161b22] px-8 py-8 rounded-[2rem] border border-gray-100 dark:border-white/5 shadow-sm hover:shadow-2xl hover:shadow-blue-500/10 hover:border-blue-500/40 transition-all duration-500 cursor-pointer flex items-center overflow-hidden"
+                                className="group relative bg-white dark:bg-[#161b22] p-5 rounded-xl border border-gray-200 dark:border-gh-border shadow-xs hover:shadow-md hover:border-blue-500/50 transition-all cursor-pointer flex flex-col justify-between"
                             >
-                                <div className="absolute inset-0 bg-gradient-to-r from-blue-600/0 via-blue-600/0 to-blue-600/[0.02] group-hover:via-blue-600/[0.04] transition-all duration-700" />
-                                <div className="absolute left-0 top-1/2 -translate-y-1/2 w-1.5 h-12 bg-gray-200 dark:bg-white/10 rounded-r-full group-hover:h-16 group-hover:bg-blue-500 transition-all duration-500" />
-                                
-                                {canWrite && (
-                                    <div className="absolute top-4 right-4 flex items-center gap-1.5 opacity-0 group-hover:opacity-100 transition-opacity z-10">
-                                        <button
-                                            onClick={(e) => {
-                                                e.stopPropagation();
-                                                setEditingCategory(cat);
-                                                setDrawerOpen(true);
-                                            }}
-                                            className="p-1.5 rounded-lg bg-gray-50 dark:bg-[#161b22] hover:bg-gray-100 dark:hover:bg-white/10 text-gray-500 dark:text-gray-400 border border-gray-100 dark:border-white/5 shadow-sm transition-all"
-                                            title="Edit Category"
-                                        >
-                                            <Edit2 size={13} />
-                                        </button>
-                                        <button
-                                            onClick={(e) => {
-                                                e.stopPropagation();
-                                                handleDeleteCategory(cat);
-                                            }}
-                                            className="p-1.5 rounded-lg bg-red-500/10 hover:bg-red-500/20 text-red-500 border border-red-500/20 shadow-sm transition-all"
-                                            title="Delete Category"
-                                        >
-                                            <Trash2 size={13} />
-                                        </button>
+                                {/* Top Header */}
+                                <div className="flex items-start justify-between mb-4">
+                                    <div className="w-11 h-11 bg-gray-50 dark:bg-[#0d1117] border border-gray-200 dark:border-gh-border rounded-xl flex items-center justify-center text-gray-600 dark:text-gray-300 group-hover:bg-blue-600 group-hover:text-white group-hover:border-blue-600 transition-all duration-300 shadow-xs">
+                                        {ICON_MAP[cat.icon_key || cat.iconKey] ?? <FolderPlus size={22} />}
                                     </div>
-                                )}
 
-                                <div className="relative flex items-center w-full">
-                                    <div className="w-16 h-16 bg-gray-50 dark:bg-white/[0.03] rounded-2xl flex items-center justify-center text-gray-400 group-hover:bg-blue-600 group-hover:text-white transition-all duration-500 shadow-inner border border-transparent group-hover:border-blue-400/50 group-hover:rotate-[10deg] group-hover:scale-110">
-                                        {ICON_MAP[cat.icon_key || cat.iconKey] ?? <FolderPlus size={24} />}
-                                    </div>
-                                    <div className="ml-8 flex-1 text-left">
-                                        <h3 className="text-lg font-black text-gray-900 dark:text-white tracking-tight leading-tight group-hover:text-blue-500 transition-colors uppercase mb-1.5">
-                                            {cat.name}
-                                        </h3>
-                                        <div className="flex items-center space-x-3">
-                                            <span className="text-[10px] font-bold text-gray-400 dark:text-gray-500 uppercase tracking-[0.2em] group-hover:text-gray-300 transition-colors">Click to explore archive</span>
-                                            <div className="h-px w-12 bg-gray-100 dark:bg-white/10 group-hover:w-24 group-hover:bg-blue-500/30 transition-all duration-700" />
+                                    {canWrite && (
+                                        <div className="flex items-center space-x-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                                            <button
+                                                onClick={(e) => {
+                                                    e.stopPropagation();
+                                                    setEditingCategory(cat);
+                                                    setDrawerOpen(true);
+                                                }}
+                                                className="p-1.5 rounded-md text-gray-400 hover:text-blue-500 hover:bg-blue-50 dark:hover:bg-blue-900/20 transition-all cursor-pointer"
+                                                title="Edit Category"
+                                            >
+                                                <Edit2 size={13} />
+                                            </button>
+                                            <button
+                                                onClick={(e) => {
+                                                    e.stopPropagation();
+                                                    handleDeleteCategory(cat);
+                                                }}
+                                                className="p-1.5 rounded-md text-gray-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 transition-all cursor-pointer"
+                                                title="Delete Category"
+                                            >
+                                                <Trash2 size={13} />
+                                            </button>
                                         </div>
-                                    </div>
-                                    <div className="opacity-0 group-hover:opacity-100 translate-x-4 group-hover:translate-x-0 transition-all duration-500 mr-2">
-                                        <div className="w-10 h-10 rounded-full border border-blue-500/30 flex items-center justify-center text-blue-500 group-hover:bg-blue-500 group-hover:text-white transition-all">
-                                            <ChevronRight size={18} />
-                                        </div>
-                                    </div>
+                                    )}
+                                </div>
+
+                                {/* Title & Info */}
+                                <div>
+                                    <h3 className="text-sm font-bold text-gray-900 dark:text-white group-hover:text-blue-600 dark:group-hover:text-blue-400 transition-colors uppercase tracking-wide">
+                                        {cat.name}
+                                    </h3>
+                                    <p className="text-[11px] text-gray-400 dark:text-gray-500 mt-1 font-medium">
+                                        Drawing Archive Section
+                                    </p>
+                                </div>
+
+                                {/* Footer Link */}
+                                <div className="mt-5 pt-3 border-t border-gray-100 dark:border-gh-border/50 flex items-center justify-between text-[11px] font-semibold text-blue-600 dark:text-blue-400">
+                                    <span>Explore Drawings</span>
+                                    <ChevronRight size={14} className="transform group-hover:translate-x-1 transition-transform" />
                                 </div>
                             </div>
                         ))}

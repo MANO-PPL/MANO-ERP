@@ -131,12 +131,12 @@ export const updateDrawingTitle = catchAsync(async (req, res) => {
         throw new AppError('Invalid Drawing Group ID', 400);
     }
 
-    const { title } = req.body;
-    await drawingsService.updateDrawingTitle(projectId, parseInt(categoryId), parseInt(drawingGroupId), { title });
+    const { title, description } = req.body;
+    await drawingsService.updateDrawingTitle(projectId, parseInt(categoryId), parseInt(drawingGroupId), { title, description });
 
     res.json({
         success: true,
-        message: 'Drawing title updated successfully'
+        message: 'Drawing updated successfully'
     });
 });
 
