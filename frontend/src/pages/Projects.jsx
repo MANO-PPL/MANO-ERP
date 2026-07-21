@@ -1,9 +1,246 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Filter, Plus, List, Zap, MoreHorizontal, ArrowUpDown, ChevronDown, Box } from 'lucide-react';
+import { Filter, Plus, List, Zap, MoreHorizontal, ArrowUpDown, ChevronDown, ChevronRight, Box, GripVertical, Pencil, Trash2, Info, X, Search } from 'lucide-react';
 import NewProjectSlideOut from '../components/NewProjectSlideOut';
 import { projectApi } from '../services/projectApi';
 import { useAuth } from '../context/AuthContext';
+
+// ─── Project Filter Modal ────────────────────────────────────────────────────
+const ProjectFilterModal = ({ open, onClose, activeFilters, setActiveFilters, allOwners }) => {
+    if (!open) return null;
+
+    const toggleFilter = (type, value) => {
+        setActiveFilters(prev => {
+            const list = prev[type] || [];
+            const updated = list.includes(value) ? list.filter(v => v !== value) : [...list, value];
+            return { ...prev, [type]: updated };
+        });
+    };
+
+    const clearAll = () => {
+        setActiveFilters({ status: [], owners: [], issues: [] });
+    };
+
+    return (
+        <div className="fixed inset-0 z-[5000] flex items-center justify-center p-4">
+            <div className="absolute inset-0 bg-black/50 backdrop-blur-sm" onClick={onClose} />
+            <div className="relative w-full max-w-md bg-white dark:bg-[#161b22] rounded-2xl shadow-2xl border border-gray-200 dark:border-white/10 p-6 z-10 text-left">
+                <div className="flex justify-between items-center pb-4 border-b border-gray-100 dark:border-white/10">
+                    <h3 className="text-base font-bold text-gray-900 dark:text-white">Filter Projects</h3>
+                    <button onClick={onClose} className="p-1 text-gray-400 hover:text-gray-700 dark:hover:text-white rounded-lg">
+                        <X size={18} />
+                    </button>
+                </div>
+
+                <div className="py-4 space-y-5 max-h-[60vh] overflow-y-auto custom-scrollbar">
+                    {/* Status */}
+                    <div>
+                        <p className="text-xs font-bold text-gray-500 uppercase tracking-wider mb-2">Status</p>
+                        <div className="flex flex-wrap gap-2">
+                            {['Active', 'Completed'].map(st => {
+                                const isSel = activeFilters.status.includes(st);
+                                return (
+                                    <button
+                                        key={st}
+                                        onClick={() => toggleFilter('status', st)}
+                                        className={`px-3 py-1.5 rounded-lg text-xs font-semibold border transition-all ${
+                                            isSel ? 'bg-blue-600 text-white border-blue-600' : 'bg-gray-50 dark:bg-white/5 border-gray-200 dark:border-white/10 text-gray-700 dark:text-gray-300'
+                                        }`}
+                                    >
+                                        {st}
+                                    </button>
+                                );
+                            })}
+                        </div>
+                    </div>
+
+                    {/* Owner */}
+                    {allOwners.length > 0 && (
+                        <div>
+                            <p className="text-xs font-bold text-gray-500 uppercase tracking-wider mb-2">Owner / Employer</p>
+                            <div className="flex flex-wrap gap-2">
+                                {allOwners.map(owner => {
+                                    if (!owner) return null;
+                                    const isSel = activeFilters.owners.includes(owner);
+                                    return (
+                                        <button
+                                            key={owner}
+                                            onClick={() => toggleFilter('owners', owner)}
+                                            className={`px-3 py-1.5 rounded-lg text-xs font-semibold border transition-all ${
+                                                isSel ? 'bg-blue-600 text-white border-blue-600' : 'bg-gray-50 dark:bg-white/5 border-gray-200 dark:border-white/10 text-gray-700 dark:text-gray-300'
+                                            }`}
+                                        >
+                                            {owner}
+                                        </button>
+                                    );
+                                })}
+                            </div>
+                        </div>
+                    )}
+
+                    {/* Issues */}
+                    <div>
+                        <p className="text-xs font-bold text-gray-500 uppercase tracking-wider mb-2">Issues Status</p>
+                        <div className="flex flex-wrap gap-2">
+                            {['None', 'Risk', 'Blocked', 'Resolved'].map(issue => {
+                                const isSel = activeFilters.issues.includes(issue);
+                                return (
+                                    <button
+                                        key={issue}
+                                        onClick={() => toggleFilter('issues', issue)}
+                                        className={`px-3 py-1.5 rounded-lg text-xs font-semibold border transition-all ${
+                                            isSel ? 'bg-blue-600 text-white border-blue-600' : 'bg-gray-50 dark:bg-white/5 border-gray-200 dark:border-white/10 text-gray-700 dark:text-gray-300'
+                                        }`}
+                                    >
+                                        {issue}
+                                    </button>
+                                );
+                            })}
+                        </div>
+                    </div>
+                </div>
+
+                <div className="flex justify-between items-center pt-4 border-t border-gray-100 dark:border-white/10">
+                    <button onClick={clearAll} className="text-xs font-semibold text-gray-500 hover:text-gray-800 dark:hover:text-gray-200">
+                        Reset All
+                    </button>
+                    <button onClick={onClose} className="px-5 py-2 bg-blue-600 text-white font-bold text-xs rounded-xl shadow-md">
+                        Apply Filters
+                    </button>
+                </div>
+            </div>
+        </div>
+    );
+};
+
+// ─── Project Overview Drawer ──────────────────────────────────────────────────
+const ProjectOverviewDrawer = ({ open, onClose, project, navigate, canWrite, onEdit, getIssueStyles }) => {
+    if (!open || !project) return null;
+
+    return (
+        <div className="fixed inset-0 z-[5000] flex justify-end text-left anim-fade-in font-sans">
+            {/* Backdrop */}
+            <div className="absolute inset-0 bg-black/60 backdrop-blur-sm transition-opacity" onClick={onClose} />
+
+            {/* Slideout Panel */}
+            <div className="relative w-full max-w-lg bg-white dark:bg-[#0d1117] shadow-2xl border-l border-gray-200 dark:border-white/10 overflow-hidden flex flex-col h-full anim-slide-left z-10">
+                {/* Header */}
+                <div className="px-6 py-5 border-b border-gray-100 dark:border-white/5 flex justify-between items-start bg-gray-50/50 dark:bg-white/[0.02]">
+                    <div className="space-y-1">
+                        <div className="flex items-center gap-2">
+                            <span className="px-2 py-0.5 rounded text-[10px] font-mono font-bold bg-blue-100 dark:bg-blue-900/40 text-blue-600 dark:text-blue-400">
+                                {project.id}
+                            </span>
+                            <span className={`px-2.5 py-0.5 rounded text-[10px] font-bold ${project.statusColor}`}>
+                                {project.status}
+                            </span>
+                        </div>
+                        <h2 className="text-xl font-bold text-gray-900 dark:text-white leading-tight">{project.name}</h2>
+                        {project.location && (
+                            <p className="text-xs text-gray-500 dark:text-gray-400 flex items-center gap-1">
+                                📍 {project.location}
+                            </p>
+                        )}
+                    </div>
+                    <button
+                        onClick={onClose}
+                        className="p-1.5 text-gray-400 hover:text-gray-900 dark:hover:text-white hover:bg-gray-100 dark:hover:bg-white/5 rounded-full transition-colors"
+                    >
+                        <X size={18} />
+                    </button>
+                </div>
+
+                {/* Body Content */}
+                <div className="p-6 overflow-y-auto custom-scrollbar flex-1 space-y-6 text-xs text-gray-700 dark:text-gray-300">
+                    {/* Overall Progress */}
+                    <div className="p-4 bg-blue-50/50 dark:bg-blue-900/10 border border-blue-100 dark:border-blue-500/20 rounded-2xl">
+                        <div className="flex justify-between items-center mb-2">
+                            <span className="font-bold text-gray-700 dark:text-gray-300 uppercase tracking-wider text-[10px]">Project Completion</span>
+                            <span className="font-extrabold text-blue-600 dark:text-blue-400 text-sm">{project.completion}%</span>
+                        </div>
+                        <div className="w-full bg-gray-200 dark:bg-white/10 h-2 rounded-full overflow-hidden">
+                            <div className="bg-blue-600 h-full rounded-full transition-all duration-500" style={{ width: `${project.completion}%` }} />
+                        </div>
+                    </div>
+
+                    {/* Key Details Grid */}
+                    <div className="grid grid-cols-2 gap-4">
+                        <div className="p-3.5 bg-gray-50 dark:bg-white/[0.02] border border-gray-100 dark:border-white/5 rounded-xl">
+                            <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-1">Employer / Owner</p>
+                            <div className="flex items-center gap-2">
+                                <div className="w-5 h-5 rounded-full bg-gradient-to-br from-orange-400 to-orange-600 flex justify-center items-center text-[9px] font-bold text-white shrink-0">
+                                    {project.owner.charAt(0)}
+                                </div>
+                                <span className="font-semibold text-gray-900 dark:text-white">{project.owner}</span>
+                            </div>
+                        </div>
+
+                        <div className="p-3.5 bg-gray-50 dark:bg-white/[0.02] border border-gray-100 dark:border-white/5 rounded-xl">
+                            <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-1">Team Size</p>
+                            <p className="font-bold text-gray-900 dark:text-white text-sm">{project.memberCount} Members</p>
+                        </div>
+
+                        <div className="p-3.5 bg-gray-50 dark:bg-white/[0.02] border border-gray-100 dark:border-white/5 rounded-xl">
+                            <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-1">Start Date</p>
+                            <p className="font-semibold text-gray-900 dark:text-white">{project.startDate}</p>
+                        </div>
+
+                        <div className="p-3.5 bg-gray-50 dark:bg-white/[0.02] border border-gray-100 dark:border-white/5 rounded-xl">
+                            <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-1">End Date</p>
+                            <p className="font-semibold text-gray-900 dark:text-white">{project.endDate}</p>
+                        </div>
+
+                        <div className="p-3.5 bg-gray-50 dark:bg-white/[0.02] border border-gray-100 dark:border-white/5 rounded-xl">
+                            <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-1">Phases Status</p>
+                            <p className="font-semibold text-gray-900 dark:text-white">{project.completedPhases} / {project.totalPhases} Completed</p>
+                        </div>
+
+                        <div className="p-3.5 bg-gray-50 dark:bg-white/[0.02] border border-gray-100 dark:border-white/5 rounded-xl">
+                            <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-1">Issues Status</p>
+                            <span className={`inline-block px-2 py-0.5 rounded text-[10px] font-bold ${getIssueStyles(project.issues)}`}>
+                                {project.issues}
+                            </span>
+                        </div>
+                    </div>
+
+                    {/* Tags */}
+                    {project.tags && project.tags.length > 0 && (
+                        <div>
+                            <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-2">Tags</p>
+                            <div className="flex flex-wrap gap-1.5">
+                                {project.tags.map((tag, tIdx) => (
+                                    <span key={tIdx} className="px-2.5 py-1 rounded-full text-[10px] font-semibold bg-blue-50 dark:bg-blue-900/20 text-blue-600 dark:text-blue-400 border border-blue-100 dark:border-blue-500/20">
+                                        {tag}
+                                    </span>
+                                ))}
+                            </div>
+                        </div>
+                    )}
+                </div>
+
+                {/* Footer Action Buttons */}
+                <div className="px-6 py-4 border-t border-gray-100 dark:border-white/5 flex justify-between items-center gap-3 bg-gray-50/50 dark:bg-white/[0.02]">
+                    {canWrite && onEdit && (
+                        <button
+                            onClick={() => { onClose(); onEdit(project); }}
+                            className="flex items-center gap-1.5 px-4 py-2 border border-gray-200 dark:border-white/10 rounded-xl text-gray-700 dark:text-gray-300 font-semibold hover:bg-gray-100 dark:hover:bg-white/5 transition-all text-xs"
+                        >
+                            <Pencil size={14} /> Edit Details
+                        </button>
+                    )}
+
+                    <button
+                        onClick={() => { onClose(); navigate(`/projects/${project.dbId}`); }}
+                        className="flex-1 flex items-center justify-center gap-2 px-5 py-2.5 bg-blue-600 hover:bg-blue-700 text-white font-bold rounded-xl shadow-md shadow-blue-500/20 transition-all text-xs"
+                    >
+                        <span>Access Project Directory</span>
+                        <ChevronRight size={14} />
+                    </button>
+                </div>
+            </div>
+        </div>
+    );
+};
 
 const Projects = () => {
     const navigate = useNavigate();
@@ -14,6 +251,16 @@ const Projects = () => {
     const [projectToEdit, setProjectToEdit] = useState(null);
 
     const [projectData, setProjectData] = useState([]);
+    const [isLoading, setIsLoading] = useState(true);
+    const [overviewProject, setOverviewProject] = useState(null);
+
+    // Filter & Search States
+    const [searchTerm, setSearchTerm] = useState('');
+    const [activeFilters, setActiveFilters] = useState({ status: [], owners: [], issues: [] });
+    const [isFilterModalOpen, setIsFilterModalOpen] = useState(false);
+    const [isManageDropdownOpen, setIsManageDropdownOpen] = useState(false);
+    const [hoveredRow, setHoveredRow] = useState(null);
+    const dropdownRef = useRef(null);
 
     // Tag edit states
     const [activeTagInputProjectId, setActiveTagInputProjectId] = useState(null);
@@ -21,6 +268,17 @@ const Projects = () => {
 
     // Action menu states
     const [activeActionsMenuId, setActiveActionsMenuId] = useState(null);
+
+    // Close dropdown on outside click
+    useEffect(() => {
+        const handleClickOutside = (event) => {
+            if (dropdownRef.current && !dropdownRef.current.contains(event.target)) {
+                setIsManageDropdownOpen(false);
+            }
+        };
+        document.addEventListener('mousedown', handleClickOutside);
+        return () => document.removeEventListener('mousedown', handleClickOutside);
+    }, []);
 
     const fetchProjects = async (force = false) => {
         const cacheKey = 'crm_projects_list';
@@ -40,13 +298,15 @@ const Projects = () => {
             try {
                 const parsed = JSON.parse(cached);
                 setProjectData(parsed);
-                // If cache is fresh, skip API call entirely
+                setIsLoading(false);
                 if (now - parseInt(cachedTime) < CACHE_TTL) {
                     return;
                 }
             } catch (e) {
                 console.error("Failed to parse cached projects", e);
             }
+        } else {
+            setIsLoading(true);
         }
 
         try {
@@ -94,6 +354,8 @@ const Projects = () => {
             }
         } catch (error) {
             console.error("Failed to fetch projects", error);
+        } finally {
+            setIsLoading(false);
         }
     };
 
@@ -242,7 +504,25 @@ const Projects = () => {
     const activeProjects = projectData.filter(p => !p.status.toLowerCase().includes('complete'));
     const completedProjects = projectData.filter(p => p.status.toLowerCase().includes('complete'));
 
-    const filteredProjects = activeTab === 'Completed Projects' ? completedProjects : activeProjects;
+    const allOwners = Array.from(new Set(projectData.map(p => p.owner).filter(Boolean)));
+
+    const filteredProjects = projectData.filter(project => {
+        if (activeTab === 'Active Projects' && project.status.toLowerCase().includes('complete')) return false;
+        if (activeTab === 'Completed Projects' && !project.status.toLowerCase().includes('complete')) return false;
+
+        const matchSearch = !searchTerm || 
+            project.name.toLowerCase().includes(searchTerm.toLowerCase()) || 
+            project.id.toLowerCase().includes(searchTerm.toLowerCase()) || 
+            project.owner.toLowerCase().includes(searchTerm.toLowerCase());
+
+        const matchActiveStatus = activeFilters.status.length === 0 || activeFilters.status.includes(project.status);
+        const matchActiveOwners = activeFilters.owners.length === 0 || activeFilters.owners.includes(project.owner);
+        const matchActiveIssues = activeFilters.issues.length === 0 || activeFilters.issues.includes(project.issues);
+
+        return matchSearch && matchActiveStatus && matchActiveOwners && matchActiveIssues;
+    });
+
+    const activeFilterCount = activeFilters.status.length + activeFilters.owners.length + activeFilters.issues.length;
 
     const tabs = [
         { id: 'Active Projects', label: 'Active Projects', count: activeProjects.length },
@@ -250,16 +530,16 @@ const Projects = () => {
     ];
 
     return (
-        <div className="flex flex-col h-[calc(100vh-7vh)] w-full text-gray-900 dark:text-gh-text transition-colors overflow-hidden bg-[#fafafa] dark:bg-[#0d1117] relative">
-            {/* Top Sub-navigation & Toolbar Area */}
-            <div className="flex justify-between items-center px-6 py-2.5 overflow-x-auto no-scrollbar bg-white dark:bg-[#0d1117] border-b border-gray-200 dark:border-white/5">
+        <div className="flex flex-col h-[calc(100vh-44px)] w-full text-gray-900 dark:text-gh-text transition-colors overflow-hidden bg-white dark:bg-[#0d1117] relative font-sans">
+            {/* Top Toolbar matching single search bar layout */}
+            <div className="px-6 py-3.5 flex flex-col md:flex-row items-center justify-between border-b border-gray-200 dark:border-white/5 bg-white dark:bg-[#0d1117] shrink-0 gap-3">
                 {/* Left side: Tabs */}
-                <div className="inline-flex p-0.5 bg-gray-100 dark:bg-white/5 border border-gray-200 dark:border-white/10 rounded-lg">
+                <div className="inline-flex p-0.5 bg-gray-100 dark:bg-white/5 border border-gray-200 dark:border-white/10 rounded-lg shrink-0">
                     {tabs.map((tab) => (
                         <button
                             key={tab.id}
                             onClick={() => setActiveTab(tab.id)}
-                            className={`flex items-center space-x-1.5 px-4 py-1 text-xs font-semibold rounded-md transition-all duration-200 ${activeTab === tab.id
+                            className={`flex items-center space-x-1.5 px-3 py-1 text-xs font-semibold rounded-md transition-all duration-200 ${activeTab === tab.id
                                 ? 'bg-white dark:bg-white/10 text-blue-600 dark:text-blue-400 shadow-sm'
                                 : 'text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200'
                                 }`}
@@ -277,210 +557,261 @@ const Projects = () => {
                     ))}
                 </div>
 
-                {/* Right side: Actions */}
-                {canWrite && (
-                    <div className="flex items-center space-x-3 text-sm">
+                {/* Right side: Search bar to the left of Filter + Manage Projects */}
+                <div className="flex items-center space-x-3 w-full md:w-auto justify-end">
+                    <div className="relative w-64 md:w-72">
+                        <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={15} />
+                        <input
+                            type="text"
+                            placeholder="Search projects by name, code, owner..."
+                            className="w-full pl-9 pr-3 py-2 bg-gray-50 dark:bg-white/[0.02] border border-gray-200 dark:border-white/10 rounded-lg text-xs text-gray-900 dark:text-white focus:outline-none focus:ring-1 focus:ring-blue-500 placeholder-gray-400"
+                            value={searchTerm}
+                            onChange={e => setSearchTerm(e.target.value)}
+                        />
+                    </div>
+
+                    <button
+                        onClick={() => setIsFilterModalOpen(true)}
+                        className={`flex items-center space-x-2 px-6 py-2 border rounded-lg text-sm font-medium transition-all ${
+                            activeFilterCount > 0
+                                ? 'border-blue-500 bg-blue-500/10 text-blue-600 dark:text-blue-400'
+                                : 'border-blue-500 bg-blue-600 text-white hover:bg-blue-700'
+                        }`}
+                    >
+                        <span>Filter</span>
+                        <Filter size={16} fill="currentColor" className={activeFilterCount > 0 ? '' : 'text-white'} />
+                        {activeFilterCount > 0 && (
+                            <span className="ml-1 bg-blue-500 text-white text-[10px] w-4 h-4 rounded-full flex items-center justify-center font-bold">
+                                {activeFilterCount}
+                            </span>
+                        )}
+                    </button>
+
+                    {canWrite && (
                         <button
                             onClick={handleNewProjectClick}
-                            className="flex items-center space-x-2 px-5 py-2 font-semibold bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition-colors shadow-sm"
+                            className="flex items-center space-x-2 px-6 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-sm font-bold shadow-md shadow-blue-500/20 transition-all hover:scale-[1.02] active:scale-95 whitespace-nowrap"
                         >
                             <Plus size={16} />
-                            <span>New Project</span>
+                            <span>Add Project</span>
                         </button>
-                    </div>
-                )}
+                    )}
+                </div>
             </div>
 
-            {/* Table Area */}
-            <div className="flex-1 overflow-auto bg-white dark:bg-[#0d1117]">
-                <table className="w-full text-left whitespace-nowrap">
-                    <thead className="bg-[#f9fafb] dark:bg-[#161b22] text-[13px] text-gray-500 dark:text-gray-400 sticky top-0 z-10 border-b border-gray-200 dark:border-white/5 tracking-wide uppercase">
+            {/* Table Area matching Vendors, Clients, Employees standard */}
+            <div className="flex-1 overflow-auto custom-scrollbar p-0">
+                <table className="w-full text-left whitespace-nowrap text-[13px] border-collapse bg-white dark:bg-[#0d1117]">
+                    <thead className="bg-[#f9fafb] dark:bg-[#161b22] text-gray-500 dark:text-gray-400 sticky top-0 z-10 border-b border-gray-200 dark:border-white/5 tracking-widest text-[10px] uppercase font-bold">
                         <tr>
-                            <th className="px-6 py-4 font-medium">ID</th>
-                            <th className="px-6 py-4 font-medium">
-                                <div className="flex items-center space-x-1 cursor-pointer hover:text-gray-800 dark:hover:text-gray-200">
-                                    <span>Project Name</span>
-                                    <ArrowUpDown size={12} className="opacity-50" />
-                                </div>
-                            </th>
-                            <th className="px-6 py-4 font-medium">%</th>
-                            <th className="px-6 py-4 font-medium">
-                                <div className="flex items-center space-x-1 cursor-pointer hover:text-gray-800 dark:hover:text-gray-200">
-                                    <span>Owner</span>
-                                </div>
-                            </th>
-                            <th className="px-6 py-4 font-medium">Status</th>
-                            <th className="px-6 py-4 font-medium">Team Size</th>
-                            <th className="px-6 py-4 font-medium">Phases</th>
-                            <th className="px-6 py-4 font-medium">Issues</th>
-                            <th className="px-6 py-4 font-medium">
-                                <div className="flex items-center space-x-1 cursor-pointer hover:text-gray-800 dark:hover:text-gray-200">
-                                    <span>Start Date</span>
-                                    <ArrowUpDown size={12} className="opacity-50" />
-                                </div>
-                            </th>
-                            <th className="px-6 py-4 font-medium">
-                                <div className="flex items-center space-x-1 cursor-pointer hover:text-gray-800 dark:hover:text-gray-200">
-                                    <span>End Date</span>
-                                    <ArrowUpDown size={12} className="opacity-50" />
-                                </div>
-                            </th>
-                            <th className="px-6 py-4 font-medium">Tags</th>
+                            <th className="px-3 py-2.5 w-6"></th>
+                            <th className="px-4 py-2.5 w-12 text-center">SR NO</th>
+                            <th className="px-4 py-2.5">CODE</th>
+                            <th className="px-4 py-2.5">PROJECT NAME</th>
+                            <th className="px-4 py-2.5">%</th>
+                            <th className="px-4 py-2.5">OWNER</th>
+                            <th className="px-4 py-2.5">STATUS</th>
+                            <th className="px-4 py-2.5">TEAM SIZE</th>
+                            <th className="px-4 py-2.5">PHASES</th>
+                            <th className="px-4 py-2.5">ISSUES</th>
+                            <th className="px-4 py-2.5">START DATE</th>
+                            <th className="px-4 py-2.5">END DATE</th>
+                            <th className="px-4 py-2.5">TAGS</th>
+                            <th className="px-3 py-2.5 text-center w-10">INFO</th>
                         </tr>
                     </thead>
-                    <tbody className="divide-y divide-gray-100 dark:divide-white/5 text-[13px]">
-                        {filteredProjects.map((project, index) => (
-                            <tr key={index} onClick={() => navigate(`/projects/${project.dbId}`)} className="hover:bg-blue-50/50 dark:hover:bg-white/[0.02] transition-colors group cursor-pointer">
-                                <td className="px-6 py-4 text-gray-500 dark:text-gray-400 font-mono">{project.id}</td>
-                                <td className="px-6 py-4">
-                                    <div className="flex items-center space-x-3">
-                                        <span className="font-semibold text-gray-900 dark:text-gray-100">{project.name}</span>
-                                        <button
-                                            onClick={(e) => { e.stopPropagation(); navigate(`/projects/${project.dbId}`); }}
-                                            className="opacity-0 group-hover:opacity-100 transition-opacity flex items-center space-x-1.5 px-3 py-1 bg-transparent border border-blue-600 dark:border-blue-500/50 text-blue-600 dark:text-blue-400 rounded-md text-xs font-semibold hover:bg-blue-50 dark:hover:bg-blue-500/10 whitespace-nowrap"
-                                        >
-                                            <Box size={14} />
-                                            <span>Access Project</span>
-                                        </button>
-                                    </div>
-                                </td>
-                                <td className="px-6 py-4 text-gray-700 dark:text-gray-300 font-medium">{project.completion}%</td>
-                                <td className="px-6 py-4">
-                                    <div className="flex items-center space-x-3">
-                                        <div className="w-7 h-7 rounded-full bg-gradient-to-br from-orange-400 to-orange-600 flex justify-center items-center text-[11px] font-bold text-white shadow-sm overflow-hidden">
-                                            <span className="z-10">{project.owner.charAt(0)}</span>
-                                        </div>
-                                        <span className="text-gray-700 dark:text-gray-300 font-medium">{project.owner}</span>
-                                    </div>
-                                </td>
-                                <td className="px-6 py-4">
-                                    <span className={`px-2.5 py-1 rounded text-xs font-semibold shadow-sm ${project.statusColor}`}>
-                                        {project.status}
-                                    </span>
-                                </td>
-                                <td className="px-6 py-4">
-                                    <span className="text-gray-700 dark:text-gray-300 font-semibold">{project.memberCount} Members</span>
-                                </td>
-                                <td className="px-6 py-4">
-                                    {project.totalPhases === 0 ? (
-                                        <span className="px-2 py-0.5 text-[10px] font-bold rounded bg-gray-100 text-gray-500 dark:bg-gray-800 dark:text-gray-400 uppercase tracking-wider">
-                                            Undefined
-                                        </span>
-                                    ) : (
-                                        <div className="flex items-center space-x-3">
-                                            <div className="w-12 bg-gray-200 dark:bg-white/10 h-1.5 rounded-full overflow-hidden flex">
-                                                <div className="bg-blue-500 h-full rounded-full" style={{ width: `${(project.completedPhases / project.totalPhases) * 100}%` }}></div>
+                    <tbody className="divide-y divide-gray-100 dark:divide-white/5 bg-white dark:bg-[#0d1117]">
+                        {isLoading ? (
+                            Array.from({ length: 5 }).map((_, i) => (
+                                <tr key={i} className="animate-pulse">
+                                    {Array.from({ length: 14 }).map((_, j) => (
+                                        <td key={j} className="px-4 py-3">
+                                            <div className="h-3 bg-gray-200 dark:bg-white/10 rounded"></div>
+                                        </td>
+                                    ))}
+                                </tr>
+                            ))
+                        ) : filteredProjects.length > 0 ? (
+                            filteredProjects.map((project, idx) => (
+                                <tr
+                                    key={project.dbId}
+                                    className="hover:bg-blue-50/30 dark:hover:bg-white/[0.02] transition-colors group/row text-gray-700 dark:text-gray-300 relative cursor-pointer"
+                                    onMouseEnter={() => setHoveredRow(idx)}
+                                    onMouseLeave={() => setHoveredRow(null)}
+                                    onClick={() => navigate(`/projects/${project.dbId}`)}
+                                >
+                                    <td className="px-3 py-1.5 text-center" onClick={e => e.stopPropagation()}>
+                                        <GripVertical size={14} className="text-transparent group-hover/row:text-gray-400 dark:group-hover/row:text-gray-500 hover:!text-blue-500 transition-colors mx-auto cursor-grab active:cursor-grabbing" />
+                                    </td>
+                                    <td className="px-4 py-1.5 text-center font-mono text-gray-400">{idx + 1}</td>
+                                    <td className="px-4 py-1.5 font-mono text-gray-500 dark:text-gray-400">{project.id}</td>
+                                    <td className="px-4 py-1.5">
+                                        <span className="font-semibold text-gray-900 dark:text-gray-100 hover:text-blue-600 dark:hover:text-blue-400 transition-colors">{project.name}</span>
+                                    </td>
+                                    <td className="px-4 py-1.5 font-medium text-gray-700 dark:text-gray-300">{project.completion}%</td>
+                                    <td className="px-4 py-1.5">
+                                        <div className="flex items-center space-x-2">
+                                            <div className="w-6 h-6 rounded-full bg-gradient-to-br from-orange-400 to-orange-600 flex justify-center items-center text-[10px] font-bold text-white shadow-sm overflow-hidden shrink-0">
+                                                <span>{project.owner.charAt(0)}</span>
                                             </div>
-                                            <span className="text-gray-500 dark:text-gray-400 font-medium">{project.completedPhases} / {project.totalPhases}</span>
+                                            <span className="font-medium text-gray-700 dark:text-gray-300">{project.owner}</span>
                                         </div>
-                                    )}
-                                </td>
-                                <td className="px-6 py-4 relative group/issue">
-                                    <div className="flex items-center space-x-2">
-                                        <span className={`px-2.5 py-1 border rounded text-xs font-semibold ${getIssueStyles(project.issues)}`}>
-                                            {project.issues}
+                                    </td>
+                                    <td className="px-4 py-1.5">
+                                        <span className={`px-2.5 py-1 rounded text-xs font-semibold shadow-sm ${project.statusColor}`}>
+                                            {project.status}
                                         </span>
-                                        <div className="opacity-0 group-hover/issue:opacity-100 flex items-center space-x-1.5 transition-opacity duration-200">
-                                            <button
-                                                onClick={(e) => { e.stopPropagation(); handleUpdateIssue(project, 'None'); }}
-                                                className="w-3 h-3 rounded-full bg-gray-400 hover:scale-125 transition-transform"
-                                                title="Mark None"
-                                            />
-                                            <button
-                                                onClick={(e) => { e.stopPropagation(); handleUpdateIssue(project, 'Risk'); }}
-                                                className="w-3 h-3 rounded-full bg-amber-500 hover:scale-125 transition-transform"
-                                                title="Mark Risk"
-                                            />
-                                            <button
-                                                onClick={(e) => { e.stopPropagation(); handleUpdateIssue(project, 'Blocked'); }}
-                                                className="w-3 h-3 rounded-full bg-red-500 hover:scale-125 transition-transform"
-                                                title="Mark Blocked"
-                                            />
-                                            <button
-                                                onClick={(e) => { e.stopPropagation(); handleUpdateIssue(project, 'Resolved'); }}
-                                                className="w-3 h-3 rounded-full bg-green-500 hover:scale-125 transition-transform"
-                                                title="Mark Resolved"
-                                            />
-                                        </div>
-                                    </div>
-                                </td>
-                                <td className="px-6 py-4 text-gray-600 dark:text-gray-300 font-medium">{project.startDate}</td>
-                                <td className="px-6 py-4 text-gray-600 dark:text-gray-300 font-medium">{project.endDate}</td>
-                                <td className="px-6 py-4 relative group/tags">
-                                    <div className="flex items-center gap-2 flex-wrap">
-                                        {project.tags.map((tag, tIdx) => (
-                                            <span
-                                                key={tIdx}
-                                                className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-semibold bg-blue-50 dark:bg-blue-900/20 text-blue-600 dark:text-blue-400 border border-blue-100 dark:border-blue-500/20"
-                                            >
-                                                {tag}
-                                                <button
-                                                    onClick={(e) => { e.stopPropagation(); handleDeleteTag(project, tag); }}
-                                                    className="text-blue-400 hover:text-red-500 transition-colors ml-0.5 font-bold"
-                                                >
-                                                    &times;
-                                                </button>
+                                    </td>
+                                    <td className="px-4 py-1.5 font-semibold text-gray-700 dark:text-gray-300">{project.memberCount} Members</td>
+                                    <td className="px-4 py-1.5">
+                                        {project.totalPhases === 0 ? (
+                                            <span className="px-2 py-0.5 text-[10px] font-bold rounded bg-gray-100 text-gray-500 dark:bg-gray-800 dark:text-gray-400 uppercase tracking-wider">
+                                                Undefined
                                             </span>
-                                        ))}
-
-                                        {activeTagInputProjectId === project.dbId ? (
-                                            <input
-                                                type="text"
-                                                autoFocus
-                                                placeholder="Enter Tag"
-                                                value={newTagVal}
-                                                onChange={(e) => setNewTagVal(e.target.value)}
-                                                onKeyDown={(e) => {
-                                                    if (e.key === 'Enter') handleAddTag(project);
-                                                    else if (e.key === 'Escape') setActiveTagInputProjectId(null);
-                                                }}
-                                                onBlur={() => setActiveTagInputProjectId(null)}
-                                                onClick={(e) => e.stopPropagation()}
-                                                className="px-2 py-0.5 text-[10px] border border-blue-400 bg-white dark:bg-[#161b22] rounded focus:outline-none w-20 text-gray-900 dark:text-white"
-                                            />
                                         ) : (
-                                            <button
-                                                onClick={(e) => { e.stopPropagation(); setActiveTagInputProjectId(project.dbId); setNewTagVal(''); }}
-                                                className="opacity-0 group-hover/tags:opacity-100 text-gray-400 hover:text-blue-600 p-1 hover:bg-gray-100 dark:hover:bg-white/5 rounded transition-colors"
-                                                title="Add Tag"
-                                            >
-                                                <Plus size={14} />
-                                            </button>
+                                            <div className="flex items-center space-x-2">
+                                                <div className="w-12 bg-gray-200 dark:bg-white/10 h-1.5 rounded-full overflow-hidden flex">
+                                                    <div className="bg-blue-500 h-full rounded-full" style={{ width: `${(project.completedPhases / project.totalPhases) * 100}%` }}></div>
+                                                </div>
+                                                <span className="text-gray-500 dark:text-gray-400 font-medium text-xs">{project.completedPhases} / {project.totalPhases}</span>
+                                            </div>
                                         )}
-
-                                        <div className="relative">
-                                            <button
-                                                onClick={(e) => { e.stopPropagation(); setActiveActionsMenuId(activeActionsMenuId === project.dbId ? null : project.dbId); }}
-                                                className="opacity-0 group-hover/tags:opacity-100 text-gray-400 hover:text-gray-700 dark:hover:text-white p-1 hover:bg-gray-100 dark:hover:bg-white/5 rounded transition-colors"
-                                                title="Actions"
-                                            >
-                                                <MoreHorizontal size={14} />
-                                            </button>
-
-                                            {activeActionsMenuId === project.dbId && (
-                                                <div className="absolute right-0 mt-1.5 w-32 bg-white dark:bg-[#1A2235] border border-gray-200 dark:border-[#2A3445] rounded-xl shadow-xl z-50 overflow-hidden py-1">
+                                    </td>
+                                    <td className="px-4 py-1.5 relative group/issue">
+                                        <div className="flex items-center space-x-2">
+                                            <span className={`px-2.5 py-1 border rounded text-xs font-semibold ${getIssueStyles(project.issues)}`}>
+                                                {project.issues}
+                                            </span>
+                                            {canWrite && (
+                                                <div className="opacity-0 group-hover/issue:opacity-100 flex items-center space-x-1.5 transition-opacity duration-200">
                                                     <button
-                                                        onClick={(e) => { e.stopPropagation(); setActiveActionsMenuId(null); handleEditProjectClick(project); }}
-                                                        className="w-full text-left px-4 py-2 text-xs text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-white/5 font-semibold transition-colors"
-                                                    >
-                                                        Edit Details
-                                                    </button>
+                                                        onClick={(e) => { e.stopPropagation(); handleUpdateIssue(project, 'None'); }}
+                                                        className="w-3 h-3 rounded-full bg-gray-400 hover:scale-125 transition-transform"
+                                                        title="Mark None"
+                                                    />
                                                     <button
-                                                        onClick={(e) => { e.stopPropagation(); setActiveActionsMenuId(null); handleToggleProjectStatus(project); }}
-                                                        className="w-full text-left px-4 py-2 text-xs text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-white/5 font-semibold transition-colors border-t border-gray-100 dark:border-white/5"
-                                                    >
-                                                        Toggle Status
-                                                    </button>
+                                                        onClick={(e) => { e.stopPropagation(); handleUpdateIssue(project, 'Risk'); }}
+                                                        className="w-3 h-3 rounded-full bg-amber-500 hover:scale-125 transition-transform"
+                                                        title="Mark Risk"
+                                                    />
+                                                    <button
+                                                        onClick={(e) => { e.stopPropagation(); handleUpdateIssue(project, 'Blocked'); }}
+                                                        className="w-3 h-3 rounded-full bg-red-500 hover:scale-125 transition-transform"
+                                                        title="Mark Blocked"
+                                                    />
+                                                    <button
+                                                        onClick={(e) => { e.stopPropagation(); handleUpdateIssue(project, 'Resolved'); }}
+                                                        className="w-3 h-3 rounded-full bg-green-500 hover:scale-125 transition-transform"
+                                                        title="Mark Resolved"
+                                                    />
                                                 </div>
                                             )}
                                         </div>
+                                    </td>
+                                    <td className="px-4 py-1.5 text-xs text-gray-600 dark:text-gray-300 font-medium">{project.startDate}</td>
+                                    <td className="px-4 py-1.5 text-xs text-gray-600 dark:text-gray-300 font-medium">{project.endDate}</td>
+                                    <td className="px-4 py-1.5 relative group/tags">
+                                        <div className="flex items-center gap-1.5 flex-wrap">
+                                            {project.tags.map((tag, tIdx) => (
+                                                <span
+                                                    key={tIdx}
+                                                    className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-semibold bg-blue-50 dark:bg-blue-900/20 text-blue-600 dark:text-blue-400 border border-blue-100 dark:border-blue-500/20"
+                                                >
+                                                    {tag}
+                                                    {canWrite && (
+                                                        <button
+                                                            onClick={(e) => { e.stopPropagation(); handleDeleteTag(project, tag); }}
+                                                            className="text-blue-400 hover:text-red-500 transition-colors ml-0.5 font-bold"
+                                                        >
+                                                            &times;
+                                                        </button>
+                                                    )}
+                                                </span>
+                                            ))}
+
+                                            {activeTagInputProjectId === project.dbId ? (
+                                                <input
+                                                    type="text"
+                                                    autoFocus
+                                                    placeholder="Enter Tag"
+                                                    value={newTagVal}
+                                                    onChange={(e) => setNewTagVal(e.target.value)}
+                                                    onKeyDown={(e) => {
+                                                        if (e.key === 'Enter') handleAddTag(project);
+                                                        else if (e.key === 'Escape') setActiveTagInputProjectId(null);
+                                                    }}
+                                                    onBlur={() => setActiveTagInputProjectId(null)}
+                                                    onClick={(e) => e.stopPropagation()}
+                                                    className="px-2 py-0.5 text-[10px] border border-blue-400 bg-white dark:bg-[#161b22] rounded focus:outline-none w-20 text-gray-900 dark:text-white"
+                                                />
+                                            ) : canWrite && (
+                                                <button
+                                                    onClick={(e) => { e.stopPropagation(); setActiveTagInputProjectId(project.dbId); setNewTagVal(''); }}
+                                                    className="opacity-0 group-hover/tags:opacity-100 text-gray-400 hover:text-blue-600 p-1 hover:bg-gray-100 dark:hover:bg-white/5 rounded transition-colors"
+                                                    title="Add Tag"
+                                                >
+                                                    <Plus size={14} />
+                                                </button>
+                                            )}
+                                        </div>
+                                    </td>
+                                    <td className="px-3 py-1.5 text-center" onClick={e => e.stopPropagation()}>
+                                        <button
+                                            onClick={() => setOverviewProject(project)}
+                                            className="p-1.5 text-blue-600 dark:text-blue-400 hover:bg-blue-100 dark:hover:bg-blue-900/30 rounded-lg transition-all"
+                                            title="View Project Overview"
+                                        >
+                                            <Info size={16} />
+                                        </button>
+                                    </td>
+                                </tr>
+                            ))
+                        ) : (
+                            <tr>
+                                <td colSpan="14" className="py-12 text-center text-gray-500 dark:text-gray-400">
+                                    <div className="flex flex-col items-center justify-center">
+                                        <div className="w-16 h-16 bg-gray-50 dark:bg-white/5 rounded-full flex items-center justify-center mb-4">
+                                            <Box className="text-gray-400" size={24} />
+                                        </div>
+                                        <p className="text-sm font-semibold mb-1">No projects found</p>
+                                        <p className="text-xs text-gray-400">Try adjusting your filters or search terms</p>
                                     </div>
                                 </td>
                             </tr>
-                        ))}
+                        )}
                     </tbody>
                 </table>
             </div>
+
+            {/* Overview Sidebar Drawer */}
+            <ProjectOverviewDrawer
+                open={!!overviewProject}
+                onClose={() => setOverviewProject(null)}
+                project={overviewProject}
+                navigate={navigate}
+                canWrite={canWrite}
+                onEdit={setProjectToEdit}
+                getIssueStyles={getIssueStyles}
+            />
+
+            {/* Footer matching Vendors, Clients, Employees standard */}
+            <div className="px-6 py-3.5 border-t border-gray-200 dark:border-white/5 flex justify-between items-center text-xs text-gray-400 shrink-0 bg-white dark:bg-[#0d1117]">
+                <p>Showing <span className="font-semibold text-gray-700 dark:text-gray-300">{filteredProjects.length}</span> of <span className="font-semibold text-gray-700 dark:text-gray-300">{projectData.length}</span> projects</p>
+                <div className="flex gap-2">
+                    <button className="px-3 py-1.5 border border-gray-200 dark:border-white/10 rounded-lg opacity-40 cursor-not-allowed">Previous</button>
+                    <button className="px-3 py-1.5 border border-blue-500/30 rounded-lg bg-blue-50 dark:bg-blue-900/20 text-blue-600 dark:text-blue-400 font-bold">1</button>
+                    <button className="px-3 py-1.5 border border-gray-200 dark:border-white/10 rounded-lg hover:bg-gray-50 dark:hover:bg-white/5 transition-all">Next</button>
+                </div>
+            </div>
+
+            {/* Filter Modal */}
+            <ProjectFilterModal
+                open={isFilterModalOpen}
+                onClose={() => setIsFilterModalOpen(false)}
+                activeFilters={activeFilters}
+                setActiveFilters={setActiveFilters}
+                allOwners={allOwners}
+            />
 
             <NewProjectSlideOut
                 isOpen={isNewProjectOpen}
@@ -497,3 +828,4 @@ const Projects = () => {
 };
 
 export default Projects;
+

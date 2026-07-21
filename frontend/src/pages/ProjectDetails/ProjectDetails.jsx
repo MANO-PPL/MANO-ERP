@@ -138,15 +138,15 @@ const ProjectDetails = () => {
     return (
         <div className="flex flex-col h-full w-full text-gray-900 dark:text-gray-300 bg-white dark:bg-[#0d1117] font-sans">
             {/* Minimal Header */}
-            <div className="flex justify-between items-center px-5 py-3 border-b border-gray-200 dark:border-gh-border bg-[#f9fafb] dark:bg-gh-bg transition-colors">
-                <div className="flex items-center space-x-2 text-xs">
+            <div className="flex justify-between items-center px-3.5 py-2 border-b border-gray-200 dark:border-gh-border bg-[#f9fafb] dark:bg-gh-bg transition-colors">
+                <div className="flex items-center space-x-1.5 text-xs">
                     <button
                         onClick={() => navigate('/projects')}
                         className="text-blue-600 dark:text-blue-400 hover:text-blue-800 dark:hover:text-blue-300 transition-colors font-medium cursor-pointer"
                     >
                         Projects
                     </button>
-                    <ChevronRight size={14} className="text-gray-400 dark:text-gray-500" />
+                    <ChevronRight size={13} className="text-gray-400 dark:text-gray-500" />
                     <span
                         className={`transition-colors ${extraBreadcrumbs.length > 0 ? 'text-blue-600 dark:text-blue-400 font-medium cursor-pointer' : 'text-gray-900 dark:text-white font-semibold'}`}
                         onClick={() => extraBreadcrumbs.length > 0 && setActiveTab('Dashboard')}
@@ -155,7 +155,7 @@ const ProjectDetails = () => {
                     </span>
                     {extraBreadcrumbs.map((bc, index) => (
                         <React.Fragment key={index}>
-                            <ChevronRight size={14} className="text-gray-400 dark:text-gray-500" />
+                            <ChevronRight size={13} className="text-gray-400 dark:text-gray-500" />
                             <span
                                 className={`transition-colors ${index === extraBreadcrumbs.length - 1 ? 'text-gray-900 dark:text-white font-semibold' : 'text-blue-600 dark:text-blue-400 font-medium cursor-pointer'}`}
                                 onClick={bc.onClick}
@@ -168,12 +168,12 @@ const ProjectDetails = () => {
             </div>
 
             {/* Sub-Navigation */}
-            <div className="flex px-6 pt-3 border-b border-gray-200 dark:border-gh-border bg-[#f9fafb] dark:bg-gh-bg transition-colors">
+            <div className="flex px-2 pt-2 border-b border-gray-200 dark:border-gh-border bg-[#f9fafb] dark:bg-gh-bg transition-colors overflow-x-auto custom-scrollbar">
                 {allowedTabs.map((tab) => (
                     <button
                         key={tab}
                         onClick={() => setActiveTab(tab)}
-                        className={`pb-2.5 px-4 text-sm font-medium border-b-2 transition-colors duration-200 ${activeTab === tab
+                        className={`pb-2 px-3 text-xs font-semibold border-b-2 transition-colors duration-200 whitespace-nowrap ${activeTab === tab
                             ? 'border-blue-600 text-blue-600 dark:border-blue-500 dark:text-blue-400'
                             : 'border-transparent text-gray-500 dark:text-gray-400 hover:text-gray-800 dark:hover:text-gray-200 hover:border-gray-300 dark:hover:border-gray-500'
                             }`}
