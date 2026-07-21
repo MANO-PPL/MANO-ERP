@@ -1,27 +1,6 @@
 import crypto from 'crypto';
 import { db } from '../../config/database.js';
 
-/**
- * Verify and initialize token table schema (add remember_me column if missing)
- */
-export async function initializeTokenSchema() {
-    try {
-        const hasTable = await db.schema.hasTable('iam_refresh_tokens');
-        if (hasTable) {
-            const hasColumn = await db.schema.hasColumn('iam_refresh_tokens', 'remember_me');
-            if (!hasColumn) {
-                console.log("Altering 'iam_refresh_tokens' table to add 'remember_me' column...");
-                await db.schema.alterTable('iam_refresh_tokens', (table) => {
-                    table.boolean('remember_me').defaultTo(false).after('user_agent');
-                });
-                console.log("Column 'remember_me' added successfully to 'iam_refresh_tokens'.");
-            }
-        }
-    } catch (err) {
-        console.error("Error verifying/altering table 'iam_refresh_tokens':", err);
-    }
-}
-
 
 /**
  * Generate a cryptographically strong random token

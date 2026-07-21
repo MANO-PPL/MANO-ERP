@@ -5,27 +5,6 @@ import path from 'path';
 import { fileURLToPath } from 'url';
 import './src/config/config.js';
 import app from './src/app.js';
-import { initializePermissionsSchema } from './src/modules/admin/permissionService.js';
-import { initializeTasksSchema } from './src/modules/projects/tasks/tasksService.js';
-import { initializeCrmSchema } from './src/modules/clients/clientService.js';
-import { initializeDocumentsSchema } from './src/modules/documents/documentService.js';
-import { initializeDrawingsSchema } from './src/modules/projects/drawings/drawingsService.js';
-import { initializeTokenSchema } from './src/modules/auth/tokenService.js';
-
-
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
-
-const PORT = process.env.PORT || 5001;
-const allowedOrigins = [
-    `http://localhost:5173`,
-    `http://127.0.0.1:5173`,
-    `http://${process.env.URI || '127.0.0.1'}:5173`,
-    'https://erp.mano.co.in',
-    'https://mano.co.in',
-    'https://www.mano.co.in'
-];
-
 // HTTP Server & Socket.IO Setup
 const server = createServer(app);
 const io = new SocketIO(server, {
@@ -45,12 +24,6 @@ io.on('connection', (socket) => {
 
 server.listen(PORT, '0.0.0.0', async () => {
     console.log(`Backend server running on http://localhost:${PORT}`);
-    await initializeTokenSchema();
-    await initializePermissionsSchema();
-    await initializeTasksSchema();
-    await initializeCrmSchema();
-    await initializeDocumentsSchema();
-    await initializeDrawingsSchema();
     
     // Auto-start Python AI Microservice
     const pythonDir = path.join(__dirname, 'src', 'modules', 'ai', 'python_engine');

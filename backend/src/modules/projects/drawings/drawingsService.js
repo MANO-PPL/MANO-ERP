@@ -3,44 +3,6 @@ import AppError from '../../../utils/AppError.js';
 import S3Service from '../../shared/s3Service.js';
 
 /**
- * Automatically checks and initializes drawings tables
- */
-export async function initializeDrawingsSchema() {
-    const hasCategoriesTable = await db.schema.hasTable('proj_drawing_categories');
-    if (!hasCategoriesTable) {
-        await db.schema.createTable('proj_drawing_categories', (table) => {
-            table.increments('id').primary();
-            table.integer('project_id').unsigned().notNullable().references('id').inTable('proj_projects').onDelete('CASCADE');
-            table.string('name').notNullable();
-            table.string('icon_key').defaultTo('Folder');
-            table.integer('sort_order').defaultTo(0);
-            table.timestamps(true, true);
-        });
-        console.log('Created table: proj_drawing_categories');
-    }
-
-    const hasDrawingsTable = await db.schema.hasTable('proj_drawings');
-    if (!hasDrawingsTable) {
-        await db.schema.createTable('proj_drawings', (table) => {
-            table.increments('id').primary();
-            table.integer('drawing_group_id').unsigned().nullable().references('id').inTable('proj_drawings').onDelete('CASCADE');
-            table.integer('project_id').unsigned().notNullable().references('id').inTable('proj_projects').onDelete('CASCADE');
-            table.integer('category_id').unsigned().notNullable().references('id').inTable('proj_drawing_categories').onDelete('CASCADE');
-            table.string('title').notNullable();
-            table.integer('revision_number').unsigned().notNullable().defaultTo(1);
-            table.string('dwg_url', 512).nullable();
-            table.string('pdf_url', 512).nullable();
-            table.text('description').nullable();
-            table.integer('sort_order').defaultTo(0);
-            table.integer('uploaded_by').unsigned().notNullable().references('user_id').inTable('iam_users').onDelete('CASCADE');
-            table.timestamp('uploaded_at').defaultTo(db.fn.now());
-            table.timestamps(true, true);
-        });
-        console.log('Created table: proj_drawings');
-    }
-}
-
-/**
  * Extracts S3 key from S3 URL
  */
 function getS3KeyFromUrl(url) {
@@ -415,7 +377,6 @@ export async function reorderDrawings(projectId, categoryId, orderArray) {
 }
 
 export default {
-    initializeDrawingsSchema,
     getCategories,
     createCategory,
     updateCategory,

@@ -3,36 +3,6 @@ import AppError from '../../utils/AppError.js';
 import { findOrCreateSector } from '../shared/sectorService.js';
 import { findOrCreateJobNature } from '../shared/jobNatureService.js';
 
-/**
- * Startup self-healing schema migration to introduce org_id columns for CRM tables
- */
-export async function initializeCrmSchema() {
-    const tables = ['crm_contacts', 'crm_interactions', 'crm_job_nature', 'crm_sectors'];
-    for (const t of tables) {
-        const hasTable = await db.schema.hasTable(t);
-        if (hasTable) {
-            const hasOrgId = await db.schema.hasColumn(t, 'org_id');
-            if (!hasOrgId) {
-                // 1. Add org_id as nullable first
-                await db.schema.alterTable(t, (table) => {
-                    table.integer('org_id').unsigned().nullable();
-                });
-                console.log(`Added column 'org_id' to table '${t}'`);
-
-                // 2. Set default value to 2 (MANO PPL) for all existing rows
-                await db(t).update({ org_id: 2 });
-                console.log(`Assigned all existing rows in '${t}' to organization ID 2`);
-
-                // 3. Alter it to NOT NULL
-                await db.schema.alterTable(t, (table) => {
-                    table.integer('org_id').unsigned().notNullable().alter();
-                });
-                console.log(`Altered column 'org_id' in table '${t}' to NOT NULL`);
-            }
-        }
-    }
-}
-
 export async function getClients(orgId, query = {}) {
     const page = parseInt(query.page) || 1;
     const limit = parseInt(query.limit) || 20;
@@ -443,6 +413,5 @@ export default {
     deleteClient,
     bulkInsertClients,
     bulkValidateClients,
-    createInteraction,
-    initializeCrmSchema
+    createInteraction
 };

@@ -2,53 +2,6 @@ import { db } from '../../../config/database.js';
 import AppError from '../../../utils/AppError.js';
 
 /**
- * Automatically checks and initializes categories and tasks tables
- */
-export async function initializeTasksSchema() {
-    const hasCategoriesTable = await db.schema.hasTable('proj_task_categories');
-    if (!hasCategoriesTable) {
-        await db.schema.createTable('proj_task_categories', (table) => {
-            table.increments('id').primary();
-            table.integer('project_id').unsigned().notNullable().references('id').inTable('proj_projects').onDelete('CASCADE');
-            table.string('name').notNullable();
-            table.integer('sort_order').defaultTo(0);
-            table.timestamps(true, true);
-        });
-        console.log('Created table: proj_task_categories');
-    }
-
-    const hasTasksTable = await db.schema.hasTable('proj_tasks');
-    if (!hasTasksTable) {
-        await db.schema.createTable('proj_tasks', (table) => {
-            table.increments('id').primary();
-            table.integer('project_id').unsigned().notNullable().references('id').inTable('proj_projects').onDelete('CASCADE');
-            table.integer('category_id').unsigned().notNullable().references('id').inTable('proj_task_categories').onDelete('CASCADE');
-            table.string('task_code').nullable();
-            table.string('name').notNullable();
-            table.text('description').nullable();
-            table.string('status').defaultTo('open');
-            table.string('priority').defaultTo('Medium');
-            table.date('start_date').nullable();
-            table.date('due_date').nullable();
-            table.integer('duration').nullable();
-            table.integer('sort_order').defaultTo(0);
-            table.timestamps(true, true);
-        });
-        console.log('Created table: proj_tasks');
-    }
-
-    const hasAssigneesTable = await db.schema.hasTable('proj_task_assignees');
-    if (!hasAssigneesTable) {
-        await db.schema.createTable('proj_task_assignees', (table) => {
-            table.integer('task_id').unsigned().notNullable().references('id').inTable('proj_tasks').onDelete('CASCADE');
-            table.integer('user_id').unsigned().notNullable().references('user_id').inTable('iam_users').onDelete('CASCADE');
-            table.primary(['task_id', 'user_id']);
-        });
-        console.log('Created table: proj_task_assignees');
-    }
-}
-
-/**
  * Retrieve all categories and nested tasks for a project
  */
 export async function getTasksAndCategories(projectId) {
@@ -264,7 +217,6 @@ export async function updateTaskAssignees(taskId, assigneeIds) {
 }
 
 export default {
-    initializeTasksSchema,
     getTasksAndCategories,
     createCategory,
     updateCategory,
