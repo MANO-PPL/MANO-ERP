@@ -2,6 +2,7 @@ import { db } from '../../config/database.js';
 import AppError from '../../utils/AppError.js';
 
 const CONTENT_TABLES = [
+    { name: 'wf_document_lines', pk: 'line_id' },
     { name: 'pdoc_directory', pk: 'pd_id' },
     { name: 'pdoc_vendors', pk: 'pv_id' },
     { name: 'pdoc_staff_responsible', pk: 'psrr_id' },

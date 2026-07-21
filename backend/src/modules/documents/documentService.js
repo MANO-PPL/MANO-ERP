@@ -220,21 +220,7 @@ export async function removeDocumentRole(orgId, document_id, role_id) {
     return true;
 }
 
-export async function initializeDocumentsSchema() {
-    const hasTable = await db.schema.hasTable('wf_documents');
-    if (hasTable) {
-        const hasCol = await db.schema.hasColumn('wf_documents', 'approval_type');
-        if (hasCol) {
-            await db.schema.table('wf_documents', table => {
-                table.dropColumn('approval_type');
-            });
-            console.log('Dropped approval_type column from wf_documents table');
-        }
-    }
-}
-
 export default {
-    initializeDocumentsSchema,
     createTemplate,
     getTemplates,
     getTemplateById,

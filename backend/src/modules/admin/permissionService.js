@@ -1,10 +1,6 @@
 import { db } from '../../config/database.js';
 import AppError from '../../utils/AppError.js';
 
-export async function initializePermissionsSchema() {
-    console.log("Database permissions schema verified.");
-}
-
 export async function seedDefaultTemplatesForOrg(orgId) {
     const defaultTemplates = [
         {
@@ -238,7 +234,6 @@ export async function deleteTemplate(orgId, templateId) {
 }
 
 export default {
-    initializePermissionsSchema,
     seedDefaultTemplatesForOrg,
     getTemplates,
     createTemplate,
