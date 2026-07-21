@@ -206,32 +206,13 @@ const ClientsList = () => {
                 <div className="flex flex-wrap items-center gap-3">
                     <div className="flex space-x-2">
                         <div className="relative">
-                            <input
-                                type="text" placeholder="Company.."
-                                className="w-36 bg-gray-50 dark:bg-white/[0.02] border border-gray-200 dark:border-white/10 rounded-lg px-3 py-2 text-xs text-gray-900 dark:text-white focus:outline-none focus:ring-1 focus:ring-blue-500 placeholder-gray-400"
-                                value={searchFilters.company} onChange={e => setSearchFilters(prev => ({ ...prev, company: e.target.value }))}
-                            />
-                        </div>
-                        <div className="relative">
-                            <input
-                                type="text" placeholder="Job Nature.."
-                                className="w-36 bg-gray-50 dark:bg-white/[0.02] border border-gray-200 dark:border-white/10 rounded-lg px-3 py-2 text-xs text-gray-900 dark:text-white focus:outline-none focus:ring-1 focus:ring-blue-500 placeholder-gray-400"
-                                value={searchFilters.jobNature} onChange={e => setSearchFilters(prev => ({ ...prev, jobNature: e.target.value }))}
-                            />
-                        </div>
-                        <div className="relative">
-                            <input
-                                type="text" placeholder="Person.."
-                                className="w-36 bg-gray-50 dark:bg-white/[0.02] border border-gray-200 dark:border-white/10 rounded-lg px-3 py-2 text-xs text-gray-900 dark:text-white focus:outline-none focus:ring-1 focus:ring-blue-500 placeholder-gray-400"
-                                value={searchFilters.person} onChange={e => setSearchFilters(prev => ({ ...prev, person: e.target.value }))}
-                            />
-                        </div>
-                        <div className="relative">
-                            <input
-                                type="text" placeholder="Location.."
-                                className="w-32 bg-gray-50 dark:bg-white/[0.02] border border-gray-200 dark:border-white/10 rounded-lg px-3 py-2 text-xs text-gray-900 dark:text-white focus:outline-none focus:ring-1 focus:ring-blue-500 placeholder-gray-400"
-                                value={searchFilters.location} onChange={e => setSearchFilters(prev => ({ ...prev, location: e.target.value }))}
-                            />
+                        <input
+                            type="text"
+                            placeholder="Search clients..."
+                            className="w-full pl-9 pr-3 py-2 bg-gray-50 dark:bg-white/[0.02] border border-gray-200 dark:border-white/10 rounded-lg text-xs text-gray-900 dark:text-white focus:outline-none focus:ring-1 focus:ring-blue-500 placeholder-gray-400"
+                            value={searchFilters.company}
+                            onChange={e => setSearchFilters(prev => ({ ...prev, company: e.target.value }))}
+                        />
                         </div>
                     </div>
 
@@ -312,7 +293,17 @@ const ClientsList = () => {
                         </tr>
                     </thead>
                     <tbody className="divide-y divide-gray-100 dark:divide-white/5 bg-white dark:bg-[#0d1117]">
-                        {clients.length > 0 ? (
+                        {isLoading ? (
+                            Array.from({ length: 5 }).map((_, i) => (
+                                <tr key={i} className="animate-pulse">
+                                    {Array.from({ length: 9 }).map((_, j) => (
+                                        <td key={j} className="px-4 py-3">
+                                            <div className="h-3 bg-gray-200 dark:bg-white/10 rounded"></div>
+                                        </td>
+                                    ))}
+                                </tr>
+                            ))
+                        ) : clients.length > 0 ? (
                             clients.map((client, idx) => (
                                 <tr
                                     key={client.id}

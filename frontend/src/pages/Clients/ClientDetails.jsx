@@ -114,7 +114,7 @@ Reference: ${client.reference || '-'}
 
                         <div>
                             <p className="text-[10px] uppercase tracking-widest text-gray-400 font-bold mb-1">Email</p>
-                            <a href={`mailto:${client.email}`} className="text-sm font-medium text-blue-600 dark:text-blue-400 hover:underline">{client.email || '-'}</a>
+                            <p className="text-sm font-medium text-gray-900 dark:text-gray-200">{client.email || '-'}</p>
                         </div>
                         <div>
                             <p className="text-[10px] uppercase tracking-widest text-gray-400 font-bold mb-1">Location</p>

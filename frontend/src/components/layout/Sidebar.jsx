@@ -53,9 +53,9 @@ const Sidebar = () => {
     return (
         <div className="w-[200px] bg-white dark:bg-gh-subtle text-gray-900 dark:text-gh-text h-screen flex flex-col fixed left-0 top-0 overflow-y-auto border-r border-gray-200 dark:border-gh-border transition-colors z-20">
             {/* Logo Area */}
-            <div className="h-[7vh] min-h-[52px] flex items-center px-6 border-b border-gray-200 dark:border-gray-800 space-x-3">
-                <img src="/mano-logo.svg" alt="MANO ERP Logo" className="w-12 h-12 object-contain" />
-                <span className="text-xl font-bold bg-gradient-to-r from-blue-400 to-teal-400 bg-clip-text text-transparent">
+            <div className="h-11 min-h-[44px] flex items-center px-5 border-b border-gray-200 dark:border-gray-800 space-x-2.5">
+                <img src="/mano-logo.svg" alt="MANO ERP Logo" className="w-8 h-8 object-contain" />
+                <span className="text-base font-bold bg-gradient-to-r from-blue-400 to-teal-400 bg-clip-text text-transparent">
                     MANO-ERP
                 </span>
             </div>

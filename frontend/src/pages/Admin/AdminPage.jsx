@@ -1,11 +1,11 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import {
     UserPlus, Search, MoreHorizontal, Filter, Download,
     Mail, Shield, Calendar, X, Upload, FileText,
     CheckCircle2, AlertCircle, FileCode, Check, Lock,
     ChevronRight, Eye, Edit3, Trash2, Info, Users,
     LayoutDashboard, Briefcase, Map, MessageSquare, Settings, ChevronDown, Loader2,
-    Package, ArrowLeftRight
+    Package, ArrowLeftRight, GripVertical, UploadCloud, Pencil
 } from 'lucide-react';
 import { toast } from 'react-toastify';
 import { adminApi } from '../../services/adminApi';
@@ -110,8 +110,8 @@ const Avatar = ({ name, size = 10 }) => (
 );
 
 // ─── Add User Drawer ──────────────────────────────────────────────────────────
-const AddUserDrawer = ({ open, onClose, onAdd, allProjects = [], templates = [] }) => {
-    const [tab, setTab] = useState('form');
+const AddUserDrawer = ({ open, onClose, onAdd, allProjects = [], templates = [], initialTab = 'form' }) => {
+    const [tab, setTab] = useState(initialTab);
     const [form, setForm] = useState({ name: '', email: '', role: 'Viewer', department: '', password: '' });
     const [showPw, setShowPw] = useState(false);
     const [file, setFile] = useState(null);
@@ -124,6 +124,7 @@ const AddUserDrawer = ({ open, onClose, onAdd, allProjects = [], templates = [] 
 
     useEffect(() => {
         if (open) {
+            setTab(initialTab);
             const p = defaultPermissions();
             allProjects.forEach(proj => {
                 p[`project_${proj.id}`] = 0;
@@ -420,7 +421,7 @@ const AddUserDrawer = ({ open, onClose, onAdd, allProjects = [], templates = [] 
 };
 
 // ─── User Detail Drawer ───────────────────────────────────────────────────────
-const UserDetailDrawer = ({ user, open, onClose, onUpdate, initialEditing = false, allProjects = [], templates = [] }) => {
+const UserDetailDrawer = ({ user, open, onClose, onUpdate, onDelete, initialEditing = false, allProjects = [], templates = [] }) => {
     const [editing, setEditing] = useState(false);
     const [isSaving, setIsSaving] = useState(false);
     const [localUser, setLocalUser] = useState(null);
@@ -522,6 +523,15 @@ const UserDetailDrawer = ({ user, open, onClose, onUpdate, initialEditing = fals
                             className={`px-3 py-1.5 rounded-xl transition-all text-sm font-semibold flex items-center gap-1.5 ${editing ? 'bg-blue-600 text-white' : 'text-gray-500 hover:bg-gray-100 dark:hover:bg-white/5'}`}>
                             <Edit3 size={14} /> {editing ? 'Editing…' : 'Edit'}
                         </button>
+                        {onDelete && (
+                            <button
+                                onClick={() => onDelete(user)}
+                                className="px-3 py-1.5 rounded-xl transition-all text-sm font-semibold flex items-center gap-1.5 text-red-500 hover:bg-red-50 dark:hover:bg-red-950/20"
+                                title="Delete Employee"
+                            >
+                                <Trash2 size={14} /> Delete
+                            </button>
+                        )}
                         <button onClick={onClose} className="p-2 rounded-xl text-gray-400 hover:text-gray-700 dark:hover:text-white hover:bg-gray-100 dark:hover:bg-white/5 transition-all">
                             <X size={20} />
                         </button>
@@ -678,16 +688,144 @@ const mapUserFromBackend = (u) => {
     };
 };
 
-// ─── Main Admin Page ──────────────────────────────────────────────────────────
+// ─── Employee Filter Modal ───────────────────────────────────────────────────
+const EmployeeFilterModal = ({ open, onClose, activeFilters, setActiveFilters, allRoles, allDepartments }) => {
+    if (!open) return null;
+
+    const toggleFilter = (type, value) => {
+        setActiveFilters(prev => {
+            const list = prev[type] || [];
+            const updated = list.includes(value) ? list.filter(v => v !== value) : [...list, value];
+            return { ...prev, [type]: updated };
+        });
+    };
+
+    const clearAll = () => {
+        setActiveFilters({ roles: [], status: [], departments: [] });
+    };
+
+    return (
+        <div className="fixed inset-0 z-[5000] flex items-center justify-center p-4">
+            <div className="absolute inset-0 bg-black/50 backdrop-blur-sm" onClick={onClose} />
+            <div className="relative w-full max-w-md bg-white dark:bg-[#161b22] rounded-2xl shadow-2xl border border-gray-200 dark:border-white/10 p-6 z-10 text-left">
+                <div className="flex justify-between items-center pb-4 border-b border-gray-100 dark:border-white/10">
+                    <h3 className="text-base font-bold text-gray-900 dark:text-white">Filter Employees</h3>
+                    <button onClick={onClose} className="p-1 text-gray-400 hover:text-gray-700 dark:hover:text-white rounded-lg">
+                        <X size={18} />
+                    </button>
+                </div>
+
+                <div className="py-4 space-y-5 max-h-[60vh] overflow-y-auto custom-scrollbar">
+                    {/* Roles */}
+                    <div>
+                        <p className="text-xs font-bold text-gray-500 uppercase tracking-wider mb-2">Role</p>
+                        <div className="flex flex-wrap gap-2">
+                            {allRoles.map(role => {
+                                const isSel = activeFilters.roles.includes(role);
+                                return (
+                                    <button
+                                        key={role}
+                                        onClick={() => toggleFilter('roles', role)}
+                                        className={`px-3 py-1.5 rounded-lg text-xs font-semibold border transition-all ${
+                                            isSel ? 'bg-blue-600 text-white border-blue-600' : 'bg-gray-50 dark:bg-white/5 border-gray-200 dark:border-white/10 text-gray-700 dark:text-gray-300'
+                                        }`}
+                                    >
+                                        {role}
+                                    </button>
+                                );
+                            })}
+                        </div>
+                    </div>
+
+                    {/* Status */}
+                    <div>
+                        <p className="text-xs font-bold text-gray-500 uppercase tracking-wider mb-2">Status</p>
+                        <div className="flex flex-wrap gap-2">
+                            {['Active', 'Away', 'Offline'].map(status => {
+                                const isSel = activeFilters.status.includes(status);
+                                return (
+                                    <button
+                                        key={status}
+                                        onClick={() => toggleFilter('status', status)}
+                                        className={`px-3 py-1.5 rounded-lg text-xs font-semibold border transition-all ${
+                                            isSel ? 'bg-blue-600 text-white border-blue-600' : 'bg-gray-50 dark:bg-white/5 border-gray-200 dark:border-white/10 text-gray-700 dark:text-gray-300'
+                                        }`}
+                                    >
+                                        {status}
+                                    </button>
+                                );
+                            })}
+                        </div>
+                    </div>
+
+                    {/* Department */}
+                    {allDepartments.length > 0 && (
+                        <div>
+                            <p className="text-xs font-bold text-gray-500 uppercase tracking-wider mb-2">Department</p>
+                            <div className="flex flex-wrap gap-2">
+                                {allDepartments.map(dept => {
+                                    if (!dept || dept === '-') return null;
+                                    const isSel = activeFilters.departments.includes(dept);
+                                    return (
+                                        <button
+                                            key={dept}
+                                            onClick={() => toggleFilter('departments', dept)}
+                                            className={`px-3 py-1.5 rounded-lg text-xs font-semibold border transition-all ${
+                                                isSel ? 'bg-blue-600 text-white border-blue-600' : 'bg-gray-50 dark:bg-white/5 border-gray-200 dark:border-white/10 text-gray-700 dark:text-gray-300'
+                                            }`}
+                                        >
+                                            {dept}
+                                        </button>
+                                    );
+                                })}
+                            </div>
+                        </div>
+                    )}
+                </div>
+
+                <div className="flex justify-between items-center pt-4 border-t border-gray-100 dark:border-white/10">
+                    <button onClick={clearAll} className="text-xs font-semibold text-gray-500 hover:text-gray-800 dark:hover:text-gray-200">
+                        Reset All
+                    </button>
+                    <button onClick={onClose} className="px-5 py-2 bg-blue-600 text-white font-bold text-xs rounded-xl shadow-md">
+                        Apply Filters
+                    </button>
+                </div>
+            </div>
+        </div>
+    );
+};
+
+// ─── Main Admin Page (Employees Management) ──────────────────────────────────
 const AdminPage = () => {
     const [users, setUsers] = useState([]);
     const [projects, setProjects] = useState([]);
     const [systemTemplates, setSystemTemplates] = useState([]);
     const [isLoading, setIsLoading] = useState(true);
-    const [search, setSearch] = useState('');
+
+    // Filter & Search States
+    const [searchTerm, setSearchTerm] = useState('');
+    const [activeFilters, setActiveFilters] = useState({ roles: [], status: [], departments: [] });
+    const [isFilterModalOpen, setIsFilterModalOpen] = useState(false);
+    const [isManageDropdownOpen, setIsManageDropdownOpen] = useState(false);
+    const [hoveredRow, setHoveredRow] = useState(null);
+    const [drawerTab, setDrawerTab] = useState('form');
+
     const [addOpen, setAddOpen] = useState(false);
     const [selectedUser, setSelectedUser] = useState(null);
     const [editMode, setEditMode] = useState(false);
+    const dropdownRef = useRef(null);
+
+    // Close dropdown on outside click
+    useEffect(() => {
+        const handleClickOutside = (event) => {
+            if (dropdownRef.current && !dropdownRef.current.contains(event.target)) {
+                setIsManageDropdownOpen(false);
+            }
+        };
+        document.addEventListener('mousedown', handleClickOutside);
+        return () => document.removeEventListener('mousedown', handleClickOutside);
+    }, []);
 
     const fetchUsers = async (force = false) => {
         const cacheKey = 'crm_employees_list';
@@ -796,11 +934,26 @@ const AdminPage = () => {
         }
     };
 
-    const filtered = users.filter(u =>
-        u.name.toLowerCase().includes(search.toLowerCase()) ||
-        u.email.toLowerCase().includes(search.toLowerCase()) ||
-        u.role.toLowerCase().includes(search.toLowerCase())
-    );
+    const allRoles = Array.from(new Set(users.map(u => u.role).filter(Boolean)));
+    if (allRoles.length === 0) allRoles.push('Viewer', 'Site Lead', 'Project Manager', 'Admin', 'Super Admin');
+
+    const allDepartments = Array.from(new Set(users.map(u => u.department).filter(d => d && d !== '-')));
+
+    const filtered = users.filter(u => {
+        const matchSearch = !searchTerm || 
+            u.name.toLowerCase().includes(searchTerm.toLowerCase()) || 
+            u.email.toLowerCase().includes(searchTerm.toLowerCase()) ||
+            u.role.toLowerCase().includes(searchTerm.toLowerCase()) ||
+            u.department.toLowerCase().includes(searchTerm.toLowerCase());
+
+        const matchActiveRoles = activeFilters.roles.length === 0 || activeFilters.roles.includes(u.role);
+        const matchActiveStatus = activeFilters.status.length === 0 || activeFilters.status.includes(u.status);
+        const matchActiveDepts = activeFilters.departments.length === 0 || activeFilters.departments.includes(u.department);
+
+        return matchSearch && matchActiveRoles && matchActiveStatus && matchActiveDepts;
+    });
+
+    const activeFilterCount = activeFilters.roles.length + activeFilters.status.length + activeFilters.departments.length;
 
     const handleAddUser = async (user) => {
         try {
@@ -830,7 +983,7 @@ const AdminPage = () => {
             console.error(error);
             const msg = error.response?.data?.message || 'Failed to create user';
             toast.error(msg);
-            throw error; // Rethrow to stop drawer from closing immediately
+            throw error;
         }
     };
 
@@ -879,117 +1032,184 @@ const AdminPage = () => {
     };
 
     return (
-        <div className="flex flex-col h-full bg-white dark:bg-[#0d1117] text-gray-900 dark:text-gray-100 overflow-hidden">
-            {/* Header + Toolbar (single row) */}
-            <div className="flex-shrink-0 px-8 py-4 flex items-center gap-3">
+        <div className="flex flex-col h-full bg-white dark:bg-[#0d1117] text-gray-900 dark:text-gray-100 overflow-hidden font-sans">
+            {/* Top Toolbar matching single search bar layout */}
+            <div className="px-6 py-3.5 flex flex-col md:flex-row items-center justify-between border-b border-gray-200 dark:border-white/5 bg-white dark:bg-[#0d1117] shrink-0 gap-3">
                 <div className="flex-1" />
-                <div className="relative w-72">
-                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={16} />
-                    <input value={search} onChange={e => setSearch(e.target.value)}
-                        placeholder="Search by name, email, or role..."
-                        className="w-full pl-10 pr-4 py-2.5 bg-gray-50 dark:bg-[#161b22] border border-gray-200 dark:border-white/10 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/40 transition-all" />
-                </div>
-                <button className="flex items-center gap-2 px-4 py-2.5 border border-gray-200 dark:border-white/10 rounded-xl text-sm text-gray-600 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-white/5 transition-all">
-                    <Filter size={15} /> Filter
-                </button>
-                <button onClick={() => setAddOpen(true)}
-                    className="flex items-center gap-2 px-4 py-2.5 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-sm font-semibold transition-all shadow-md shadow-blue-500/20 active:scale-95">
-                    <UserPlus size={16} /> Add New User
-                </button>
-            </div>
 
-            {/* Table */}
-            <div className="flex-1 overflow-y-auto px-8 pb-8">
-                <div className="rounded-2xl border border-gray-200 dark:border-white/10 overflow-hidden shadow-sm">
-                    <table className="w-full text-left">
-                        <thead>
-                            <tr className="bg-gray-50 dark:bg-[#161b22] border-b border-gray-200 dark:border-white/10">
-                                {['User', 'Role', 'Department', 'Status', 'Joined', 'Actions'].map((h, i) => (
-                                    <th key={h} className={`px-6 py-4 text-xs font-bold text-gray-500 dark:text-gray-400 uppercase tracking-wider ${i === 5 ? 'text-right' : ''}`}>{h}</th>
-                                ))}
-                            </tr>
-                        </thead>
-                        <tbody className="divide-y divide-gray-100 dark:divide-white/5">
-                            {filtered.map(user => (
-                                <tr key={user.id}
-                                    onClick={() => openView(user)}
-                                    className="hover:bg-blue-50/20 dark:hover:bg-white/[0.02] transition-colors cursor-pointer group">
-                                    <td className="px-6 py-5">
-                                        <div className="flex items-center gap-4">
-                                            <Avatar name={user.name} />
-                                            <div>
-                                                <p className="text-sm font-bold text-gray-900 dark:text-gray-100 group-hover:text-blue-600 dark:group-hover:text-blue-400 transition-colors">{user.name}</p>
-                                                <div className="flex items-center mt-1 text-xs text-gray-400">
-                                                    <Mail size={11} className="mr-1.5 opacity-70" />{user.email}
-                                                </div>
-                                            </div>
-                                        </div>
-                                    </td>
-                                    <td className="px-6 py-5">
-                                        <div className="flex items-center gap-2 px-2.5 py-1 bg-blue-50/50 dark:bg-blue-500/10 text-blue-700 dark:text-blue-400 rounded-lg w-fit border border-blue-100/50 dark:border-blue-500/20">
-                                            <Shield size={13} /><span className="text-xs font-semibold">{user.role}</span>
-                                        </div>
-                                    </td>
-                                    <td className="px-6 py-5">
-                                        <span className="text-sm text-gray-600 dark:text-gray-300 font-medium">{user.department}</span>
-                                    </td>
-                                    <td className="px-6 py-5"><StatusBadge status={user.status} /></td>
-                                    <td className="px-6 py-5">
-                                        <div className="flex items-center text-xs text-gray-500 dark:text-gray-400 font-medium">
-                                            <Calendar size={13} className="mr-2 opacity-50" />{user.joined}
-                                        </div>
-                                    </td>
-                                    <td className="px-6 py-5">
-                                        <div className="flex items-center justify-end gap-1">
-                                            <button
-                                                onClick={e => { e.stopPropagation(); openEdit(user); }}
-                                                className="p-2 text-gray-400 hover:text-blue-600 dark:hover:text-blue-400 hover:bg-blue-50 dark:hover:bg-blue-900/20 rounded-xl transition-all active:scale-90"
-                                                title="Edit user">
-                                                <Edit3 size={16} />
-                                            </button>
-                                            <button
-                                                onClick={(e) => handleDeleteUser(e, user)}
-                                                className="p-2 text-gray-400 hover:text-red-600 dark:hover:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-xl transition-all active:scale-90"
-                                                title="Delete user">
-                                                <Trash2 size={16} />
-                                            </button>
-                                        </div>
-                                    </td>
-                                </tr>
-                            ))}
-                        </tbody>
-                    </table>
+                <div className="flex items-center space-x-3 w-full md:w-auto justify-end">
+                    <div className="relative w-64 md:w-72">
+                        <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={15} />
+                        <input
+                            type="text"
+                            placeholder="Search employees by name, email, role..."
+                            className="w-full pl-9 pr-3 py-2 bg-gray-50 dark:bg-white/[0.02] border border-gray-200 dark:border-white/10 rounded-lg text-xs text-gray-900 dark:text-white focus:outline-none focus:ring-1 focus:ring-blue-500 placeholder-gray-400"
+                            value={searchTerm}
+                            onChange={e => setSearchTerm(e.target.value)}
+                        />
+                    </div>
 
-                    {isLoading ? (
-                        <div className="py-16 text-center">
-                            <Loader2 size={32} className="mx-auto text-blue-500 animate-spin mb-3" />
-                            <p className="text-sm text-gray-400">Loading users...</p>
-                        </div>
-                    ) : filtered.length === 0 ? (
-                        <div className="py-16 text-center">
-                            <Users size={32} className="mx-auto text-gray-300 dark:text-gray-600 mb-3" />
-                            <p className="text-sm text-gray-400">No users found matching your search.</p>
-                        </div>
-                    ) : null}
-                </div>
+                    <button
+                        onClick={() => setIsFilterModalOpen(true)}
+                        className={`flex items-center space-x-2 px-6 py-2 border rounded-lg text-sm font-medium transition-all ${
+                            activeFilterCount > 0
+                                ? 'border-blue-500 bg-blue-500/10 text-blue-600 dark:text-blue-400'
+                                : 'border-blue-500 bg-blue-600 text-white hover:bg-blue-700'
+                        }`}
+                    >
+                        <span>Filter</span>
+                        <Filter size={16} fill="currentColor" className={activeFilterCount > 0 ? '' : 'text-white'} />
+                        {activeFilterCount > 0 && (
+                            <span className="ml-1 bg-blue-500 text-white text-[10px] w-4 h-4 rounded-full flex items-center justify-center font-bold">
+                                {activeFilterCount}
+                            </span>
+                        )}
+                    </button>
 
-                {/* Pagination */}
-                <div className="mt-5 flex justify-between items-center text-xs text-gray-400 px-1">
-                    <p>Showing {filtered.length} of {users.length} users</p>
-                    <div className="flex gap-2">
-                        <button className="px-3 py-1.5 border border-gray-200 dark:border-white/10 rounded-lg opacity-40 cursor-not-allowed">Previous</button>
-                        <button className="px-3 py-1.5 border border-blue-500/30 rounded-lg bg-blue-50 dark:bg-blue-900/20 text-blue-600 dark:text-blue-400 font-bold">1</button>
-                        <button className="px-3 py-1.5 border border-gray-200 dark:border-white/10 rounded-lg hover:bg-gray-50 dark:hover:bg-white/5 transition-all">Next</button>
+                    <div className="relative" ref={dropdownRef}>
+                        <button
+                            onClick={() => setIsManageDropdownOpen(!isManageDropdownOpen)}
+                            className="flex items-center space-x-2 px-6 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-sm font-bold shadow-md shadow-blue-500/20 transition-all hover:scale-[1.02]"
+                        >
+                            <span>Manage Employees</span>
+                            <ChevronDown size={14} className={`transition-transform duration-200 ${isManageDropdownOpen ? 'rotate-180' : ''}`} />
+                        </button>
+
+                        {isManageDropdownOpen && (
+                            <div className="absolute right-0 mt-2 w-52 bg-white dark:bg-[#161b22] rounded-lg shadow-xl border border-gray-200 dark:border-white/10 z-[5000] anim-fade-in overflow-hidden">
+                                <button
+                                    onClick={() => { setDrawerTab('form'); setAddOpen(true); setIsManageDropdownOpen(false); }}
+                                    className="w-full flex items-center px-4 py-3 text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-white/5 transition-colors"
+                                >
+                                    <UserPlus size={16} className="mr-3 text-emerald-500" />
+                                    Add Manual Employee
+                                </button>
+                                <button
+                                    onClick={() => { setDrawerTab('bulk'); setAddOpen(true); setIsManageDropdownOpen(false); }}
+                                    className="w-full flex items-center px-4 py-3 text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-white/5 border-t border-gray-100 dark:border-white/5 transition-colors"
+                                >
+                                    <UploadCloud size={16} className="mr-3 text-blue-500" />
+                                    Bulk Upload CSV
+                                </button>
+                            </div>
+                        )}
                     </div>
                 </div>
             </div>
 
-            {/* Drawers */}
-            <AddUserDrawer open={addOpen} onClose={() => setAddOpen(false)} onAdd={handleAddUser} allProjects={projects} templates={systemTemplates} />
-            <UserDetailDrawer user={selectedUser} open={!!selectedUser} onClose={() => setSelectedUser(null)} onUpdate={handleUpdateUser} initialEditing={editMode} allProjects={projects} templates={systemTemplates} />
+            {/* Table Area matching Vendors & Clients standard */}
+            <div className="flex-1 overflow-auto custom-scrollbar p-0">
+                <table className="w-full text-left whitespace-nowrap text-[13px] border-collapse bg-white dark:bg-[#0d1117]">
+                    <thead className="bg-[#f9fafb] dark:bg-[#161b22] text-gray-500 dark:text-gray-400 sticky top-0 z-10 border-b border-gray-200 dark:border-white/5 tracking-widest text-[10px] uppercase font-bold">
+                        <tr>
+                            <th className="px-3 py-2.5 w-6"></th>
+                            <th className="px-4 py-2.5 w-12 text-center">SR NO</th>
+                            <th className="px-4 py-2.5">EMPLOYEE NAME</th>
+                            <th className="px-4 py-2.5">ROLE</th>
+                            <th className="px-4 py-2.5">DEPARTMENT</th>
+                            <th className="px-4 py-2.5">EMAIL ID</th>
+                            <th className="px-4 py-2.5">STATUS</th>
+                            <th className="px-4 py-2.5">JOINED DATE</th>
+                        </tr>
+                    </thead>
+                    <tbody className="divide-y divide-gray-100 dark:divide-white/5 bg-white dark:bg-[#0d1117]">
+                        {isLoading ? (
+                            Array.from({ length: 5 }).map((_, i) => (
+                                <tr key={i} className="animate-pulse">
+                                    {Array.from({ length: 8 }).map((_, j) => (
+                                        <td key={j} className="px-4 py-3">
+                                            <div className="h-3 bg-gray-100 dark:bg-white/5 rounded"></div>
+                                        </td>
+                                    ))}
+                                </tr>
+                            ))
+                        ) : filtered.length > 0 ? (
+                            filtered.map((user, idx) => (
+                                <tr
+                                    key={user.id}
+                                    className="hover:bg-blue-50/30 dark:hover:bg-white/[0.02] transition-colors group/row text-gray-700 dark:text-gray-300 relative cursor-pointer"
+                                    onMouseEnter={() => setHoveredRow(idx)}
+                                    onMouseLeave={() => setHoveredRow(null)}
+                                    onClick={() => openView(user)}
+                                >
+                                    <td className="px-3 py-1.5 text-center" onClick={e => e.stopPropagation()}>
+                                        <GripVertical size={14} className="text-transparent group-hover/row:text-gray-400 dark:group-hover/row:text-gray-500 hover:!text-blue-500 transition-colors mx-auto cursor-grab active:cursor-grabbing" />
+                                    </td>
+                                    <td className="px-4 py-1.5 text-center font-mono text-gray-400">{idx + 1}</td>
+                                    <td className="px-4 py-1.5 font-medium text-gray-900 dark:text-gray-100">
+                                        <div className="flex items-center gap-3">
+                                            <Avatar name={user.name} size={8} />
+                                            <span className="font-semibold">{user.name}</span>
+                                        </div>
+                                    </td>
+                                    <td className="px-4 py-1.5">
+                                        <span className="inline-flex items-center gap-1.5 px-2.5 py-1 bg-blue-50 dark:bg-blue-900/20 text-blue-600 dark:text-blue-400 rounded-full text-xs font-semibold">
+                                            <Shield size={12} /> {user.role}
+                                        </span>
+                                    </td>
+                                    <td className="px-4 py-1.5">{user.department}</td>
+                                    <td className="px-4 py-1.5 text-gray-700 dark:text-gray-300">{user.email}</td>
+                                    <td className="px-4 py-1.5">
+                                        <StatusBadge status={user.status} />
+                                    </td>
+                                    <td className="px-4 py-1.5 text-xs text-gray-500 dark:text-gray-400">{user.joined}</td>
+                                </tr>
+                            ))
+                        ) : (
+                            <tr>
+                                <td colSpan="8" className="py-12 text-center text-gray-500 dark:text-gray-400">
+                                    <div className="flex flex-col items-center justify-center">
+                                        <div className="w-16 h-16 bg-gray-50 dark:bg-white/5 rounded-full flex items-center justify-center mb-4">
+                                            <Users className="text-gray-400" size={24} />
+                                        </div>
+                                        <p className="text-sm font-semibold mb-1">No employees found</p>
+                                        <p className="text-xs text-gray-400">Try adjusting your filters or search terms</p>
+                                    </div>
+                                </td>
+                            </tr>
+                        )}
+                    </tbody>
+                </table>
+            </div>
 
+            {/* Footer matching Vendors & Clients standard */}
+            <div className="px-6 py-3.5 border-t border-gray-200 dark:border-white/5 flex justify-between items-center text-xs text-gray-400 shrink-0 bg-white dark:bg-[#0d1117]">
+                <p>Showing <span className="font-semibold text-gray-700 dark:text-gray-300">{filtered.length}</span> of <span className="font-semibold text-gray-700 dark:text-gray-300">{users.length}</span> employees</p>
+                <div className="flex gap-2">
+                    <button className="px-3 py-1.5 border border-gray-200 dark:border-white/10 rounded-lg opacity-40 cursor-not-allowed">Previous</button>
+                    <button className="px-3 py-1.5 border border-blue-500/30 rounded-lg bg-blue-50 dark:bg-blue-900/20 text-blue-600 dark:text-blue-400 font-bold">1</button>
+                    <button className="px-3 py-1.5 border border-gray-200 dark:border-white/10 rounded-lg hover:bg-gray-50 dark:hover:bg-white/5 transition-all">Next</button>
+                </div>
+            </div>
+
+            {/* Filter Modal */}
+            <EmployeeFilterModal
+                open={isFilterModalOpen}
+                onClose={() => setIsFilterModalOpen(false)}
+                activeFilters={activeFilters}
+                setActiveFilters={setActiveFilters}
+                allRoles={allRoles}
+                allDepartments={allDepartments}
+            />
+
+            {/* Drawers */}
+            <AddUserDrawer open={addOpen} onClose={() => setAddOpen(false)} onAdd={handleAddUser} allProjects={projects} templates={systemTemplates} initialTab={drawerTab} />
+            <UserDetailDrawer
+                user={selectedUser}
+                open={!!selectedUser}
+                onClose={() => setSelectedUser(null)}
+                onUpdate={handleUpdateUser}
+                onDelete={(u) => {
+                    setSelectedUser(null);
+                    handleDeleteUser({ stopPropagation: () => {} }, u);
+                }}
+                initialEditing={editMode}
+                allProjects={projects}
+                templates={systemTemplates}
+            />
         </div>
     );
 };
 
 export default AdminPage;
+
