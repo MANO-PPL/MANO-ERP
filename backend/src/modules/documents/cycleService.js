@@ -1,7 +1,9 @@
 import { db } from '../../config/database.js';
 import AppError from '../../utils/AppError.js';
+import { triggerApprovalHooks } from '../../services/hookRegistry.js';
 
 const CONTENT_TABLES = [
+    { name: 'wf_document_lines', pk: 'line_id' },
     { name: 'pdoc_vendors', pk: 'pv_id' },
     { name: 'pdoc_directory', pk: 'pd_id' },
     { name: 'pdoc_staff_responsible', pk: 'psrr_id' },
@@ -329,6 +331,20 @@ async function finalizeApproval(trx, cycle, document, userId, comments) {
         acted_by: userId,
         comments: comments || 'Document version approved and published.'
     });
+
+    // 4.5 Fetch approved generic document lines and trigger pluggable business hooks
+    const approvedLines = await trx('wf_document_lines').where({ cycle_id: cycle.cycle_id });
+
+    if (document.publishing_config) {
+        const config = typeof document.publishing_config === 'string'
+            ? JSON.parse(document.publishing_config)
+            : document.publishing_config;
+
+        const actions = config.business_actions || (config.business_action ? [config.business_action] : []);
+        for (const actionName of actions) {
+            await triggerApprovalHooks(actionName, { trx, cycle, document, userId, versionId, approvedLines });
+        }
+    }
 
     // 5. Dynamic Publishing based on publishing_config column
     if (document.publishing_config) {

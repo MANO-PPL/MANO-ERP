@@ -24,6 +24,7 @@ async function verifyWriteAccess(orgId, cycleId, userId) {
 
 // Map of allowed columns per table to filter out frontend-supplied UI helper properties before database operations
 const ALLOWED_COLUMNS = {
+    wf_document_lines: ['line_id', 'instance_id', 'cycle_id', 'version_id', 'line_type', 'sort_order', 'effective_date', 'remarks', 'metadata', 'created_at', 'updated_at'],
     pdoc_vendors: ['pv_id', 'project_id', 'instance_id', 'cycle_id', 'version_id', 'vendors_id', 'created_at', 'updated_at'],
     pdoc_directory: ['pd_id', 'project_id', 'instance_id', 'cycle_id', 'version_id', 'pv_id', 'contact_person', 'designation', 'responsibilities', 'mobile_no', 'email', 'address_line', 'created_at', 'updated_at'],
     pdoc_staff_responsible: ['psrr_id', 'project_id', 'instance_id', 'cycle_id', 'version_id', 'name', 'designation', 'responsibilities', 'mobile', 'email', 'created_at', 'updated_at'],
@@ -258,11 +259,47 @@ export const summary = {
     delete: (orgId, cycleId, userId, id) => deleteDraftRow(orgId, cycleId, userId, 'pdoc_summary', 'id', id)
 };
 
+export const lines = {
+    add: (orgId, cycleId, userId, data) => addDraftRow(orgId, cycleId, userId, 'wf_document_lines', data),
+    update: (orgId, cycleId, userId, id, data) => updateDraftRow(orgId, cycleId, userId, 'wf_document_lines', 'line_id', id, data),
+    delete: (orgId, cycleId, userId, id) => deleteDraftRow(orgId, cycleId, userId, 'wf_document_lines', 'line_id', id)
+};
+
+export const attachments = {
+    addAttachment: async (instanceId, userId, { file_name, file_url, file_type }) => {
+        if (!file_name || !file_url || !file_type) {
+            throw new AppError('file_name, file_url, and file_type are required', 400);
+        }
+        const [id] = await db('wf_document_attachments').insert({
+            instance_id: instanceId,
+            file_name,
+            file_url,
+            file_type,
+            uploaded_by: userId
+        });
+        return id;
+    },
+    removeAttachment: async (instanceId, attachmentId) => {
+        const deleted = await db('wf_document_attachments')
+            .where({ id: attachmentId, instance_id: instanceId })
+            .del();
+        if (!deleted) throw new AppError('Attachment not found', 404);
+        return true;
+    },
+    getAttachments: async (instanceId) => {
+        return await db('wf_document_attachments')
+            .where({ instance_id: instanceId })
+            .orderBy('created_at', 'desc');
+    }
+};
+
 export default {
     directory,
     vendors,
     staff,
     mom,
     agenda,
-    summary
+    summary,
+    lines,
+    attachments
 };
