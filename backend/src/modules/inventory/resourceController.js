@@ -70,16 +70,18 @@ export const updateResource = catchAsync(async (req, res) => {
     const { id } = req.params;
     if (!id || isNaN(parseInt(id))) throw new AppError('Invalid Resource ID', 400);
     
-    const { name, code, base_unit_id, base_unit_code, description, remarks, compositions } = req.body;
+    const { name, code, type, base_unit_id, base_unit_code, description, remarks, compositions, conversions } = req.body;
     const resolvedUnitCode = base_unit_code || base_unit_id;
 
     await resourceService.updateResource(req.user.org_id, id, {
         name,
         code,
+        type,
         base_unit_code: resolvedUnitCode,
         description,
         remarks,
-        compositions
+        compositions,
+        conversions
     });
     res.json({ success: true, message: 'Resource updated successfully' });
 });
@@ -123,6 +125,21 @@ export const removeConversion = catchAsync(async (req, res) => {
     res.json({ success: true, message: 'Conversion removed' });
 });
 
+export const bulkUpdateResources = catchAsync(async (req, res) => {
+    if (!Array.isArray(req.body)) {
+        throw new AppError('Body must be an array of resources', 400);
+    }
+    const result = await resourceService.bulkUpdateResources(req.user.org_id, req.body);
+    if (result.errors.length > 0) {
+        return res.status(400).json({
+            success: false,
+            message: 'Bulk update failed and was rolled back.',
+            report: result
+        });
+    }
+    return res.json({ success: true, report: result });
+});
+
 export default {
     listResources,
     getResource,
@@ -131,5 +148,7 @@ export default {
     deleteResource,
     setCompositions,
     addConversion,
-    removeConversion
+    removeConversion,
+    bulkUpdateResources
 };
+

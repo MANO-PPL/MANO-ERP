@@ -12,6 +12,7 @@ router.get('/', resourceController.listResources);
 router.get('/:id', resourceController.getResource);
 
 router.post('/', resourceController.createResource);
+router.put('/', resourceController.bulkUpdateResources);
 router.put('/:id', resourceController.updateResource);
 router.delete('/:id', resourceController.deleteResource);
 

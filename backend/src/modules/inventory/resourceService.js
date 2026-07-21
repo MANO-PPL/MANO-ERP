@@ -194,7 +194,7 @@ export async function createResource(orgId, { name, code, type, base_unit_code, 
 // Update
 // ─────────────────────────────────────────────────────────────────────────────
 
-export async function updateResource(orgId, id, { name, code, base_unit_code, description, remarks, compositions, conversions }) {
+export async function updateResource(orgId, id, { name, code, type, base_unit_code, description, remarks, compositions, conversions }) {
     const resource = await ensureResourceExists(orgId, id);
 
     await db.transaction(async (trx) => {
@@ -202,6 +202,26 @@ export async function updateResource(orgId, id, { name, code, base_unit_code, de
         if (name !== undefined) updates.name = name;
         if (code !== undefined) updates.code = code;
         
+        let activeType = resource.type;
+        if (type !== undefined && type !== resource.type) {
+            if (!['material', 'item', 'labour'].includes(type)) {
+                throw new AppError('type must be "material", "item", or "labour"', 400);
+            }
+            if (type === 'item') {
+                const usedAsComponent = await trx('res_compositions')
+                    .where('component_resource_id', id)
+                    .count('id as cnt').first();
+                if (parseInt(usedAsComponent.cnt) > 0) {
+                    throw new AppError('Cannot change type to "item": resource is used as a component in other composite item recipes', 400);
+                }
+            }
+            if (resource.type === 'item') {
+                await trx('res_compositions').where('parent_resource_id', id).del();
+            }
+            updates.type = type;
+            activeType = type;
+        }
+
         let activeBaseUnitCode = resource.base_unit_code;
         if (base_unit_code !== undefined) {
             try {
@@ -227,7 +247,7 @@ export async function updateResource(orgId, id, { name, code, base_unit_code, de
         }
 
         // Replace compositions if provided (items only)
-        if (compositions !== undefined && resource.type === 'item') {
+        if (compositions !== undefined && activeType === 'item') {
             await _replaceCompositions(orgId, id, compositions, trx);
         }
     });
@@ -485,6 +505,93 @@ export async function bulkInsertResources(orgId, resources) {
     return report;
 }
 
+export async function bulkUpdateResources(orgId, resources) {
+    if (!Array.isArray(resources)) {
+        throw new AppError('Input must be an array of resources', 400);
+    }
+
+    const report = {
+        successCount: 0,
+        updatedIds: [],
+        errors: []
+    };
+
+    await db.transaction(async (trx) => {
+        for (let i = 0; i < resources.length; i++) {
+            const res = resources[i];
+            const { id, name, code, type, base_unit_code, description, remarks } = res;
+
+            try {
+                if (!id) {
+                    throw new Error('Resource ID is required for update');
+                }
+
+                const existing = await trx('res_resources').where({ id, org_id: orgId }).first();
+                if (!existing) {
+                    throw new Error(`Resource with ID ${id} not found in this organization`);
+                }
+
+                const updates = {};
+                if (name !== undefined) updates.name = name;
+                if (code !== undefined) updates.code = code || null;
+                
+                let activeType = existing.type;
+                if (type !== undefined && type !== existing.type) {
+                    if (!['material', 'item', 'labour'].includes(type)) {
+                        throw new Error('type must be "material", "item", or "labour"');
+                    }
+                    if (type === 'item') {
+                        const usedAsComponent = await trx('res_compositions')
+                            .where('component_resource_id', id)
+                            .count('id as cnt').first();
+                        if (parseInt(usedAsComponent.cnt) > 0) {
+                            throw new Error('Cannot change type to "item": resource is used as a component in other composite item recipes');
+                        }
+                    }
+                    if (existing.type === 'item') {
+                        await trx('res_compositions').where('parent_resource_id', id).del();
+                    }
+                    updates.type = type;
+                    activeType = type;
+                }
+
+                let activeBaseUnitCode = existing.base_unit_code;
+                if (base_unit_code !== undefined) {
+                    try {
+                        getUnit(base_unit_code);
+                    } catch (err) {
+                        throw new Error(err.message);
+                    }
+                    updates.base_unit_code = base_unit_code;
+                    activeBaseUnitCode = base_unit_code;
+                }
+                if (description !== undefined) updates.description = description || null;
+                if (remarks !== undefined) updates.remarks = remarks || null;
+
+                if (Object.keys(updates).length > 0) {
+                    await trx('res_resources').where({ id, org_id: orgId }).update(updates);
+                }
+
+                report.successCount++;
+                report.updatedIds.push(id);
+
+            } catch (err) {
+                report.errors.push({
+                    index: i,
+                    id: id || 'Unknown',
+                    name: name || 'Unknown',
+                    error: err.message
+                });
+                throw err;
+            }
+        }
+    }).catch(err => {
+        console.warn("Bulk update transaction rolled back due to error:", err.message);
+    });
+
+    return report;
+}
+
 export default {
     getResources,
     getResourceById,
@@ -494,5 +601,7 @@ export default {
     setCompositions,
     addConversion,
     removeConversion,
-    bulkInsertResources
+    bulkInsertResources,
+    bulkUpdateResources
 };
+
