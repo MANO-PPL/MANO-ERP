@@ -45,7 +45,7 @@ const TableSkeleton = () => (
  *   'auto'  – default (grid)
  */
 const PageSkeleton = ({ variant = 'grid' }) => (
-    <div className="flex flex-col h-[calc(100vh-7vh)] w-full bg-gray-50 dark:bg-[#0d1117] animate-[fadeIn_0.2s_ease]">
+    <div className="flex flex-col h-[calc(100vh-44px)] w-full bg-gray-50 dark:bg-[#0d1117] animate-[fadeIn_0.2s_ease]">
 
         {/* ── Toolbar shimmer ── */}
         <div className="flex items-center justify-between px-6 py-3 bg-white dark:bg-[#0d1117] border-b border-gray-200 dark:border-white/[0.05]">
