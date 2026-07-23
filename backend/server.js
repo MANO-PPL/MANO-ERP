@@ -4,7 +4,13 @@ import { spawn } from 'child_process';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import './src/config/config.js';
-import app from './src/app.js';
+import app, { allowedOrigins } from './src/app.js';
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+
+const PORT = process.env.PORT || 5000;
+
 // HTTP Server & Socket.IO Setup
 const server = createServer(app);
 const io = new SocketIO(server, {

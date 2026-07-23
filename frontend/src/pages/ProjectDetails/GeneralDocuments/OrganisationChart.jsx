@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
-import { Plus, Edit2, Trash2, ZoomIn, ZoomOut, Maximize, Save, X, User, Briefcase, Building, Info, Clock, ArrowLeft, Search, Loader2 } from 'lucide-react';
+import { Plus, Edit2, Trash2, ZoomIn, ZoomOut, Maximize, Save, X, User, Briefcase, Building, Info, Clock, ArrowLeft, Search, Loader2, Focus } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useParams } from 'react-router-dom';
 import { generalDocsApi } from '../../../services/generalDocsApi';
@@ -110,7 +110,8 @@ const INITIAL_DATA = {
 const NodeCard = React.memo(({ node, onSelect, onEdit, onDelete, selectedNodeId, level = 0, isFirst = true, isLast = true, parentHasMany = false, canWrite }) => {
     const isStaff = node.type === 'staff';
     const isDept = node.type === 'department';
-    const isCompany = node.type === 'company';
+    const isClient = node.role === 'CLIENT' || node.id === 'client';
+    const isCompany = node.type === 'company' && !isClient;
     const isProject = node.type === 'project';
     const isSelected = selectedNodeId === node.id;
 
@@ -120,12 +121,12 @@ const NodeCard = React.memo(({ node, onSelect, onEdit, onDelete, selectedNodeId,
             {level > 0 && (
                 <div className="relative flex flex-col items-center h-10 w-full flex-shrink-0">
                     {parentHasMany && (
-                        <div className={`absolute top-0 h-px bg-gray-600 ${isFirst ? 'left-1/2 w-1/2' : isLast ? 'right-1/2 w-1/2' : 'w-full'}`} />
+                        <div className={`absolute top-0 h-px bg-slate-600 ${isFirst ? 'left-1/2 w-1/2' : isLast ? 'right-1/2 w-1/2' : 'w-full'}`} />
                     )}
-                    <div className="w-px h-full bg-gray-600 relative">
+                    <div className="w-px h-full bg-slate-600 relative">
                         <div className="absolute bottom-0 left-1/2 -translate-x-1/2 translate-y-1">
                             <svg width="10" height="6" viewBox="0 0 10 6" fill="none">
-                                <path d="M1 1L5 5L9 1" stroke="#4b5563" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+                                <path d="M1 1L5 5L9 1" stroke="#64748b" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
                             </svg>
                         </div>
                     </div>
@@ -139,37 +140,39 @@ const NodeCard = React.memo(({ node, onSelect, onEdit, onDelete, selectedNodeId,
                 transition={{ duration: 0.4, ease: "easeOut" }}
                 onClick={(e) => { e.stopPropagation(); onSelect(node); canWrite && String(node.id).startsWith('dir-') && onEdit(node); }}
                 className={`
-                    px-7 py-5 rounded-2xl border transition-all duration-300 relative
-                    ${isProject ? 'bg-blue-600 border-blue-400 text-white min-w-[220px]' : ''}
-                    ${isCompany ? 'bg-slate-50 dark:bg-[#1e293b] border-blue-500/30 text-slate-800 dark:text-white min-w-[240px]' : ''}
-                    ${isDept ? 'bg-emerald-50 dark:bg-[#0f172a] border-emerald-500/30 text-emerald-900 dark:text-emerald-50 min-w-[200px]' : ''}
-                    ${isStaff ? 'bg-white dark:bg-[#1a202c] border-gray-200 dark:border-gray-600 text-gray-800 dark:text-gray-200 min-w-[180px]' : ''}
-                    ${isSelected ? 'ring-2 ring-blue-500/50 ring-offset-2 ring-offset-white dark:ring-offset-[#0d1117] border-blue-400 z-10' : 'hover:border-gray-300 dark:hover:border-white/30'}
-                    cursor-pointer select-none
+                    px-7 py-5 rounded-2xl border transition-all duration-300 relative select-none
+                    ${isProject ? 'bg-[#1d64f2] border-2 border-[#4d8bf8] text-white min-w-[250px] shadow-xl shadow-blue-600/30' : ''}
+                    ${isClient ? 'bg-[#1c2536] border border-[#2d3a52] text-white min-w-[250px] shadow-lg shadow-black/40' : ''}
+                    ${isCompany ? 'bg-[#151e2e] border border-blue-500/25 text-slate-100 min-w-[220px] shadow-md' : ''}
+                    ${isDept ? 'bg-[#0f172a] border border-emerald-500/30 text-emerald-100 min-w-[200px] shadow-md' : ''}
+                    ${isStaff ? 'bg-[#18202d] border border-slate-700/80 text-slate-200 min-w-[180px] shadow-sm' : ''}
+                    ${isSelected ? 'ring-2 ring-blue-400 ring-offset-2 ring-offset-[#0d1117] z-10' : 'hover:border-blue-400/50'}
+                    cursor-pointer
                 `}
             >
 
-                <div className="relative flex flex-col items-center text-center space-y-1">
-                    <div className="mb-1 text-white/50">
-                        {isProject && <Maximize size={16} />}
-                        {isCompany && <Building size={16} />}
-                        {isDept && <Briefcase size={16} />}
-                        {isStaff && <User size={16} />}
-                    </div>
-                    <h3 className="font-bold text-sm tracking-tight text-inherit">{node.name || 'Untitled'}</h3>
-                    <p className="text-[10px] uppercase tracking-widest text-inherit opacity-60 font-semibold">{node.role || 'No Role'}</p>
-                    {node.location && <p className="text-[10px] opacity-40 italic">{node.location}</p>}
-                    {node.subRole && <p className="text-[10px] opacity-70 border-t border-gray-200 dark:border-white/5 mt-1 pt-1 w-full">{node.subRole}</p>}
-                </div>
-
-                {/* Legend Dot */}
-                <div className={`absolute top-3 left-3 w-2 h-2 rounded-full border border-white/10
-                    ${isProject ? 'bg-blue-400' : ''}
-                    ${isCompany ? 'bg-blue-500' : ''}
-                    ${isDept ? 'bg-emerald-500' : ''}
-                    ${isStaff ? 'bg-gray-500' : ''}
+                {/* Legend Dot Indicator at Top-Left */}
+                <div className={`absolute top-4 left-4 rounded-full border border-white/20 shadow-sm
+                    ${isProject ? 'w-2.5 h-2.5 bg-[#7caaf9]' : ''}
+                    ${isClient ? 'w-2.5 h-2.5 bg-[#4d8bf8]' : ''}
+                    ${isCompany ? 'w-2 h-2 bg-indigo-400' : ''}
+                    ${isDept ? 'w-2 h-2 bg-emerald-400' : ''}
+                    ${isStaff ? 'w-2 h-2 bg-slate-400' : ''}
                 `} />
 
+                <div className="relative flex flex-col items-center text-center space-y-1">
+                    <div className="mb-1 flex items-center justify-center">
+                        {isProject && <Focus size={20} className="text-[#a4c7fb]" />}
+                        {isClient && <Building size={20} className="text-slate-400" />}
+                        {isCompany && <Building size={16} className="text-indigo-400" />}
+                        {isDept && <Briefcase size={16} className="text-emerald-400" />}
+                        {isStaff && <User size={15} className="text-slate-400" />}
+                    </div>
+                    <h3 className="font-bold text-sm tracking-tight text-inherit">{node.name || 'Untitled'}</h3>
+                    <p className={`text-[10px] uppercase tracking-widest font-semibold ${isProject ? 'text-[#a8c7fa]' : 'opacity-70'}`}>{node.role || 'No Role'}</p>
+                    {node.location && <p className="text-[11px] text-[#c3d9fb] italic font-normal mt-0.5">{node.location}</p>}
+                    {node.subRole && <p className="text-[10px] opacity-70 border-t border-white/10 mt-1 pt-1 w-full">{node.subRole}</p>}
+                </div>
 
                 {/* Quick Actions */}
                 {canWrite && (

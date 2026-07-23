@@ -9,7 +9,7 @@ import routes from './modules/index.js';
 const app = express();
 
 
-const allowedOrigins = [
+export const allowedOrigins = [
     `http://localhost:5173`,
     `http://127.0.0.1:5173`,
     `http://${process.env.URI || '127.0.0.1'}:5173`,
