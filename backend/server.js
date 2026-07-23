@@ -4,22 +4,35 @@ import { spawn } from 'child_process';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import './src/config/config.js';
-import app, { allowedOrigins } from './src/app.js';
+
+export const allowedOrigins = [
+    `http://localhost:5173`,
+    `http://127.0.0.1:5173`,
+    `http://${process.env.URI || '127.0.0.1'}:5173`,
+    'https://erp.mano.co.in',
+    'https://mano.co.in',
+    'https://www.mano.co.in'
+];
+
+import app from './src/app.js';
+import { initializeCrmSchema } from './src/modules/clients/clientService.js';
+import { initializeQualitySchema } from './src/modules/projects/quality/qualityService.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-const PORT = process.env.PORT || 5000;
+const PORT = process.env.PORT || 5001;
 
 // HTTP Server & Socket.IO Setup
 const server = createServer(app);
+
 const io = new SocketIO(server, {
     path: '/socket.io/',
     cors: {
         origin: allowedOrigins,
         credentials: true
     }
-});
+}); 
 
 io.on('connection', (socket) => {
     console.log('Socket connected:', socket.id);
@@ -30,6 +43,9 @@ io.on('connection', (socket) => {
 
 server.listen(PORT, '0.0.0.0', async () => {
     console.log(`Backend server running on http://localhost:${PORT}`);
+    await initializeCrmSchema();
+    await initializeQualitySchema();
+
     
     // Auto-start Python AI Microservice
     const pythonDir = path.join(__dirname, 'src', 'modules', 'ai', 'python_engine');
