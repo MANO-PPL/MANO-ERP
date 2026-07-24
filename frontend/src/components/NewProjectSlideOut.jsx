@@ -5,6 +5,7 @@ import CustomSelect from './CustomSelect';
 import CustomInput from './CustomInput';
 import { adminApi } from '../services/adminApi';
 import { projectApi } from '../services/projectApi';
+import { customToast } from '../utils/toast';
 
 const COLORS = [
     'from-blue-400 to-indigo-500',
@@ -162,6 +163,7 @@ const NewProjectSlideOut = ({ isOpen, onClose, onProjectCreated, projectToEdit =
                     await projectApi.removeProjectMember(projectId, userId);
                 }
                 
+                customToast.success(projectToEdit ? 'Project updated successfully' : 'New project created successfully', projectToEdit ? 'Project Updated' : 'Project Created');
                 setFormData({
                     name: '', projectCode: '', description: '', location: '', employer: '', startDate: '', endDate: '', client: 'Select Client'
                 });
@@ -171,7 +173,7 @@ const NewProjectSlideOut = ({ isOpen, onClose, onProjectCreated, projectToEdit =
             }
         } catch (error) {
             console.error("Failed to create project", error);
-            alert("Failed to create project.");
+            customToast.error("Failed to save project details", "Save Failed");
         } finally {
             setIsSubmitting(false);
         }

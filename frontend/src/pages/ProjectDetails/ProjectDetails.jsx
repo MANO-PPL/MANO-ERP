@@ -36,7 +36,32 @@ const ProjectDetails = () => {
 
     useEffect(() => {
         const loadProject = async () => {
-            setLoading(true);
+            // Seed initial project data from cached project list for instant UI load
+            const cachedList = sessionStorage.getItem('crm_projects_list');
+            if (cachedList) {
+                try {
+                    const projectsArr = JSON.parse(cachedList);
+                    const found = projectsArr.find(p => String(p.dbId) === String(id) || String(p.id) === String(id));
+                    if (found) {
+                        setProject({
+                            id: found.dbId,
+                            name: found.name,
+                            project_code: found.id,
+                            location: found.location,
+                            status: found.status?.toLowerCase() || 'active',
+                            metadata: found.metadata
+                        });
+                        setLoading(false);
+                    } else {
+                        setLoading(true);
+                    }
+                } catch (e) {
+                    setLoading(true);
+                }
+            } else {
+                setLoading(true);
+            }
+
             try {
                 const res = await projectApi.getProject(id);
                 if (res.success) {
@@ -100,7 +125,7 @@ const ProjectDetails = () => {
     const renderTabContent = () => {
         const activeTabLvl = projectPermissions?.[activeTab] ?? 0;
         const canWrite = isAdmin || activeTabLvl >= 2;
-        const props = { setExtraBreadcrumbs, project, projectPermissions, isAdmin, user, canWrite };
+        const props = { setExtraBreadcrumbs, project, projectPermissions, isAdmin, user, canWrite, setActiveTab };
         switch (activeTab) {
             case 'Dashboard':
                 return <Dashboard {...props} />;

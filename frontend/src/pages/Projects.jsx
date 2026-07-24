@@ -4,6 +4,7 @@ import { Filter, Plus, List, Zap, MoreHorizontal, ArrowUpDown, ChevronDown, Chev
 import NewProjectSlideOut from '../components/NewProjectSlideOut';
 import { projectApi } from '../services/projectApi';
 import { useAuth } from '../context/AuthContext';
+import { customToast } from '../utils/toast';
 
 // ─── Project Filter Modal ────────────────────────────────────────────────────
 const ProjectFilterModal = ({ open, onClose, activeFilters, setActiveFilters, allOwners }) => {
@@ -388,10 +389,12 @@ const Projects = () => {
 
             const res = await projectApi.updateProject(project.dbId, updatedPayload);
             if (res.success) {
+                customToast.success(`Updated issue status to ${newIssueStatus}`, 'Issue Updated');
                 fetchProjects(true);
             }
         } catch (error) {
             console.error("Failed to update issue status", error);
+            customToast.error("Failed to update issue status", "Update Failed");
         }
     };
 
@@ -422,10 +425,12 @@ const Projects = () => {
 
             const res = await projectApi.updateProject(project.dbId, updatedPayload);
             if (res.success) {
+                customToast.success(`Added tag "${newTag}"`, 'Tag Added');
                 fetchProjects(true);
             }
         } catch (error) {
             console.error("Failed to add tag", error);
+            customToast.error("Failed to add tag", "Error");
         }
     };
 
@@ -449,10 +454,12 @@ const Projects = () => {
 
             const res = await projectApi.updateProject(project.dbId, updatedPayload);
             if (res.success) {
+                customToast.info(`Removed tag "${tagToDelete}"`, 'Tag Removed');
                 fetchProjects(true);
             }
         } catch (error) {
             console.error("Failed to delete tag", error);
+            customToast.error("Failed to delete tag", "Error");
         }
     };
 
@@ -471,10 +478,12 @@ const Projects = () => {
 
             const res = await projectApi.updateProject(project.dbId, updatedPayload);
             if (res.success) {
+                customToast.success(`Project status changed to ${newStatus.toUpperCase()}`, 'Status Updated');
                 fetchProjects(true);
             }
         } catch (error) {
             console.error("Failed to toggle project status", error);
+            customToast.error("Failed to toggle project status", "Error");
         }
     };
 
@@ -636,17 +645,15 @@ const Projects = () => {
                                 <tr
                                     key={project.dbId}
                                     className="hover:bg-blue-50/30 dark:hover:bg-white/[0.02] transition-colors group/row text-gray-700 dark:text-gray-300 relative cursor-pointer"
-                                    onMouseEnter={() => setHoveredRow(idx)}
-                                    onMouseLeave={() => setHoveredRow(null)}
                                     onClick={() => navigate(`/projects/${project.dbId}`)}
                                 >
                                     <td className="px-3 py-1.5 text-center" onClick={e => e.stopPropagation()}>
                                         <GripVertical size={14} className="text-transparent group-hover/row:text-gray-400 dark:group-hover/row:text-gray-500 hover:!text-blue-500 transition-colors mx-auto cursor-grab active:cursor-grabbing" />
                                     </td>
                                     <td className="px-4 py-1.5 text-center font-mono text-gray-400">{idx + 1}</td>
-                                    <td className="px-4 py-1.5 font-mono text-gray-500 dark:text-gray-400">{project.id}</td>
+                                    <td className="px-4 py-1.5 font-mono text-blue-600 dark:text-blue-400 font-semibold hover:underline">{project.id}</td>
                                     <td className="px-4 py-1.5">
-                                        <span className="font-semibold text-gray-900 dark:text-gray-100 hover:text-blue-600 dark:hover:text-blue-400 transition-colors">{project.name}</span>
+                                        <span className="font-semibold text-blue-600 dark:text-blue-400 hover:underline transition-colors">{project.name}</span>
                                     </td>
                                     <td className="px-4 py-1.5 font-medium text-gray-700 dark:text-gray-300">{project.completion}%</td>
                                     <td className="px-4 py-1.5">
