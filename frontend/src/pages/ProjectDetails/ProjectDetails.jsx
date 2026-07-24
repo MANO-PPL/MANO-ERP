@@ -21,6 +21,7 @@ import Safety from './Safety/SafetyIndex';
 import Billing from './Billing/BillingIndex';
 import MaterialManagement from './MaterialManagement/MaterialManagementIndex';
 import Approvals from './Approvals/Approvals';
+import ProjectSettings from './Settings/ProjectSettings';
 
 const ProjectDetails = () => {
     const { id } = useParams();
@@ -34,62 +35,63 @@ const ProjectDetails = () => {
     const [loading, setLoading] = useState(true);
     const [extraBreadcrumbs, setExtraBreadcrumbs] = useState([]); // Array of { label, onClick }
 
-    useEffect(() => {
-        const loadProject = async () => {
-            // Seed initial project data from cached project list for instant UI load
-            const cachedList = sessionStorage.getItem('crm_projects_list');
-            if (cachedList) {
-                try {
-                    const projectsArr = JSON.parse(cachedList);
-                    const found = projectsArr.find(p => String(p.dbId) === String(id) || String(p.id) === String(id));
-                    if (found) {
-                        setProject({
-                            id: found.dbId,
-                            name: found.name,
-                            project_code: found.id,
-                            location: found.location,
-                            status: found.status?.toLowerCase() || 'active',
-                            metadata: found.metadata
-                        });
-                        setLoading(false);
-                    } else {
-                        setLoading(true);
-                    }
-                } catch (e) {
+    const loadProject = async () => {
+        // Seed initial project data from cached project list for instant UI load
+        const cachedList = sessionStorage.getItem('crm_projects_list');
+        if (cachedList && !project) {
+            try {
+                const projectsArr = JSON.parse(cachedList);
+                const found = projectsArr.find(p => String(p.dbId) === String(id) || String(p.id) === String(id));
+                if (found) {
+                    setProject({
+                        id: found.dbId,
+                        name: found.name,
+                        project_code: found.id,
+                        location: found.location,
+                        status: found.status?.toLowerCase() || 'active',
+                        metadata: found.metadata
+                    });
+                    setLoading(false);
+                } else {
                     setLoading(true);
                 }
-            } else {
+            } catch (e) {
                 setLoading(true);
             }
+        } else if (!project) {
+            setLoading(true);
+        }
 
-            try {
-                const res = await projectApi.getProject(id);
-                if (res.success) {
-                    setProject(res.project);
-                    
-                    // Normalize permission levels from string format to numbers
-                    const rawPerms = res.projectPermissions || {};
-                    const normalizedPerms = {};
-                    const map = { 'none': 0, 'view': 1, 'edit': 2, 'read': 1, 'write': 2 };
-                    for (const [k, v] of Object.entries(rawPerms)) {
-                        if (typeof v === 'string') {
-                            normalizedPerms[k] = map[v.toLowerCase()] ?? 0;
-                        } else {
-                            normalizedPerms[k] = v;
-                        }
+        try {
+            const res = await projectApi.getProject(id);
+            if (res.success) {
+                setProject(res.project);
+                
+                // Normalize permission levels from string format to numbers
+                const rawPerms = res.projectPermissions || {};
+                const normalizedPerms = {};
+                const map = { 'none': 0, 'view': 1, 'edit': 2, 'read': 1, 'write': 2 };
+                for (const [k, v] of Object.entries(rawPerms)) {
+                    if (typeof v === 'string') {
+                        normalizedPerms[k] = map[v.toLowerCase()] ?? 0;
+                    } else {
+                        normalizedPerms[k] = v;
                     }
-                    setProjectPermissions(normalizedPerms);
                 }
-            } catch (err) {
-                console.error(err);
-                toast.error(err.response?.data?.message || 'Failed to load project');
-                if (err.response?.status === 403 || err.response?.status === 401) {
-                    navigate('/projects');
-                }
-            } finally {
-                setLoading(false);
+                setProjectPermissions(normalizedPerms);
             }
-        };
+        } catch (err) {
+            console.error(err);
+            toast.error(err.response?.data?.message || 'Failed to load project');
+            if (err.response?.status === 403 || err.response?.status === 401) {
+                navigate('/projects');
+            }
+        } finally {
+            setLoading(false);
+        }
+    };
+
+    useEffect(() => {
         loadProject();
     }, [id, navigate]);
 
@@ -102,7 +104,7 @@ const ProjectDetails = () => {
 
     const allTabs = [
         'Dashboard', 'Tasks', 'WIP', 'Reports', 'General Documents', 'Drawings', 
-        'Planning', 'Phases', 'Contracts', 'Quality', 'Safety', 'Billing', 'Material Management', 'Approvals'
+        'Planning', 'Phases', 'Contracts', 'Quality', 'Safety', 'Billing', 'Material Management', 'Approvals', 'Settings'
     ];
 
     const allowedTabs = allTabs.filter(tab => {
@@ -155,6 +157,8 @@ const ProjectDetails = () => {
                 return <MaterialManagement {...props} />;
             case 'Approvals':
                 return <Approvals {...props} />;
+            case 'Settings':
+                return <ProjectSettings {...props} reloadProject={loadProject} />;
             default:
                 return <Dashboard {...props} />;
         }
