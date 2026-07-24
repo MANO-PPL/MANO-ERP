@@ -34,5 +34,16 @@ export const projectApi = {
     removeProjectMember: async (id, userId) => {
         const response = await api.delete(`/projects/${id}/members/${userId}`);
         return response.data;
+    },
+
+    uploadProjectLogo: async (id, file) => {
+        const formData = new FormData();
+        formData.append('logo', file);
+        const response = await api.post(`/projects/${id}/logo`, formData, {
+            headers: {
+                'Content-Type': 'multipart/form-data'
+            }
+        });
+        return response.data;
     }
 };

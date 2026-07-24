@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { X, Users, UserMinus, Loader2 } from 'lucide-react';
+import { X, Users, UserMinus, Loader2, Upload, Image as ImageIcon, Trash2 } from 'lucide-react';
 import CustomDatePicker from './CustomDatePicker';
 import CustomSelect from './CustomSelect';
 import CustomInput from './CustomInput';
@@ -21,6 +21,9 @@ const NewProjectSlideOut = ({ isOpen, onClose, onProjectCreated, projectToEdit =
     const [dropdownOpen, setDropdownOpen] = useState(false);
     const [employeeOptions, setEmployeeOptions] = useState([]);
 
+    const [logoFile, setLogoFile] = useState(null);
+    const [logoPreview, setLogoPreview] = useState('');
+
     const [formData, setFormData] = useState({
         name: '',
         projectCode: '',
@@ -34,6 +37,7 @@ const NewProjectSlideOut = ({ isOpen, onClose, onProjectCreated, projectToEdit =
     const [isSubmitting, setIsSubmitting] = useState(false);
 
     const employeeDropdownRef = useRef(null);
+    const fileInputRef = useRef(null);
 
     // Close employee dropdown on click outside
     useEffect(() => {
@@ -59,11 +63,15 @@ const NewProjectSlideOut = ({ isOpen, onClose, onProjectCreated, projectToEdit =
                     endDate: projectToEdit.endDateRaw || '',
                     client: projectToEdit.metadata?.client || 'Select Client'
                 });
+                setLogoPreview(projectToEdit.logo_url || '');
+                setLogoFile(null);
             } else {
                 setFormData({
                     name: '', projectCode: '', description: '', location: '', employer: '', startDate: '', endDate: '', client: 'Select Client'
                 });
                 setSelectedEmployees([]);
+                setLogoPreview('');
+                setLogoFile(null);
             }
             fetchEmployees();
         } else {
@@ -100,6 +108,24 @@ const NewProjectSlideOut = ({ isOpen, onClose, onProjectCreated, projectToEdit =
 
     const handleInputChange = (field, value) => {
         setFormData(prev => ({ ...prev, [field]: value }));
+    };
+
+    const handleLogoSelect = (e) => {
+        const file = e.target.files[0];
+        if (file) {
+            if (!file.type.startsWith('image/')) {
+                customToast.error('Please upload an image file (PNG, JPG, WEBP)', 'Invalid File');
+                return;
+            }
+            setLogoFile(file);
+            setLogoPreview(URL.createObjectURL(file));
+        }
+    };
+
+    const removeLogo = () => {
+        setLogoFile(null);
+        setLogoPreview('');
+        if (fileInputRef.current) fileInputRef.current.value = '';
     };
 
     const toggleEmployee = (emp) => {
@@ -140,6 +166,16 @@ const NewProjectSlideOut = ({ isOpen, onClose, onProjectCreated, projectToEdit =
             if (res.success) {
                 const projectId = projectToEdit ? projectToEdit.dbId : res.project_id;
                 
+                // Upload logo to S3 if a new file was selected
+                if (logoFile && projectId) {
+                    try {
+                        await projectApi.uploadProjectLogo(projectId, logoFile);
+                    } catch (logoErr) {
+                        console.error("Failed to upload project logo:", logoErr);
+                        customToast.error("Project saved but failed to upload logo to S3", "Logo Upload Error");
+                    }
+                }
+
                 let currentMemberIds = [];
                 if (projectToEdit) {
                     const membersRes = await projectApi.getProjectMembers(projectId);
@@ -168,6 +204,8 @@ const NewProjectSlideOut = ({ isOpen, onClose, onProjectCreated, projectToEdit =
                     name: '', projectCode: '', description: '', location: '', employer: '', startDate: '', endDate: '', client: 'Select Client'
                 });
                 setSelectedEmployees([]);
+                setLogoFile(null);
+                setLogoPreview('');
                 if (onProjectCreated) onProjectCreated();
                 else onClose();
             }
@@ -206,6 +244,55 @@ const NewProjectSlideOut = ({ isOpen, onClose, onProjectCreated, projectToEdit =
 
                 {/* Body / Form */}
                 <div className="flex-1 overflow-y-auto p-6 space-y-6">
+                    {/* Project Organisation Logo Upload */}
+                    <div>
+                        <label className="block text-xs font-semibold text-gray-500 dark:text-[#7A8AAB] uppercase tracking-wider mb-2">
+                            Project Organisation Logo
+                        </label>
+
+                        <input
+                            type="file"
+                            ref={fileInputRef}
+                            accept="image/*"
+                            onChange={handleLogoSelect}
+                            className="hidden"
+                        />
+
+                        {logoPreview ? (
+                            <div className="relative group w-full h-24 bg-gray-50 dark:bg-[#1A2235] border border-gray-200 dark:border-[#2A3445] rounded-xl flex items-center justify-center p-3">
+                                <img
+                                    src={logoPreview}
+                                    alt="Project Logo Preview"
+                                    className="max-h-full max-w-full object-contain rounded"
+                                    onError={(e) => {
+                                        console.error("Logo image failed to load:", logoPreview);
+                                    }}
+                                />
+                                <button
+                                    type="button"
+                                    onClick={removeLogo}
+                                    className="absolute top-2 right-2 p-1.5 bg-red-500 hover:bg-red-600 text-white rounded-lg opacity-90 transition-opacity shadow"
+                                    title="Remove Logo"
+                                >
+                                    <Trash2 size={14} />
+                                </button>
+                            </div>
+                        ) : (
+                            <button
+                                type="button"
+                                onClick={() => fileInputRef.current && fileInputRef.current.click()}
+                                className="w-full h-24 bg-gray-50 dark:bg-[#1A2235] border-2 border-dashed border-gray-200 dark:border-[#2A3445] hover:border-blue-500 dark:hover:border-blue-400 rounded-xl flex flex-col items-center justify-center gap-2 text-gray-400 dark:text-[#7A8AAB] transition-colors group"
+                            >
+                                <div className="p-2 bg-gray-100 dark:bg-[#252D3F] rounded-full group-hover:bg-blue-50 dark:group-hover:bg-blue-900/30 text-gray-500 dark:text-[#7A8AAB] group-hover:text-blue-500 dark:group-hover:text-blue-400 transition-colors">
+                                    <Upload size={18} />
+                                </div>
+                                <span className="text-xs font-medium text-gray-600 dark:text-gray-300">
+                                    Click to upload Organisation Logo
+                                </span>
+                            </button>
+                        )}
+                    </div>
+
                     {/* Row 1: Name and Code */}
                     <div className="grid grid-cols-2 gap-5">
                         <CustomInput label="Project Name" value={formData.name} onChange={(e) => handleInputChange('name', e.target.value)} />
