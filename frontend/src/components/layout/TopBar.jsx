@@ -1,4 +1,3 @@
-
 import React, { useState } from 'react';
 import { Search, Bell, ChevronDown, Moon, Sun, LogOut } from 'lucide-react';
 import { useTheme } from 'next-themes';
@@ -27,7 +26,7 @@ const TopBar = () => {
   const getPageTitle = () => {
     if (location.pathname.startsWith('/projects/')) {
       const id = location.pathname.split('/')[2];
-      return `${id} Explore Zoho Projects!`;
+      return `Project ${id}`;
     }
 
     if (location.pathname === '/collaboration') {
@@ -42,34 +41,26 @@ const TopBar = () => {
       case '/projects': return 'Projects';
       case '/vendors': return 'Vendors';
       case '/clients': return 'Clients';
-      default: return 'MANO-ERP';
+      case '/resources': return 'Resources';
+      case '/units': return 'Units';
+      default: {
+        const seg = location.pathname.replace('/', '');
+        return seg ? seg.charAt(0).toUpperCase() + seg.slice(1) : 'Dashboard';
+      }
     }
   };
 
   return (
     <div className="h-11 min-h-[44px] bg-white dark:bg-gh-bg border-b border-gray-200 dark:border-gh-border flex items-center justify-between px-5 sticky top-0 z-[30] w-full transition-colors">
-      {/* Left: Dynamic Page Title */}
+      {/* Left: Active Page Title */}
       <div className="flex items-center min-w-[130px]">
-        <h1 className="text-sm font-extrabold text-gray-900 dark:text-white capitalize tracking-tight">
+        <h1 className="text-base font-extrabold text-gray-900 dark:text-white capitalize tracking-tight">
           {getPageTitle()}
         </h1>
       </div>
 
-      {/* Center: Global Search */}
-      {(location.pathname !== '/' && !location.pathname.startsWith('/projects/') && location.pathname !== '/projects' && location.pathname !== '/collaboration' && location.pathname !== '/admin' && location.pathname !== '/vendors') ? (
-        <div className="flex-1 w-[40%] mx-6">
-          <div className="relative w-full">
-            <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 dark:text-gh-muted" size={15} />
-            <input
-              type="text"
-              placeholder="Search projects, documents, tasks..."
-              className="w-full pl-9 pr-3 py-1 bg-gray-50 dark:bg-gh-input border border-gray-200 dark:border-gh-border rounded-md focus:outline-none focus:ring-1 focus:ring-blue-500 text-xs text-gray-900 dark:text-gh-text placeholder-gray-400 dark:placeholder-gh-muted"
-            />
-          </div>
-        </div>
-      ) : (
-        <div className="flex-1" />
-      )}
+      {/* Center: Spacer */}
+      <div className="flex-1" />
 
       {/* Right: Actions & Profile */}
       <div className="flex items-center space-x-3 text-xs">
