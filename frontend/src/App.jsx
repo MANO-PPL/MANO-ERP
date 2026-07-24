@@ -4,6 +4,18 @@ import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-d
 import MainLayout from './components/layout/MainLayout';
 import PageSkeleton from './components/PageSkeleton';
 import { AuthProvider, useAuth } from './context/AuthContext';
+import { ToastProvider } from './context/ToastContext';
+import { customToast } from './utils/toast';
+import { toast as reactToastify } from 'react-toastify';
+
+// Intercept react-toastify calls platform-wide to use MANO-ERP custom Toast
+if (reactToastify) {
+  reactToastify.success = (msg, opts) => customToast.success(msg, typeof opts === 'string' ? opts : 'Success');
+  reactToastify.error = (msg, opts) => customToast.error(msg, typeof opts === 'string' ? opts : 'Error');
+  reactToastify.warning = (msg, opts) => customToast.warning(msg, typeof opts === 'string' ? opts : 'Warning');
+  reactToastify.warn = (msg, opts) => customToast.warn(msg, typeof opts === 'string' ? opts : 'Warning');
+  reactToastify.info = (msg, opts) => customToast.info(msg, typeof opts === 'string' ? opts : 'Info');
+}
 
 // ─── Lazy-loaded pages ────────────────────────────────────────────────────
 const Dashboard = lazy(() => import('./pages/Dashboard'));
@@ -52,7 +64,8 @@ function App() {
 
   return (
     <AuthProvider>
-      <Router>
+      <ToastProvider>
+        <Router>
         <Routes>
           <Route path="/login" element={
             <Suspense fallback={<PageSkeleton variant="grid" />}>
@@ -150,6 +163,7 @@ function App() {
           } />
         </Routes>
       </Router>
+      </ToastProvider>
     </AuthProvider>
   );
 }
