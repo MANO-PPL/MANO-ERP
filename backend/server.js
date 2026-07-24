@@ -17,6 +17,7 @@ export const allowedOrigins = [
 import app from './src/app.js';
 import { initializeCrmSchema } from './src/modules/clients/clientService.js';
 import { initializeQualitySchema } from './src/modules/projects/quality/qualityService.js';
+import { initializeProjectSchema } from './src/modules/projects/core/projectService.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -47,6 +48,7 @@ server.listen(PORT, '0.0.0.0', async () => {
     try {
         await initializeCrmSchema();
         await initializeQualitySchema();
+        await initializeProjectSchema();
     } catch (schemaErr) {
         console.error('Schema initialization warning/error:', schemaErr.message || schemaErr);
     }

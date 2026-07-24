@@ -1,5 +1,30 @@
 import { db } from '../../../config/database.js';
 import AppError from '../../../utils/AppError.js';
+import s3Service from '../../shared/s3Service.js';
+
+export function getS3KeyFromUrl(url) {
+    if (!url) return null;
+    const marker = '.amazonaws.com/';
+    const index = url.indexOf(marker);
+    if (index !== -1) {
+        return url.substring(index + marker.length);
+    }
+    return null;
+}
+
+export async function presignUrl(url) {
+    if (!url) return null;
+    if (url.startsWith('/uploads/')) return url;
+
+    const key = getS3KeyFromUrl(url);
+    if (!key) return url;
+    try {
+        return await s3Service.getFileSignedUrl(key);
+    } catch (e) {
+        console.warn(`[S3 Presign Warning] Failed to generate signed URL for key ${key}:`, e.message);
+        return url;
+    }
+}
 
 export function validateProjectPermissions(permissions) {
     if (!permissions) return null;
@@ -26,7 +51,20 @@ export function validateProjectPermissions(permissions) {
 }
 
 
-export async function createProject(orgId, { name, location, status = 'active', project_code, start_date, end_date, metadata }) {
+export async function initializeProjectSchema() {
+    const hasTable = await db.schema.hasTable('proj_projects');
+    if (hasTable) {
+        const hasLogoUrl = await db.schema.hasColumn('proj_projects', 'logo_url');
+        if (!hasLogoUrl) {
+            await db.schema.alterTable('proj_projects', (table) => {
+                table.string('logo_url', 512).nullable();
+            });
+            console.log('Added logo_url column to proj_projects table');
+        }
+    }
+}
+
+export async function createProject(orgId, { name, location, status = 'active', project_code, start_date, end_date, metadata, logo_url }) {
     if (!name) throw new AppError('Project name is required', 400);
 
     const [insertId] = await db('proj_projects').insert({
@@ -37,6 +75,7 @@ export async function createProject(orgId, { name, location, status = 'active', 
         project_code,
         start_date,
         end_date,
+        logo_url: logo_url || null,
         metadata: metadata ? JSON.stringify(metadata) : null
     });
 
@@ -45,8 +84,9 @@ export async function createProject(orgId, { name, location, status = 'active', 
 
 export async function getProjects(orgId, userId, userType) {
     const isUserAdmin = ['admin', 'super admin', 'superadmin', 'super_admin'].includes(userType?.toLowerCase());
+    let projects = [];
     if (isUserAdmin) {
-        return await db('proj_projects as p')
+        projects = await db('proj_projects as p')
             .leftJoin('proj_members as pu', 'p.id', 'pu.project_id')
             .where('p.org_id', orgId)
             .select(
@@ -56,7 +96,7 @@ export async function getProjects(orgId, userId, userType) {
             .groupBy('p.id')
             .orderBy('p.created_at', 'desc');
     } else {
-        return await db('proj_projects as p')
+        projects = await db('proj_projects as p')
             .leftJoin('proj_members as pu', 'p.id', 'pu.project_id')
             .where('p.org_id', orgId)
             .whereExists(
@@ -72,6 +112,14 @@ export async function getProjects(orgId, userId, userType) {
             .groupBy('p.id')
             .orderBy('p.created_at', 'desc');
     }
+
+    for (const project of projects) {
+        if (project.logo_url) {
+            project.logo_url = await presignUrl(project.logo_url);
+        }
+    }
+
+    return projects;
 }
 
 export async function getProjectById(orgId, projectId) {
@@ -80,6 +128,11 @@ export async function getProjectById(orgId, projectId) {
         .first();
 
     if (!project) throw new AppError('Project not found', 404);
+
+    if (project.logo_url) {
+        project.logo_url = await presignUrl(project.logo_url);
+    }
+
     return project;
 }
 
@@ -91,6 +144,7 @@ export async function updateProject(orgId, projectId, updateData) {
     if (updateData.project_code !== undefined) updates.project_code = updateData.project_code;
     if (updateData.start_date !== undefined) updates.start_date = updateData.start_date;
     if (updateData.end_date !== undefined) updates.end_date = updateData.end_date;
+    if (updateData.logo_url !== undefined) updates.logo_url = updateData.logo_url;
     if (updateData.metadata !== undefined) updates.metadata = updateData.metadata ? JSON.stringify(updateData.metadata) : null;
 
     if (Object.keys(updates).length > 0) {
@@ -167,11 +221,14 @@ export async function getProjectMembers(orgId, projectId) {
 }
 
 export default {
+    initializeProjectSchema,
     createProject,
     getProjects,
     getProjectById,
     updateProject,
     assignUserToProject,
     removeUserFromProject,
-    getProjectMembers
+    getProjectMembers,
+    presignUrl,
+    getS3KeyFromUrl
 };

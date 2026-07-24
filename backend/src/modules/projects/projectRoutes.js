@@ -1,4 +1,5 @@
 import express from 'express';
+import multer from 'multer';
 import projectController from './core/projectController.js';
 import directoryRoutes from './directory/directoryRoutes.js';
 import vendorRoutes from './vendors/vendorRoutes.js';
@@ -14,13 +15,16 @@ import qualityRoutes from './quality/qualityRoutes.js';
 import { authenticateJWT, restrictTo, requireProjectPermission, requireProjectAssignment } from '../../middleware/auth.js';
 
 const router = express.Router();
+const upload = multer({ storage: multer.memoryStorage() });
 
 // Authentication required for all project routes
 router.use(authenticateJWT);
 
-// Projects CRUD (Only Admin and HR can create/edit projects globally)
+// Projects CRUD (Only Admin can create/edit projects globally)
 router.post('/', restrictTo('admin'), projectController.createProject);
 router.put('/:id', restrictTo('admin'), projectController.updateProject);
+router.post('/:id/logo', restrictTo('admin'), upload.single('logo'), projectController.uploadProjectLogo);
+
 
 // Everyone can list projects (but viewing details requires assignment/admin bypass)
 router.get('/', projectController.listProjects);

@@ -2,6 +2,8 @@ import catchAsync from '../../../utils/catchAsync.js';
 import projectService from './projectService.js';
 import AppError from '../../../utils/AppError.js';
 import { db } from '../../../config/database.js';
+import s3Service from '../../shared/s3Service.js';
+import path from 'path';
 
 export const listProjects = catchAsync(async (req, res) => {
     const projects = await projectService.getProjects(req.user.org_id, req.user.user_id, req.user.user_type);
@@ -29,7 +31,8 @@ export const getProject = catchAsync(async (req, res) => {
             'Safety': 3,
             'Billing': 3,
             'Material Management': 3,
-            'Approvals': 3
+            'Approvals': 3,
+            'Settings': 3
         };
     } else {
         const member = await db('proj_members')
@@ -56,6 +59,35 @@ export const updateProject = catchAsync(async (req, res) => {
 
     await projectService.updateProject(req.user.org_id, id, req.body);
     res.json({ success: true, message: 'Project updated successfully' });
+});
+
+export const uploadProjectLogo = catchAsync(async (req, res) => {
+    const { id } = req.params;
+    if (!id || isNaN(parseInt(id))) throw new AppError('Invalid Project ID', 400);
+
+    if (!req.file) throw new AppError('No logo image file provided', 400);
+
+    await projectService.getProjectById(req.user.org_id, id);
+
+    const ext = path.extname(req.file.originalname) || '.png';
+    const fileName = `logo_${Date.now()}${ext}`;
+    const folder = `projects/org_${req.user.org_id}/proj_${id}/logo`;
+
+    const rawLogoUrl = await s3Service.uploadFile(
+        req.file.buffer,
+        fileName,
+        folder,
+        req.file.mimetype
+    );
+
+    await projectService.updateProject(req.user.org_id, id, { logo_url: rawLogoUrl });
+    const presignedUrl = await projectService.presignUrl(rawLogoUrl);
+
+    res.json({
+        success: true,
+        message: 'Project organization logo uploaded successfully',
+        logo_url: presignedUrl || rawLogoUrl
+    });
 });
 
 // Member Management Endpoints
@@ -93,6 +125,7 @@ export default {
     getProject,
     createProject,
     updateProject,
+    uploadProjectLogo,
     getProjectMembers,
     assignProjectMember,
     removeProjectMember
