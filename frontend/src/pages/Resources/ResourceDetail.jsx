@@ -3,6 +3,7 @@ import { X, Plus, Trash2, Package, Layers, Users, ArrowRight, RefreshCw, RotateC
 import { resourceApi } from '../../services/resourceApi';
 import { UNIT_OPTIONS, UNIT_REGISTRY, UNIT_GROUPS } from './resourceConstants';
 import { motion, AnimatePresence } from 'framer-motion';
+import ConfirmModal from '../../components/ConfirmModal';
 
 const unitTypeLabel = { weight: 'Weight', volume: 'Volume', length: 'Length', area: 'Area', count: 'Count', time: 'Time' };
 
@@ -23,7 +24,18 @@ const SectionHeader = ({ title }) => (
     <h3 className="text-[10px] font-black text-gray-400 dark:text-gray-500 uppercase tracking-widest mb-3">{title}</h3>
 );
 
-const ResourceDetail = ({ resourceId, onClose, onUpdate, canWrite = true, isDrawer = false, isModified = false, onRevert, onDelete }) => {
+const ResourceDetail = ({
+    resourceId,
+    onClose,
+    onUpdate,
+    canWrite = true,
+    isDrawer = false,
+    isModified = false,
+    onRevert,
+    onDelete,
+    showToast,
+    setConfirmModal: setExternalConfirmModal
+}) => {
     const [resource, setResource] = useState(null);
     const [isLoading, setIsLoading] = useState(true);
     const [isRefreshing, setIsRefreshing] = useState(false);
@@ -33,6 +45,32 @@ const ResourceDetail = ({ resourceId, onClose, onUpdate, canWrite = true, isDraw
     const [convForm, setConvForm] = useState({ name: '', quantity: '', unit_code: '' });
     const [convError, setConvError] = useState('');
     const [isSavingConv, setIsSavingConv] = useState(false);
+
+    // Internal Confirm Modal fallback
+    const [internalConfirmModal, setInternalConfirmModal] = useState({
+        isOpen: false,
+        title: '',
+        message: '',
+        confirmText: 'Confirm',
+        cancelText: 'Cancel',
+        variant: 'danger',
+        isLoading: false,
+        onConfirm: () => { }
+    });
+
+    const triggerConfirm = (config) => {
+        if (setExternalConfirmModal) {
+            setExternalConfirmModal({
+                isOpen: true,
+                ...config
+            });
+        } else {
+            setInternalConfirmModal({
+                isOpen: true,
+                ...config
+            });
+        }
+    };
 
     const fetchDetail = async (isRefresh = false) => {
         if (isRefresh) setIsRefreshing(true);
@@ -66,22 +104,39 @@ const ResourceDetail = ({ resourceId, onClose, onUpdate, canWrite = true, isDraw
             setConvForm({ name: '', quantity: '', unit_code: '' });
             fetchDetail(true);
             if (onUpdate) onUpdate();
+            if (showToast) showToast('success', 'Conversion Added', `Added 1 ${convForm.name} conversion.`);
         } catch (err) {
-            setConvError(err.response?.data?.message || 'Failed to add conversion');
+            const msg = err.response?.data?.message || 'Failed to add conversion';
+            setConvError(msg);
+            if (showToast) showToast('error', 'Add Conversion Failed', msg);
         } finally {
             setIsSavingConv(false);
         }
     };
 
-    const handleDeleteConversion = async (convId) => {
-        if (!window.confirm('Delete this conversion?')) return;
-        try {
-            await resourceApi.removeConversion(resource.id, convId);
-            fetchDetail(true);
-            if (onUpdate) onUpdate();
-        } catch (err) {
-            alert(err.response?.data?.message || 'Failed to delete conversion');
-        }
+    const handleDeleteConversion = (convId, convName) => {
+        triggerConfirm({
+            title: 'Delete Conversion?',
+            message: `Are you sure you want to delete conversion scale "${convName || 'item'}"?`,
+            confirmText: 'Delete',
+            cancelText: 'Cancel',
+            variant: 'danger',
+            isLoading: false,
+            onConfirm: async () => {
+                try {
+                    await resourceApi.removeConversion(resource.id, convId);
+                    fetchDetail(true);
+                    if (onUpdate) onUpdate();
+                    if (setExternalConfirmModal) setExternalConfirmModal(prev => ({ ...prev, isOpen: false }));
+                    setInternalConfirmModal(prev => ({ ...prev, isOpen: false }));
+                    if (showToast) showToast('success', 'Conversion Deleted', 'Removed conversion scale.');
+                } catch (err) {
+                    if (setExternalConfirmModal) setExternalConfirmModal(prev => ({ ...prev, isOpen: false }));
+                    setInternalConfirmModal(prev => ({ ...prev, isOpen: false }));
+                    if (showToast) showToast('error', 'Delete Failed', err.response?.data?.message || 'Failed to delete conversion');
+                }
+            }
+        });
     };
 
     const tc = resource ? (TYPE_CONFIG[resource.type] || TYPE_CONFIG.material) : TYPE_CONFIG.material;
@@ -273,7 +328,7 @@ const ResourceDetail = ({ resourceId, onClose, onUpdate, canWrite = true, isDraw
                                                 <td className="px-3 py-2.5 text-right">
                                                     {canWrite && (
                                                         <button
-                                                            onClick={() => handleDeleteConversion(c.id)}
+                                                            onClick={() => handleDeleteConversion(c.id, c.name)}
                                                             className="p-1 text-gray-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/10 rounded-md transition-colors"
                                                             title="Remove conversion"
                                                         >
@@ -325,6 +380,17 @@ const ResourceDetail = ({ resourceId, onClose, onUpdate, canWrite = true, isDraw
     if (isDrawer) {
         return (
             <div className="w-full h-full bg-white dark:bg-[#0d1117] flex flex-col overflow-hidden relative border-l border-gray-200 dark:border-white/10">
+                <ConfirmModal
+                    isOpen={internalConfirmModal.isOpen}
+                    onClose={() => setInternalConfirmModal(prev => ({ ...prev, isOpen: false }))}
+                    onConfirm={internalConfirmModal.onConfirm}
+                    title={internalConfirmModal.title}
+                    message={internalConfirmModal.message}
+                    confirmText={internalConfirmModal.confirmText}
+                    cancelText={internalConfirmModal.cancelText}
+                    variant={internalConfirmModal.variant}
+                    isLoading={internalConfirmModal.isLoading}
+                />
                 {renderContent()}
             </div>
         );
@@ -337,6 +403,17 @@ const ResourceDetail = ({ resourceId, onClose, onUpdate, canWrite = true, isDraw
             exit={{ opacity: 0 }}
             className="fixed inset-0 z-[5000] flex"
         >
+            <ConfirmModal
+                isOpen={internalConfirmModal.isOpen}
+                onClose={() => setInternalConfirmModal(prev => ({ ...prev, isOpen: false }))}
+                onConfirm={internalConfirmModal.onConfirm}
+                title={internalConfirmModal.title}
+                message={internalConfirmModal.message}
+                confirmText={internalConfirmModal.confirmText}
+                cancelText={internalConfirmModal.cancelText}
+                variant={internalConfirmModal.variant}
+                isLoading={internalConfirmModal.isLoading}
+            />
             <div className="flex-1 bg-black/40 backdrop-blur-sm" onClick={onClose} />
             <motion.div
                 initial={{ x: '100%' }}
