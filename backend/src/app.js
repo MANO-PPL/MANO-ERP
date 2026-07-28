@@ -8,6 +8,9 @@ import routes from './modules/index.js';
 
 const app = express();
 
+// Trust reverse proxy (Nginx) for express-rate-limit X-Forwarded-For header processing
+app.set('trust proxy', 1);
+
 
 export const allowedOrigins = [
     `http://localhost:5173`,

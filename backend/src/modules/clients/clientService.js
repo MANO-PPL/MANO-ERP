@@ -3,7 +3,30 @@ import AppError from '../../utils/AppError.js';
 import { findOrCreateSector } from '../shared/sectorService.js';
 import { findOrCreateJobNature } from '../shared/jobNatureService.js';
 
+/**
+ * Startup self-healing schema migration to introduce org_id columns for CRM tables
+ */
+export async function initializeCrmSchema() {
+    const tables = ['crm_contacts', 'crm_interactions', 'crm_job_nature', 'crm_sectors'];
+    for (const t of tables) {
+        const hasTable = await db.schema.hasTable(t);
+        if (hasTable) {
+            const hasOrgId = await db.schema.hasColumn(t, 'org_id');
+            if (!hasOrgId) {
+                await db.schema.alterTable(t, (table) => {
+                    table.integer('org_id').unsigned().nullable();
+                });
+                await db(t).update({ org_id: 2 });
+                await db.schema.alterTable(t, (table) => {
+                    table.integer('org_id').unsigned().notNullable().alter();
+                });
+            }
+        }
+    }
+}
+
 export async function getClients(orgId, query = {}) {
+
     const page = parseInt(query.page) || 1;
     const limit = parseInt(query.limit) || 20;
     const offset = (page - 1) * limit;
@@ -414,6 +437,83 @@ export async function createInteraction(orgId, data) {
     return newId;
 }
 
+export async function batchSaveClients(orgId, payload = {}) {
+    const { created = [], updated = [], deleted = [] } = payload;
+
+    return await db.transaction(async (trx) => {
+        // 1. Process Deleted
+        if (deleted && deleted.length > 0) {
+            await trx('crm_contacts')
+                .whereIn('id', deleted)
+                .andWhere('type', 'client')
+                .andWhere('org_id', orgId)
+                .del();
+        }
+
+        // 2. Process Updated
+        for (const item of updated) {
+            const updateData = {};
+            if (item.name !== undefined) updateData.name = item.name;
+            if (item.company !== undefined) updateData.name = item.company;
+            if (item.contact_person !== undefined) updateData.contact_person = item.contact_person;
+            if (item.contact_no !== undefined || item.telephone_no !== undefined || item.mobile !== undefined) {
+                updateData.telephone_no = item.contact_no ?? item.telephone_no ?? item.mobile;
+            }
+            if (item.email !== undefined) updateData.email = item.email;
+            if (item.address !== undefined) updateData.address = item.address;
+            if (item.location !== undefined) updateData.location = item.location;
+
+            if (item.job_name || item.job_nature) {
+                updateData.job_nature_id = await findOrCreateJobNature(orgId, item.job_name || item.job_nature, trx);
+            }
+            if (item.sector_name || item.sector) {
+                updateData.sector_id = await findOrCreateSector(orgId, item.sector_name || item.sector, trx);
+            }
+
+            if (Object.keys(updateData).length > 0) {
+                await trx('crm_contacts')
+                    .where({ id: item.id, type: 'client', org_id: orgId })
+                    .update(updateData);
+            }
+        }
+
+        // 3. Process Created
+        for (const item of created) {
+            const clientName = item.name || item.company;
+            if (!clientName) continue;
+
+            let jobNatureId = item.job_nature_id || null;
+            if (!jobNatureId && (item.job_name || item.job_nature)) {
+                jobNatureId = await findOrCreateJobNature(orgId, item.job_name || item.job_nature, trx);
+            }
+
+            let sectorId = item.sector_id || null;
+            if (!sectorId && (item.sector_name || item.sector)) {
+                sectorId = await findOrCreateSector(orgId, item.sector_name || item.sector, trx);
+            }
+
+            await trx('crm_contacts').insert({
+                org_id: orgId,
+                type: 'client',
+                name: clientName,
+                job_nature_id: jobNatureId,
+                sector_id: sectorId,
+                contact_person: item.contact_person || null,
+                telephone_no: item.contact_no || item.telephone_no || item.mobile || null,
+                email: item.email || null,
+                address: item.address || null,
+                location: item.location || null
+            });
+        }
+
+        return {
+            createdCount: created.length,
+            updatedCount: updated.length,
+            deletedCount: deleted.length
+        };
+    });
+}
+
 export default {
     getClients,
     getClientById,
@@ -422,5 +522,7 @@ export default {
     deleteClient,
     bulkInsertClients,
     bulkValidateClients,
-    createInteraction
+    createInteraction,
+    batchSaveClients,
+    initializeCrmSchema
 };
