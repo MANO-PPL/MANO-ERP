@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { X, Plus, Trash2, Package, Layers, Users, ArrowRight, RefreshCw, RotateCcw } from 'lucide-react';
+import { X, Plus, Trash2, Package, Layers, Users, ArrowRight, RefreshCw, RotateCcw, Copy, Check } from 'lucide-react';
 import { resourceApi } from '../../services/resourceApi';
 import { UNIT_OPTIONS, UNIT_REGISTRY, UNIT_GROUPS } from './resourceConstants';
 import { motion, AnimatePresence } from 'framer-motion';
@@ -36,9 +36,29 @@ const ResourceDetail = ({
     showToast,
     setConfirmModal: setExternalConfirmModal
 }) => {
+    const [copied, setCopied] = useState(false);
     const [resource, setResource] = useState(null);
     const [isLoading, setIsLoading] = useState(true);
     const [isRefreshing, setIsRefreshing] = useState(false);
+
+    const handleCopy = () => {
+        if (!resource) return;
+        const detailsText = `RESOURCE DETAILS: ${resource.name}
+========================================
+Resource Name : ${resource.name || '-'}
+Resource Code : ${resource.code || '-'}
+Type          : ${(resource.type || '').toUpperCase()}
+Base Unit     : ${resource.base_unit_code || '-'}
+
+Description   : ${resource.description || '-'}
+Remarks       : ${resource.remarks || '-'}
+========================================`.trim();
+
+        navigator.clipboard.writeText(detailsText);
+        setCopied(true);
+        setTimeout(() => setCopied(false), 2500);
+        if (showToast) showToast('sparkle', 'Copied to Clipboard', 'Structured resource details copied!');
+    };
 
     // Add conversion form
     const [isAddingConv, setIsAddingConv] = useState(false);
@@ -186,6 +206,16 @@ const ResourceDetail = ({
                         </div>
                         <div className="flex items-center gap-1.5">
                             {isRefreshing && <RefreshCw size={14} className="animate-spin text-gray-400" />}
+                            <button
+                                onClick={handleCopy}
+                                className="flex items-center gap-1 px-2.5 py-1 bg-white/60 dark:bg-white/5 hover:bg-white dark:hover:bg-white/10 text-gray-700 dark:text-gray-300 border border-gray-200 dark:border-white/10 rounded-lg text-xs font-semibold transition-all shadow-sm cursor-pointer select-none"
+                                title="Copy Structured Resource Details"
+                            >
+                                {copied ? <Check size={13} className="text-emerald-500 stroke-[3]" /> : <Copy size={13} />}
+                                <span className={copied ? "text-emerald-600 dark:text-emerald-400 font-bold" : ""}>
+                                    {copied ? 'Copied!' : 'Copy Details'}
+                                </span>
+                            </button>
                             {isModified && (
                                 <button
                                     onClick={onRevert}

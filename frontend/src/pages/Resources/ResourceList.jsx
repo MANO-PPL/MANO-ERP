@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
 import {
     Search, Plus, Trash2, Info, RefreshCw, Package, Layers, Users, X, Upload,
     Download, Save, RotateCcw, AlertCircle, ChevronDown, Copy, Eye, CheckSquare,
@@ -10,7 +10,9 @@ import { useAuth } from '../../context/AuthContext';
 import { motion, AnimatePresence } from 'framer-motion';
 import { UNIT_REGISTRY, UNIT_OPTIONS, UNIT_GROUPS } from './resourceConstants';
 import ConfirmModal from '../../components/ConfirmModal';
+import DuplicateResolverModal from '../../components/DuplicateResolverModal';
 import Toast from '../../components/Toast';
+import ResourceFilterDropdown from './ResourceFilterDropdown';
 
 const TYPE_CONFIG = {
     material: { label: 'Material', icon: Package, color: 'text-amber-600 dark:text-amber-400', bg: 'bg-amber-100 dark:bg-amber-900/30' },
@@ -84,6 +86,58 @@ const CustomCheckbox = ({ checked, onChange, title }) => (
     </div>
 );
 
+const CustomPageSizeDropdown = ({ pageSize, setPageSize, totalCount }) => {
+    const [isOpen, setIsOpen] = useState(false);
+    const dropdownRef = useRef(null);
+    const options = [50, 100, 250, 500, 1000, 'All'];
+
+    useEffect(() => {
+        const handleClickOutside = (e) => {
+            if (dropdownRef.current && !dropdownRef.current.contains(e.target)) {
+                setIsOpen(false);
+            }
+        };
+        document.addEventListener('mousedown', handleClickOutside);
+        return () => document.removeEventListener('mousedown', handleClickOutside);
+    }, []);
+
+    return (
+        <div className="relative inline-block text-left select-none" ref={dropdownRef}>
+            <button
+                type="button"
+                onClick={() => setIsOpen(!isOpen)}
+                className="flex items-center gap-1.5 px-2.5 py-1 bg-white dark:bg-[#0d1117] border border-gray-200 dark:border-white/10 rounded-lg text-xs font-semibold text-gray-800 dark:text-gray-200 hover:border-blue-500/50 dark:hover:border-blue-500/50 transition-all shadow-sm cursor-pointer"
+            >
+                <span>{pageSize === 'All' ? `All (${totalCount})` : `${pageSize} per page`}</span>
+                <ChevronDown size={13} className={`text-gray-400 transition-transform duration-200 ${isOpen ? 'rotate-180' : ''}`} />
+            </button>
+
+            {isOpen && (
+                <div className="absolute left-0 bottom-full mb-1 w-36 bg-white dark:bg-[#161b22] border border-gray-200 dark:border-white/10 rounded-lg shadow-xl z-[7000] py-1 text-xs text-gray-700 dark:text-gray-300 font-semibold overflow-hidden animate-in fade-in zoom-in-95 duration-100 select-none">
+                    <div className="px-2.5 py-1 text-[10px] text-gray-400 font-bold uppercase tracking-wider border-b border-gray-100 dark:border-white/5">
+                        Rows per page
+                    </div>
+                    {options.map((opt) => (
+                        <button
+                            key={String(opt)}
+                            onClick={() => {
+                                setPageSize(opt);
+                                setIsOpen(false);
+                            }}
+                            className={`w-full text-left px-3 py-1.5 hover:bg-blue-50 dark:hover:bg-white/5 flex items-center justify-between transition-colors ${
+                                pageSize === opt ? 'bg-blue-50/70 dark:bg-blue-900/20 text-blue-600 dark:text-blue-400 font-bold' : ''
+                            }`}
+                        >
+                            <span>{opt === 'All' ? `All (${totalCount})` : `${opt} rows`}</span>
+                            {pageSize === opt && <Check size={12} className="stroke-[3]" />}
+                        </button>
+                    ))}
+                </div>
+            )}
+        </div>
+    );
+};
+
 const ResourceList = () => {
     const { hasPermission } = useAuth();
     const canWrite = hasPermission('resources', 2);
@@ -106,8 +160,10 @@ const ResourceList = () => {
     const redoStackRef = useRef([]);
 
     const pushUndoState = (gridSnapshot) => {
-        undoStackRef.current.push(JSON.parse(JSON.stringify(gridSnapshot)));
-        if (undoStackRef.current.length > 50) undoStackRef.current.shift();
+        if (!gridSnapshot) return;
+        const snapshotCopy = gridSnapshot.map(r => ({ ...r, _errors: r._errors ? { ...r._errors } : {} }));
+        undoStackRef.current.push(snapshotCopy);
+        if (undoStackRef.current.length > 30) undoStackRef.current.shift();
         redoStackRef.current = [];
     };
 
@@ -117,6 +173,11 @@ const ResourceList = () => {
 
     const [searchTerm, setSearchTerm] = useState('');
     const [filterType, setFilterType] = useState('');
+    const [isFilterDropdownOpen, setIsFilterDropdownOpen] = useState(false);
+    const [filterUnitSearch, setFilterUnitSearch] = useState('');
+    const [activeFilters, setActiveFilters] = useState({ types: [], units: [], statuses: [] });
+    const filterDropdownRef = useRef(null);
+    const [isDuplicateModalOpen, setIsDuplicateModalOpen] = useState(false);
 
     // Bulk selection state
     const [selectedIds, setSelectedIds] = useState(new Set());
@@ -395,30 +456,68 @@ const ResourceList = () => {
         }
     };
 
-    // Sorting & Filtering local grid data
-    const filteredGridData = gridData.filter(r => {
-        const matchesType = filterType ? r.type === filterType : true;
-        const matchesSearch = !searchTerm ||
-            (r.name || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
-            (r.code && r.code.toLowerCase().includes(searchTerm.toLowerCase())) ||
-            (r.description && r.description.toLowerCase().includes(searchTerm.toLowerCase()));
-        return matchesType && matchesSearch;
-    });
+    // Sorting & Filtering local grid data (Memoized)
+    const filteredGridData = useMemo(() => {
+        if (!searchTerm && !filterType && activeFilters.types.length === 0 && activeFilters.units.length === 0 && activeFilters.statuses.length === 0) {
+            return gridData;
+        }
+        const lowerSearch = searchTerm.toLowerCase();
+        return gridData.filter(r => {
+            const matchesType = filterType ? r.type === filterType : true;
+            const matchesSearch = !searchTerm ||
+                (r.name || '').toLowerCase().includes(lowerSearch) ||
+                (r.code && r.code.toLowerCase().includes(lowerSearch)) ||
+                (r.description && r.description.toLowerCase().includes(lowerSearch));
 
-    const sortedGridData = [...filteredGridData].sort((a, b) => {
-        if (!sortConfig.key) return 0;
-        let aVal = a[sortConfig.key] || '';
-        let bVal = b[sortConfig.key] || '';
-        if (typeof aVal === 'string') aVal = aVal.toLowerCase();
-        if (typeof bVal === 'string') bVal = bVal.toLowerCase();
+            const matchesTypeFilter = activeFilters.types.length === 0 || activeFilters.types.includes(r.type);
+            const matchesUnitFilter = activeFilters.units.length === 0 || activeFilters.units.includes(r.base_unit_code);
+            const matchesStatusFilter = activeFilters.statuses.length === 0 || activeFilters.statuses.includes(r._status || 'saved');
 
-        if (aVal < bVal) return sortConfig.direction === 'asc' ? -1 : 1;
-        if (aVal > bVal) return sortConfig.direction === 'asc' ? 1 : -1;
-        return 0;
-    });
+            return matchesType && matchesSearch && matchesTypeFilter && matchesUnitFilter && matchesStatusFilter;
+        });
+    }, [gridData, searchTerm, filterType, activeFilters]);
+
+    const sortedGridData = useMemo(() => {
+        if (!sortConfig.key) return filteredGridData;
+        return [...filteredGridData].sort((a, b) => {
+            const aIsNew = a._status === 'new' || String(a.id).startsWith('temp_');
+            const bIsNew = b._status === 'new' || String(b.id).startsWith('temp_');
+            if (aIsNew && !bIsNew) return 1;
+            if (!aIsNew && bIsNew) return -1;
+
+            let aVal = a[sortConfig.key] || '';
+            let bVal = b[sortConfig.key] || '';
+            if (typeof aVal === 'string') aVal = aVal.toLowerCase();
+            if (typeof bVal === 'string') bVal = bVal.toLowerCase();
+
+            if (aVal < bVal) return sortConfig.direction === 'asc' ? -1 : 1;
+            if (aVal > bVal) return sortConfig.direction === 'asc' ? 1 : -1;
+            return 0;
+        });
+    }, [filteredGridData, sortConfig]);
 
     const sortedGridDataRef = useRef(sortedGridData);
     sortedGridDataRef.current = sortedGridData;
+
+    // Pagination States & Memoization
+    const [currentPage, setCurrentPage] = useState(1);
+    const [pageSize, setPageSize] = useState(100); // Options: 50, 100, 250, 500, 1000, 'All'
+
+    useEffect(() => {
+        setCurrentPage(1);
+    }, [searchTerm, filterType, activeFilters, pageSize]);
+
+    const totalPages = useMemo(() => {
+        if (pageSize === 'All') return 1;
+        return Math.ceil(sortedGridData.length / Number(pageSize)) || 1;
+    }, [sortedGridData.length, pageSize]);
+
+    const paginatedGridData = useMemo(() => {
+        if (pageSize === 'All') return sortedGridData;
+        const size = Number(pageSize);
+        const start = (currentPage - 1) * size;
+        return sortedGridData.slice(start, start + size);
+    }, [sortedGridData, currentPage, pageSize]);
 
     // ─── Global Keyboard Shortcuts (Ctrl+Z Undo, Ctrl+Y Redo, Ctrl+A Select All) ───
     useEffect(() => {
@@ -988,6 +1087,30 @@ const ResourceList = () => {
         setTimeout(() => saveGridRows(updatedGrid), 150);
     };
 
+    // Remove Duplicate Resources Modal Handler
+    const handleRemoveDuplicates = () => {
+        setIsDuplicateModalOpen(true);
+    };
+
+    const handleConfirmDeleteDuplicates = async (idsToDelete) => {
+        if (!idsToDelete || idsToDelete.length === 0) return;
+        pushUndoState(gridDataRef.current);
+        setGridData(prev => prev.filter(r => !idsToDelete.includes(r.id)));
+        setSelectedIds(new Set());
+
+        const savedRemovedIds = idsToDelete.filter(id => !String(id).startsWith('temp_'));
+        if (savedRemovedIds.length > 0) {
+            try {
+                await Promise.all(savedRemovedIds.map(id => resourceApi.deleteResource(id)));
+                setResources(prev => prev.filter(r => !savedRemovedIds.includes(r.id)));
+            } catch (err) {
+                console.error('Error deleting duplicate resources from database', err);
+            }
+        }
+
+        showToast('success', 'Duplicates Removed', `Successfully deleted ${idsToDelete.length} selected duplicate resource(s).`);
+    };
+
     // ─── Bulk Actions ───────────────────────────────────────────────────────────
     const handleBulkDelete = () => {
         if (selectedIds.size === 0) return;
@@ -1197,29 +1320,25 @@ const ResourceList = () => {
             <Toast toast={toast} onClose={() => setToast(null)} />
 
             {/* Stats Header */}
-            <div className="px-6 py-4 border-b border-gray-200 dark:border-white/5 shrink-0">
-                <div className="grid grid-cols-4 gap-3">
+            <div className="px-3 pt-1.5 pb-1.5 border-b border-gray-200 dark:border-white/5 shrink-0">
+                <div className="grid grid-cols-4 gap-2">
                     {[
                         { id: 'total', label: 'Total Resources', value: stats.total, color: 'text-gray-900 dark:text-white', bg: 'bg-gray-50 dark:bg-white/[0.03]' },
                         { id: 'materials', label: 'Materials', value: stats.materials, color: 'text-amber-600 dark:text-amber-400', bg: 'bg-amber-50 dark:bg-amber-900/10' },
                         { id: 'items', label: 'Items', value: stats.items, color: 'text-purple-600 dark:text-purple-400', bg: 'bg-purple-50 dark:bg-purple-900/10' },
                         { id: 'labour', label: 'Labour', value: stats.labour, color: 'text-blue-600 dark:text-blue-400', bg: 'bg-blue-50 dark:bg-blue-900/10' },
                     ].map((s) => (
-                        <div key={s.id} className={`${s.bg} rounded-xl p-3 border border-gray-100 dark:border-white/5`}>
-                            <p className="text-[10px] font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider">{s.label}</p>
-                            <p className={`text-2xl font-black mt-1 ${s.color}`}>{s.value}</p>
+                        <div key={s.id} className={`${s.bg} rounded-lg p-2 px-3 border border-gray-100 dark:border-white/5`}>
+                            <p className="text-[10px] font-bold text-gray-500 dark:text-gray-400 uppercase tracking-wider">{s.label}</p>
+                            <p className={`text-xl font-black mt-0.5 ${s.color}`}>{s.value}</p>
                         </div>
                     ))}
                 </div>
             </div>
 
             {/* Toolbar - Search Bar & Sync Status */}
-            <div className="px-6 py-3 flex items-center justify-between border-b border-gray-200 dark:border-white/5 shrink-0 gap-3">
+            <div className="px-3 py-1.5 flex items-center justify-between border-b border-gray-200 dark:border-white/5 shrink-0 gap-3">
                 <div className="flex items-center gap-3">
-                    <div className="text-xs text-gray-400 font-semibold">
-                        Spreadsheet View
-                    </div>
-
                     {/* Real-time Auto-Save Status Indicator */}
                     <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-gray-50 dark:bg-white/[0.03] border border-gray-200 dark:border-white/10 text-[11px] font-medium">
                         {isSaving ? (
@@ -1267,6 +1386,22 @@ const ResourceList = () => {
                             </button>
                         ))}
                     </div>
+
+                    {/* Filter Dropdown Popup */}
+                    <ResourceFilterDropdown
+                        activeFilters={activeFilters}
+                        onApply={(newFilters) => setActiveFilters(newFilters)}
+                    />
+
+                    {/* Remove Duplicates button */}
+                    <button
+                        onClick={handleRemoveDuplicates}
+                        className="flex items-center gap-1.5 px-3 py-2 text-amber-700 dark:text-amber-400 border border-amber-200 dark:border-amber-500/20 bg-amber-50/50 dark:bg-amber-500/10 hover:bg-amber-100 dark:hover:bg-amber-500/20 rounded-lg text-xs font-semibold transition"
+                        title="Instantly find and remove duplicate rows"
+                    >
+                        <Copy size={14} />
+                        <span>Remove Duplicates</span>
+                    </button>
 
                     {/* Export CSV button */}
                     <button
@@ -1422,8 +1557,8 @@ const ResourceList = () => {
             {/* Main Content Layout with optional Sidebar detail panel */}
             <div ref={tableContainerRef} className="flex-1 min-h-0 flex overflow-hidden w-full relative">
                 {/* Spreadsheet Grid Table */}
-                <div className="flex-1 min-h-0 overflow-auto custom-scrollbar">
-                    <table className="w-full text-left whitespace-nowrap text-[13px] border-collapse bg-white dark:bg-[#0d1117]">
+                <div className="flex-1 min-h-0 overflow-auto no-scrollbar">
+                    <table className="w-full min-w-[1500px] text-left whitespace-nowrap text-[13px] border-collapse bg-white dark:bg-[#0d1117] select-none">
                         <thead className="bg-[#f9fafb] dark:bg-[#161b22] text-gray-500 dark:text-gray-400 sticky top-0 z-20 border-b border-gray-200 dark:border-white/5 tracking-wider text-[10px] uppercase font-bold select-none shadow-sm">
                             <tr>
                                 {/* Master Checkbox */}
@@ -1505,7 +1640,8 @@ const ResourceList = () => {
                                     </td>
                                 </tr>
                             ) : (
-                                sortedGridData.map((resource, rowIndex) => {
+                                paginatedGridData.map((resource, index) => {
+                                    const rowIndex = pageSize === 'All' ? index : (currentPage - 1) * Number(pageSize) + index;
                                     const isNew = resource._status === 'new';
                                     const isError = resource._status === 'error';
                                     const rowErrors = resource._errors || {};
@@ -1574,23 +1710,34 @@ const ResourceList = () => {
                                                         id={`cell-${rowIndex}-${colName}`}
                                                         tabIndex={0}
                                                         onMouseDown={(e) => {
+                                                            if (e.target.closest('.z-\\[6000\\]')) return;
+                                                            if (!isEdit) {
+                                                                e.preventDefault();
+                                                                window.getSelection()?.removeAllRanges();
+                                                            }
                                                             if (e.shiftKey && selectionAnchor) {
-                                                                setSelectionFocus({ r: rowIndex, c: colIndex });
+                                                                if (selectionFocus?.r !== rowIndex || selectionFocus?.c !== colIndex) {
+                                                                    setSelectionFocus({ r: rowIndex, c: colIndex });
+                                                                }
                                                             } else {
-                                                                setSelectionAnchor({ r: rowIndex, c: colIndex });
-                                                                setSelectionFocus({ r: rowIndex, c: colIndex });
+                                                                if (selectionAnchor?.r !== rowIndex || selectionAnchor?.c !== colIndex || selectionFocus?.r !== rowIndex || selectionFocus?.c !== colIndex) {
+                                                                    setSelectionAnchor({ r: rowIndex, c: colIndex });
+                                                                    setSelectionFocus({ r: rowIndex, c: colIndex });
+                                                                }
                                                                 setIsMouseDown(true);
                                                             }
                                                         }}
                                                         onMouseEnter={() => {
-                                                            if (isMouseDown) {
+                                                            if (isMouseDown && (selectionFocus?.r !== rowIndex || selectionFocus?.c !== colIndex)) {
                                                                 setSelectionFocus({ r: rowIndex, c: colIndex });
                                                             }
                                                         }}
                                                         onDoubleClick={() => {
                                                             if (canWrite) {
-                                                                setSelectionAnchor({ r: rowIndex, c: colIndex });
-                                                                setSelectionFocus({ r: rowIndex, c: colIndex });
+                                                                if (selectionAnchor?.r !== rowIndex || selectionAnchor?.c !== colIndex) {
+                                                                    setSelectionAnchor({ r: rowIndex, c: colIndex });
+                                                                    setSelectionFocus({ r: rowIndex, c: colIndex });
+                                                                }
                                                                 if (colName === 'type' || colName === 'base_unit_code') {
                                                                     setActiveDropdownCell({ rowIndex, colName });
                                                                 } else {
@@ -1599,7 +1746,7 @@ const ResourceList = () => {
                                                             }
                                                         }}
                                                         onKeyDown={e => handleCellKeyDown(e, rowIndex, colName)}
-                                                        className={`p-0 border-r border-gray-100 dark:border-white/5 relative outline-none transition-colors ${isInRange ? 'bg-blue-500/15 dark:bg-blue-500/25 z-10' : ''
+                                                        className={`p-0 border-r border-gray-100 dark:border-white/5 relative outline-none select-none ${isInRange ? 'bg-blue-500/15 dark:bg-blue-500/25 z-10' : ''
                                                             } ${isTopEdge ? 'border-t-2 border-t-blue-500' : ''} ${isBottomEdge ? 'border-b-2 border-b-blue-500' : ''
                                                             } ${isLeftEdge ? 'border-l-2 border-l-blue-500' : ''} ${isRightEdge ? 'border-r-2 border-r-blue-500' : ''
                                                             } ${hasError ? 'bg-red-500/5 ring-1 ring-red-500' : ''}`}
@@ -1807,7 +1954,7 @@ const ResourceList = () => {
                                                         className="p-1.5 text-gray-400 hover:text-blue-600 hover:bg-blue-50 dark:hover:bg-white/5 rounded-lg transition-colors"
                                                         title="View / Manage Resource Details"
                                                     >
-                                                        <Eye size={14} />
+                                                        <Info size={14} />
                                                     </button>
                                                     {canWrite && (
                                                         <>
@@ -1886,17 +2033,87 @@ const ResourceList = () => {
                 </AnimatePresence>
             </div>
 
-            {/* Footer */}
+            {/* High Performance Pagination Footer */}
             {!isLoading && (
-                <div className="px-6 py-2 border-t border-gray-100 dark:border-white/5 shrink-0 flex items-center justify-between bg-gray-50/50 dark:bg-white/[0.01]">
-                    <p className="text-[11px] text-gray-400 font-semibold">
-                        Showing <span className="font-semibold text-gray-600 dark:text-gray-300">{sortedGridData.length}</span> of <span className="font-semibold">{gridData.length}</span> rows
-                    </p>
-                    <p className="text-[10px] text-gray-400 select-none">
-                        Shortcuts: Ctrl+Z (Undo) · Ctrl+Y (Redo) · Ctrl+A (Select All) · Del (Delete row or clear cells)
-                    </p>
+                <div className="px-4 py-2 border-t border-gray-200 dark:border-white/5 shrink-0 flex flex-wrap items-center justify-between gap-3 bg-[#f9fafb] dark:bg-[#161b22] text-xs font-medium">
+                    <div className="flex items-center gap-3">
+                        <p className="text-[11px] text-gray-500 dark:text-gray-400">
+                            Showing <span className="font-bold text-gray-800 dark:text-gray-200">
+                                {sortedGridData.length === 0 ? 0 : (pageSize === 'All' ? 1 : (currentPage - 1) * Number(pageSize) + 1)}
+                            </span> to <span className="font-bold text-gray-800 dark:text-gray-200">
+                                {pageSize === 'All' ? sortedGridData.length : Math.min(currentPage * Number(pageSize), sortedGridData.length)}
+                            </span> of <span className="font-bold text-gray-800 dark:text-gray-200">{sortedGridData.length}</span> entries
+                            {gridData.length !== sortedGridData.length && (
+                                <span className="text-gray-400 font-normal"> (filtered from {gridData.length} total)</span>
+                            )}
+                        </p>
+
+                        {/* Custom Page Size Dropdown */}
+                        <div className="flex items-center gap-1.5 ml-2">
+                            <span className="text-[11px] text-gray-400">Rows:</span>
+                            <CustomPageSizeDropdown pageSize={pageSize} setPageSize={setPageSize} totalCount={sortedGridData.length} />
+                        </div>
+                    </div>
+
+                    {/* Page Navigation Controls */}
+                    {pageSize !== 'All' && totalPages > 1 && (
+                        <div className="flex items-center gap-1">
+                            <button
+                                onClick={() => setCurrentPage(1)}
+                                disabled={currentPage === 1}
+                                className="px-2 py-1 rounded border border-gray-200 dark:border-white/10 text-gray-600 dark:text-gray-300 disabled:opacity-30 disabled:cursor-not-allowed hover:bg-gray-100 dark:hover:bg-white/5 font-semibold text-[11px]"
+                                title="First Page"
+                            >
+                                « First
+                            </button>
+                            <button
+                                onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
+                                disabled={currentPage === 1}
+                                className="px-2 py-1 rounded border border-gray-200 dark:border-white/10 text-gray-600 dark:text-gray-300 disabled:opacity-30 disabled:cursor-not-allowed hover:bg-gray-100 dark:hover:bg-white/5 font-semibold text-[11px]"
+                                title="Previous Page"
+                            >
+                                ‹ Prev
+                            </button>
+
+                            <span className="px-3 text-xs font-bold text-gray-700 dark:text-gray-300">
+                                Page {currentPage} of {totalPages}
+                            </span>
+
+                            <button
+                                onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
+                                disabled={currentPage === totalPages}
+                                className="px-2 py-1 rounded border border-gray-200 dark:border-white/10 text-gray-600 dark:text-gray-300 disabled:opacity-30 disabled:cursor-not-allowed hover:bg-gray-100 dark:hover:bg-white/5 font-semibold text-[11px]"
+                                title="Next Page"
+                            >
+                                Next ›
+                            </button>
+                            <button
+                                onClick={() => setCurrentPage(totalPages)}
+                                disabled={currentPage === totalPages}
+                                className="px-2 py-1 rounded border border-gray-200 dark:border-white/10 text-gray-600 dark:text-gray-300 disabled:opacity-30 disabled:cursor-not-allowed hover:bg-gray-100 dark:hover:bg-white/5 font-semibold text-[11px]"
+                                title="Last Page"
+                            >
+                                Last »
+                            </button>
+                        </div>
+                    )}
                 </div>
             )}
+
+            <DuplicateResolverModal
+                isOpen={isDuplicateModalOpen}
+                onClose={() => setIsDuplicateModalOpen(false)}
+                title="Remove Duplicate Resources"
+                gridData={gridData}
+                getKey={(row) => {
+                    const cleanName = (row.name || '').replace(/\s*\(\s*copy(?:\s+\d+)?\s*\)/gi, '').trim().toLowerCase();
+                    const cleanCode = (row.code || '').replace(/[-_]copy(?:[-_]\d+)?$/gi, '').trim().toLowerCase();
+                    return cleanName || cleanCode;
+                }}
+                getLabel={(row) => row.name || 'Unnamed Resource'}
+                getSubLabel={(row) => [row.code, row.type, row.base_unit_code].filter(Boolean).join(' • ')}
+                onDeleteDuplicates={handleConfirmDeleteDuplicates}
+            />
         </div>
     );
 };
