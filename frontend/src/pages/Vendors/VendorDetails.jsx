@@ -1,25 +1,33 @@
-import React from 'react';
-import { X, Copy, Pencil, Trash2 } from 'lucide-react';
+import React, { useState } from 'react';
+import { X, Copy, Pencil, Trash2, Check } from 'lucide-react';
 
 const VendorDetails = ({ isOpen, onClose, vendor, onEdit, onDelete, canWrite }) => {
+    const [copied, setCopied] = useState(false);
+
     if (!isOpen || !vendor) return null;
 
     const handleCopy = () => {
-        const detailsText = `
-Company: ${vendor.name}
-Category: ${vendor.category}
-Contact Person: ${vendor.contact_person}
-Nature of Job: ${vendor.job_name}
-Mobile: ${vendor.mobile}
-Email: ${vendor.email}
-Telephone: ${vendor.telephone || '-'}
-GST No: ${vendor.gst_no || 'NA'}
-Location: ${vendor.location || '-'}
-Website: ${vendor.website || 'NA'}
-Address: ${vendor.address}
-Reference: ${vendor.reference || '-'}
-        `.trim();
+        const detailsText = `VENDOR DETAILS: ${vendor.name}
+========================================
+Company Name  : ${vendor.name || '-'}
+Category      : ${vendor.category || 'Vendor'}
+Nature of Job : ${vendor.job_name || '-'}
+
+Contact Person: ${vendor.contact_person || '-'}
+Mobile Number : ${vendor.mobile || '-'}
+Email Address : ${vendor.email || '-'}
+Telephone     : ${vendor.telephone || '-'}
+
+Location      : ${vendor.location || '-'}
+Address       : ${vendor.address || '-'}
+Website       : ${vendor.website || 'NA'}
+GST Number    : ${vendor.gst_no || 'NA'}
+Reference     : ${vendor.reference || '-'}
+========================================`.trim();
+
         navigator.clipboard.writeText(detailsText);
+        setCopied(true);
+        setTimeout(() => setCopied(false), 2500);
     };
 
     return (
@@ -48,7 +56,7 @@ Reference: ${vendor.reference || '-'}
                 </div>
 
                 {/* Body */}
-                <div className="p-6 overflow-y-auto custom-scrollbar flex-1 space-y-6">
+                <div className="p-6 overflow-y-auto no-scrollbar flex-1 space-y-6">
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                         <div>
                             <p className="text-[10px] uppercase tracking-widest text-gray-400 font-bold mb-1">Contact Person</p>
@@ -112,10 +120,12 @@ Reference: ${vendor.reference || '-'}
                 <div className="px-6 py-4 border-t border-gray-100 dark:border-white/5 flex justify-between items-center gap-3">
                     <button
                         onClick={handleCopy}
-                        className="flex items-center space-x-2 px-4 py-2 bg-gray-100 hover:bg-gray-200 dark:bg-white/5 dark:hover:bg-white/10 text-gray-700 dark:text-gray-300 rounded-lg text-sm font-medium transition-colors"
+                        className="flex items-center space-x-2 px-4 py-2 bg-gray-100 hover:bg-gray-200 dark:bg-white/5 dark:hover:bg-white/10 text-gray-700 dark:text-gray-300 rounded-lg text-sm font-medium transition-colors cursor-pointer select-none"
                     >
-                        <Copy size={16} />
-                        <span>Copy Details</span>
+                        {copied ? <Check size={16} className="text-emerald-500 stroke-[3]" /> : <Copy size={16} />}
+                        <span className={copied ? "text-emerald-600 dark:text-emerald-400 font-bold" : ""}>
+                            {copied ? 'Copied to Clipboard!' : 'Copy Details'}
+                        </span>
                     </button>
 
                     {canWrite && (

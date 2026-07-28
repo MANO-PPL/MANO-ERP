@@ -95,24 +95,24 @@ const AddEditVendor = ({ isOpen, onClose, onSave, initialData = null, availableJ
                         <div className="relative">
                             <label className={labelClasses}>Category</label>
                             <div className="relative">
-                                <div 
+                                <div
                                     className={`${inputClasses} flex items-center justify-between cursor-pointer`}
                                     onClick={() => setShowCategoryDropdown(!showCategoryDropdown)}
                                 >
-                                        <span className={formData.category ? 'text-gray-900 dark:text-gray-100 capitalize' : 'text-gray-400'}>
+                                    <span className={formData.category ? 'text-gray-900 dark:text-gray-100 capitalize' : 'text-gray-400'}>
                                         {formData.category || 'Select Category'}
                                     </span>
                                     <div className={`text-gray-400 transition-transform duration-200 ${showCategoryDropdown ? 'rotate-180' : ''}`}>
-                                        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><path d="m6 9 6 6 6-6"/></svg>
+                                        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><path d="m6 9 6 6 6-6" /></svg>
                                     </div>
                                 </div>
-                                
+
                                 {showCategoryDropdown && (
                                     <>
                                         <div className="fixed inset-0 z-[5500]" onClick={() => setShowCategoryDropdown(false)}></div>
                                         <div className="absolute z-[6000] w-full mt-1 bg-white dark:bg-[#161b22] border border-gray-200 dark:border-white/10 rounded-lg shadow-xl overflow-hidden anim-fade-in">
                                             {['contractor', 'consultants', 'supplier', 'Other'].map(cat => (
-                                                <div 
+                                                <div
                                                     key={cat}
                                                     className="px-4 py-2.5 hover:bg-blue-50 dark:hover:bg-white/5 cursor-pointer text-sm text-gray-700 dark:text-gray-300 transition-colors"
                                                     onClick={() => {
@@ -172,26 +172,26 @@ const AddEditVendor = ({ isOpen, onClose, onSave, initialData = null, availableJ
 
                         <div className="relative">
                             <label className={labelClasses}>Nature of Job</label>
-                            <input 
-                                type="text" 
-                                name="job_nature" 
-                                value={jobNatureSearch} 
+                            <input
+                                type="text"
+                                name="job_nature"
+                                value={jobNatureSearch}
                                 onChange={(e) => {
                                     setJobNatureSearch(e.target.value);
                                     setFormData(prev => ({ ...prev, job_nature: e.target.value }));
-                                }} 
+                                }}
                                 onFocus={() => setShowJobNatureDropdown(true)}
                                 onBlur={() => setTimeout(() => setShowJobNatureDropdown(false), 200)}
-                                placeholder="e.g. Interior Designer" 
-                                className={inputClasses} 
-                                required 
+                                placeholder="e.g. Interior Designer"
+                                className={inputClasses}
+                                required
                             />
                             {showJobNatureDropdown && availableJobNatures.filter(j => j.job_name.toLowerCase().includes(jobNatureSearch.toLowerCase())).length > 0 && (
                                 <div className="absolute z-[6000] w-full mt-1 bg-white dark:bg-[#161b22] border border-gray-200 dark:border-white/10 rounded-lg shadow-xl max-h-40 overflow-y-auto custom-scrollbar">
                                     {availableJobNatures
                                         .filter(j => j.job_name.toLowerCase().includes(jobNatureSearch.toLowerCase()))
                                         .map(j => (
-                                            <div 
+                                            <div
                                                 key={j.job_id}
                                                 className="px-4 py-2 hover:bg-blue-50 dark:hover:bg-white/5 cursor-pointer text-sm text-gray-700 dark:text-gray-300 transition-colors"
                                                 onClick={() => {
