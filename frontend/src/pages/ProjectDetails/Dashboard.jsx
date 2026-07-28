@@ -161,10 +161,10 @@ const Dashboard = ({ project, setActiveTab, canWrite }) => {
     const IssueIcon = issueInfo.icon;
 
     return (
-        <div className="flex-1 overflow-y-auto custom-scrollbar p-3.5 sm:p-4 bg-[#f8fafc] dark:bg-[#0d1117] space-y-4 text-left transition-colors">
+        <div className="flex-1 overflow-y-auto custom-scrollbar no-scrollbar p-3.5 sm:p-4 bg-[#f8fafc] dark:bg-[#0d1117] space-y-4 text-left transition-colors">
             
             {/* ─── Top Welcome & Project Header Banner ─────────────────────────────── */}
-            <div className="relative overflow-hidden rounded-xl bg-gradient-to-r from-slate-900 via-blue-950 to-slate-900 dark:from-[#161b22] dark:via-[#1c2128] dark:to-[#161b22] p-4 sm:p-5 text-white shadow-lg border border-blue-900/30">
+            <div className="relative overflow-hidden rounded-lg bg-gradient-to-r from-slate-900 via-blue-950 to-slate-900 dark:from-[#161b22] dark:via-[#1c2128] dark:to-[#161b22] p-4 sm:p-5 text-white shadow-md border border-blue-900/30">
                 <div className="absolute top-0 right-0 -mt-10 -mr-10 w-64 h-64 bg-blue-500/10 rounded-full blur-3xl pointer-events-auto select-none" />
                 
                 <div className="relative z-10 flex flex-col lg:flex-row justify-between items-start lg:items-center gap-3">
@@ -193,28 +193,28 @@ const Dashboard = ({ project, setActiveTab, canWrite }) => {
                     <div className="flex items-center gap-2 flex-wrap shrink-0">
                         <button
                             onClick={() => setActiveTab('Tasks')}
-                            className="flex items-center gap-1.5 px-3.5 py-2 bg-blue-600 hover:bg-blue-500 text-white font-bold text-xs rounded-xl shadow-lg shadow-blue-600/30 transition-all cursor-pointer"
+                            className="flex items-center gap-1.5 px-3.5 py-2 bg-blue-600 hover:bg-blue-500 text-white font-bold text-xs rounded-lg shadow-md shadow-blue-600/30 transition-all cursor-pointer"
                         >
                             <FolderKanban size={15} />
                             <span>Tasks</span>
                         </button>
                         <button
                             onClick={() => setActiveTab('Drawings')}
-                            className="flex items-center gap-1.5 px-3.5 py-2 bg-white/10 hover:bg-white/20 text-white font-bold text-xs rounded-xl border border-white/10 transition-all cursor-pointer"
+                            className="flex items-center gap-1.5 px-3.5 py-2 bg-white/10 hover:bg-white/20 text-white font-bold text-xs rounded-lg border border-white/10 transition-all cursor-pointer"
                         >
                             <FileText size={15} />
                             <span>Drawings</span>
                         </button>
                         <button
                             onClick={() => setActiveTab('Reports')}
-                            className="flex items-center gap-1.5 px-3.5 py-2 bg-white/10 hover:bg-white/20 text-white font-bold text-xs rounded-xl border border-white/10 transition-all cursor-pointer"
+                            className="flex items-center gap-1.5 px-3.5 py-2 bg-white/10 hover:bg-white/20 text-white font-bold text-xs rounded-lg border border-white/10 transition-all cursor-pointer"
                         >
                             <Activity size={15} />
                             <span>Daily Report</span>
                         </button>
                         <button
                             onClick={() => setActiveTab('Planning')}
-                            className="flex items-center gap-1.5 px-3.5 py-2 bg-white/10 hover:bg-white/20 text-white font-bold text-xs rounded-xl border border-white/10 transition-all cursor-pointer"
+                            className="flex items-center gap-1.5 px-3.5 py-2 bg-white/10 hover:bg-white/20 text-white font-bold text-xs rounded-lg border border-white/10 transition-all cursor-pointer"
                         >
                             <TrendingUp size={15} />
                             <span>Planning</span>
@@ -227,10 +227,10 @@ const Dashboard = ({ project, setActiveTab, canWrite }) => {
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
                 
                 {/* 1. Overall Completion Progress */}
-                <div className="p-5 rounded-2xl bg-white dark:bg-[#161b22] border border-gray-200/80 dark:border-white/5 shadow-sm hover:shadow-md transition-shadow">
+                <div className="p-5 rounded-lg bg-white dark:bg-[#161b22] border border-gray-200/80 dark:border-white/5 shadow-sm hover:shadow-md transition-shadow">
                     <div className="flex justify-between items-center mb-3">
                         <span className="text-xs font-bold text-gray-500 dark:text-gray-400 uppercase tracking-wider">Overall Completion</span>
-                        <div className="p-2 rounded-xl bg-blue-50 dark:bg-blue-900/20 text-blue-600 dark:text-blue-400">
+                        <div className="p-2 rounded-md bg-blue-50 dark:bg-blue-900/20 text-blue-600 dark:text-blue-400">
                             <PieChart size={18} />
                         </div>
                     </div>
@@ -251,11 +251,11 @@ const Dashboard = ({ project, setActiveTab, canWrite }) => {
                 {/* 2. Real-Time Tasks Progress */}
                 <div 
                     onClick={() => setActiveTab('Tasks')}
-                    className="p-5 rounded-2xl bg-white dark:bg-[#161b22] border border-gray-200/80 dark:border-white/5 shadow-sm hover:shadow-md transition-all cursor-pointer group"
+                    className="p-5 rounded-lg bg-white dark:bg-[#161b22] border border-gray-200/80 dark:border-white/5 shadow-sm hover:shadow-md transition-all cursor-pointer group"
                 >
                     <div className="flex justify-between items-center mb-3">
                         <span className="text-xs font-bold text-gray-500 dark:text-gray-400 uppercase tracking-wider">Task Progress</span>
-                        <div className="p-2 rounded-xl bg-emerald-50 dark:bg-emerald-900/20 text-emerald-600 dark:text-emerald-400">
+                        <div className="p-2 rounded-md bg-emerald-50 dark:bg-emerald-900/20 text-emerald-600 dark:text-emerald-400">
                             <CheckCircle2 size={18} />
                         </div>
                     </div>
@@ -277,11 +277,11 @@ const Dashboard = ({ project, setActiveTab, canWrite }) => {
                 {/* 3. Team & Staffing */}
                 <div 
                     onClick={() => setActiveTab('General Documents')}
-                    className="p-5 rounded-2xl bg-white dark:bg-[#161b22] border border-gray-200/80 dark:border-white/5 shadow-sm hover:shadow-md transition-all cursor-pointer group"
+                    className="p-5 rounded-lg bg-white dark:bg-[#161b22] border border-gray-200/80 dark:border-white/5 shadow-sm hover:shadow-md transition-all cursor-pointer group"
                 >
                     <div className="flex justify-between items-center mb-3">
                         <span className="text-xs font-bold text-gray-500 dark:text-gray-400 uppercase tracking-wider">Team & Staffing</span>
-                        <div className="p-2 rounded-xl bg-purple-50 dark:bg-purple-900/20 text-purple-600 dark:text-purple-400">
+                        <div className="p-2 rounded-md bg-purple-50 dark:bg-purple-900/20 text-purple-600 dark:text-purple-400">
                             <Users size={18} />
                         </div>
                     </div>
@@ -301,10 +301,10 @@ const Dashboard = ({ project, setActiveTab, canWrite }) => {
                 </div>
 
                 {/* 4. Health & Risk Status */}
-                <div className="p-5 rounded-2xl bg-white dark:bg-[#161b22] border border-gray-200/80 dark:border-white/5 shadow-sm hover:shadow-md transition-shadow">
+                <div className="p-5 rounded-lg bg-white dark:bg-[#161b22] border border-gray-200/80 dark:border-white/5 shadow-sm hover:shadow-md transition-shadow">
                     <div className="flex justify-between items-center mb-3">
                         <span className="text-xs font-bold text-gray-500 dark:text-gray-400 uppercase tracking-wider">Health & Issues</span>
-                        <div className={`p-2 rounded-xl border ${issueInfo.bg}`}>
+                        <div className={`p-2 rounded-md border ${issueInfo.bg}`}>
                             <IssueIcon size={18} />
                         </div>
                     </div>
@@ -327,7 +327,7 @@ const Dashboard = ({ project, setActiveTab, canWrite }) => {
                 <div className="lg:col-span-2 space-y-6">
                     
                     {/* Phase Progress Timeline */}
-                    <div className="p-6 rounded-2xl bg-white dark:bg-[#161b22] border border-gray-200/80 dark:border-white/5 shadow-sm">
+                    <div className="p-6 rounded-lg bg-white dark:bg-[#161b22] border border-gray-200/80 dark:border-white/5 shadow-sm">
                         <div className="flex justify-between items-center mb-5">
                             <div>
                                 <h3 className="text-base font-extrabold text-gray-900 dark:text-white">Project Phases Timeline</h3>
@@ -378,7 +378,7 @@ const Dashboard = ({ project, setActiveTab, canWrite }) => {
                     </div>
 
                     {/* Financial & Contracts Overview */}
-                    <div className="p-6 rounded-2xl bg-white dark:bg-[#161b22] border border-gray-200/80 dark:border-white/5 shadow-sm">
+                    <div className="p-6 rounded-lg bg-white dark:bg-[#161b22] border border-gray-200/80 dark:border-white/5 shadow-sm">
                         <div className="flex justify-between items-center mb-5">
                             <div>
                                 <h3 className="text-base font-extrabold text-gray-900 dark:text-white">Financial & Budget Summary</h3>
@@ -393,19 +393,19 @@ const Dashboard = ({ project, setActiveTab, canWrite }) => {
                         </div>
 
                         <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 mb-5">
-                            <div className="p-3.5 rounded-xl bg-gray-50 dark:bg-white/[0.02] border border-gray-100 dark:border-white/5">
+                            <div className="p-3.5 rounded-md bg-gray-50 dark:bg-white/[0.02] border border-gray-100 dark:border-white/5">
                                 <p className="text-[10px] font-bold uppercase tracking-wider text-gray-400 mb-1">Contract Value</p>
                                 <p className="text-base font-extrabold text-gray-900 dark:text-white">{financialSummary.contractValue}</p>
                             </div>
-                            <div className="p-3.5 rounded-xl bg-gray-50 dark:bg-white/[0.02] border border-gray-100 dark:border-white/5">
+                            <div className="p-3.5 rounded-md bg-gray-50 dark:bg-white/[0.02] border border-gray-100 dark:border-white/5">
                                 <p className="text-[10px] font-bold uppercase tracking-wider text-gray-400 mb-1">Invoiced Amount</p>
                                 <p className="text-base font-extrabold text-emerald-600 dark:text-emerald-400">{financialSummary.invoicedAmount}</p>
                             </div>
-                            <div className="p-3.5 rounded-xl bg-gray-50 dark:bg-white/[0.02] border border-gray-100 dark:border-white/5">
+                            <div className="p-3.5 rounded-md bg-gray-50 dark:bg-white/[0.02] border border-gray-100 dark:border-white/5">
                                 <p className="text-[10px] font-bold uppercase tracking-wider text-gray-400 mb-1">Spent to Date</p>
                                 <p className="text-base font-extrabold text-blue-600 dark:text-blue-400">{financialSummary.spentToDate}</p>
                             </div>
-                            <div className="p-3.5 rounded-xl bg-gray-50 dark:bg-white/[0.02] border border-gray-100 dark:border-white/5">
+                            <div className="p-3.5 rounded-md bg-gray-50 dark:bg-white/[0.02] border border-gray-100 dark:border-white/5">
                                 <p className="text-[10px] font-bold uppercase tracking-wider text-gray-400 mb-1">Est. Profit Margin</p>
                                 <p className="text-base font-extrabold text-purple-600 dark:text-purple-400">{financialSummary.budgetMargin}</p>
                             </div>
@@ -423,7 +423,7 @@ const Dashboard = ({ project, setActiveTab, canWrite }) => {
                     </div>
 
                     {/* Technical Drawings & Documents Disciplines */}
-                    <div className="p-6 rounded-2xl bg-white dark:bg-[#161b22] border border-gray-200/80 dark:border-white/5 shadow-sm">
+                    <div className="p-6 rounded-lg bg-white dark:bg-[#161b22] border border-gray-200/80 dark:border-white/5 shadow-sm">
                         <div className="flex justify-between items-center mb-5">
                             <div>
                                 <h3 className="text-base font-extrabold text-gray-900 dark:text-white">Drawings & Technical Documents</h3>
@@ -441,7 +441,7 @@ const Dashboard = ({ project, setActiveTab, canWrite }) => {
                             {drawingDisciplines.map((item, dIdx) => {
                                 const pct = Math.round((item.approved / item.total) * 100);
                                 return (
-                                    <div key={dIdx} className="p-4 rounded-xl border border-gray-100 dark:border-white/5 bg-gray-50/50 dark:bg-white/[0.01]">
+                                    <div key={dIdx} className="p-4 rounded-md border border-gray-100 dark:border-white/5 bg-gray-50/50 dark:bg-white/[0.01]">
                                         <div className="flex justify-between items-center mb-2">
                                             <span className="text-xs font-bold text-gray-800 dark:text-gray-200">{item.name}</span>
                                             <span className="text-xs font-mono font-bold text-blue-600 dark:text-blue-400">
@@ -463,7 +463,7 @@ const Dashboard = ({ project, setActiveTab, canWrite }) => {
                 <div className="space-y-6">
                     
                     {/* Real-time Team Members List */}
-                    <div className="p-6 rounded-2xl bg-white dark:bg-[#161b22] border border-gray-200/80 dark:border-white/5 shadow-sm">
+                    <div className="p-6 rounded-lg bg-white dark:bg-[#161b22] border border-gray-200/80 dark:border-white/5 shadow-sm">
                         <div className="flex justify-between items-center mb-4">
                             <h3 className="text-base font-extrabold text-gray-900 dark:text-white">Assigned Team</h3>
                             <button
@@ -481,7 +481,7 @@ const Dashboard = ({ project, setActiveTab, canWrite }) => {
                         ) : (
                             <div className="space-y-3">
                                 {teamMembers.slice(0, 5).map((m, idx) => (
-                                    <div key={idx} className="flex items-center gap-3 p-2 rounded-xl hover:bg-gray-50 dark:hover:bg-white/[0.02] transition-colors">
+                                    <div key={idx} className="flex items-center gap-3 p-2 rounded-md hover:bg-gray-50 dark:hover:bg-white/[0.02] transition-colors">
                                         <div className="w-8 h-8 rounded-full bg-gradient-to-br from-blue-500 to-indigo-600 flex justify-center items-center text-xs font-bold text-white shadow-sm shrink-0">
                                             {(m.name || m.username || 'U').charAt(0).toUpperCase()}
                                         </div>
@@ -500,7 +500,7 @@ const Dashboard = ({ project, setActiveTab, canWrite }) => {
                     </div>
 
                     {/* Recent Meeting Minutes (MOM) & Logs */}
-                    <div className="p-6 rounded-2xl bg-white dark:bg-[#161b22] border border-gray-200/80 dark:border-white/5 shadow-sm">
+                    <div className="p-6 rounded-lg bg-white dark:bg-[#161b22] border border-gray-200/80 dark:border-white/5 shadow-sm">
                         <div className="flex justify-between items-center mb-4">
                             <h3 className="text-base font-extrabold text-gray-900 dark:text-white">Recent Meetings (MOM)</h3>
                             <button
@@ -512,13 +512,13 @@ const Dashboard = ({ project, setActiveTab, canWrite }) => {
                         </div>
 
                         {recentMoms.length === 0 ? (
-                            <div className="p-4 text-center rounded-xl bg-gray-50 dark:bg-white/[0.01] text-xs text-gray-400">
+                            <div className="p-4 text-center rounded-md bg-gray-50 dark:bg-white/[0.01] text-xs text-gray-400">
                                 No meeting minutes recorded yet
                             </div>
                         ) : (
                             <div className="space-y-3">
                                 {recentMoms.map((mom, idx) => (
-                                    <div key={idx} className="p-3 rounded-xl border border-gray-100 dark:border-white/5 bg-gray-50/50 dark:bg-white/[0.01] space-y-1">
+                                    <div key={idx} className="p-3 rounded-md border border-gray-100 dark:border-white/5 bg-gray-50/50 dark:bg-white/[0.01] space-y-1">
                                         <div className="flex justify-between items-center">
                                             <span className="text-xs font-bold text-gray-900 dark:text-white line-clamp-1">
                                                 {mom.title || `Meeting #${mom.id}`}
@@ -537,7 +537,7 @@ const Dashboard = ({ project, setActiveTab, canWrite }) => {
                     </div>
 
                     {/* Quick Access Modules Bar */}
-                    <div className="p-6 rounded-2xl bg-gradient-to-br from-blue-900 to-indigo-950 text-white shadow-xl space-y-4">
+                    <div className="p-6 rounded-lg bg-gradient-to-br from-blue-900 to-indigo-950 text-white shadow-xl space-y-4">
                         <div className="flex items-center gap-2">
                             <Sparkles className="text-blue-300" size={18} />
                             <h4 className="text-sm font-extrabold">Quick Project Modules</h4>
@@ -548,28 +548,28 @@ const Dashboard = ({ project, setActiveTab, canWrite }) => {
                         <div className="grid grid-cols-2 gap-2 text-xs font-bold">
                             <button
                                 onClick={() => setActiveTab('WIP')}
-                                className="p-2.5 rounded-xl bg-white/10 hover:bg-white/20 transition-all text-left flex items-center justify-between cursor-pointer"
+                                className="p-2.5 rounded-md bg-white/10 hover:bg-white/20 transition-all text-left flex items-center justify-between cursor-pointer"
                             >
                                 <span>WIP Progress</span>
                                 <ChevronRight size={14} />
                             </button>
                             <button
                                 onClick={() => setActiveTab('Quality')}
-                                className="p-2.5 rounded-xl bg-white/10 hover:bg-white/20 transition-all text-left flex items-center justify-between cursor-pointer"
+                                className="p-2.5 rounded-md bg-white/10 hover:bg-white/20 transition-all text-left flex items-center justify-between cursor-pointer"
                             >
                                 <span>Quality (QA/QC)</span>
                                 <ChevronRight size={14} />
                             </button>
                             <button
                                 onClick={() => setActiveTab('Safety')}
-                                className="p-2.5 rounded-xl bg-white/10 hover:bg-white/20 transition-all text-left flex items-center justify-between cursor-pointer"
+                                className="p-2.5 rounded-md bg-white/10 hover:bg-white/20 transition-all text-left flex items-center justify-between cursor-pointer"
                             >
                                 <span>HSE & Safety</span>
                                 <ChevronRight size={14} />
                             </button>
                             <button
                                 onClick={() => setActiveTab('Approvals')}
-                                className="p-2.5 rounded-xl bg-white/10 hover:bg-white/20 transition-all text-left flex items-center justify-between cursor-pointer"
+                                className="p-2.5 rounded-md bg-white/10 hover:bg-white/20 transition-all text-left flex items-center justify-between cursor-pointer"
                             >
                                 <span>Approvals</span>
                                 <ChevronRight size={14} />

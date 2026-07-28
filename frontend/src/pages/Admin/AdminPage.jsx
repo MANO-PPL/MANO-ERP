@@ -230,7 +230,7 @@ const AddUserDrawer = ({ open, onClose, onAdd, allProjects = [], templates = [],
                             <div>
                                 <label className="block text-xs font-bold text-gray-500 dark:text-gray-400 mb-1.5 uppercase tracking-wide">Password</label>
                                 <div className="relative">
-                                    <input type={showPw ? 'text' : 'password'} placeholder="Set initial password" value={form.password} onChange={e => setForm(p => ({ ...p, password: e.target.value }))}
+                                    <input type={showPw ? 'text' : 'password'} autoComplete="new-password" placeholder="Set initial password" value={form.password} onChange={e => setForm(p => ({ ...p, password: e.target.value }))}
                                         className="w-full px-4 py-2.5 pr-10 bg-gray-50 dark:bg-[#0d1117] border border-gray-200 dark:border-white/10 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/40 transition-all" />
                                     <button onClick={() => setShowPw(p => !p)} className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600">
                                         <Eye size={16} />
@@ -1102,8 +1102,8 @@ const AdminPage = () => {
                 <table className="w-full text-left whitespace-nowrap text-[13px] border-collapse bg-white dark:bg-[#0d1117]">
                     <thead className="bg-[#f9fafb] dark:bg-[#161b22] text-gray-500 dark:text-gray-400 sticky top-0 z-10 border-b border-gray-200 dark:border-white/5 tracking-widest text-[10px] uppercase font-bold">
                         <tr>
-                            <th className="px-3 py-2.5 w-6"></th>
-                            <th className="px-4 py-2.5 w-12 text-center">SR NO</th>
+                            <th className="pl-2 pr-0.5 py-2.5 w-4"></th>
+                            <th className="pl-0.5 pr-2 py-2.5 text-center">SR NO</th>
                             <th className="px-4 py-2.5">EMPLOYEE NAME</th>
                             <th className="px-4 py-2.5">ROLE</th>
                             <th className="px-4 py-2.5">DEPARTMENT</th>
@@ -1132,10 +1132,10 @@ const AdminPage = () => {
                                     onMouseLeave={() => setHoveredRow(null)}
                                     onClick={() => openView(user)}
                                 >
-                                    <td className="px-3 py-1.5 text-center" onClick={e => e.stopPropagation()}>
+                                    <td className="pl-2 pr-0.5 py-1.5 text-center" onClick={e => e.stopPropagation()}>
                                         <GripVertical size={14} className="text-transparent group-hover/row:text-gray-400 dark:group-hover/row:text-gray-500 hover:!text-blue-500 transition-colors mx-auto cursor-grab active:cursor-grabbing" />
                                     </td>
-                                    <td className="px-4 py-1.5 text-center font-mono text-gray-400">{idx + 1}</td>
+                                    <td className="pl-0.5 pr-2 py-1.5 text-center font-mono text-gray-400">{idx + 1}</td>
                                     <td className="px-4 py-1.5 font-medium text-gray-900 dark:text-gray-100">
                                         <div className="flex items-center gap-3">
                                             <Avatar name={user.name} size={8} />

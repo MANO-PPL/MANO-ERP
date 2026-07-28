@@ -44,9 +44,8 @@ const ProjectFilterModal = ({ open, onClose, activeFilters, setActiveFilters, al
                                     <button
                                         key={st}
                                         onClick={() => toggleFilter('status', st)}
-                                        className={`px-3 py-1.5 rounded-lg text-xs font-semibold border transition-all ${
-                                            isSel ? 'bg-blue-600 text-white border-blue-600' : 'bg-gray-50 dark:bg-white/5 border-gray-200 dark:border-white/10 text-gray-700 dark:text-gray-300'
-                                        }`}
+                                        className={`px-3 py-1.5 rounded-lg text-xs font-semibold border transition-all ${isSel ? 'bg-blue-600 text-white border-blue-600' : 'bg-gray-50 dark:bg-white/5 border-gray-200 dark:border-white/10 text-gray-700 dark:text-gray-300'
+                                            }`}
                                     >
                                         {st}
                                     </button>
@@ -67,9 +66,8 @@ const ProjectFilterModal = ({ open, onClose, activeFilters, setActiveFilters, al
                                         <button
                                             key={owner}
                                             onClick={() => toggleFilter('owners', owner)}
-                                            className={`px-3 py-1.5 rounded-lg text-xs font-semibold border transition-all ${
-                                                isSel ? 'bg-blue-600 text-white border-blue-600' : 'bg-gray-50 dark:bg-white/5 border-gray-200 dark:border-white/10 text-gray-700 dark:text-gray-300'
-                                            }`}
+                                            className={`px-3 py-1.5 rounded-lg text-xs font-semibold border transition-all ${isSel ? 'bg-blue-600 text-white border-blue-600' : 'bg-gray-50 dark:bg-white/5 border-gray-200 dark:border-white/10 text-gray-700 dark:text-gray-300'
+                                                }`}
                                         >
                                             {owner}
                                         </button>
@@ -89,9 +87,8 @@ const ProjectFilterModal = ({ open, onClose, activeFilters, setActiveFilters, al
                                     <button
                                         key={issue}
                                         onClick={() => toggleFilter('issues', issue)}
-                                        className={`px-3 py-1.5 rounded-lg text-xs font-semibold border transition-all ${
-                                            isSel ? 'bg-blue-600 text-white border-blue-600' : 'bg-gray-50 dark:bg-white/5 border-gray-200 dark:border-white/10 text-gray-700 dark:text-gray-300'
-                                        }`}
+                                        className={`px-3 py-1.5 rounded-lg text-xs font-semibold border transition-all ${isSel ? 'bg-blue-600 text-white border-blue-600' : 'bg-gray-50 dark:bg-white/5 border-gray-200 dark:border-white/10 text-gray-700 dark:text-gray-300'
+                                            }`}
                                     >
                                         {issue}
                                     </button>
@@ -340,8 +337,8 @@ const Projects = () => {
                         totalPhases,
                         completedPhases,
                         issues: meta.issues || 'None',
-                        startDate: p.start_date ? new Date(p.start_date).toLocaleDateString('en-US', {month: '2-digit', day: '2-digit', year: 'numeric'}).replace(/\//g, ' ') : 'N/A',
-                        endDate: p.end_date ? new Date(p.end_date).toLocaleDateString('en-US', {month: '2-digit', day: '2-digit', year: 'numeric'}).replace(/\//g, ' ') : 'N/A',
+                        startDate: p.start_date ? new Date(p.start_date).toLocaleDateString('en-US', { month: '2-digit', day: '2-digit', year: 'numeric' }).replace(/\//g, ' ') : 'N/A',
+                        endDate: p.end_date ? new Date(p.end_date).toLocaleDateString('en-US', { month: '2-digit', day: '2-digit', year: 'numeric' }).replace(/\//g, ' ') : 'N/A',
                         startDateRaw: p.start_date ? p.start_date.split('T')[0] : '',
                         endDateRaw: p.end_date ? p.end_date.split('T')[0] : '',
                         daysAlert: '',
@@ -519,9 +516,9 @@ const Projects = () => {
         if (activeTab === 'Active Projects' && project.status.toLowerCase().includes('complete')) return false;
         if (activeTab === 'Completed Projects' && !project.status.toLowerCase().includes('complete')) return false;
 
-        const matchSearch = !searchTerm || 
-            project.name.toLowerCase().includes(searchTerm.toLowerCase()) || 
-            project.id.toLowerCase().includes(searchTerm.toLowerCase()) || 
+        const matchSearch = !searchTerm ||
+            project.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+            project.id.toLowerCase().includes(searchTerm.toLowerCase()) ||
             project.owner.toLowerCase().includes(searchTerm.toLowerCase());
 
         const matchActiveStatus = activeFilters.status.length === 0 || activeFilters.status.includes(project.status);
@@ -581,11 +578,10 @@ const Projects = () => {
 
                     <button
                         onClick={() => setIsFilterModalOpen(true)}
-                        className={`flex items-center space-x-2 px-6 py-2 border rounded-lg text-sm font-medium transition-all ${
-                            activeFilterCount > 0
+                        className={`flex items-center space-x-2 px-6 py-2 border rounded-lg text-sm font-medium transition-all ${activeFilterCount > 0
                                 ? 'border-blue-500 bg-blue-500/10 text-blue-600 dark:text-blue-400'
                                 : 'border-blue-500 bg-blue-600 text-white hover:bg-blue-700'
-                        }`}
+                            }`}
                     >
                         <span>Filter</span>
                         <Filter size={16} fill="currentColor" className={activeFilterCount > 0 ? '' : 'text-white'} />
@@ -613,8 +609,8 @@ const Projects = () => {
                 <table className="w-full text-left whitespace-nowrap text-[13px] border-collapse bg-white dark:bg-[#0d1117]">
                     <thead className="bg-[#f9fafb] dark:bg-[#161b22] text-gray-500 dark:text-gray-400 sticky top-0 z-10 border-b border-gray-200 dark:border-white/5 tracking-widest text-[10px] uppercase font-bold">
                         <tr>
-                            <th className="px-3 py-2.5 w-6"></th>
-                            <th className="px-4 py-2.5 w-12 text-center">SR NO</th>
+                            <th className="pl-2 pr-0.5 py-2.5 w-4"></th>
+                            <th className="pl-0.5 pr-2 py-2.5 text-center">SR NO</th>
                             <th className="px-4 py-2.5">CODE</th>
                             <th className="px-4 py-2.5">PROJECT NAME</th>
                             <th className="px-4 py-2.5">%</th>
@@ -647,10 +643,10 @@ const Projects = () => {
                                     className="hover:bg-blue-50/30 dark:hover:bg-white/[0.02] transition-colors group/row text-gray-700 dark:text-gray-300 relative cursor-pointer"
                                     onClick={() => navigate(`/projects/${project.dbId}`)}
                                 >
-                                    <td className="px-3 py-1.5 text-center" onClick={e => e.stopPropagation()}>
+                                    <td className="pl-2 pr-0.5 py-1.5 text-center" onClick={e => e.stopPropagation()}>
                                         <GripVertical size={14} className="text-transparent group-hover/row:text-gray-400 dark:group-hover/row:text-gray-500 hover:!text-blue-500 transition-colors mx-auto cursor-grab active:cursor-grabbing" />
                                     </td>
-                                    <td className="px-4 py-1.5 text-center font-mono text-gray-400">{idx + 1}</td>
+                                    <td className="pl-0.5 pr-2 py-1.5 text-center font-mono text-gray-400">{idx + 1}</td>
                                     <td className="px-4 py-1.5 font-mono text-blue-600 dark:text-blue-400 font-semibold hover:underline">{project.id}</td>
                                     <td className="px-4 py-1.5">
                                         <span className="font-semibold text-blue-600 dark:text-blue-400 hover:underline transition-colors">{project.name}</span>
