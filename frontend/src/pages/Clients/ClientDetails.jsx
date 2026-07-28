@@ -1,9 +1,10 @@
 import React, { useState } from 'react';
-import { X, Copy, Plus, Calendar, MessageSquare, Phone, Mail, MapPin, Users, Send, Clock } from 'lucide-react';
+import { X, Copy, Plus, Calendar, MessageSquare, Phone, Mail, MapPin, Users, Send, Clock, Check } from 'lucide-react';
 import api from '../../services/api';
 import { toast } from 'react-toastify';
 
 const ClientDetails = ({ isOpen, onClose, client, onUpdate }) => {
+    const [copied, setCopied] = useState(false);
     const [isLogging, setIsLogging] = useState(false);
     const [interactionForm, setInteractionForm] = useState({
         type: 'Call',
@@ -49,21 +50,28 @@ const ClientDetails = ({ isOpen, onClose, client, onUpdate }) => {
     };
 
     const handleCopy = () => {
-        const detailsText = `
-Company: ${client.name}
-Category: ${client.category}
-Contact Person: ${client.contact_person}
-Designation: ${client.designation || '-'}
-Nature of Job: ${client.job_name}
-Contact No: ${client.contact_no}
-Email: ${client.email}
-Location: ${client.location || '-'}
-Website: ${client.website || 'NA'}
-Address: ${client.address}
-Reference: ${client.reference || '-'}
-        `.trim();
+        const detailsText = `CLIENT DETAILS: ${client.name}
+========================================
+Company Name  : ${client.name || '-'}
+Category      : ${client.category || 'Client'}
+Nature of Job : ${client.job_name || '-'}
+Sector        : ${client.sector_name || '-'}
+
+Contact Person: ${client.contact_person || '-'}
+Designation   : ${client.designation || '-'}
+Contact No    : ${client.contact_no || '-'}
+Email Address : ${client.email || '-'}
+
+Location      : ${client.location || '-'}
+Address       : ${client.address || '-'}
+Website       : ${client.website || 'NA'}
+Reference     : ${client.reference || '-'}
+========================================`.trim();
+
         navigator.clipboard.writeText(detailsText);
-        toast.info('Details copied to clipboard');
+        setCopied(true);
+        setTimeout(() => setCopied(false), 2500);
+        toast.info('Structured client details copied!');
     };
 
     return (
@@ -92,7 +100,7 @@ Reference: ${client.reference || '-'}
                 </div>
 
                 {/* Body */}
-                <div className="p-6 overflow-y-auto custom-scrollbar flex-1 space-y-6">
+                <div className="p-6 overflow-y-auto no-scrollbar flex-1 space-y-6">
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                         <div>
                             <p className="text-[10px] uppercase tracking-widest text-gray-400 font-bold mb-1">Sector</p>
@@ -284,10 +292,12 @@ Reference: ${client.reference || '-'}
                     <p className="text-[10px] text-gray-400 font-medium italic">Showing all history for {client.name}</p>
                     <button
                         onClick={handleCopy}
-                        className="flex items-center space-x-2 px-4 py-2 bg-gray-100 hover:bg-gray-200 dark:bg-white/5 dark:hover:bg-white/10 text-gray-700 dark:text-gray-300 rounded-lg text-sm font-medium transition-colors"
+                        className="flex items-center space-x-2 px-4 py-2 bg-gray-100 hover:bg-gray-200 dark:bg-white/5 dark:hover:bg-white/10 text-gray-700 dark:text-gray-300 rounded-lg text-sm font-medium transition-colors cursor-pointer select-none"
                     >
-                        <Copy size={16} />
-                        <span>Copy Details</span>
+                        {copied ? <Check size={16} className="text-emerald-500 stroke-[3]" /> : <Copy size={16} />}
+                        <span className={copied ? "text-emerald-600 dark:text-emerald-400 font-bold" : ""}>
+                            {copied ? 'Copied to Clipboard!' : 'Copy Details'}
+                        </span>
                     </button>
                 </div>
             </div>
