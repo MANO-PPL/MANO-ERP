@@ -27,7 +27,7 @@ export async function saveRefreshToken(userId, token, ipAddress, userAgent, reme
         expires_at: expiresAt,
         ip_address: ipAddress,
         user_agent: userAgent,
-        remember_me: rememberMe
+        remember_me: rememberMe ? 1 : 0
     });
 }
 
@@ -46,7 +46,7 @@ export async function verifyRefreshToken(token) {
         return null;
     }
 
-    if (refreshTokenRecord.revoked) {
+    if (Boolean(refreshTokenRecord.revoked)) {
         // Check for Grace Period (Reuse within 60 seconds of replacement)
         if (refreshTokenRecord.replaced_by_token) {
             const replacementToken = await db('iam_refresh_tokens')
@@ -95,7 +95,7 @@ export async function revokeRefreshToken(token, replacedByToken = null) {
     await db('iam_refresh_tokens')
         .where('token', token)
         .update({
-            revoked: true,
+            revoked: 1,
             replaced_by_token: replacedByToken
         });
 }
@@ -107,5 +107,5 @@ export async function revokeRefreshToken(token, replacedByToken = null) {
 export async function revokeAllTokensForUser(userId) {
     await db('iam_refresh_tokens')
         .where('user_id', userId)
-        .update({ revoked: true });
+        .update({ revoked: 1 });
 }

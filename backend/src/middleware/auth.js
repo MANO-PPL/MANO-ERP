@@ -25,7 +25,8 @@ export const authenticateJWT = catchAsync(async (req, res, next) => {
         // Check based on token contents
         // User tokens (issued by LoginAPI.js) have user_type='employee'/'admin'/etc.
 
-        user = await db('iam_users').where({ user_id: decoded.user_id }).first();
+        const targetUserId = decoded.user_id || decoded.id;
+        user = await db('iam_users').where({ user_id: targetUserId }).first();
 
         if (!user) {
             return res.status(403).json({ message: "Forbidden: Invalid token user" });
@@ -35,6 +36,7 @@ export const authenticateJWT = catchAsync(async (req, res, next) => {
         req.user = {
             ...decoded,
             id: user.user_id || user.id, // standardized ID accessor
+            user_id: user.user_id || user.id,
             user_type: user.user_type ? user.user_type.toLowerCase() : 'employee',
             system_permissions: user.system_permissions
         };

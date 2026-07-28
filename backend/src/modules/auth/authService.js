@@ -127,6 +127,19 @@ export async function getUserProfile(userId) {
 
     if (!user) throw new AppError('User not found', 404);
 
+    let systemPerms = null;
+    if (user.system_permissions) {
+        if (typeof user.system_permissions === 'string') {
+            try {
+                systemPerms = JSON.parse(user.system_permissions);
+            } catch (e) {
+                systemPerms = null;
+            }
+        } else {
+            systemPerms = user.system_permissions;
+        }
+    }
+
     return {
         id: user.user_id,
         user_id: user.user_id,
@@ -139,7 +152,7 @@ export async function getUserProfile(userId) {
         profile_image_url: user.profile_image_url,
         dept_name: user.dept_name,
         desg_name: user.desg_name,
-        system_permissions: user.system_permissions ? (typeof user.system_permissions === 'string' ? JSON.parse(user.system_permissions) : user.system_permissions) : null
+        system_permissions: systemPerms
     };
 }
 
