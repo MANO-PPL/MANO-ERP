@@ -44,6 +44,16 @@ export const deleteClient = catchAsync(async (req, res) => {
     res.json({ success: true, message: 'Client deleted successfully' });
 });
 
+export const deleteClients = catchAsync(async (req, res) => {
+    const { ids } = req.body;
+    if (!ids || !Array.isArray(ids) || ids.length === 0) {
+        throw new AppError('Please provide an array of client IDs', 400);
+    }
+
+    await clientService.deleteClients(req.user.org_id, ids);
+    res.json({ success: true, message: 'Clients deleted successfully' });
+});
+
 export const bulkUpload = catchAsync(async (req, res) => {
     if (!req.file) throw new AppError('Please upload a CSV or Excel file', 400);
 
@@ -127,6 +137,7 @@ export default {
     createClient,
     updateClient,
     deleteClient,
+    deleteClients,
     bulkUpload,
     bulkValidate,
     bulkJson,

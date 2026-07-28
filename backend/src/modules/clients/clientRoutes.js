@@ -20,6 +20,7 @@ router.get('/:id', clientController.getClient);
 // Modifications
 router.post('/', clientController.createClient);
 router.put('/:id', clientController.updateClient);
+router.delete('/', clientController.deleteClients);
 router.delete('/:id', clientController.deleteClient);
 router.post('/:id/interactions', clientController.addInteraction);
 

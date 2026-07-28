@@ -156,7 +156,7 @@ export async function createVendor(orgId, data) {
         category: data.category || null,
         contact_person: data.contact_person || null,
         designation: data.designation || null,
-        telephone_no: data.telephone_no || null,
+        telephone_no: data.telephone_no || data.contact_no || null,
         mobile: data.mobile || null,
         email: data.email || null,
         address: data.address || null,
@@ -170,8 +170,8 @@ export async function createVendor(orgId, data) {
     };
 
     // Resolve job nature name to ID if provided as string
-    if (data.job_nature && !data.job_nature_id) {
-        insertData.job_nature_id = await findOrCreateJobNature(orgId, data.job_nature);
+    if ((data.job_nature || data.job_name) && !data.job_nature_id && !insertData.job_nature_id) {
+        insertData.job_nature_id = await findOrCreateJobNature(orgId, data.job_nature || data.job_name);
     }
 
     const [newId] = await db('crm_contacts').insert(insertData);
@@ -208,8 +208,8 @@ export async function updateVendor(orgId, id, data) {
     if (data.self_remark !== undefined) updateData.remarks = data.self_remark;
 
     // Resolve job nature name to ID if provided as string
-    if (data.job_nature && !data.job_nature_id) {
-        updateData.job_nature_id = await findOrCreateJobNature(orgId, data.job_nature);
+    if ((data.job_nature || data.job_name) && !updateData.job_nature_id) {
+        updateData.job_nature_id = await findOrCreateJobNature(orgId, data.job_nature || data.job_name);
     }
 
     updateData.updated_at = db.fn.now();

@@ -190,12 +190,12 @@ export async function createClient(orgId, data) {
     };
 
     // Resolve sector name to ID if provided as string
-    if (data.sector && !data.sector_id) {
-        insertData.sector_id = await findOrCreateSector(orgId, data.sector);
+    if ((data.sector || data.sector_name) && !data.sector_id && !insertData.sector_id) {
+        insertData.sector_id = await findOrCreateSector(orgId, data.sector || data.sector_name);
     }
     // Resolve job nature name to ID if provided as string
-    if ((data.job_nature || data.job_nature_name) && !data.job_nature_id) {
-        insertData.job_nature_id = await findOrCreateJobNature(orgId, data.job_nature || data.job_nature_name);
+    if ((data.job_nature || data.job_nature_name || data.job_name) && !data.job_nature_id && !insertData.job_nature_id) {
+        insertData.job_nature_id = await findOrCreateJobNature(orgId, data.job_nature || data.job_nature_name || data.job_name);
     }
 
     const [newId] = await db('crm_contacts').insert(insertData);
@@ -235,13 +235,13 @@ export async function updateClient(orgId, id, data) {
     if (data.self_remark !== undefined) updateData.remarks = data.self_remark;
 
     // Resolve job nature name to ID if provided as string
-    if ((data.job_nature || data.job_nature_name) && !updateData.job_nature_id) {
-        updateData.job_nature_id = await findOrCreateJobNature(orgId, data.job_nature || data.job_nature_name || data.job_id);
+    if ((data.job_nature || data.job_nature_name || data.job_name) && !updateData.job_nature_id) {
+        updateData.job_nature_id = await findOrCreateJobNature(orgId, data.job_nature || data.job_nature_name || data.job_name || data.job_id);
     }
 
     // Resolve sector name to ID if provided as string
-    if (data.sector && !updateData.sector_id) {
-        updateData.sector_id = await findOrCreateSector(orgId, data.sector);
+    if ((data.sector || data.sector_name) && !updateData.sector_id) {
+        updateData.sector_id = await findOrCreateSector(orgId, data.sector || data.sector_name);
     }
 
     updateData.updated_at = db.fn.now();
@@ -261,6 +261,15 @@ export async function deleteClient(orgId, id) {
 
     // Delete contact
     await db('crm_contacts').where({ id, org_id: orgId }).delete();
+    return true;
+}
+
+export async function deleteClients(orgId, ids) {
+    if (!Array.isArray(ids) || ids.length === 0) {
+        throw new AppError('No Client IDs provided', 400);
+    }
+    await db('crm_interactions').whereIn('contact_id', ids).andWhere('org_id', orgId).delete();
+    await db('crm_contacts').whereIn('id', ids).andWhere('type', 'client').andWhere('org_id', orgId).delete();
     return true;
 }
 
