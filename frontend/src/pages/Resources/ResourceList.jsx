@@ -155,6 +155,19 @@ const ResourceList = () => {
     const gridDataRef = useRef(gridData);
     gridDataRef.current = gridData;
 
+    // Deleted IDs tracking for manual save
+    const [deletedIds, setDeletedIds] = useState(new Set());
+
+    const hasUnsavedChanges = useMemo(() => {
+        const hasModified = gridData.some(r => (r._status === 'modified' || r._status === 'new') && r.name && r.name.trim() && r.base_unit_code);
+        return hasModified || deletedIds.size > 0;
+    }, [gridData, deletedIds]);
+
+    const unsavedCount = useMemo(() => {
+        const count = gridData.filter(r => (r._status === 'modified' || r._status === 'new') && r.name && r.name.trim() && r.base_unit_code).length;
+        return count + deletedIds.size;
+    }, [gridData, deletedIds]);
+
     // Undo / Redo Stacks
     const undoStackRef = useRef([]);
     const redoStackRef = useRef([]);
@@ -298,6 +311,36 @@ const ResourceList = () => {
         };
     }, []);
 
+    // High-performance viewport scroll & auto-focus engine (0ms reflow overhead)
+    useEffect(() => {
+        if (selectionFocus && sortedGridDataRef.current && sortedGridDataRef.current[selectionFocus.r]) {
+            const colName = GRID_COLUMNS[selectionFocus.c];
+            if (colName) {
+                const cellEl = document.getElementById(`cell-${selectionFocus.r}-${colName}`);
+                if (cellEl) {
+                    if (document.activeElement !== cellEl && !editingCell) {
+                        cellEl.focus({ preventScroll: true });
+                    }
+                    const container = cellEl.closest('.overflow-auto');
+                    if (container) {
+                        const cellRect = cellEl.getBoundingClientRect();
+                        const containerRect = container.getBoundingClientRect();
+                        if (cellRect.top < containerRect.top + 32) {
+                            container.scrollTop -= (containerRect.top + 32 - cellRect.top);
+                        } else if (cellRect.bottom > containerRect.bottom - 12) {
+                            container.scrollTop += (cellRect.bottom - (containerRect.bottom - 12));
+                        }
+                        if (cellRect.left < containerRect.left + 50) {
+                            container.scrollLeft -= (containerRect.left + 50 - cellRect.left);
+                        } else if (cellRect.right > containerRect.right - 50) {
+                            container.scrollLeft += (cellRect.right - (containerRect.right - 50));
+                        }
+                    }
+                }
+            }
+        }
+    }, [selectionFocus, editingCell]);
+
     // Get current cell selection bounding box
     const getSelectionBounds = () => {
         if (!selectionAnchor) return null;
@@ -361,26 +404,25 @@ const ResourceList = () => {
         fetchData();
     }, []);
 
-    // ─── Debounced Auto-Save Trigger ──────────────────────────────────────────
-    const saveTimeoutRef = useRef(null);
-
-    const triggerAutoSave = (customGrid = null, delay = 1000) => {
-        if (saveTimeoutRef.current) clearTimeout(saveTimeoutRef.current);
-        saveTimeoutRef.current = setTimeout(() => {
-            saveGridRows(customGrid);
-        }, delay);
-    };
-
-    // ─── Real-Time Auto-Save Function (Optimized & Non-Blocking) ──────────────
-    const saveGridRows = async (customGrid = null) => {
-        const targetGrid = customGrid || gridDataRef.current;
+    // ─── Manual Batch Save Engine ──────────────────────────────────────────────
+    const saveGridRows = async () => {
+        const targetGrid = gridDataRef.current;
         const newRows = targetGrid.filter(r => r._status === 'new' && r.name && r.name.trim() && r.base_unit_code);
         const modifiedRows = targetGrid.filter(r => r._status === 'modified' && r.name && r.name.trim() && r.base_unit_code);
+        const pendingDeleteIds = Array.from(deletedIds);
 
-        if (newRows.length === 0 && modifiedRows.length === 0) return;
+        if (newRows.length === 0 && modifiedRows.length === 0 && pendingDeleteIds.length === 0) {
+            showToast('info', 'No Changes', 'There are no unsaved changes to save.');
+            return;
+        }
 
         setIsSaving(true);
         try {
+            if (pendingDeleteIds.length > 0) {
+                await Promise.all(pendingDeleteIds.map(id => resourceApi.deleteResource(id)));
+                setDeletedIds(new Set());
+            }
+
             const savedResourceIds = new Set(resourcesRef.current.map(r => r.id));
             const validModifiedRows = [];
             const newPayloadRows = [...newRows];
@@ -405,7 +447,6 @@ const ResourceList = () => {
                 await resourceApi.bulkUpdateResources(cleanPayload);
             }
 
-            // In-memory instant update (avoids full network re-fetch of all database rows)
             setGridData(prevGrid => {
                 const createdMap = new Map();
                 if (createdResults.length > 0) {
@@ -433,7 +474,7 @@ const ResourceList = () => {
             });
 
             setResources(prev => {
-                const updated = [...prev];
+                const updated = prev.filter(r => !pendingDeleteIds.includes(r.id));
                 validModifiedRows.forEach(mod => {
                     const idx = updated.findIndex(r => r.id === mod.id);
                     if (idx !== -1) updated[idx] = { ...updated[idx], ...mod, _status: 'saved' };
@@ -446,11 +487,13 @@ const ResourceList = () => {
                 return updated;
             });
 
-            setLastSavedTime(new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' }));
+            const timeStr = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+            setLastSavedTime(timeStr);
+            showToast('success', 'Changes Saved', 'All changes have been successfully saved to database & cloud.');
         } catch (err) {
-            console.error('Failed to auto-save grid', err);
+            console.error('Failed to save resource grid', err);
             const userFriendlyMsg = formatBackendError(err);
-            showToast('error', 'Update Blocked by Backend', userFriendlyMsg, 5000);
+            showToast('error', 'Save Error', userFriendlyMsg, 5000);
         } finally {
             setIsSaving(false);
         }
@@ -569,7 +612,6 @@ const ResourceList = () => {
                     const previousState = undoStackRef.current.pop();
                     redoStackRef.current.push(JSON.parse(JSON.stringify(gridDataRef.current)));
                     setGridData(previousState);
-                    triggerAutoSave(previousState, 500);
                     showToast('sparkle', 'Undo Successful', 'Restored previous spreadsheet state');
                 } else {
                     showToast('info', 'Undo', 'No previous actions to undo');
@@ -584,7 +626,6 @@ const ResourceList = () => {
                     const nextState = redoStackRef.current.pop();
                     undoStackRef.current.push(JSON.parse(JSON.stringify(gridDataRef.current)));
                     setGridData(nextState);
-                    triggerAutoSave(nextState, 500);
                     showToast('sparkle', 'Redo Successful', 'Restored redone spreadsheet state');
                 } else {
                     showToast('info', 'Redo', 'No actions to redo');
@@ -749,7 +790,6 @@ const ResourceList = () => {
                     setSelectionAnchor({ r: firstNewRowIndex, c: 0 });
                     setSelectionFocus({ r: updatedGrid.length - 1, c: GRID_COLUMNS.length - 1 });
                 }
-                triggerAutoSave(updatedGrid, 500);
             }
         };
 
@@ -840,17 +880,10 @@ const ResourceList = () => {
             updatedGridData = updated;
             return updated;
         });
-
-        if (shouldAutoSave) {
-            triggerAutoSave(updatedGridData.length ? updatedGridData : null, 400);
-        } else {
-            triggerAutoSave(updatedGridData.length ? updatedGridData : null, 1200);
-        }
     };
 
     const handleCellBlur = () => {
         setEditingCell(null);
-        triggerAutoSave(null, 600);
     };
 
     // ─── Helper for Deleting Entire Row Entries when All Cells Selected ────────
@@ -869,16 +902,10 @@ const ResourceList = () => {
         });
         setSelectionAnchor(null);
         setSelectionFocus(null);
-        showToast('success', 'Entry Deleted', `Deleted ${rowsToDelete.length} resource entry(ies).`);
+        showToast('success', 'Entry Deleted', `Deleted ${rowsToDelete.length} resource entry(ies) locally. Click "Save Changes" to apply.`);
 
-        // Parallel background async delete (Non-blocking)
         if (savedIds.length > 0) {
-            try {
-                await Promise.all(savedIds.map(id => resourceApi.deleteResource(id)));
-            } catch (err) {
-                const msg = formatBackendError(err);
-                showToast('error', 'Delete Failed', msg, 5000);
-            }
+            setDeletedIds(prev => new Set([...prev, ...savedIds]));
         }
     };
 
@@ -887,46 +914,48 @@ const ResourceList = () => {
         const colIndex = GRID_COLUMNS.indexOf(colName);
         const totalRows = sortedGridData.length;
         const totalCols = GRID_COLUMNS.length;
+        const isModifier = e.ctrlKey || e.metaKey;
 
-        // If currently editing input inside the cell
         if (editingCell?.rowIndex === rowIndex && editingCell?.colName === colName) {
             if (e.key === 'Enter') {
                 e.preventDefault();
                 handleCellBlur();
-                if (rowIndex < totalRows - 1) {
-                    setSelectionAnchor({ r: rowIndex + 1, c: colIndex });
-                    setSelectionFocus({ r: rowIndex + 1, c: colIndex });
-                }
+                const nextRow = e.shiftKey ? Math.max(0, rowIndex - 1) : Math.min(totalRows - 1, rowIndex + 1);
+                setSelectionAnchor({ r: nextRow, c: colIndex });
+                setSelectionFocus({ r: nextRow, c: colIndex });
             } else if (e.key === 'Escape') {
                 e.preventDefault();
                 setEditingCell(null);
-                setSelectionAnchor(null);
-                setSelectionFocus(null);
-                setSelectedIds(new Set());
-                closeDropdown();
             } else if (e.key === 'Tab') {
                 e.preventDefault();
                 handleCellBlur();
-                const nextColIdx = e.shiftKey ? colIndex - 1 : colIndex + 1;
-                if (nextColIdx >= 0 && nextColIdx < totalCols) {
-                    setSelectionAnchor({ r: rowIndex, c: nextColIdx });
-                    setSelectionFocus({ r: rowIndex, c: nextColIdx });
-                } else if (!e.shiftKey && rowIndex < totalRows - 1) {
-                    setSelectionAnchor({ r: rowIndex + 1, c: 0 });
-                    setSelectionFocus({ r: rowIndex + 1, c: 0 });
+                let nextCol = e.shiftKey ? colIndex - 1 : colIndex + 1;
+                let nextRow = rowIndex;
+                if (nextCol < 0) {
+                    if (rowIndex > 0) {
+                        nextRow = rowIndex - 1;
+                        nextCol = totalCols - 1;
+                    } else {
+                        nextCol = 0;
+                    }
+                } else if (nextCol >= totalCols) {
+                    if (rowIndex < totalRows - 1) {
+                        nextRow = rowIndex + 1;
+                        nextCol = 0;
+                    } else {
+                        nextCol = totalCols - 1;
+                    }
                 }
+                setSelectionAnchor({ r: nextRow, c: nextCol });
+                setSelectionFocus({ r: nextRow, c: nextCol });
             }
             return;
         }
 
-        // Handle Delete / Backspace key
         if (e.key === 'Delete' || e.key === 'Backspace') {
-            const bounds = getSelectionBounds();
             if (bounds && canWrite) {
                 e.preventDefault();
-
-                // If ALL cells across the row(s) are selected, delete the entire entry properly!
-                const isFullRowSelected = (bounds.minCol === 0 && bounds.maxCol === GRID_COLUMNS.length - 1);
+                const isFullRowSelected = (bounds.minCol === 0 && bounds.maxCol === totalCols - 1);
                 if (isFullRowSelected) {
                     const rowsToDelete = [];
                     for (let r = bounds.minRow; r <= bounds.maxRow; r++) {
@@ -939,7 +968,6 @@ const ResourceList = () => {
                     return;
                 }
 
-                // Otherwise partial cell selection: clear text cell contents
                 pushUndoState(gridDataRef.current);
                 let updatedGrid = [...gridDataRef.current];
                 let numCleared = 0;
@@ -964,84 +992,200 @@ const ResourceList = () => {
 
                 if (numCleared > 0) {
                     setGridData(updatedGrid);
-                    showToast('info', 'Cells Cleared', `Cleared content from ${numCleared} cell(s).`);
-                    setTimeout(() => saveGridRows(updatedGrid), 150);
+                    showToast('info', 'Cells Cleared', `Cleared content from ${numCleared} cell(s). Click "Save Changes" to apply.`);
                 }
             }
             return;
         }
 
-        // Cell Selection Navigation with Arrow Keys & Shift Range Selection
+        const curFocus = selectionFocus || { r: rowIndex, c: colIndex };
+        const curAnchor = selectionAnchor || { r: rowIndex, c: colIndex };
+
+        // Arrow navigation (Up, Down, Left, Right)
+        if (e.key === 'ArrowUp') {
+            e.preventDefault();
+            const targetRow = isModifier ? 0 : Math.max(0, curFocus.r - 1);
+            if (e.shiftKey) {
+                setSelectionAnchor(curAnchor);
+                setSelectionFocus({ r: targetRow, c: curFocus.c });
+            } else {
+                setSelectionAnchor({ r: targetRow, c: curFocus.c });
+                setSelectionFocus({ r: targetRow, c: curFocus.c });
+            }
+            return;
+        }
+
         if (e.key === 'ArrowDown') {
             e.preventDefault();
-            const nextRow = Math.min(totalRows - 1, (selectionFocus ? selectionFocus.r : rowIndex) + 1);
+            const targetRow = isModifier ? Math.max(0, totalRows - 1) : Math.min(Math.max(0, totalRows - 1), curFocus.r + 1);
             if (e.shiftKey) {
-                setSelectionFocus(prev => ({ r: nextRow, c: prev ? prev.c : colIndex }));
+                setSelectionAnchor(curAnchor);
+                setSelectionFocus({ r: targetRow, c: curFocus.c });
             } else {
-                setSelectionAnchor({ r: nextRow, c: colIndex });
-                setSelectionFocus({ r: nextRow, c: colIndex });
+                setSelectionAnchor({ r: targetRow, c: curFocus.c });
+                setSelectionFocus({ r: targetRow, c: curFocus.c });
             }
-        } else if (e.key === 'ArrowUp') {
+            return;
+        }
+
+        if (e.key === 'ArrowLeft') {
             e.preventDefault();
-            const nextRow = Math.max(0, (selectionFocus ? selectionFocus.r : rowIndex) - 1);
+            const targetCol = isModifier ? 0 : Math.max(0, curFocus.c - 1);
             if (e.shiftKey) {
-                setSelectionFocus(prev => ({ r: nextRow, c: prev ? prev.c : colIndex }));
+                setSelectionAnchor(curAnchor);
+                setSelectionFocus({ r: curFocus.r, c: targetCol });
             } else {
-                setSelectionAnchor({ r: nextRow, c: colIndex });
-                setSelectionFocus({ r: nextRow, c: colIndex });
+                setSelectionAnchor({ r: curFocus.r, c: targetCol });
+                setSelectionFocus({ r: curFocus.r, c: targetCol });
             }
-        } else if (e.key === 'ArrowRight') {
+            return;
+        }
+
+        if (e.key === 'ArrowRight') {
             e.preventDefault();
-            const curCol = selectionFocus ? selectionFocus.c : colIndex;
-            const nextCol = Math.min(totalCols - 1, curCol + 1);
+            const targetCol = isModifier ? totalCols - 1 : Math.min(totalCols - 1, curFocus.c + 1);
             if (e.shiftKey) {
-                setSelectionFocus(prev => ({ r: prev ? prev.r : rowIndex, c: nextCol }));
+                setSelectionAnchor(curAnchor);
+                setSelectionFocus({ r: curFocus.r, c: targetCol });
             } else {
-                setSelectionAnchor({ r: rowIndex, c: nextCol });
-                setSelectionFocus({ r: rowIndex, c: nextCol });
+                setSelectionAnchor({ r: curFocus.r, c: targetCol });
+                setSelectionFocus({ r: curFocus.r, c: targetCol });
             }
-        } else if (e.key === 'ArrowLeft') {
+            return;
+        }
+
+        // Home & End keys
+        if (e.key === 'Home') {
             e.preventDefault();
-            const curCol = selectionFocus ? selectionFocus.c : colIndex;
-            const nextCol = Math.max(0, curCol - 1);
+            const targetRow = isModifier ? 0 : curFocus.r;
+            const targetCol = 0;
             if (e.shiftKey) {
-                setSelectionFocus(prev => ({ r: prev ? prev.r : rowIndex, c: nextCol }));
+                setSelectionAnchor(curAnchor);
+                setSelectionFocus({ r: targetRow, c: targetCol });
             } else {
-                setSelectionAnchor({ r: rowIndex, c: nextCol });
-                setSelectionFocus({ r: rowIndex, c: nextCol });
+                setSelectionAnchor({ r: targetRow, c: targetCol });
+                setSelectionFocus({ r: targetRow, c: targetCol });
             }
-        } else if (e.key === 'Tab') {
+            return;
+        }
+
+        if (e.key === 'End') {
             e.preventDefault();
-            if (!e.shiftKey) {
-                if (colIndex < totalCols - 1) {
-                    setSelectionAnchor({ r: rowIndex, c: colIndex + 1 });
-                    setSelectionFocus({ r: rowIndex, c: colIndex + 1 });
-                } else if (rowIndex < totalRows - 1) {
-                    setSelectionAnchor({ r: rowIndex + 1, c: 0 });
-                    setSelectionFocus({ r: rowIndex + 1, c: 0 });
+            const targetRow = isModifier ? Math.max(0, totalRows - 1) : curFocus.r;
+            const targetCol = totalCols - 1;
+            if (e.shiftKey) {
+                setSelectionAnchor(curAnchor);
+                setSelectionFocus({ r: targetRow, c: targetCol });
+            } else {
+                setSelectionAnchor({ r: targetRow, c: targetCol });
+                setSelectionFocus({ r: targetRow, c: targetCol });
+            }
+            return;
+        }
+
+        // PageUp & PageDown
+        if (e.key === 'PageUp') {
+            e.preventDefault();
+            const targetRow = Math.max(0, curFocus.r - 10);
+            if (e.shiftKey) {
+                setSelectionAnchor(curAnchor);
+                setSelectionFocus({ r: targetRow, c: curFocus.c });
+            } else {
+                setSelectionAnchor({ r: targetRow, c: curFocus.c });
+                setSelectionFocus({ r: targetRow, c: curFocus.c });
+            }
+            return;
+        }
+
+        if (e.key === 'PageDown') {
+            e.preventDefault();
+            const targetRow = Math.min(Math.max(0, totalRows - 1), curFocus.r + 10);
+            if (e.shiftKey) {
+                setSelectionAnchor(curAnchor);
+                setSelectionFocus({ r: targetRow, c: curFocus.c });
+            } else {
+                setSelectionAnchor({ r: targetRow, c: curFocus.c });
+                setSelectionFocus({ r: targetRow, c: curFocus.c });
+            }
+            return;
+        }
+
+        // Tab / Shift+Tab
+        if (e.key === 'Tab') {
+            e.preventDefault();
+            let nextCol = e.shiftKey ? curFocus.c - 1 : curFocus.c + 1;
+            let nextRow = curFocus.r;
+            if (nextCol < 0) {
+                if (curFocus.r > 0) {
+                    nextRow = curFocus.r - 1;
+                    nextCol = totalCols - 1;
+                } else {
+                    nextCol = 0;
                 }
-            } else {
-                if (colIndex > 0) {
-                    setSelectionAnchor({ r: rowIndex, c: colIndex - 1 });
-                    setSelectionFocus({ r: rowIndex, c: colIndex - 1 });
-                } else if (rowIndex > 0) {
-                    setSelectionAnchor({ r: rowIndex - 1, c: totalCols - 1 });
-                    setSelectionFocus({ r: rowIndex - 1, c: totalCols - 1 });
+            } else if (nextCol >= totalCols) {
+                if (curFocus.r < totalRows - 1) {
+                    nextRow = curFocus.r + 1;
+                    nextCol = 0;
+                } else {
+                    nextCol = totalCols - 1;
                 }
             }
-        } else if (e.key === 'Enter' || e.key === 'F2') {
+            setSelectionAnchor({ r: nextRow, c: nextCol });
+            setSelectionFocus({ r: nextRow, c: nextCol });
+            return;
+        }
+
+        // Enter / Shift+Enter
+        if (e.key === 'Enter') {
+            e.preventDefault();
+            const nextRow = e.shiftKey ? Math.max(0, curFocus.r - 1) : Math.min(Math.max(0, totalRows - 1), curFocus.r + 1);
+            setSelectionAnchor({ r: nextRow, c: curFocus.c });
+            setSelectionFocus({ r: nextRow, c: curFocus.c });
+            return;
+        }
+
+        // Spacebar selection (Shift+Space: Rows, Ctrl+Space: Columns)
+        if (e.key === ' ' || e.key === 'Spacebar') {
+            if (e.shiftKey && !isModifier) {
+                e.preventDefault();
+                const activeBounds = bounds || { minRow: curFocus.r, maxRow: curFocus.r };
+                const selectedRowIds = new Set();
+                for (let r = activeBounds.minRow; r <= activeBounds.maxRow; r++) {
+                    const targetRowObj = sortedGridDataRef.current[r];
+                    if (targetRowObj) selectedRowIds.add(targetRowObj.id);
+                }
+                setSelectedIds(selectedRowIds);
+                setSelectionAnchor({ r: activeBounds.minRow, c: 0 });
+                setSelectionFocus({ r: activeBounds.maxRow, c: totalCols - 1 });
+                return;
+            }
+            if (isModifier && !e.shiftKey) {
+                e.preventDefault();
+                const activeBounds = bounds || { minCol: curFocus.c, maxCol: curFocus.c };
+                setSelectionAnchor({ r: 0, c: activeBounds.minCol });
+                setSelectionFocus({ r: Math.max(0, totalRows - 1), c: activeBounds.maxCol });
+                return;
+            }
+        }
+
+        // F2 edit mode
+        if (e.key === 'F2') {
             e.preventDefault();
             if (canWrite) {
                 if (colName === 'type' || colName === 'base_unit_code') {
-                    setActiveDropdownCell({ rowIndex, colName });
+                    setActiveDropdownCell({ rowIndex: curFocus.r, colName });
                 } else {
-                    setEditingCell({ rowIndex, colName });
+                    setEditingCell({ rowIndex: curFocus.r, colName });
                 }
             }
-        } else if (canWrite && e.key.length === 1 && !e.ctrlKey && !e.metaKey && !e.altKey) {
+            return;
+        }
+
+        // Direct typing replaces cell content
+        if (canWrite && e.key.length === 1 && !isModifier && !e.altKey) {
             if (colName !== 'type' && colName !== 'base_unit_code') {
-                setEditingCell({ rowIndex, colName });
-                handleCellChange(rowIndex, colName, e.key);
+                setEditingCell({ rowIndex: curFocus.r, colName });
+                handleCellChange(curFocus.r, colName, e.key);
             }
         }
     };
@@ -1100,15 +1244,11 @@ const ResourceList = () => {
 
         const savedRemovedIds = idsToDelete.filter(id => !String(id).startsWith('temp_'));
         if (savedRemovedIds.length > 0) {
-            try {
-                await Promise.all(savedRemovedIds.map(id => resourceApi.deleteResource(id)));
-                setResources(prev => prev.filter(r => !savedRemovedIds.includes(r.id)));
-            } catch (err) {
-                console.error('Error deleting duplicate resources from database', err);
-            }
+            setDeletedIds(prev => new Set([...prev, ...savedRemovedIds]));
+            setResources(prev => prev.filter(r => !savedRemovedIds.includes(r.id)));
         }
 
-        showToast('success', 'Duplicates Removed', `Successfully deleted ${idsToDelete.length} selected duplicate resource(s).`);
+        showToast('success', 'Duplicates Removed', `Removed ${idsToDelete.length} selected duplicate resource(s) locally. Click "Save Changes" to apply.`);
     };
 
     // ─── Bulk Actions ───────────────────────────────────────────────────────────
@@ -1118,7 +1258,7 @@ const ResourceList = () => {
         setConfirmModal({
             isOpen: true,
             title: 'Delete Selected Resources?',
-            message: `Are you sure you want to delete ${selectedIds.size} selected resource(s)? This action cannot be undone.`,
+            message: `Are you sure you want to delete ${selectedIds.size} selected resource(s)? Click "Save Changes" after deletion to apply to cloud.`,
             confirmText: `Delete (${selectedIds.size})`,
             cancelText: 'Cancel',
             variant: 'danger',
@@ -1137,16 +1277,10 @@ const ResourceList = () => {
                     setViewingResource(null);
                 }
                 closeConfirmModal();
-                showToast('success', 'Bulk Delete Successful', `Deleted ${count} selected resource(s).`);
+                showToast('success', 'Bulk Delete Successful', `Deleted ${count} selected resource(s) locally. Click "Save Changes" to apply.`);
 
-                // Parallel background async delete (Non-blocking)
                 if (savedIds.length > 0) {
-                    try {
-                        await Promise.all(savedIds.map(id => resourceApi.deleteResource(id)));
-                    } catch (err) {
-                        const msg = formatBackendError(err);
-                        showToast('error', 'Delete Failed', msg, 5000);
-                    }
+                    setDeletedIds(prev => new Set([...prev, ...savedIds]));
                 }
             }
         });
@@ -1167,39 +1301,29 @@ const ResourceList = () => {
             _status: 'new',
             _errors: {}
         }));
-        let nextGrid = [];
-        setGridData(prev => {
-            nextGrid = [...prev, ...duplicates];
-            return nextGrid;
-        });
+        setGridData(prev => [...prev, ...duplicates]);
         const count = selectedIds.size;
         setSelectedIds(new Set());
-        showToast('sparkle', 'Bulk Duplicated', `Created ${count} row duplicate(s).`);
-        triggerAutoSave(nextGrid, 400);
+        showToast('sparkle', 'Bulk Duplicated', `Created ${count} row duplicate(s). Click "Save Changes" to apply.`);
     };
 
     const handleBulkChangeType = (newType) => {
         if (selectedIds.size === 0) return;
         pushUndoState(gridDataRef.current);
         const count = selectedIds.size;
-        let updatedGrid = [];
-        setGridData(prev => {
-            updatedGrid = prev.map(row => {
-                if (selectedIds.has(row.id)) {
-                    return {
-                        ...row,
-                        type: newType,
-                        compositions: newType !== 'item' ? [] : row.compositions,
-                        _status: row._status === 'new' ? 'new' : 'modified'
-                    };
-                }
-                return row;
-            });
-            return updatedGrid;
-        });
+        setGridData(prev => prev.map(row => {
+            if (selectedIds.has(row.id)) {
+                return {
+                    ...row,
+                    type: newType,
+                    compositions: newType !== 'item' ? [] : row.compositions,
+                    _status: row._status === 'new' ? 'new' : 'modified'
+                };
+            }
+            return row;
+        }));
         closeDropdown();
-        showToast('sparkle', 'Type Updated', `Changed type to "${newType.toUpperCase()}" for ${count} row(s).`);
-        triggerAutoSave(updatedGrid, 400);
+        showToast('sparkle', 'Type Updated', `Changed type to "${newType.toUpperCase()}" for ${count} row(s). Click "Save Changes" to apply.`);
     };
 
     const handleBulkChangeUnit = (newUnit) => {
@@ -1209,23 +1333,18 @@ const ResourceList = () => {
         const u = UNIT_REGISTRY[newUnit];
         const unitName = u ? u.name : newUnit;
 
-        let updatedGrid = [];
-        setGridData(prev => {
-            updatedGrid = prev.map(row => {
-                if (selectedIds.has(row.id)) {
-                    return {
-                        ...row,
-                        base_unit_code: newUnit,
-                        _status: row._status === 'new' ? 'new' : 'modified'
-                    };
-                }
-                return row;
-            });
-            return updatedGrid;
-        });
+        setGridData(prev => prev.map(row => {
+            if (selectedIds.has(row.id)) {
+                return {
+                    ...row,
+                    base_unit_code: newUnit,
+                    _status: row._status === 'new' ? 'new' : 'modified'
+                };
+            }
+            return row;
+        }));
         closeDropdown();
-        showToast('sparkle', 'Unit Updated', `Changed base unit to "${unitName}" for ${count} row(s).`);
-        triggerAutoSave(updatedGrid, 400);
+        showToast('sparkle', 'Unit Updated', `Changed base unit to "${unitName}" for ${count} row(s). Click "Save Changes" to apply.`);
     };
 
     // ─── Delete Row ─────────────────────────────────────────────────────────────
@@ -1240,7 +1359,7 @@ const ResourceList = () => {
         setConfirmModal({
             isOpen: true,
             title: 'Delete Resource?',
-            message: `Are you sure you want to delete "${row.name || 'this resource'}"? This action cannot be undone.`,
+            message: `Are you sure you want to delete "${row.name || 'this resource'}"? Click "Save Changes" after deletion to apply to cloud.`,
             confirmText: 'Delete',
             cancelText: 'Cancel',
             variant: 'danger',
@@ -1255,14 +1374,9 @@ const ResourceList = () => {
                     setViewingResource(null);
                 }
                 closeConfirmModal();
-                showToast('success', 'Resource Deleted', `Deleted "${row.name || 'Resource'}".`);
-
-                // Async background delete
-                try {
-                    await resourceApi.deleteResource(row.id);
-                } catch (err) {
-                    const msg = formatBackendError(err);
-                    showToast('error', 'Delete Failed', msg, 5000);
+                showToast('success', 'Resource Deleted', `Deleted "${row.name || 'Resource'}" locally. Click "Save Changes" to apply.`);
+                if (!String(row.id).startsWith('temp_')) {
+                    setDeletedIds(prev => new Set([...prev, row.id]));
                 }
             }
         });
@@ -1339,21 +1453,48 @@ const ResourceList = () => {
             {/* Toolbar - Search Bar & Sync Status */}
             <div className="px-3 py-1.5 flex items-center justify-between border-b border-gray-200 dark:border-white/5 shrink-0 gap-3">
                 <div className="flex items-center gap-3">
-                    {/* Real-time Auto-Save Status Indicator */}
-                    <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-gray-50 dark:bg-white/[0.03] border border-gray-200 dark:border-white/10 text-[11px] font-medium">
-                        {isSaving ? (
-                            <>
-                                <RefreshCw size={11} className="animate-spin text-blue-500" />
-                                <span className="text-blue-600 dark:text-blue-400 font-semibold">Auto-saving...</span>
-                            </>
-                        ) : (
-                            <>
-                                <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
-                                <span className="text-gray-600 dark:text-gray-300 font-semibold">Real-time sync</span>
-                                {lastSavedTime && (
-                                    <span className="text-gray-400 text-[10px] ml-1">({lastSavedTime})</span>
-                                )}
-                            </>
+                    {/* Manual Save Button & Sync Status */}
+                    <div className="flex items-center gap-2">
+                        <button
+                            type="button"
+                            onClick={() => saveGridRows()}
+                            disabled={isSaving || !hasUnsavedChanges}
+                            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition-all shadow-sm ${
+                                isSaving
+                                    ? 'bg-blue-100 dark:bg-blue-900/40 text-blue-600 dark:text-blue-400 cursor-wait'
+                                    : hasUnsavedChanges
+                                        ? 'bg-blue-600 hover:bg-blue-700 text-white shadow-blue-500/25 active:scale-[0.98] cursor-pointer'
+                                        : 'bg-gray-100 dark:bg-white/5 text-gray-400 dark:text-gray-500 cursor-not-allowed border border-gray-200 dark:border-white/10'
+                            }`}
+                            title={hasUnsavedChanges ? 'Click to save all pending changes to the cloud' : 'All changes saved'}
+                        >
+                            {isSaving ? (
+                                <>
+                                    <RefreshCw size={13} className="animate-spin" />
+                                    <span>Saving...</span>
+                                </>
+                            ) : hasUnsavedChanges ? (
+                                <>
+                                    <Save size={13} className="stroke-[2.5]" />
+                                    <span>Save Changes ({unsavedCount})</span>
+                                    <span className="w-2 h-2 rounded-full bg-amber-300 animate-ping" />
+                                </>
+                            ) : (
+                                <>
+                                    <Check size={13} className="stroke-[2.5] text-emerald-500" />
+                                    <span>All Changes Saved</span>
+                                    {lastSavedTime && (
+                                        <span className="text-[10px] text-gray-400 font-normal">({lastSavedTime})</span>
+                                    )}
+                                </>
+                            )}
+                        </button>
+
+                        {hasUnsavedChanges && (
+                            <span className="text-[11px] font-semibold text-amber-600 dark:text-amber-400 flex items-center gap-1">
+                                <AlertCircle size={12} />
+                                <span>Unsaved local changes</span>
+                            </span>
                         )}
                     </div>
                 </div>
