@@ -13,6 +13,14 @@ export const resourceApi = {
         return response.data;
     },
 
+    // Resolve the effective manual or computed rate for a resource.
+    getResolvedRate: async (id, date) => {
+        const response = await api.get(`/resources/${id}/rate`, {
+            params: date ? { date } : undefined
+        });
+        return response.data;
+    },
+
     // ─── Create single resource ────────────────────────────────────────────────
     // Payload: { name, code?, type, base_unit_code, description?, remarks?,
     //            conversions?: [{name, quantity, unit_code}],
@@ -48,10 +56,13 @@ export const resourceApi = {
         return response.data;
     },
 
-    // ─── Replace ALL compositions for an item resource ────────────────────────
+    // ─── Create/replace one effective-dated composition version ───────────────
     // compositions: [{component_resource_id, quantity, unit_code}]
-    setCompositions: async (id, compositions) => {
-        const response = await api.put(`/resources/${id}/compositions`, { compositions });
+    setCompositions: async (id, compositions, effective_from) => {
+        const response = await api.put(`/resources/${id}/compositions`, {
+            compositions,
+            ...(effective_from ? { effective_from } : {})
+        });
         return response.data;
     },
 
@@ -62,9 +73,25 @@ export const resourceApi = {
         return response.data;
     },
 
+    // Adding a row creates a manual rate.
+    addRate: async (id, data) => {
+        const response = await api.post(`/resources/${id}/rates`, data);
+        return response.data;
+    },
+
+    // Read all manual rate versions, newest first.
+    getRateHistory: async (id) => {
+        const response = await api.get(`/resources/${id}/rates`);
+        return response.data;
+    },
+
     // ─── Remove a specific conversion by its ID ──────────────────────────────
     removeConversion: async (id, convId) => {
         const response = await api.delete(`/resources/${id}/conversions/${convId}`);
         return response.data;
-    }
+    },
+
+    clearManualRate: (resourceId, effectiveFrom) =>
+    api.post(`/resources/${resourceId}/clear-rate`, { effective_from: effectiveFrom })
+        .then(res => res.data),
 };

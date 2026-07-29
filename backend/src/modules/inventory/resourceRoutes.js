@@ -23,4 +23,11 @@ router.put('/:id/compositions', resourceController.setCompositions);
 router.post('/:id/conversions', resourceController.addConversion);
 router.delete('/:id/conversions/:conv_id', resourceController.removeConversion);
 
+// Rates
+router.post('/:id/rates', resourceController.addRate);
+router.get('/:id/rates', resourceController.getRateHistory);
+router.get('/:id/rate', resourceController.getResolvedRate);
+router.post('/:id/clear-rate', resourceController.clearManualRate);
+
+
 export default router;

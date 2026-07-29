@@ -42,6 +42,7 @@ const TopBar = () => {
       case '/vendors': return 'Vendors';
       case '/clients': return 'Clients';
       case '/resources': return 'Resources';
+      case '/resource-rate': return 'Resource Rate Lab';
       case '/units': return 'Units';
       default: {
         const seg = location.pathname.replace('/', '');

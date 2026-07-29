@@ -1,4 +1,4 @@
-import defaultDb from '../config/database.js';
+import db from '../config/database.js';
 
 /**
  * Checks recursively for circular references in compositions.
@@ -35,7 +35,7 @@ async function checkCycles(resourceId, dbClient, visited = new Set()) {
  * @param {number} resourceId 
  * @param {object} dbClient - Knex instance (defaults to global db)
  */
-export async function resolveComponents(resourceId, dbClient = defaultDb) {
+export async function resolveComponents(resourceId, dbClient = db) {
     const resource = await dbClient('res_resources').where('id', resourceId).first();
     if (!resource) {
         throw new Error(`Resource with ID ${resourceId} not found`);
@@ -63,7 +63,45 @@ export async function resolveComponents(resourceId, dbClient = defaultDb) {
         unitCode: c.unitCode
     }));
 }
+export async function detectCycle(parentId, componentId, dbClient = db, asOfDate = null, visited = new Set()) {
+    // Direct self-reference
+    if (Number(parentId) === Number(componentId)) {
+        return true;
+    }
 
+    if (visited.has(Number(componentId))) {
+        // Already-existing cycle in the data; treat as a cycle too.
+        return true;
+    }
+    visited.add(Number(componentId));
+
+    const query = dbClient('res_compositions')
+        .where('parent_resource_id', componentId)
+        .select('component_resource_id');
+
+    if (asOfDate) {
+        query
+            .andWhere('effective_from', '<=', asOfDate)
+            .andWhere(function () {
+                this.whereNull('effective_to').orWhere('effective_to', '>=', asOfDate);
+            });
+    }
+
+    const children = await query;
+
+    for (const child of children) {
+        const childId = child.component_resource_id;
+        if (Number(childId) === Number(parentId)) {
+            return true; // componentId's subtree reaches back to parentId
+        }
+        if (await detectCycle(parentId, childId, dbClient, asOfDate, visited)) {
+            return true;
+        }
+    }
+
+    return false;
+}
 export default {
-    resolveComponents
+    resolveComponents,
+    detectCycle
 };

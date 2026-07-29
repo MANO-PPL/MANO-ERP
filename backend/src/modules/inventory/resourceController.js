@@ -22,6 +22,20 @@ export const getResource = catchAsync(async (req, res) => {
     res.json({ success: true, resource });
 });
 
+// Resolve the effective rate for a resource. A row in res_rates is manual;
+// an item without an effective row is calculated from its composition.
+export const getResolvedRate = catchAsync(async (req, res) => {
+    const { id } = req.params;
+    if (!id || isNaN(parseInt(id))) throw new AppError('Invalid Resource ID', 400);
+
+    const rate = await resourceService.getResolvedRate(
+        req.user.org_id,
+        parseInt(id),
+        req.query.date
+    );
+    res.json({ success: true, rate });
+});
+
 export const createResource = catchAsync(async (req, res) => {
     // If the payload is an array, treat it as a bulk upload
     if (Array.isArray(req.body)) {
@@ -96,9 +110,9 @@ export const deleteResource = catchAsync(async (req, res) => {
 export const setCompositions = catchAsync(async (req, res) => {
     const { id } = req.params;
     if (!id || isNaN(parseInt(id))) throw new AppError('Invalid Resource ID', 400);
-    const { compositions } = req.body;
+    const { compositions, effective_from } = req.body;
     if (!Array.isArray(compositions)) throw new AppError('compositions must be an array', 400);
-    await resourceService.setCompositions(req.user.org_id, id, compositions);
+    await resourceService.setCompositions(req.user.org_id, id, compositions, effective_from);
     res.json({ success: true, message: 'Compositions updated' });
 });
 
@@ -116,6 +130,30 @@ export const addConversion = catchAsync(async (req, res) => {
     });
     
     res.status(201).json({ success: true, message: 'Conversion added', id: convId });
+});
+
+// Adding a row creates a manual rate. Omitting a row leaves item rates
+// derived from composition and leaves base-resource rates unavailable.
+export const addRate = catchAsync(async (req, res) => {
+    const { id } = req.params;
+    if (!id || isNaN(parseInt(id))) throw new AppError('Invalid Resource ID', 400);
+
+    const { rate, unit_id, unit_code, effective_from, remarks } = req.body;
+    const rateId = await resourceService.addRate(req.user.org_id, parseInt(id), {
+        rate,
+        unit_code: unit_code || unit_id,
+        effective_from,
+        remarks
+    });
+
+    res.status(201).json({ success: true, message: 'Manual rate added', id: rateId });
+});
+
+export const getRateHistory = catchAsync(async (req, res) => {
+    const { id } = req.params;
+    if (!id || isNaN(parseInt(id))) throw new AppError('Invalid Resource ID', 400);
+    const rates = await resourceService.getRateHistory(req.user.org_id, parseInt(id));
+    res.json({ success: true, rates });
 });
 
 export const removeConversion = catchAsync(async (req, res) => {
@@ -140,15 +178,30 @@ export const bulkUpdateResources = catchAsync(async (req, res) => {
     return res.json({ success: true, report: result });
 });
 
+export const clearManualRate = catchAsync(async (req, res) => {
+    const { id } = req.params;
+    if (!id || isNaN(parseInt(id))) throw new AppError('Invalid Resource ID', 400);
+    const { effective_from } = req.body;
+    if (!effective_from) throw new AppError('effective_from date is required', 400);
+
+    await resourceService.clearManualRate(req.user.org_id, parseInt(id), effective_from);
+    res.json({ success: true, message: 'Manual rate cleared' });
+});
+
+
+
 export default {
     listResources,
     getResource,
+    getResolvedRate,
     createResource,
     updateResource,
     deleteResource,
     setCompositions,
     addConversion,
+    addRate,
+    getRateHistory,
     removeConversion,
-    bulkUpdateResources
+    bulkUpdateResources,
+    clearManualRate
 };
-
