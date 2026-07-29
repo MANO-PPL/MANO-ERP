@@ -55,8 +55,7 @@ async function findEffectiveManualRate(orgId, resourceId, asOfDate, dbClient = d
         .join('res_resources as r', 'rr.resource_id', 'r.id')
         .where('rr.resource_id', resourceId)
         .andWhere('r.org_id', orgId)
-        .andWhere('rr.is_active', 1)
-        .whereNotNull('rr.rate')   // ← this line replaces the source filter
+        .whereNotNull('rr.rate')
         .andWhere('rr.effective_from', '<=', asOfDate)
         .andWhere(function () {
             this.whereNull('rr.effective_to').orWhere('rr.effective_to', '>=', asOfDate);
