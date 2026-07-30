@@ -24,7 +24,7 @@ import CustomInput from '../../../../components/CustomInput';
 import DPRCreate from './DPRCreate';
 import AISummaryDrawer from '../AISummaryDrawer';
 
-const DailyProgress = ({ filters, setSubBreadcrumb, view, setView, canWrite }) => {
+const DailyProgress = ({ filters, setSubBreadcrumb, view, setView, canWrite, project }) => {
     const [selectedReport, setSelectedReport] = useState(null);
     const [selectedAuditReport, setSelectedAuditReport] = useState(null);
     const [selectedAiReport, setSelectedAiReport] = useState(null);
@@ -258,6 +258,7 @@ const DailyProgress = ({ filters, setSubBreadcrumb, view, setView, canWrite }) =
                                     onBack={() => setView('list')}
                                     initialData={selectedReport}
                                     isReadOnly={true}
+                                    project={project}
                                 />
                             </div>
                         </div>
@@ -391,7 +392,15 @@ const DailyProgress = ({ filters, setSubBreadcrumb, view, setView, canWrite }) =
     );
 
     const renderCreate = () => (
-        <DPRCreate onBack={() => setView('list')} isReadOnly={!canWrite} />
+        <DPRCreate 
+            onBack={() => setView('list')} 
+            isReadOnly={!canWrite} 
+            project={project}
+            onSave={(newReport) => {
+                setReports([newReport, ...reports]);
+                setView('list');
+            }}
+        />
     );
 
     if (view === 'create') return renderCreate();
