@@ -88,6 +88,9 @@ api.interceptors.response.use(
             } catch (refreshError) {
                 processQueue(refreshError, null);
                 setAccessToken(null);
+                try {
+                    sessionStorage.clear();
+                } catch (e) {}
                 if (window.location.pathname !== '/login') {
                     window.location.href = '/login';
                 }

@@ -70,20 +70,23 @@ export async function getVendors(orgId, query = {}) {
         return { vendors: [], total, page, limit };
     }
 
-    // Fetch interactions
-    const interactions = await db('crm_interactions')
-        .whereIn('contact_id', vendorIds)
-        .andWhere('org_id', orgId)
-        .whereNull('interacted_by')
-        .select('*');
+    // Fetch interactions only if explicitly requested (e.g. detailed view calls)
+    let interactionsByContact = {};
+    if (query.include_interactions === 'true' || query.include_interactions === true) {
+        const interactions = await db('crm_interactions')
+            .whereIn('contact_id', vendorIds)
+            .andWhere('org_id', orgId)
+            .whereNull('interacted_by')
+            .select('*');
 
-    const interactionsByContact = interactions.reduce((acc, interaction) => {
-        if (!acc[interaction.contact_id]) {
-            acc[interaction.contact_id] = [];
-        }
-        acc[interaction.contact_id].push(interaction);
-        return acc;
-    }, {});
+        interactionsByContact = interactions.reduce((acc, interaction) => {
+            if (!acc[interaction.contact_id]) {
+                acc[interaction.contact_id] = [];
+            }
+            acc[interaction.contact_id].push(interaction);
+            return acc;
+        }, {});
+    }
 
     return {
         vendors: vendors.map(v => ({

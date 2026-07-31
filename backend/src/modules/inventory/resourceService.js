@@ -351,6 +351,70 @@ export async function getResources(orgId, { type, search, limit = 100, offset = 
         r.base_unit_symbol = u ? u.symbol : '';
     });
 
+    if (resources.length > 0) {
+        const resourceIds = resources.map(r => r.id);
+        const asOfDate = toDateOnly();
+
+        // Batch fetch conversions
+        const conversions = await db('res_conversions')
+            .whereIn('resource_id', resourceIds)
+            .andWhere('org_id', orgId)
+            .select('id', 'resource_id', 'name', 'quantity', 'unit_code');
+
+        const conversionsByRes = {};
+        conversions.forEach(c => {
+            const u = UNIT_REGISTRY[c.unit_code];
+            c.unit_name = u ? u.name : '';
+            c.unit_symbol = u ? u.symbol : '';
+            if (!conversionsByRes[c.resource_id]) conversionsByRes[c.resource_id] = [];
+            conversionsByRes[c.resource_id].push(c);
+        });
+
+        // Batch fetch active compositions
+        const compositions = await db('res_compositions as c')
+            .join('res_resources as r2', 'c.component_resource_id', 'r2.id')
+            .whereIn('c.parent_resource_id', resourceIds)
+            .andWhere('r2.org_id', orgId)
+            .andWhere('c.effective_from', '<=', asOfDate)
+            .andWhere(function () {
+                this.whereNull('c.effective_to').orWhere('c.effective_to', '>=', asOfDate);
+            })
+            .select(
+                'c.id',
+                'c.parent_resource_id',
+                'c.component_resource_id',
+                'r2.name as component_name',
+                'r2.code as component_code',
+                'c.quantity',
+                'c.unit_code'
+            );
+
+        const compositionsByRes = {};
+        compositions.forEach(c => {
+            const u = UNIT_REGISTRY[c.unit_code];
+            c.unit_name = u ? u.name : '';
+            c.unit_symbol = u ? u.symbol : '';
+            if (!compositionsByRes[c.parent_resource_id]) compositionsByRes[c.parent_resource_id] = [];
+            compositionsByRes[c.parent_resource_id].push(c);
+        });
+
+        // Resolve rate for each resource concurrently in parallel (0ms latency optimization)
+        await Promise.all(resources.map(async (r) => {
+            r.conversions = conversionsByRes[r.id] || [];
+            r.compositions = compositionsByRes[r.id] || [];
+            try {
+                const resolvedRate = await resolveRateInternal(orgId, r.id, asOfDate, db);
+                r.rate = resolvedRate.rate;
+                r.rate_source = resolvedRate.source;
+                r.rate_unit_code = resolvedRate.unitCode;
+            } catch (e) {
+                r.rate = null;
+                r.rate_source = null;
+                r.rate_unit_code = null;
+            }
+        }));
+    }
+
     return resources;
 }
 

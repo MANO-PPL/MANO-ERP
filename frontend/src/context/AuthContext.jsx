@@ -8,10 +8,23 @@ export const AuthProvider = ({ children }) => {
     const [user, setUser] = useState(null);
     const [loading, setLoading] = useState(true);
 
+    const clearClientCaches = () => {
+        try {
+            sessionStorage.clear();
+            const theme = localStorage.getItem('theme');
+            localStorage.clear();
+            if (theme) localStorage.setItem('theme', theme);
+        } catch (e) {
+            console.warn('Failed to clear client caches:', e);
+        }
+    };
+
     const refreshUser = async () => {
         const hasUserTypeCookie = document.cookie.split(';').some((item) => item.trim().startsWith('userType='));
         if (!hasUserTypeCookie) {
             setUser(null);
+            setAccessToken(null);
+            clearClientCaches();
             setLoading(false);
             return;
         }
@@ -24,6 +37,7 @@ export const AuthProvider = ({ children }) => {
                 // Clear state if failed
                 setUser(null);
                 setAccessToken(null);
+                clearClientCaches();
             }
         } catch (err) {
             console.error('Failed to retrieve user profile:', err);
@@ -31,6 +45,7 @@ export const AuthProvider = ({ children }) => {
             if (err.response?.status === 401 || err.response?.status === 403) {
                 setUser(null);
                 setAccessToken(null);
+                clearClientCaches();
             }
         } finally {
             setLoading(false);
@@ -42,6 +57,7 @@ export const AuthProvider = ({ children }) => {
     }, []);
 
     const login = (token, userData) => {
+        clearClientCaches();
         setAccessToken(token);
         setUser(userData);
     };
@@ -54,6 +70,7 @@ export const AuthProvider = ({ children }) => {
         } finally {
             setUser(null);
             setAccessToken(null);
+            clearClientCaches();
             window.location.href = '/login';
         }
     };
