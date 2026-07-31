@@ -42,7 +42,6 @@ const Sidebar = () => {
         { icon: Map,             label: 'Vendors',       path: '/vendors',       pageId: 'vendors' },
         { icon: Users,           label: 'Clients',       path: '/clients',       pageId: 'clients' },
         { icon: Package,         label: 'Resources',     path: '/resources',     pageId: 'resources' },
-        { icon: FlaskConical,    label: 'Resource Lab',  path: '/resource-rate', pageId: 'resources' },
         { icon: MessageCircle,   label: 'Collaboration', path: '/collaboration', pageId: 'collaboration' },
         { icon: Shield,          label: 'Employee',      path: '/admin',         pageId: 'admin' },
     ];

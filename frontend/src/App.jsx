@@ -118,13 +118,7 @@ function App() {
                 </Suspense>
               </ProtectedRoute>
             } />
-            <Route path="resource-rate" element={
-              <ProtectedRoute pageId="resources">
-                <Suspense fallback={<PageSkeleton variant="table" />}>
-                  <ResourceRate/>
-                </Suspense>
-              </ProtectedRoute>
-            } />
+            <Route path="resource-rate" element={<Navigate to="/resources?tab=rates" replace />} />
             <Route path="units" element={<Navigate to="/resources" replace />} />
             <Route path="collaboration" element={
               <ProtectedRoute pageId="collaboration">

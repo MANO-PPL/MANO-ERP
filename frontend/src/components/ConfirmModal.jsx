@@ -31,6 +31,23 @@ const ConfirmModal = ({
     variant = 'danger',
     isLoading = false
 }) => {
+    React.useEffect(() => {
+        if (!isOpen) return;
+
+        const handleKeyDown = (e) => {
+            if (e.key === 'Escape') {
+                e.preventDefault();
+                e.stopPropagation();
+                if (!isLoading && onClose) {
+                    onClose();
+                }
+            }
+        };
+
+        window.addEventListener('keydown', handleKeyDown, true);
+        return () => window.removeEventListener('keydown', handleKeyDown, true);
+    }, [isOpen, isLoading, onClose]);
+
     if (!isOpen) return null;
 
     const config = VARIANT_CONFIG[variant] || VARIANT_CONFIG.danger;

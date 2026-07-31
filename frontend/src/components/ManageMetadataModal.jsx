@@ -31,10 +31,27 @@ const ManageMetadataModal = ({
     const [isActionLoading, setIsActionLoading] = useState(false);
 
     useEffect(() => {
+        if (!isOpen) return;
+
+        const handleKeyDown = (e) => {
+            if (e.key === 'Escape') {
+                e.preventDefault();
+                e.stopPropagation();
+                if (!isActionLoading && onClose) onClose();
+            }
+        };
+
+        window.addEventListener('keydown', handleKeyDown, true);
+        return () => window.removeEventListener('keydown', handleKeyDown, true);
+    }, [isOpen, isActionLoading, onClose]);
+
+    useEffect(() => {
         if (isOpen) {
             fetchItems();
+            setNewItemName('');
+            setSearchTerm('');
         }
-    }, [isOpen]);
+    }, [isOpen, endpoint]);
 
     const fetchItems = async () => {
         setIsLoading(true);
