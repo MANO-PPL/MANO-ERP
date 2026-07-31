@@ -3,6 +3,7 @@ import { X, Plus, Trash2, Info } from 'lucide-react';
 import { resourceApi } from '../../services/resourceApi';
 import { UNIT_OPTIONS, UNIT_REGISTRY, UNIT_GROUPS } from './resourceConstants';
 import { motion } from 'framer-motion';
+import ConfirmModal from '../../components/ConfirmModal';
 
 const unitTypeLabel = { weight: 'Weight', volume: 'Volume', length: 'Length', area: 'Area', count: 'Count', time: 'Time' };
 
@@ -34,6 +35,18 @@ const ResourceForm = ({ resource, onClose, onSave }) => {
     const [isLoading, setIsLoading] = useState(false);
     const [error, setError] = useState('');
     const [activeTab, setActiveTab] = useState('basic');
+
+    // Confirm Modal State
+    const [confirmModal, setConfirmModal] = useState({
+        isOpen: false,
+        title: '',
+        message: '',
+        confirmText: 'Confirm',
+        cancelText: 'Cancel',
+        variant: 'danger',
+        isLoading: false,
+        onConfirm: () => { }
+    });
 
     useEffect(() => {
         if (resource) {
@@ -91,7 +104,22 @@ const ResourceForm = ({ resource, onClose, onSave }) => {
     };
 
     const handleRemoveComposition = (index) => {
-        setCompositions(compositions.filter((_, i) => i !== index));
+        const comp = compositions[index];
+        const compRes = allResources.find(r => String(r.id) === String(comp?.component_resource_id));
+        const name = compRes?.name || `Component #${index + 1}`;
+        setConfirmModal({
+            isOpen: true,
+            title: 'Remove Composition Ingredient?',
+            message: `Are you sure you want to remove "${name}" from this resource?`,
+            confirmText: 'Remove Ingredient',
+            cancelText: 'Cancel',
+            variant: 'danger',
+            isLoading: false,
+            onConfirm: () => {
+                setCompositions(compositions.filter((_, i) => i !== index));
+                setConfirmModal(prev => ({ ...prev, isOpen: false }));
+            }
+        });
     };
 
     // ─── Conversions ─────────────────────────────────────────────────────────────
@@ -106,7 +134,21 @@ const ResourceForm = ({ resource, onClose, onSave }) => {
     };
 
     const handleRemoveConversion = (index) => {
-        setConversions(conversions.filter((_, i) => i !== index));
+        const conv = conversions[index];
+        const name = conv?.name || `Conversion #${index + 1}`;
+        setConfirmModal({
+            isOpen: true,
+            title: 'Remove Unit Conversion?',
+            message: `Are you sure you want to remove "${name}" scale conversion?`,
+            confirmText: 'Remove Conversion',
+            cancelText: 'Cancel',
+            variant: 'danger',
+            isLoading: false,
+            onConfirm: () => {
+                setConversions(conversions.filter((_, i) => i !== index));
+                setConfirmModal(prev => ({ ...prev, isOpen: false }));
+            }
+        });
     };
 
     // ─── Submit ──────────────────────────────────────────────────────────────────
@@ -488,6 +530,18 @@ const ResourceForm = ({ resource, onClose, onSave }) => {
                     </button>
                 </div>
             </motion.div>
+
+            <ConfirmModal
+                isOpen={confirmModal.isOpen}
+                onClose={() => setConfirmModal(prev => ({ ...prev, isOpen: false }))}
+                onConfirm={confirmModal.onConfirm}
+                title={confirmModal.title}
+                message={confirmModal.message}
+                confirmText={confirmModal.confirmText}
+                cancelText={confirmModal.cancelText}
+                variant={confirmModal.variant}
+                isLoading={confirmModal.isLoading}
+            />
         </motion.div>
     );
 };

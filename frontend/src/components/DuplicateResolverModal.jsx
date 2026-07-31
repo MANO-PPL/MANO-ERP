@@ -18,6 +18,21 @@ const DuplicateResolverModal = ({
     useEffect(() => {
         if (!isOpen) return;
 
+        const handleKeyDown = (e) => {
+            if (e.key === 'Escape') {
+                e.preventDefault();
+                e.stopPropagation();
+                if (onClose) onClose();
+            }
+        };
+
+        window.addEventListener('keydown', handleKeyDown, true);
+        return () => window.removeEventListener('keydown', handleKeyDown, true);
+    }, [isOpen, onClose]);
+
+    useEffect(() => {
+        if (!isOpen) return;
+
         // Group rows by key
         const groupsMap = new Map();
         gridData.forEach(row => {
