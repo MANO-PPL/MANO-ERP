@@ -37,6 +37,9 @@ export const authenticateJWT = catchAsync(async (req, res, next) => {
             ...decoded,
             id: user.user_id || user.id, // standardized ID accessor
             user_id: user.user_id || user.id,
+            // Use the current database value so tokens issued before org_id was
+            // added (or with a stale org_id) still work for org-scoped routes.
+            org_id: user.org_id,
             user_type: user.user_type ? user.user_type.toLowerCase() : 'employee',
             system_permissions: user.system_permissions
         };

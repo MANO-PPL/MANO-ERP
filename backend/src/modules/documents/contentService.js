@@ -19,7 +19,7 @@ const CONTENT_TABLES = [
 async function enrichVendorRows(rows) {
     if (!rows || rows.length === 0) return rows;
     const vendorIds = rows.map(r => r.vendors_id).filter(Boolean);
-    if (vendorIds.length === 0) return rows;
+    if (vendorIds.length === 0) return [];
 
     const contacts = await db('crm_contacts as c')
         .leftJoin('crm_job_nature as jn', 'c.job_nature_id', 'jn.job_id')
@@ -30,14 +30,16 @@ async function enrichVendorRows(rows) {
     const contactMap = {};
     for (const c of contacts) contactMap[c.id] = c;
 
-    return rows.map(row => ({
-        ...row,
-        name: contactMap[row.vendors_id]?.name || null,
-        contact_person: contactMap[row.vendors_id]?.contact_person || null,
-        mobile: contactMap[row.vendors_id]?.mobile || null,
-        email: contactMap[row.vendors_id]?.email || null,
-        job_nature: contactMap[row.vendors_id]?.job_nature || null
-    }));
+    return rows
+        .filter(row => contactMap[row.vendors_id])
+        .map(row => ({
+            ...row,
+            name: contactMap[row.vendors_id].name || null,
+            contact_person: contactMap[row.vendors_id].contact_person || null,
+            mobile: contactMap[row.vendors_id].mobile || null,
+            email: contactMap[row.vendors_id].email || null,
+            job_nature: contactMap[row.vendors_id].job_nature || null
+        }));
 }
 
 async function verifyAccess(orgId, instanceId, userId) {

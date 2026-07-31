@@ -369,6 +369,13 @@ const ProjectVendorList = ({ onBack, setExtraBreadcrumbs, canWrite }) => {
                                 </tr>
                             </thead>
                             <Reorder.Group axis="y" values={vendors} onReorder={isEditable ? setVendors : () => {}} as="tbody" className="divide-y divide-gray-100 dark:divide-white/[0.03]">
+                                {vendors.length === 0 ? (
+                                    <tr>
+                                        <td colSpan={isEditable ? 8 : 7} className="px-4 py-12 text-center text-sm text-gray-500 dark:text-gray-400">
+                                            No vendors are currently linked to this project.
+                                        </td>
+                                    </tr>
+                                ) : (
                                 <AnimatePresence initial={false}>
                                     {vendors.map((vendor, idx) => {
                                         return (
@@ -436,6 +443,7 @@ const ProjectVendorList = ({ onBack, setExtraBreadcrumbs, canWrite }) => {
                                         );
                                     })}
                                 </AnimatePresence>
+                                )}
                             </Reorder.Group>
                         </table>
                     </div>

@@ -649,16 +649,16 @@ const ClientsList = () => {
             const activeTag = document.activeElement?.tagName?.toLowerCase();
             if (activeTag === 'input' || activeTag === 'textarea') return;
 
-            const bounds = getSelectionBounds();
-            if (!bounds) return;
+            const selectedBounds = bounds;
+            if (!selectedBounds) return;
 
             e.preventDefault();
             const tsvLines = [];
-            for (let r = bounds.minRow; r <= bounds.maxRow; r++) {
+            for (let r = selectedBounds.minRow; r <= selectedBounds.maxRow; r++) {
                 const rowObj = sortedGridDataRef.current[r];
                 if (!rowObj) continue;
                 const rowVals = [];
-                for (let c = bounds.minCol; c <= bounds.maxCol; c++) {
+                for (let c = selectedBounds.minCol; c <= selectedBounds.maxCol; c++) {
                     const colName = GRID_COLUMNS[c];
                     let val = rowObj[colName] || '';
                     rowVals.push(val);
@@ -669,7 +669,7 @@ const ClientsList = () => {
             const tsvData = tsvLines.join('\n');
             if (tsvData) {
                 navigator.clipboard.writeText(tsvData);
-                const numCells = (bounds.maxRow - bounds.minRow + 1) * (bounds.maxCol - bounds.minCol + 1);
+                const numCells = (selectedBounds.maxRow - selectedBounds.minRow + 1) * (selectedBounds.maxCol - selectedBounds.minCol + 1);
                 showToast('sparkle', 'Copied to Clipboard', `Copied ${numCells} cell(s) across ${tsvLines.length} row(s)`);
             }
         };
@@ -684,9 +684,9 @@ const ClientsList = () => {
             e.preventDefault();
             pushUndoState(gridDataRef.current);
 
-            const bounds = getSelectionBounds();
-            const startRow = bounds ? bounds.minRow : sortedGridDataRef.current.length;
-            const startCol = bounds ? bounds.minCol : 0;
+            const selectedBounds = bounds;
+            const startRow = selectedBounds ? selectedBounds.minRow : sortedGridDataRef.current.length;
+            const startCol = selectedBounds ? selectedBounds.minCol : 0;
 
             const lines = pastedData.trim().split(/\r?\n/);
             let updatedGrid = [...gridDataRef.current];
