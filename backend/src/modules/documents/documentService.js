@@ -163,6 +163,13 @@ export async function assignDocumentRole(orgId, document_id, { user_id, role, le
         throw new AppError('user_id and role are required', 400);
     }
 
+    const user = await db('iam_users')
+        .where({ user_id, org_id: orgId })
+        .first();
+    if (!user) {
+        throw new AppError('User not found in this organisation', 404);
+    }
+
     const validRoles = ['approver', 'reporter'];
     if (!validRoles.includes(role)) {
         throw new AppError(`role must be one of: ${validRoles.join(', ')}`, 400);
@@ -177,20 +184,37 @@ export async function assignDocumentRole(orgId, document_id, { user_id, role, le
         if (!level) {
             throw new AppError('level_id does not exist for this document', 400);
         }
+
+        const existingLevelApprover = await db('wf_document_roles')
+            .where({ document_id, role: 'approver', level_id })
+            .first('user_id');
+        if (existingLevelApprover && String(existingLevelApprover.user_id) !== String(user_id)) {
+            throw new AppError('Each approval level can have only one approver', 400);
+        }
     } else {
         if (level_id !== null && level_id !== undefined) {
             throw new AppError(`level_id must be null for role ${role}`, 400);
         }
     }
 
-    // Check duplicate
-    const duplicateQuery = { document_id, user_id, role };
-    if (role === 'approver') {
-        duplicateQuery.level_id = level_id;
-    }
-    const duplicate = await db('wf_document_roles').where(duplicateQuery).first();
-    if (duplicate) {
-        throw new AppError(`User already has the role '${role}' for this document${role === 'approver' ? ' at this level' : ''}`, 400);
+    const existingRoles = await db('wf_document_roles')
+        .where({ document_id, user_id })
+        .select('role', 'level_id');
+
+    if (role === 'reporter') {
+        if (existingRoles.some(existing => existing.role === 'approver')) {
+            throw new AppError('A reporter cannot also be assigned as an approver for the same document', 400);
+        }
+        if (existingRoles.some(existing => existing.role === 'reporter')) {
+            throw new AppError('User is already assigned as a reporter for this document', 400);
+        }
+    } else {
+        if (existingRoles.some(existing => existing.role === 'reporter')) {
+            throw new AppError('A reporter cannot also be assigned as an approver for the same document', 400);
+        }
+        if (existingRoles.some(existing => existing.role === 'approver')) {
+            throw new AppError('Each approver can be assigned to only one serial approval level', 400);
+        }
     }
 
     const [role_id] = await db('wf_document_roles').insert({

@@ -9,7 +9,8 @@ import {
     LayoutDashboard,
     Search,
     Plus,
-    Download
+    Download,
+    Settings
 } from 'lucide-react';
 import { TrendingUp, AlertCircle } from 'lucide-react';
 
@@ -18,12 +19,13 @@ import DailyProgress from './Reports/Daily/DailyProgress';
 import WeeklySummary from './Reports/Weekly/WeeklySummary';
 import MonthlyArchive from './Reports/Monthly/MonthlyArchive';
 import TeamContribution from './Reports/Team/TeamContribution';
+import DPRConfig from './Reports/DPRConfig';
 
 // Custom UI Components
 import CustomDatePicker from '../../components/CustomDatePicker';
 import CustomSelect from '../../components/CustomSelect';
 
-const Reports = ({ setExtraBreadcrumbs, canWrite }) => {
+const Reports = ({ setExtraBreadcrumbs, canWrite, project }) => {
     const [searchParams, setSearchParams] = useSearchParams();
     const activeTab = searchParams.get('type') || 'daily';
     const subView = searchParams.get('view') || 'list';
@@ -75,6 +77,7 @@ const Reports = ({ setExtraBreadcrumbs, canWrite }) => {
         { id: 'weekly', label: 'Weekly Summary', icon: Calendar, desc: 'Range review' },
         { id: 'monthly', label: 'Monthly Archive', icon: BarChart3, desc: 'History records' },
         { id: 'employee', label: 'Team Contribution', icon: Users, desc: 'Worker impact' },
+        { id: 'config', label: 'DPR Configuration', icon: Settings, desc: 'Configure DPR' },
     ];
 
     const handleBack = React.useCallback(() => {
@@ -141,7 +144,7 @@ const Reports = ({ setExtraBreadcrumbs, canWrite }) => {
     };
 
     const renderFilters = () => {
-        if (activeTab === 'employee' || subBreadcrumb === 'Create Report') return null;
+        if (activeTab === 'employee' || activeTab === 'config' || subBreadcrumb === 'Create Report') return null;
 
         return (
             <div className="flex items-center space-x-4 anim-fade-in text-left min-w-[240px]">
@@ -244,6 +247,7 @@ const Reports = ({ setExtraBreadcrumbs, canWrite }) => {
                                 view={subView}
                                 setView={setSubView}
                                 canWrite={canWrite}
+                                project={project}
                             />
                         )}
                         {activeTab === 'weekly' && (
@@ -265,6 +269,7 @@ const Reports = ({ setExtraBreadcrumbs, canWrite }) => {
                             />
                         )}
                         {activeTab === 'employee' && <TeamContribution setSubBreadcrumb={setSubBreadcrumb} canWrite={canWrite} />}
+                        {activeTab === 'config' && <DPRConfig project={project} />}
                     </div>
                 </div>
             </div>

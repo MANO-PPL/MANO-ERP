@@ -264,11 +264,15 @@ const WorkflowPanel = ({ projectId, templateName, instanceId: propInstanceId, on
     }
 
     // Determine workflow state elements
-    const isHolder = currentCycle?.current_holder_id === user?.user_id || currentCycle?.current_holder_id === user?.id;
+    const currentUserId = user?.user_id ?? user?.id;
+    const isHolder = String(currentCycle?.current_holder_id) === String(currentUserId);
+    const isCycleAuthor = String(currentCycle?.initiated_by) === String(currentUserId);
     const isUserAdmin = user && ['admin', 'super admin', 'superadmin', 'super_admin'].includes(user.user_type?.toLowerCase());
-    const isUserApprover = (templateDetail?.document_roles || []).some(r => r.user_id === (user?.user_id || user?.id) && r.role === 'approver');
-    const totalReporters = (templateDetail?.document_roles || []).filter(r => r.role === 'reporter').length;
-    const isUserReporter = !isUserApprover && (isUserAdmin || totalReporters === 0 || (templateDetail?.document_roles || []).some(r => r.user_id === (user?.user_id || user?.id) && r.role === 'reporter'));
+    const documentRoles = templateDetail?.document_roles || [];
+    const reporterRoles = documentRoles.filter(role => role.role === 'reporter');
+    const isUserReporter = reporterRoles.length > 0
+        ? reporterRoles.some(role => String(role.user_id) === String(currentUserId))
+        : isUserAdmin;
 
     let badgeColor = 'bg-gray-100 text-gray-800 dark:bg-white/5 dark:text-gray-400';
     let statusText = 'Finalized / Read Only';
@@ -358,15 +362,15 @@ const WorkflowPanel = ({ projectId, templateName, instanceId: propInstanceId, on
                         </>
                     )}
 
-                    {currentCycle && currentCycle.status === 'revision_requested' && (
-                        isHolder ? (
+                {currentCycle && currentCycle.status === 'revision_requested' && (
+                    isCycleAuthor ? (
                             <>
                                 <button
                                     disabled={actionLoading}
-                                    onClick={() => openCommentModal('submit')}
+                                    onClick={handleClaimRevision}
                                     className="flex items-center gap-1.5 px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-xs font-bold transition-all active:scale-95 disabled:opacity-50 cursor-pointer"
                                 >
-                                    <Send size={12} /> Submit Revision
+                                    <RotateCcw size={12} /> Claim Revision
                                 </button>
                                 <button
                                     disabled={actionLoading}
@@ -377,13 +381,9 @@ const WorkflowPanel = ({ projectId, templateName, instanceId: propInstanceId, on
                                 </button>
                             </>
                         ) : (
-                            <button
-                                disabled={actionLoading}
-                                onClick={handleClaimRevision}
-                                className="flex items-center gap-1.5 px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-xs font-bold transition-all active:scale-95 disabled:opacity-50 cursor-pointer"
-                            >
-                                <RotateCcw size={12} /> Claim Revision
-                            </button>
+                            <span className="text-xs text-gray-500 dark:text-gray-400">
+                                Waiting for the reporter who started this cycle to claim the revision.
+                            </span>
                         )
                     )}
 

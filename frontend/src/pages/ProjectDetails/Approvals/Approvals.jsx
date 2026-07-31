@@ -62,7 +62,7 @@ const Chip = ({ emp, onRemove }) => (
 );
 
 // ─── Employee picker dropdown ──────────────────────────────────────────────
-const EmpPicker = ({ selected, onChange, placeholder, employees = [] }) => {
+const EmpPicker = ({ selected, onChange, placeholder, employees = [], excludeIds = [], single = false }) => {
     const [open, setOpen] = useState(false);
     const [pos, setPos] = useState({ top: 0, left: 0 });
     const btnRef = React.useRef(null);
@@ -77,8 +77,18 @@ const EmpPicker = ({ selected, onChange, placeholder, employees = [] }) => {
 
     const toggle = (emp) => {
         const exists = selected.find(e => e.id === emp.id);
+        if (single) {
+            onChange(exists ? [] : [emp]);
+            setOpen(false);
+            return;
+        }
         onChange(exists ? selected.filter(e => e.id !== emp.id) : [...selected, emp]);
     };
+
+    const isExcluded = (emp) => excludeIds.some(id => String(id) === String(emp.id));
+    const pickerEmployees = employees.filter(emp =>
+        !isExcluded(emp) || selected.some(selectedEmp => String(selectedEmp.id) === String(emp.id))
+    );
 
     return (
         <div className="relative">
@@ -89,7 +99,11 @@ const EmpPicker = ({ selected, onChange, placeholder, employees = [] }) => {
                 className="flex items-center gap-2 px-3 py-1.5 bg-gray-50 dark:bg-white/5 border border-gray-200 dark:border-white/10 rounded-lg text-xs text-gray-500 dark:text-gray-400 hover:border-blue-400 transition-colors cursor-pointer"
             >
                 <Users size={12} className="shrink-0" />
-                <span>{selected.length > 0 ? `${selected.length} selected` : placeholder}</span>
+                <span className="truncate max-w-32">
+                    {single
+                        ? (selected[0]?.name || placeholder)
+                        : (selected.length > 0 ? `${selected.length} selected` : placeholder)}
+                </span>
                 <ChevronDown size={11} className="ml-1 opacity-60" />
             </button>
 
@@ -100,7 +114,7 @@ const EmpPicker = ({ selected, onChange, placeholder, employees = [] }) => {
                         className="fixed z-[9999] w-56 bg-white dark:bg-[#1a2235] border border-gray-200 dark:border-white/10 rounded-xl shadow-2xl overflow-hidden max-h-60 overflow-y-auto custom-scrollbar"
                         style={{ top: pos.top, left: pos.left }}
                     >
-                        {employees.map(emp => {
+                        {pickerEmployees.map(emp => {
                             const sel = !!selected.find(e => e.id === emp.id);
                             return (
                                 <button key={emp.id} type="button" onClick={() => toggle(emp)}
@@ -131,7 +145,7 @@ const EmpPicker = ({ selected, onChange, placeholder, employees = [] }) => {
 
 
 // ─── Level Row (single approval level with rename + reorder) ──────────────
-const LevelRow = ({ level, idx, total, onApproversChange, onRemove, onRename, onMove, canWrite, employees = [] }) => {
+const LevelRow = ({ level, idx, total, onApproversChange, onRemove, onRename, onMove, canWrite, employees = [], excludeIds = [] }) => {
     const [editing, setEditing] = useState(false);
     const [draft, setDraft] = useState(level.label);
 
@@ -191,7 +205,7 @@ const LevelRow = ({ level, idx, total, onApproversChange, onRemove, onRename, on
                 )}
 
                 {/* Approver picker */}
-                {canWrite && <EmpPicker selected={level.approvers} onChange={onApproversChange} placeholder="Add approvers…" employees={employees} />}
+                {canWrite && <EmpPicker selected={level.approvers} onChange={onApproversChange} placeholder="Select approver…" employees={employees} excludeIds={excludeIds} single />}
 
                 {/* Remove */}
                 {total > 1 && canWrite && (
@@ -217,10 +231,36 @@ const LevelRow = ({ level, idx, total, onApproversChange, onRemove, onRename, on
 // ─── Section Card ──────────────────────────────────────────────────────────
 const SectionCard = ({ section, config, onChange, canWrite, employees = [], onExplore, subSectionsCount }) => {
 
-    const setReporters = (reporters) => onChange({ ...config, reporters });
+    const approverIds = new Set((config?.approvalLevels || []).flatMap(level => level.approvers || []).map(emp => String(emp.id)));
+    const reporterIds = new Set((config?.reporters || []).map(emp => String(emp.id)));
 
-    const setLevelApprovers = (levelId, approvers) =>
-        onChange({ ...config, approvalLevels: config.approvalLevels.map(l => l.id === levelId ? { ...l, approvers } : l) });
+    const uniqueUsers = (users) => Array.from(
+        new Map(users.map(user => [String(user.id), user])).values()
+    );
+
+    const setReporters = (reporters) => onChange({
+        ...config,
+        reporters: uniqueUsers(reporters).filter(emp => !approverIds.has(String(emp.id)))
+    });
+
+    const setLevelApprovers = (levelId, approvers) => {
+        const approversInOtherLevels = new Set(
+            (config?.approvalLevels || [])
+                .filter(level => level.id !== levelId)
+                .flatMap(level => level.approvers || [])
+                .map(emp => String(emp.id))
+        );
+
+        onChange({
+            ...config,
+            approvalLevels: config.approvalLevels.map(level => level.id === levelId ? {
+                ...level,
+                approvers: uniqueUsers(approvers).filter(emp =>
+                    !reporterIds.has(String(emp.id)) && !approversInOtherLevels.has(String(emp.id))
+                )
+            } : level)
+        });
+    };
 
     const addLevel = () =>
         onChange({
@@ -322,6 +362,7 @@ const SectionCard = ({ section, config, onChange, canWrite, employees = [], onEx
                                 onChange={setReporters}
                                 placeholder="Add reporters…"
                                 employees={employees}
+                                excludeIds={Array.from(approverIds)}
                             />
                         )}
                     </div>
@@ -338,7 +379,7 @@ const SectionCard = ({ section, config, onChange, canWrite, employees = [], onEx
                 <div className="space-y-2">
                     {/* Hierarchy hint */}
                     <div className="flex items-center gap-1.5 mb-1">
-                        <span className="text-[10px] text-gray-400 font-medium">Level order: top = first approval → bottom = final approval</span>
+                        <span className="text-[10px] text-gray-400 font-medium">Level order: top = first approval → bottom = final approval · one approver per level</span>
                     </div>
                     {(config?.approvalLevels || []).map((level, idx) => (
                         <LevelRow
@@ -352,6 +393,15 @@ const SectionCard = ({ section, config, onChange, canWrite, employees = [], onEx
                             onMove={(dir) => moveLevel(idx, dir)}
                             canWrite={canWrite}
                             employees={employees}
+                            excludeIds={[
+                                ...Array.from(reporterIds),
+                                ...Array.from(new Set(
+                                    config.approvalLevels
+                                        .filter(otherLevel => otherLevel.id !== level.id)
+                                        .flatMap(otherLevel => otherLevel.approvers || [])
+                                        .map(emp => String(emp.id))
+                                ))
+                            ]}
                         />
                     ))}
 
@@ -461,7 +511,9 @@ const Approvals = ({ setExtraBreadcrumbs, project, projectPermissions, isAdmin }
                             return {
                                 id: level.level_id,
                                 label: level.label,
-                                approvers: levelApprovers
+                                // Approval levels are serial; keep only the first
+                                // legacy assignment if old data contains duplicates.
+                                approvers: levelApprovers.slice(0, 1)
                             };
                         });
 
@@ -552,13 +604,13 @@ const Approvals = ({ setExtraBreadcrumbs, project, projectPermissions, isAdmin }
             if (levelRes.success) {
                 const levelId = levelRes.level_id;
                 await Promise.all(
-                    level.approvers.map(emp =>
-                        workflowApi.assignRole(documentId, {
-                            user_id: emp.id,
-                            role: 'approver',
-                            level_id: levelId
-                        }).catch(() => null)
-                    )
+                        level.approvers.map(emp =>
+                            workflowApi.assignRole(documentId, {
+                                user_id: emp.id,
+                                role: 'approver',
+                                level_id: levelId
+                            })
+                        )
                 );
             }
         }
@@ -569,7 +621,7 @@ const Approvals = ({ setExtraBreadcrumbs, project, projectPermissions, isAdmin }
                 workflowApi.assignRole(documentId, {
                     user_id: emp.id,
                     role: 'reporter'
-                }).catch(() => null)
+                })
             )
         );
     };

@@ -1062,9 +1062,9 @@ const ClientsList = () => {
             e.preventDefault();
             pushUndoState(gridDataRef.current);
 
-            const bounds = getSelectionBounds();
-            const startRow = bounds ? bounds.minRow : sortedGridDataRef.current.length;
-            const startCol = bounds ? bounds.minCol : 0;
+            const selectedBounds = bounds;
+            const startRow = selectedBounds ? selectedBounds.minRow : sortedGridDataRef.current.length;
+            const startCol = selectedBounds ? selectedBounds.minCol : 0;
 
             const lines = pastedData.trim().split(/\r?\n/);
             let updatedGrid = [...gridDataRef.current];

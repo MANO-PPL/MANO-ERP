@@ -3,7 +3,8 @@ import AppError from '../../utils/AppError.js';
 import { triggerApprovalHooks } from '../../services/hookRegistry.js';
 
 const CONTENT_TABLES = [
-    { name: 'wf_document_lines', pk: 'line_id' },
+    // Generic lines are scoped by instance/cycle/version, not project_id.
+    { name: 'wf_document_lines', pk: 'line_id', projectScoped: false },
     { name: 'pdoc_vendors', pk: 'pv_id' },
     { name: 'pdoc_directory', pk: 'pd_id' },
     { name: 'pdoc_staff_responsible', pk: 'psrr_id' },
@@ -25,6 +26,10 @@ async function cloneContentToNewCycle(trx, instanceId, cycleId, latestApprovedVe
         if (latestApprovedVersionId) {
             query = trx(tableConf.name).where({ instance_id: instanceId, version_id: latestApprovedVersionId });
         } else {
+            // Generic foundation rows cannot be scoped to a project because
+            // wf_document_lines intentionally has no project_id column.
+            if (tableConf.projectScoped === false) continue;
+
             // First cycle: select from base project rows (where instance_id is null)
             query = trx(tableConf.name)
                 .where({ project_id: projectId })
@@ -33,7 +38,23 @@ async function cloneContentToNewCycle(trx, instanceId, cycleId, latestApprovedVe
                 .whereNull('version_id');
         }
 
-        const sourceRows = await query;
+        let sourceRows = await query;
+
+        // Base project data can contain stale vendor links after a CRM vendor
+        // has been removed. Do not copy those links into a cycle because the
+        // pdoc_vendors foreign key correctly rejects missing contacts.
+        if (tableConf.name === 'pdoc_vendors' && sourceRows.length > 0) {
+            const vendorIds = [...new Set(sourceRows.map(row => row.vendors_id).filter(Boolean))];
+            const validVendors = vendorIds.length > 0
+                ? await trx('crm_contacts')
+                    .whereIn('id', vendorIds)
+                    .where('type', 'vendor')
+                    .select('id')
+                : [];
+            const validVendorIds = new Set(validVendors.map(vendor => vendor.id));
+            sourceRows = sourceRows.filter(row => validVendorIds.has(row.vendors_id));
+        }
+
         if (sourceRows.length === 0) continue;
 
         for (const row of sourceRows) {
@@ -49,10 +70,12 @@ async function cloneContentToNewCycle(trx, instanceId, cycleId, latestApprovedVe
             if (clonedRow.updated_at) clonedRow.updated_at = new Date();
 
             // Sibling mapping: If this is pdoc_directory and references a pv_id, update it to the cloned pv_id
-            if (tableConf.name === 'pdoc_directory' && clonedRow.pv_id) {
-                if (pvIdMap.has(clonedRow.pv_id)) {
-                    clonedRow.pv_id = pvIdMap.get(clonedRow.pv_id);
-                }
+            if (tableConf.name === 'pdoc_directory' && clonedRow.pv_id != null) {
+                const clonedPvId = pvIdMap.get(clonedRow.pv_id);
+                // The directory row depends on a vendor row. If that vendor
+                // was stale and skipped above, skip the dependent row too.
+                if (!clonedPvId) continue;
+                clonedRow.pv_id = clonedPvId;
             }
 
             const [newPkVal] = await trx(tableConf.name).insert(clonedRow);
@@ -91,12 +114,20 @@ export async function initiateCycle(orgId, instanceId, userId) {
             throw new AppError('Instance is currently locked by another cycle or user', 400);
         }
 
-        // 3. Verify caller has permissions or is admin
+        // 3. The first configured reporter to initialize the cycle becomes
+        // the cycle's reporter/author. Other reporters may initialize future
+        // cycles, but cannot take over an active cycle.
         const user = await trx('iam_users').where({ user_id: userId }).first();
         const isUserAdmin = user && ['admin', 'super admin', 'superadmin', 'super_admin'].includes(user.user_type?.toLowerCase());
+        const reporterRoles = await trx('wf_document_roles')
+            .where({ document_id: instance.document_id, role: 'reporter' })
+            .select('user_id');
 
-        let hasRole = isUserAdmin;
-        if (!hasRole) {
+        let hasRole = reporterRoles.length > 0
+            ? reporterRoles.some(role => role.user_id === userId)
+            : isUserAdmin;
+
+        if (!hasRole && reporterRoles.length === 0 && !isUserAdmin) {
             // Check if any roles are defined for this document template
             const totalRoles = await trx('wf_document_roles')
                 .where({ document_id: instance.document_id })
@@ -118,18 +149,11 @@ export async function initiateCycle(orgId, instanceId, userId) {
                         hasRole = true;
                     }
                 }
-            } else {
-                // Roles are defined - check if this user is a reporter or approver
-                const role = await trx('wf_document_roles')
-                    .where({ document_id: instance.document_id, user_id: userId })
-                    .whereIn('role', ['approver', 'reporter'])
-                    .first();
-                if (role) hasRole = true;
             }
         }
 
         if (!hasRole) {
-            throw new AppError('Unauthorized: You must have a configured role (approver/reporter) or edit access to initiate this cycle', 403);
+            throw new AppError('Only a configured reporter can initialize this cycle', 403);
         }
 
         // 4. Verify no active cycle exists
@@ -453,6 +477,10 @@ export async function submitDraft(orgId, cycleId, userId, { changes_summary, com
             throw new AppError('Only the current holder can submit', 403);
         }
 
+        if (cycle.current_level === 0 && cycle.initiated_by !== userId) {
+            throw new AppError('Only the reporter who initialized this cycle can submit it for approval', 403);
+        }
+
         if (['approved', 'rejected', 'cancelled'].includes(cycle.status)) {
             throw new AppError('Cannot submit a closed cycle', 400);
         }
@@ -486,10 +514,34 @@ export async function submitDraft(orgId, cycleId, userId, { changes_summary, com
                 'document_roles.document_id': cycle.document_id,
                 'document_roles.role': 'approver'
             })
-            .select('document_roles.user_id', 'approval_levels.level_order')
-            .orderBy('approval_levels.level_order', 'asc');
+            .select('document_roles.id', 'document_roles.user_id', 'approval_levels.level_order')
+            .orderBy([
+                { column: 'approval_levels.level_order', order: 'asc' },
+                { column: 'document_roles.id', order: 'asc' }
+            ]);
 
-        const nextApprover = approvers.find(a => a.level_order > cycle.current_level);
+        const approverCountsByLevel = new Map();
+        approvers.forEach(approver => {
+            const levelKey = String(approver.level_order);
+            approverCountsByLevel.set(levelKey, (approverCountsByLevel.get(levelKey) || 0) + 1);
+        });
+        const duplicateLevel = Array.from(approverCountsByLevel.entries())
+            .find(([, count]) => count > 1);
+        if (duplicateLevel) {
+            throw new AppError('Approval configuration invalid: each level can have only one approver', 400);
+        }
+
+        let currentApproverIndex = -1;
+        if (cycle.current_level > 0) {
+            currentApproverIndex = approvers.findIndex(approver =>
+                approver.user_id === userId && approver.level_order === cycle.current_level
+            );
+            if (currentApproverIndex === -1) {
+                throw new AppError('Current approver is not assigned to this approval chain', 403);
+            }
+        }
+
+        const nextApprover = approvers[currentApproverIndex + 1];
 
         if (nextApprover) {
             // Forward to next approver
@@ -665,12 +717,8 @@ export async function claimRevision(orgId, cycleId, userId) {
             throw new AppError('Cycle must be in revision_requested state to claim', 400);
         }
 
-        const role = await trx('wf_document_roles')
-            .where({ document_id: cycle.document_id, user_id: userId, role: 'approver' })
-            .first();
-
-        if (!role) {
-            throw new AppError('Caller must have approver role for this document to claim', 403);
+        if (cycle.initiated_by !== userId) {
+            throw new AppError('Only the reporter who initialized this cycle can claim the revision', 403);
         }
 
         await trx('wf_approval_cycles')

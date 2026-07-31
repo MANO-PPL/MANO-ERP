@@ -47,7 +47,9 @@ export async function getProjectVendors(projectId, fields) {
     }
 
     const vendors = await db('pdoc_vendors as pv')
-        .leftJoin('crm_contacts as c', function () {
+        // A project-vendor link without a live CRM vendor is not renderable.
+        // Exclude orphaned links instead of returning rows full of nulls.
+        .join('crm_contacts as c', function () {
             this.on('pv.vendors_id', 'c.id').andOn('c.type', db.raw("'vendor'"));
         })
         .leftJoin('crm_job_nature as jn', 'c.job_nature_id', 'jn.job_id')
