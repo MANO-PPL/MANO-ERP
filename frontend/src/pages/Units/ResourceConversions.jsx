@@ -6,6 +6,7 @@ import {
 import { resourceApi } from '../../services/resourceApi';
 import { unitApi } from '../../services/unitApi';
 import ConversionForm from './ConversionForm';
+import ConfirmModal from '../../components/ConfirmModal';
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -19,9 +20,9 @@ const TYPE_BADGE = {
 const ConversionBadge = ({ conv, resourceId, onRemove, canWrite }) => {
     const [removing, setRemoving] = useState(false);
     const [error, setError] = useState('');
+    const [isConfirmOpen, setIsConfirmOpen] = useState(false);
 
     const handleRemove = async () => {
-        if (!window.confirm(`Remove "${conv.name}"?`)) return;
         setRemoving(true);
         setError('');
         try {
@@ -31,33 +32,48 @@ const ConversionBadge = ({ conv, resourceId, onRemove, canWrite }) => {
             setError(err.response?.data?.message || 'Failed to remove');
         } finally {
             setRemoving(false);
+            setIsConfirmOpen(false);
         }
     };
 
     return (
-        <div className="group flex items-center justify-between gap-3 px-3 py-2 bg-gray-50 dark:bg-white/[0.02] border border-gray-200 dark:border-white/5 rounded-lg">
-            <div className="flex items-center gap-2 text-xs">
-                <span className="font-semibold text-gray-700 dark:text-gray-200">1 {conv.name}</span>
-                <ArrowLeftRight size={11} className="text-gray-400 shrink-0" />
-                <span className="font-mono text-purple-600 dark:text-purple-400 font-semibold">
-                    {parseFloat(conv.quantity)} {conv.unit_symbol}
-                </span>
-                <span className="text-gray-400 text-[10px]">({conv.unit_name})</span>
+        <>
+            <div className="group flex items-center justify-between gap-3 px-3 py-2 bg-gray-50 dark:bg-white/[0.02] border border-gray-200 dark:border-white/5 rounded-lg">
+                <div className="flex items-center gap-2 text-xs">
+                    <span className="font-semibold text-gray-700 dark:text-gray-200">1 {conv.name}</span>
+                    <ArrowLeftRight size={11} className="text-gray-400 shrink-0" />
+                    <span className="font-mono text-purple-600 dark:text-purple-400 font-semibold">
+                        {parseFloat(conv.quantity)} {conv.unit_symbol}
+                    </span>
+                    <span className="text-gray-400 text-[10px]">({conv.unit_name})</span>
+                </div>
+                <div className="flex items-center gap-1">
+                    {error && <span className="text-red-500 text-[10px]">{error}</span>}
+                    {canWrite && (
+                        <button
+                            onClick={() => setIsConfirmOpen(true)}
+                            disabled={removing}
+                            className="p-1 text-gray-300 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 rounded transition-all opacity-0 group-hover:opacity-100"
+                            title="Remove conversion"
+                        >
+                            {removing ? <RefreshCw size={13} className="animate-spin" /> : <Trash2 size={13} />}
+                        </button>
+                    )}
+                </div>
             </div>
-            <div className="flex items-center gap-1">
-                {error && <span className="text-red-500 text-[10px]">{error}</span>}
-                {canWrite && (
-                    <button
-                        onClick={handleRemove}
-                        disabled={removing}
-                        className="p-1 text-gray-300 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 rounded transition-all opacity-0 group-hover:opacity-100"
-                        title="Remove conversion"
-                    >
-                        {removing ? <RefreshCw size={13} className="animate-spin" /> : <Trash2 size={13} />}
-                    </button>
-                )}
-            </div>
-        </div>
+
+            <ConfirmModal
+                isOpen={isConfirmOpen}
+                onClose={() => setIsConfirmOpen(false)}
+                onConfirm={handleRemove}
+                title="Remove Conversion Scale?"
+                message={`Are you sure you want to remove conversion scale "${conv.name}"?`}
+                confirmText="Remove Scale"
+                cancelText="Cancel"
+                variant="danger"
+                isLoading={removing}
+            />
+        </>
     );
 };
 

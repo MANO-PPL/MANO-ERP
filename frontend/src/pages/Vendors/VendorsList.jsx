@@ -92,7 +92,7 @@ const CustomPageSizeDropdown = ({ pageSize, setPageSize, totalCount }) => {
             </button>
 
             {isOpen && (
-                <div className="absolute left-0 bottom-full mb-1 w-36 bg-white dark:bg-[#161b22] border border-gray-200 dark:border-white/10 rounded-lg shadow-xl z-[7000] py-1 text-xs text-gray-700 dark:text-gray-300 font-semibold overflow-hidden animate-in fade-in zoom-in-95 duration-100 select-none">
+                <div className="absolute left-0 bottom-full mb-1 w-36 bg-white dark:bg-[#161b22] border border-gray-200 dark:border-white/10 rounded-lg shadow-xl z-[7000] py-1 text-xs text-gray-700 dark:text-gray-300 font-semibold overflow-hidden animate-in fade-in zoom-in-95 duration-100 select-none flex flex-col">
                     <div className="px-2.5 py-1 text-[10px] text-gray-400 font-bold uppercase tracking-wider border-b border-gray-100 dark:border-white/5">
                         Rows per page
                     </div>
@@ -239,6 +239,7 @@ const VendorsList = () => {
     const [showBulkJobMenu, setShowBulkJobMenu] = useState(false);
     const [showBulkCategoryMenu, setShowBulkCategoryMenu] = useState(false);
     const [bulkJobSearch, setBulkJobSearch] = useState('');
+    const [contextMenu, setContextMenu] = useState(null);
 
     const closeDropdown = () => {
         setActiveDropdownCell(null);
@@ -246,6 +247,298 @@ const VendorsList = () => {
         setShowBulkJobMenu(false);
         setShowBulkCategoryMenu(false);
         setBulkJobSearch('');
+        setContextMenu(null);
+    };
+
+    useEffect(() => {
+        const handleCloseMenu = () => setContextMenu(null);
+        window.addEventListener('click', handleCloseMenu);
+        return () => window.removeEventListener('click', handleCloseMenu);
+    }, []);
+
+    const handleContextMenu = (e, rowIndex, colIndex) => {
+        e.preventDefault();
+        e.stopPropagation();
+
+        const curBounds = bounds;
+        if (!curBounds || rowIndex < curBounds.minRow || rowIndex > curBounds.maxRow || colIndex < curBounds.minCol || colIndex > curBounds.maxCol) {
+            setSelectionAnchor({ r: rowIndex, c: colIndex });
+            setSelectionFocus({ r: rowIndex, c: colIndex });
+        }
+
+        setContextMenu({
+            x: Math.min(e.clientX, window.innerWidth - 240),
+            y: Math.min(e.clientY, window.innerHeight - 380),
+            rowIndex,
+            colIndex
+        });
+    };
+
+    const handleFillDown = () => {
+        if (!bounds || bounds.minRow === bounds.maxRow || !canWrite) return;
+        pushUndoState(gridDataRef.current);
+
+        let updatedGrid = [...gridDataRef.current];
+        const sourceRowObj = sortedGridDataRef.current[bounds.minRow];
+        if (!sourceRowObj) return;
+
+        for (let r = bounds.minRow + 1; r <= bounds.maxRow; r++) {
+            const targetRowObj = sortedGridDataRef.current[r];
+            if (!targetRowObj) continue;
+            const realIdx = updatedGrid.findIndex(row => row.id === targetRowObj.id);
+            if (realIdx === -1) continue;
+
+            const rowCopy = { ...updatedGrid[realIdx] };
+            for (let c = bounds.minCol; c <= bounds.maxCol; c++) {
+                const col = GRID_COLUMNS[c];
+                rowCopy[col] = sourceRowObj[col];
+            }
+            if (rowCopy._status !== 'new') rowCopy._status = 'modified';
+            updatedGrid[realIdx] = rowCopy;
+        }
+
+        setGridData(updatedGrid);
+        showToast('sparkle', 'Fill Down (Ctrl+D)', `Filled values down across ${bounds.maxRow - bounds.minRow + 1} rows.`);
+    };
+
+    const handleFillRight = () => {
+        if (!bounds || bounds.minCol === bounds.maxCol || !canWrite) return;
+        pushUndoState(gridDataRef.current);
+
+        let updatedGrid = [...gridDataRef.current];
+
+        for (let r = bounds.minRow; r <= bounds.maxRow; r++) {
+            const targetRowObj = sortedGridDataRef.current[r];
+            if (!targetRowObj) continue;
+            const realIdx = updatedGrid.findIndex(row => row.id === targetRowObj.id);
+            if (realIdx === -1) continue;
+
+            const sourceColName = GRID_COLUMNS[bounds.minCol];
+            const fillVal = targetRowObj[sourceColName];
+
+            const rowCopy = { ...updatedGrid[realIdx] };
+            for (let c = bounds.minCol + 1; c <= bounds.maxCol; c++) {
+                const col = GRID_COLUMNS[c];
+                rowCopy[col] = fillVal;
+            }
+            if (rowCopy._status !== 'new') rowCopy._status = 'modified';
+            updatedGrid[realIdx] = rowCopy;
+        }
+
+        setGridData(updatedGrid);
+        showToast('sparkle', 'Fill Right (Ctrl+R)', `Filled values right across columns.`);
+    };
+
+    const handleInsertRow = (targetRowIndex, position = 'below') => {
+        pushUndoState(gridDataRef.current);
+        const insertIdx = position === 'above' ? targetRowIndex : targetRowIndex + 1;
+        const newRow = {
+            id: `temp_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`,
+            name: '',
+            job_name: '',
+            contact_person: '',
+            designation: '',
+            telephone_no: '',
+            email: '',
+            address: '',
+            category: 'Contractor',
+            location: '',
+            remarks: '',
+            _status: 'new',
+            _errors: {}
+        };
+
+        setGridData(prev => {
+            const next = [...prev];
+            next.splice(insertIdx, 0, newRow);
+            return next;
+        });
+
+        setSelectionAnchor({ r: insertIdx, c: 0 });
+        setSelectionFocus({ r: insertIdx, c: 0 });
+        showToast('info', 'Row Inserted', `Inserted new row ${position} row #${targetRowIndex + 1}.`);
+    };
+
+    const executeCopy = () => {
+        const activeTag = document.activeElement?.tagName?.toLowerCase();
+        if (activeTag === 'input' || activeTag === 'textarea') return;
+
+        let rowsToCopy = [];
+        let minCol = 0;
+        let maxCol = GRID_COLUMNS.length - 1;
+
+        const bounds = getSelectionBounds();
+
+        if (selectedIds.size > 0) {
+            rowsToCopy = sortedGridDataRef.current.filter(r => selectedIds.has(r.id));
+        } else if (bounds) {
+            for (let r = bounds.minRow; r <= bounds.maxRow; r++) {
+                if (sortedGridDataRef.current[r]) rowsToCopy.push(sortedGridDataRef.current[r]);
+            }
+            minCol = bounds.minCol;
+            maxCol = bounds.maxCol;
+        } else if (selectionAnchor) {
+            const rowObj = sortedGridDataRef.current[selectionAnchor.r];
+            if (rowObj) rowsToCopy.push(rowObj);
+            minCol = selectionAnchor.c;
+            maxCol = selectionAnchor.c;
+        }
+
+        if (rowsToCopy.length === 0) return;
+
+        const tsvLines = rowsToCopy.map(rowObj => {
+            const rowVals = [];
+            for (let c = minCol; c <= maxCol; c++) {
+                const colName = GRID_COLUMNS[c];
+                rowVals.push(rowObj[colName] || '');
+            }
+            return rowVals.join('\t');
+        });
+
+        const tsvData = tsvLines.join('\n');
+        if (tsvData) {
+            navigator.clipboard.writeText(tsvData);
+            const numCells = tsvLines.length * (maxCol - minCol + 1);
+            showToast('sparkle', 'Copied to Clipboard', `Copied ${numCells} cell(s) across ${tsvLines.length} row(s)`);
+        }
+    };
+
+    const executeCut = () => {
+        if (!canWrite) return;
+        executeCopy();
+        pushUndoState(gridDataRef.current);
+        const bounds = getSelectionBounds();
+
+        if (selectedIds.size > 0) {
+            handleBulkDelete();
+            return;
+        }
+
+        if (!bounds) return;
+        let updatedGrid = [...gridDataRef.current];
+        let numCleared = 0;
+
+        for (let r = bounds.minRow; r <= bounds.maxRow; r++) {
+            const targetRowObj = sortedGridDataRef.current[r];
+            if (!targetRowObj) continue;
+            const realIdx = updatedGrid.findIndex(row => row.id === targetRowObj.id);
+            if (realIdx === -1) continue;
+
+            const rowCopy = { ...updatedGrid[realIdx] };
+            for (let c = bounds.minCol; c <= bounds.maxCol; c++) {
+                const col = GRID_COLUMNS[c];
+                rowCopy[col] = '';
+                numCleared++;
+            }
+            if (rowCopy._status !== 'new') rowCopy._status = 'modified';
+            updatedGrid[realIdx] = rowCopy;
+        }
+
+        if (numCleared > 0) {
+            setGridData(updatedGrid);
+            showToast('sparkle', 'Cut to Clipboard', `Cut values from ${numCleared} cell(s).`);
+        }
+    };
+
+    const executePaste = async (pastedText = null) => {
+        let textToPaste = pastedText;
+        if (!textToPaste) {
+            try {
+                textToPaste = await navigator.clipboard.readText();
+            } catch (err) {
+                console.error('Clipboard access error', err);
+            }
+        }
+        if (!textToPaste || !textToPaste.trim()) return;
+
+        pushUndoState(gridDataRef.current);
+
+        let startRow = 0;
+        let startCol = 0;
+
+        const bounds = getSelectionBounds();
+
+        if (selectedIds.size > 0) {
+            const firstSelectedId = Array.from(selectedIds)[0];
+            const foundIdx = sortedGridDataRef.current.findIndex(r => r.id === firstSelectedId);
+            if (foundIdx !== -1) startRow = foundIdx;
+        } else if (bounds) {
+            startRow = bounds.minRow;
+            startCol = bounds.minCol;
+        } else if (selectionAnchor) {
+            startRow = selectionAnchor.r;
+            startCol = selectionAnchor.c;
+        }
+
+        const lines = textToPaste.trim().split(/\r?\n/);
+        let updatedGrid = [...gridDataRef.current];
+        let numCellsUpdated = 0;
+        let newRowsAddedCount = 0;
+
+        lines.forEach((line, dr) => {
+            if (!line.trim()) return;
+            const r = startRow + dr;
+            const cells = line.split('\t');
+
+            const targetRowObj = sortedGridDataRef.current[r];
+            if (targetRowObj) {
+                const realIdx = updatedGrid.findIndex(row => row.id === targetRowObj.id);
+                if (realIdx !== -1) {
+                    const rowCopy = { ...updatedGrid[realIdx] };
+                    cells.forEach((cellVal, dc) => {
+                        const c = startCol + dc;
+                        if (c < GRID_COLUMNS.length) {
+                            const colName = GRID_COLUMNS[c];
+                            rowCopy[colName] = cellVal.trim();
+                            numCellsUpdated++;
+                        }
+                    });
+                    if (rowCopy._status !== 'new') rowCopy._status = 'modified';
+                    updatedGrid[realIdx] = rowCopy;
+                }
+            } else {
+                const newRow = {
+                    id: `temp_${Date.now()}_${Math.random().toString(36).substring(2, 9)}_${dr}`,
+                    name: '',
+                    job_name: '',
+                    contact_person: '',
+                    designation: '',
+                    telephone_no: '',
+                    email: '',
+                    address: '',
+                    category: 'Contractor',
+                    location: '',
+                    remarks: '',
+                    _status: 'new',
+                    _errors: {}
+                };
+                cells.forEach((cellVal, dc) => {
+                    const c = startCol + dc;
+                    if (c < GRID_COLUMNS.length) {
+                        const colName = GRID_COLUMNS[c];
+                        newRow[colName] = cellVal.trim();
+                        numCellsUpdated++;
+                    }
+                });
+                if (!newRow.name) {
+                    const nonVal = cells.find(c => c.trim());
+                    if (nonVal) newRow.name = nonVal.trim();
+                }
+                if (newRow.name) {
+                    updatedGrid.push(newRow);
+                    newRowsAddedCount++;
+                }
+            }
+        });
+
+        if (numCellsUpdated > 0) {
+            setGridData(updatedGrid);
+            if (newRowsAddedCount > 0) {
+                showToast('sparkle', 'Added New Rows', `Pasted ${newRowsAddedCount} new row(s) into spreadsheet`);
+            } else {
+                showToast('sparkle', 'Paste Success', `Pasted content into ${numCellsUpdated} cell(s).`);
+            }
+        }
     };
 
     // Global MouseUp for range drag selection
@@ -332,8 +625,14 @@ const VendorsList = () => {
         total: vendors.length,
         jobNaturesCount: allJobNatures.length,
         categoriesCount: CATEGORY_OPTIONS.length,
-        hasPhone: vendors.filter(v => v.telephone_no || v.mobile).length
+        hasPhone: vendors.reduce((acc, v) => (v.telephone_no || v.mobile ? acc + 1 : acc), 0)
     }), [vendors, allJobNatures]);
+
+    const filteredJobNaturesInCell = useMemo(() => {
+        if (!jobNatureSearch) return allJobNatures;
+        const lower = jobNatureSearch.toLowerCase();
+        return allJobNatures.filter(j => (j.job_name || '').toLowerCase().includes(lower));
+    }, [allJobNatures, jobNatureSearch]);
 
     const fetchMetadata = async () => {
         try {
@@ -548,7 +847,7 @@ const VendorsList = () => {
 
     // Pagination States & Memoization
     const [currentPage, setCurrentPage] = useState(1);
-    const [pageSize, setPageSize] = useState(100); // Options: 50, 100, 250, 500, 1000, 'All'
+    const [pageSize, setPageSize] = useState(50); // Options: 50, 100, 250, 500, 1000, 'All'
 
     useEffect(() => {
         setCurrentPage(1);
@@ -592,6 +891,83 @@ const VendorsList = () => {
 
             const isMac = navigator.platform.toUpperCase().indexOf('MAC') >= 0;
             const modifier = isMac ? e.metaKey : e.ctrlKey;
+
+            // Delete or Backspace key
+            if (e.key === 'Delete' || e.key === 'Backspace') {
+                if (canWrite) {
+                    const bounds = getSelectionBounds();
+                    if (selectedIds.size > 0) {
+                        e.preventDefault();
+                        handleBulkDelete();
+                        return;
+                    } else if (bounds) {
+                        e.preventDefault();
+                        const totalCols = GRID_COLUMNS.length;
+                        const isFullRowSelected = (bounds.minCol === 0 && bounds.maxCol === totalCols - 1);
+                        if (isFullRowSelected) {
+                            const rowsToDelete = [];
+                            for (let r = bounds.minRow; r <= bounds.maxRow; r++) {
+                                const targetRowObj = sortedGridDataRef.current[r];
+                                if (targetRowObj) rowsToDelete.push(targetRowObj);
+                            }
+                            if (rowsToDelete.length > 0) {
+                                deleteSelectedRowEntries(rowsToDelete);
+                            }
+                        } else {
+                            pushUndoState(gridDataRef.current);
+                            let updatedGrid = [...gridDataRef.current];
+                            let numCleared = 0;
+
+                            for (let r = bounds.minRow; r <= bounds.maxRow; r++) {
+                                const targetRowObj = sortedGridDataRef.current[r];
+                                if (!targetRowObj) continue;
+                                const realIdx = updatedGrid.findIndex(row => row.id === targetRowObj.id);
+                                if (realIdx === -1) continue;
+
+                                const rowCopy = { ...updatedGrid[realIdx] };
+                                for (let c = bounds.minCol; c <= bounds.maxCol; c++) {
+                                    const col = GRID_COLUMNS[c];
+                                    rowCopy[col] = '';
+                                    numCleared++;
+                                }
+                                if (rowCopy._status !== 'new') rowCopy._status = 'modified';
+                                updatedGrid[realIdx] = rowCopy;
+                            }
+
+                            if (numCleared > 0) {
+                                setGridData(updatedGrid);
+                                showToast('info', 'Cells Cleared', `Cleared content from ${numCleared} cell(s). Click "Save Changes" to apply.`);
+                            }
+                        }
+                        return;
+                    }
+                }
+            }
+
+            // Ctrl+C / Cmd+C : Copy
+            if (modifier && (e.key === 'c' || e.key === 'C')) {
+                e.preventDefault();
+                executeCopy();
+                return;
+            }
+
+            // Ctrl+X / Cmd+X : Cut
+            if (modifier && (e.key === 'x' || e.key === 'X')) {
+                if (canWrite) {
+                    e.preventDefault();
+                    executeCut();
+                    return;
+                }
+            }
+
+            // Ctrl+V / Cmd+V : Paste
+            if (modifier && (e.key === 'v' || e.key === 'V')) {
+                if (canWrite) {
+                    e.preventDefault();
+                    executePaste();
+                    return;
+                }
+            }
 
             // Ctrl+A / Cmd+A : Select All
             if (modifier && (e.key === 'a' || e.key === 'A')) {
@@ -640,7 +1016,7 @@ const VendorsList = () => {
 
         window.addEventListener('keydown', handleGlobalShortcuts);
         return () => window.removeEventListener('keydown', handleGlobalShortcuts);
-    }, []);
+    }, [selectedIds, selectionAnchor, selectionFocus]);
 
     // ─── Cell Copy (Ctrl+C) & Cell Paste (Ctrl+V) ──────────────────────────────
     useEffect(() => {
@@ -648,27 +1024,34 @@ const VendorsList = () => {
             const activeTag = document.activeElement?.tagName?.toLowerCase();
             if (activeTag === 'input' || activeTag === 'textarea') return;
 
-            const bounds = getSelectionBounds();
-            if (!bounds) return;
+            let rowsToCopy = [];
+            if (selectedIds.size > 0) {
+                rowsToCopy = sortedGridDataRef.current.filter(r => selectedIds.has(r.id));
+            } else if (bounds) {
+                for (let r = bounds.minRow; r <= bounds.maxRow; r++) {
+                    if (sortedGridDataRef.current[r]) rowsToCopy.push(sortedGridDataRef.current[r]);
+                }
+            }
+
+            if (rowsToCopy.length === 0) return;
 
             e.preventDefault();
-            const tsvLines = [];
-            for (let r = bounds.minRow; r <= bounds.maxRow; r++) {
-                const rowObj = sortedGridDataRef.current[r];
-                if (!rowObj) continue;
+            const minCol = (selectedIds.size > 0 || !bounds) ? 0 : bounds.minCol;
+            const maxCol = (selectedIds.size > 0 || !bounds) ? GRID_COLUMNS.length - 1 : bounds.maxCol;
+
+            const tsvLines = rowsToCopy.map(rowObj => {
                 const rowVals = [];
-                for (let c = bounds.minCol; c <= bounds.maxCol; c++) {
+                for (let c = minCol; c <= maxCol; c++) {
                     const colName = GRID_COLUMNS[c];
-                    let val = rowObj[colName] || '';
-                    rowVals.push(val);
+                    rowVals.push(rowObj[colName] || '');
                 }
-                tsvLines.push(rowVals.join('\t'));
-            }
+                return rowVals.join('\t');
+            });
 
             const tsvData = tsvLines.join('\n');
             if (tsvData) {
                 navigator.clipboard.writeText(tsvData);
-                const numCells = (bounds.maxRow - bounds.minRow + 1) * (bounds.maxCol - bounds.minCol + 1);
+                const numCells = tsvLines.length * (maxCol - minCol + 1);
                 showToast('sparkle', 'Copied to Clipboard', `Copied ${numCells} cell(s) across ${tsvLines.length} row(s)`);
             }
         };
@@ -785,14 +1168,22 @@ const VendorsList = () => {
         }));
     };
 
-    // Selection Management
     const handleSelectAll = (e) => {
         e?.stopPropagation();
         if (selectedIds.size === sortedGridData.length) {
             setSelectedIds(new Set());
+            setSelectionAnchor(null);
+            setSelectionFocus(null);
         } else {
             const allIds = new Set(sortedGridData.map(r => r.id));
             setSelectedIds(allIds);
+            if (sortedGridData.length > 0) {
+                setSelectionAnchor({ r: 0, c: 0 });
+                setSelectionFocus({
+                    r: sortedGridData.length - 1,
+                    c: GRID_COLUMNS.length - 1
+                });
+            }
         }
     };
 
@@ -811,6 +1202,22 @@ const VendorsList = () => {
                 if (next.has(id)) next.delete(id);
                 else next.add(id);
             }
+
+            if (next.size > 0) {
+                const selectedIndices = sortedGridData
+                    .map((r, idx) => next.has(r.id) ? idx : -1)
+                    .filter(idx => idx !== -1);
+                if (selectedIndices.length > 0) {
+                    const minR = Math.min(...selectedIndices);
+                    const maxR = Math.max(...selectedIndices);
+                    setSelectionAnchor({ r: minR, c: 0 });
+                    setSelectionFocus({ r: maxR, c: GRID_COLUMNS.length - 1 });
+                }
+            } else {
+                setSelectionAnchor(null);
+                setSelectionFocus(null);
+            }
+
             return next;
         });
         setLastSelectedId(id);
@@ -1717,12 +2124,13 @@ const VendorsList = () => {
                                         <ChevronDown size={12} />
                                     </button>
                                     {showBulkCategoryMenu && (
-                                        <div className="absolute right-0 top-full mt-1 w-44 bg-white dark:bg-[#161b22] border border-gray-200 dark:border-white/10 rounded-md shadow-xl z-[6000] py-1 text-xs text-gray-800 dark:text-gray-200 font-medium">
+                                        <div className="absolute right-0 top-full mt-1 w-44 bg-white dark:bg-[#161b22] border border-gray-200 dark:border-white/10 rounded-md shadow-xl z-[6000] py-1 text-xs text-gray-800 dark:text-gray-200 font-medium flex flex-col">
                                             {CATEGORY_OPTIONS.map(cat => (
                                                 <button
                                                     key={cat}
+                                                    type="button"
                                                     onClick={() => handleBulkChangeCategory(cat)}
-                                                    className="w-full text-left px-3 py-2 hover:bg-gray-100 dark:hover:bg-white/5 font-semibold"
+                                                    className="w-full text-left px-3 py-2 hover:bg-gray-100 dark:hover:bg-white/5 font-semibold block whitespace-nowrap"
                                                 >
                                                     Set to {cat}
                                                 </button>
@@ -1911,6 +2319,7 @@ const VendorsList = () => {
                                                             }
                                                         }}
                                                         onKeyDown={(e) => handleCellKeyDown(e, rowIndex, colName)}
+                                                        onContextMenu={(e) => handleContextMenu(e, rowIndex, colIndex)}
                                                         className={`px-3 py-2 border-r border-b border-gray-100 dark:border-white/5 relative outline-none select-none ${isInRange ? 'bg-blue-50/50 dark:bg-blue-900/20' : ''
                                                             } ${isAnchor ? 'ring-2 ring-blue-500/70 z-10' : ''}`}
                                                     >
@@ -1965,9 +2374,7 @@ const VendorsList = () => {
                                                                             onChange={(e) => setJobNatureSearch(e.target.value)}
                                                                         />
                                                                         <div className="overflow-y-auto no-scrollbar flex-1">
-                                                                            {allJobNatures
-                                                                                .filter(j => (j.job_name || '').toLowerCase().includes(jobNatureSearch.toLowerCase()))
-                                                                                .map(j => (
+                                                                            {filteredJobNaturesInCell.map(j => (
                                                                                     <button
                                                                                         key={j.job_id || j.job_name}
                                                                                         onClick={(e) => {
@@ -2017,16 +2424,17 @@ const VendorsList = () => {
 
                                                                 {/* Category Popup Menu */}
                                                                 {activeDropdownCell?.rowIndex === rowIndex && activeDropdownCell?.colName === 'category' && (
-                                                                    <div className="absolute left-0 top-full mt-1 w-44 bg-white dark:bg-[#161b22] border border-gray-200 dark:border-white/10 rounded-lg shadow-2xl z-[6000] py-1 text-xs text-gray-800 dark:text-gray-200">
+                                                                    <div className="absolute left-0 top-full mt-1 w-44 bg-white dark:bg-[#161b22] border border-gray-200 dark:border-white/10 rounded-lg shadow-2xl z-[6000] py-1 text-xs text-gray-800 dark:text-gray-200 flex flex-col">
                                                                         {CATEGORY_OPTIONS.map(cat => (
                                                                             <button
                                                                                 key={cat}
+                                                                                type="button"
                                                                                 onClick={(e) => {
                                                                                     e.stopPropagation();
                                                                                     handleCellChange(rowIndex, 'category', cat, true);
                                                                                     closeDropdown();
                                                                                 }}
-                                                                                className="w-full text-left px-3 py-1.5 hover:bg-gray-100 dark:hover:bg-white/5 font-semibold"
+                                                                                className="w-full text-left px-3 py-1.5 hover:bg-gray-100 dark:hover:bg-white/5 font-semibold block whitespace-nowrap text-gray-800 dark:text-gray-200"
                                                                             >
                                                                                 {cat}
                                                                             </button>
@@ -2214,6 +2622,126 @@ const VendorsList = () => {
                 getSubLabel={(row) => [row.job_name, row.email, row.telephone_no].filter(Boolean).join(' • ')}
                 onDeleteDuplicates={handleConfirmDeleteDuplicates}
             />
+
+            {/* Right-Click Context Menu Overlay */}
+            {contextMenu && (
+                <div
+                    className="fixed bg-white dark:bg-[#161b22] border border-gray-200 dark:border-white/10 rounded-xl shadow-2xl z-[9000] py-1.5 w-56 text-xs select-none backdrop-blur-md"
+                    style={{ left: `${contextMenu.x}px`, top: `${contextMenu.y}px` }}
+                    onClick={(e) => e.stopPropagation()}
+                >
+                    {canWrite && (
+                        <button
+                            onClick={(e) => {
+                                e.stopPropagation();
+                                setContextMenu(null);
+                                executeCut();
+                            }}
+                            className="w-full text-left px-3.5 py-1.5 hover:bg-blue-50 dark:hover:bg-white/5 text-gray-800 dark:text-gray-200 flex items-center justify-between font-semibold"
+                        >
+                            <span>Cut</span>
+                            <span className="text-[10px] font-mono text-gray-400">Ctrl+X</span>
+                        </button>
+                    )}
+                    <button
+                        onClick={(e) => {
+                            e.stopPropagation();
+                            setContextMenu(null);
+                            executeCopy();
+                        }}
+                        className="w-full text-left px-3.5 py-1.5 hover:bg-blue-50 dark:hover:bg-white/5 text-gray-800 dark:text-gray-200 flex items-center justify-between font-semibold"
+                    >
+                        <span>Copy</span>
+                        <span className="text-[10px] font-mono text-gray-400">Ctrl+C</span>
+                    </button>
+                    {canWrite && (
+                        <button
+                            onClick={(e) => {
+                                e.stopPropagation();
+                                setContextMenu(null);
+                                executePaste();
+                            }}
+                            className="w-full text-left px-3.5 py-1.5 hover:bg-blue-50 dark:hover:bg-white/5 text-gray-800 dark:text-gray-200 flex items-center justify-between font-semibold border-b border-gray-100 dark:border-white/5 pb-1.5 mb-1"
+                        >
+                            <span>Paste</span>
+                            <span className="text-[10px] font-mono text-gray-400">Ctrl+V</span>
+                        </button>
+                    )}
+
+                    {canWrite && ((bounds && bounds.minRow < bounds.maxRow) || selectedIds.size > 1) && (
+                        <button
+                            onClick={() => {
+                                setContextMenu(null);
+                                handleFillDown();
+                            }}
+                            className="w-full text-left px-3.5 py-1.5 hover:bg-blue-50 dark:hover:bg-white/5 text-gray-800 dark:text-gray-200 flex items-center justify-between font-semibold"
+                        >
+                            <span>Fill Down</span>
+                            <span className="text-[10px] font-mono text-gray-400">Ctrl+D</span>
+                        </button>
+                    )}
+                    {canWrite && bounds && bounds.minCol < bounds.maxCol && (
+                        <button
+                            onClick={() => {
+                                setContextMenu(null);
+                                handleFillRight();
+                            }}
+                            className="w-full text-left px-3.5 py-1.5 hover:bg-blue-50 dark:hover:bg-white/5 text-gray-800 dark:text-gray-200 flex items-center justify-between font-semibold border-b border-gray-100 dark:border-white/5 pb-1.5 mb-1"
+                        >
+                            <span>Fill Right</span>
+                            <span className="text-[10px] font-mono text-gray-400">Ctrl+R</span>
+                        </button>
+                    )}
+
+                    {canWrite && (
+                        <>
+                            <button
+                                onClick={() => {
+                                    setContextMenu(null);
+                                    handleInsertRow(contextMenu.rowIndex, 'above');
+                                }}
+                                className="w-full text-left px-3.5 py-1.5 hover:bg-blue-50 dark:hover:bg-white/5 text-gray-800 dark:text-gray-200 flex items-center justify-between font-semibold"
+                            >
+                                <span>Insert Row Above</span>
+                            </button>
+                            <button
+                                onClick={() => {
+                                    setContextMenu(null);
+                                    handleInsertRow(contextMenu.rowIndex, 'below');
+                                }}
+                                className="w-full text-left px-3.5 py-1.5 hover:bg-blue-50 dark:hover:bg-white/5 text-gray-800 dark:text-gray-200 flex items-center justify-between font-semibold border-b border-gray-100 dark:border-white/5 pb-1.5 mb-1"
+                            >
+                                <span>Insert Row Below</span>
+                            </button>
+
+                            <button
+                                onClick={() => {
+                                    setContextMenu(null);
+                                    const targetRow = sortedGridDataRef.current[contextMenu.rowIndex];
+                                    if (targetRow) handleDuplicateRow(targetRow);
+                                }}
+                                className="w-full text-left px-3.5 py-1.5 hover:bg-purple-50 dark:hover:bg-purple-900/20 text-purple-700 dark:text-purple-300 flex items-center justify-between font-semibold"
+                            >
+                                <span>Duplicate Row</span>
+                            </button>
+                            <button
+                                onClick={() => {
+                                    setContextMenu(null);
+                                    if (selectedIds.size > 0) {
+                                        handleBulkDelete();
+                                    } else {
+                                        const targetRow = sortedGridDataRef.current[contextMenu.rowIndex];
+                                        if (targetRow) handleDeleteRow(targetRow);
+                                    }
+                                }}
+                                className="w-full text-left px-3.5 py-1.5 hover:bg-red-50 dark:hover:bg-red-900/20 text-red-600 dark:text-red-400 flex items-center justify-between font-semibold"
+                            >
+                                <span>Delete {selectedIds.size > 0 ? `Selected (${selectedIds.size})` : 'Row'}</span>
+                            </button>
+                        </>
+                    )}
+                </div>
+            )}
         </div>
     );
 };

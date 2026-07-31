@@ -110,11 +110,11 @@ const AddEditVendor = ({ isOpen, onClose, onSave, initialData = null, availableJ
                                 {showCategoryDropdown && (
                                     <>
                                         <div className="fixed inset-0 z-[5500]" onClick={() => setShowCategoryDropdown(false)}></div>
-                                        <div className="absolute z-[6000] w-full mt-1 bg-white dark:bg-[#161b22] border border-gray-200 dark:border-white/10 rounded-lg shadow-xl overflow-hidden anim-fade-in">
-                                            {['contractor', 'consultants', 'supplier', 'Other'].map(cat => (
+                                        <div className="absolute z-[6000] w-full mt-1 bg-white dark:bg-[#161b22] border border-gray-200 dark:border-white/10 rounded-lg shadow-xl overflow-hidden anim-fade-in flex flex-col">
+                                            {['Consultant', 'Contractor', 'Supplier', 'Manufacturer', 'Service Provider', 'Other'].map(cat => (
                                                 <div
                                                     key={cat}
-                                                    className="px-4 py-2.5 hover:bg-blue-50 dark:hover:bg-white/5 cursor-pointer text-sm text-gray-700 dark:text-gray-300 transition-colors"
+                                                    className="px-4 py-2.5 hover:bg-blue-50 dark:hover:bg-white/5 cursor-pointer text-sm text-gray-700 dark:text-gray-300 transition-colors block w-full text-left"
                                                     onClick={() => {
                                                         setFormData(prev => ({ ...prev, category: cat }));
                                                         setShowCategoryDropdown(false);
