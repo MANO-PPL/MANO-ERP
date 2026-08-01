@@ -215,7 +215,7 @@ const ResourceRate = () => {
                 return;
             }
             try {
-                const result = await resourceApi.getResourceById(selectedParentId);
+                const result = await resourceApi.getResourceById(selectedParentId, compositionDate);
                 setCompositionRows((result.resource?.compositions || []).map(row => ({
                     component_resource_id: String(row.component_resource_id),
                     quantity: String(row.quantity),
@@ -227,7 +227,7 @@ const ResourceRate = () => {
             }
         };
         loadComposition();
-    }, [selectedParentId]);
+    }, [selectedParentId, compositionDate]);
 
     useEffect(() => {
         const loadComponentRates = async () => {

@@ -18,7 +18,7 @@ export const listResources = catchAsync(async (req, res) => {
 export const getResource = catchAsync(async (req, res) => {
     const { id } = req.params;
     if (!id || isNaN(parseInt(id))) throw new AppError('Invalid Resource ID', 400);
-    const resource = await resourceService.getResourceById(req.user.org_id, id);
+    const resource = await resourceService.getResourceById(req.user.org_id, id, req.query.date);
     res.json({ success: true, resource });
 });
 
@@ -51,7 +51,22 @@ export const createResource = catchAsync(async (req, res) => {
     }
 
     // Otherwise, treat it as a single resource creation
-    const { name, code, type, base_unit_id, base_unit_code, description, remarks, compositions, conversions } = req.body;
+    const {
+        name,
+        code,
+        type,
+        base_unit_id,
+        base_unit_code,
+        description,
+        remarks,
+        compositions,
+        conversions,
+        effective_from,
+        rate,
+        rate_unit_code,
+        rate_effective_from,
+        rate_remarks
+    } = req.body;
     const resolvedUnitCode = base_unit_code || base_unit_id;
     
     const comps = (compositions || []).map(c => ({
@@ -74,7 +89,12 @@ export const createResource = catchAsync(async (req, res) => {
         description, 
         remarks, 
         compositions: comps,
-        conversions: convs 
+        conversions: convs,
+        effective_from,
+        rate,
+        rate_unit_code,
+        rate_effective_from,
+        rate_remarks
     });
     
     res.status(201).json({ success: true, message: 'Resource created successfully', id });
@@ -84,7 +104,22 @@ export const updateResource = catchAsync(async (req, res) => {
     const { id } = req.params;
     if (!id || isNaN(parseInt(id))) throw new AppError('Invalid Resource ID', 400);
     
-    const { name, code, type, base_unit_id, base_unit_code, description, remarks, compositions, conversions } = req.body;
+    const {
+        name,
+        code,
+        type,
+        base_unit_id,
+        base_unit_code,
+        description,
+        remarks,
+        compositions,
+        conversions,
+        effective_from,
+        rate,
+        rate_unit_code,
+        rate_effective_from,
+        rate_remarks
+    } = req.body;
     const resolvedUnitCode = base_unit_code || base_unit_id;
 
     await resourceService.updateResource(req.user.org_id, id, {
@@ -95,7 +130,12 @@ export const updateResource = catchAsync(async (req, res) => {
         description,
         remarks,
         compositions,
-        conversions
+        conversions,
+        effective_from,
+        rate,
+        rate_unit_code,
+        rate_effective_from,
+        rate_remarks
     });
     res.json({ success: true, message: 'Resource updated successfully' });
 });

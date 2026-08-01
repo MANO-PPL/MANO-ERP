@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import {
     X, Plus, Trash2, Package, Layers, Users, ArrowRight, RefreshCw, RotateCcw,
-    Copy, Check, DollarSign, ArrowLeftRight, Save, ChevronDown, Edit3, Sparkles, AlertCircle
+    Copy, Check, DollarSign, ArrowLeftRight, Save, ChevronDown, Edit3, Sparkles, AlertCircle, Calendar
 } from 'lucide-react';
 import { resourceApi } from '../../services/resourceApi';
 import { UNIT_OPTIONS, UNIT_REGISTRY, UNIT_GROUPS } from './resourceConstants';
@@ -9,6 +9,13 @@ import { motion, AnimatePresence } from 'framer-motion';
 import ConfirmModal from '../../components/ConfirmModal';
 
 const unitTypeLabel = { weight: 'Weight', volume: 'Volume', length: 'Length', area: 'Area', count: 'Count', time: 'Time' };
+const today = () => new Date().toISOString().slice(0, 10);
+const nextDate = (value) => {
+    if (!value) return today();
+    const date = new Date(`${String(value).slice(0, 10)}T00:00:00.000Z`);
+    date.setUTCDate(date.getUTCDate() + 1);
+    return date.toISOString().slice(0, 10);
+};
 
 const TYPE_CONFIG = {
     material: { label: 'Material', Icon: Package, color: 'text-amber-600 dark:text-amber-400', bg: 'bg-amber-50 dark:bg-amber-900/10', border: 'border-amber-200 dark:border-amber-500/20' },
@@ -38,6 +45,8 @@ const ResourceDetail = ({
 }) => {
     const [copied, setCopied] = useState(false);
     const [resource, setResource] = useState(null);
+    const [compositionHistory, setCompositionHistory] = useState([]);
+    const [compositionEffectiveFrom, setCompositionEffectiveFrom] = useState(today());
     const [resolvedRate, setResolvedRate] = useState(null);
     const [allResourcesList, setAllResourcesList] = useState([]);
     
@@ -45,6 +54,7 @@ const ResourceDetail = ({
     const [isRefreshing, setIsRefreshing] = useState(false);
     const [isSaving, setIsSaving] = useState(false);
     const [hasLocalChanges, setHasLocalChanges] = useState(false);
+    const [compositionChanged, setCompositionChanged] = useState(false);
 
     // Editable form state
     const [formData, setFormData] = useState({
@@ -93,15 +103,24 @@ const ResourceDetail = ({
         if (isRefresh) setIsRefreshing(true);
         else setIsLoading(true);
         try {
-            const [data, rateData, listData] = await Promise.all([
+            const [data, rateData, listData, historyData] = await Promise.all([
                 resourceApi.getResourceById(resourceId),
                 resourceApi.getResolvedRate(resourceId).catch(() => null),
-                resourceApi.getResources().catch(() => ({ resources: [] }))
+                resourceApi.getResources().catch(() => ({ resources: [] })),
+                resourceApi.getCompositionHistory(resourceId).catch(() => ({ compositions: [] }))
             ]);
             
             const resObj = data.resource;
             setResource(resObj);
             setAllResourcesList(listData.resources || []);
+            const historyRows = historyData.compositions || [];
+            setCompositionHistory(historyRows);
+            const latestCompositionDate = historyRows
+                .map(row => row.effective_from)
+                .filter(Boolean)
+                .map(value => String(value).slice(0, 10))
+                .sort()
+                .pop();
 
             const effRate = rateData?.rate || null;
             if (effRate) setResolvedRate(effRate);
@@ -118,8 +137,10 @@ const ResourceDetail = ({
                 conversions: resObj.conversions ? [...resObj.conversions] : [],
                 compositions: resObj.compositions ? [...resObj.compositions] : []
             });
+            setCompositionEffectiveFrom(latestCompositionDate ? nextDate(latestCompositionDate) : today());
 
             setHasLocalChanges(false);
+            setCompositionChanged(false);
         } catch (err) {
             console.error('Failed to load resource detail:', err);
             if (showToast) showToast('error', 'Fetch Error', 'Failed to load resource details.');
@@ -137,6 +158,13 @@ const ResourceDetail = ({
         setFormData(prev => ({ ...prev, [field]: value }));
         setHasLocalChanges(true);
     };
+
+    const latestCompositionDate = useMemo(() => compositionHistory
+        .map(row => row.effective_from)
+        .filter(Boolean)
+        .map(value => String(value).slice(0, 10))
+        .sort()
+        .pop(), [compositionHistory]);
 
     const handleCopy = () => {
         if (!formData) return;
@@ -179,7 +207,12 @@ Remarks       : ${formData.remarks || '-'}
                 description: formData.description,
                 remarks: formData.remarks,
                 conversions: formData.conversions,
-                compositions: formData.type === 'item' ? formData.compositions : []
+                ...(formData.type === 'item' && compositionChanged
+                    ? {
+                        compositions: formData.compositions,
+                        effective_from: compositionEffectiveFrom
+                    }
+                    : {})
             });
 
             // Save manual rate if specified
@@ -292,6 +325,7 @@ Remarks       : ${formData.remarks || '-'}
         setCompForm({ component_resource_id: '', quantity: '1', unit_code: formData.base_unit_code || 'kg' });
         setIsAddingComp(false);
         setHasLocalChanges(true);
+        setCompositionChanged(true);
         if (showToast) showToast('sparkle', 'Ingredient Added', `Added component "${newComp.component_name}". Click "Save Changes" to commit.`);
     };
 
@@ -307,6 +341,7 @@ Remarks       : ${formData.remarks || '-'}
                     compositions: prev.compositions.filter(c => String(c.id) !== String(compId))
                 }));
                 setHasLocalChanges(true);
+                setCompositionChanged(true);
                 if (showToast) showToast('info', 'Ingredient Removed', `Removed component "${compName}".`);
                 if (setExternalConfirmModal) setExternalConfirmModal(prev => ({ ...prev, isOpen: false }));
                 else setInternalConfirmModal(prev => ({ ...prev, isOpen: false }));
@@ -645,15 +680,36 @@ Remarks       : ${formData.remarks || '-'}
                         <section>
                             <div className="flex items-center justify-between mb-2">
                                 <SectionHeader title="Composite Recipe Ingredients" badge={`${formData.compositions?.length || 0} Ingredients`} />
-                                {canWrite && (
-                                    <button
-                                        onClick={() => { setIsAddingComp(v => !v); setCompError(''); }}
-                                        className="flex items-center gap-1 px-2.5 py-1 bg-purple-50 dark:bg-purple-900/20 text-purple-600 dark:text-purple-400 border border-purple-200 dark:border-purple-500/20 rounded-lg text-[10px] font-bold hover:bg-purple-100 transition"
-                                    >
-                                        <Plus size={11} /> Add Ingredient
-                                    </button>
-                                )}
+                                <div className="flex items-center gap-2">
+                                    <label className="flex items-center gap-1.5 px-2 py-1 bg-white dark:bg-[#0d1117] border border-gray-200 dark:border-white/10 rounded-lg text-[9px] font-bold text-gray-500 uppercase">
+                                        <Calendar size={11} />
+                                        <span>Effective</span>
+                                        <input
+                                            type="date"
+                                            required
+                                            disabled={!canWrite}
+                                            value={compositionEffectiveFrom}
+                                            onChange={e => {
+                                                setCompositionEffectiveFrom(e.target.value);
+                                                setHasLocalChanges(true);
+                                                setCompositionChanged(true);
+                                            }}
+                                            className="bg-transparent text-[10px] font-semibold text-gray-800 dark:text-gray-200 outline-none normal-case"
+                                        />
+                                    </label>
+                                    {canWrite && (
+                                        <button
+                                            onClick={() => { setIsAddingComp(v => !v); setCompError(''); }}
+                                            className="flex items-center gap-1 px-2.5 py-1 bg-purple-50 dark:bg-purple-900/20 text-purple-600 dark:text-purple-400 border border-purple-200 dark:border-purple-500/20 rounded-lg text-[10px] font-bold hover:bg-purple-100 transition"
+                                        >
+                                            <Plus size={11} /> Add Ingredient
+                                        </button>
+                                    )}
+                                </div>
                             </div>
+                            {latestCompositionDate && (
+                                <p className="text-[10px] text-gray-400 mb-2">Latest saved version: {latestCompositionDate}. New versions must use a later date.</p>
+                            )}
 
                             {/* Inline Ingredient Form */}
                             <AnimatePresence>

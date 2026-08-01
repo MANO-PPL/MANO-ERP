@@ -302,8 +302,7 @@ export async function getResolvedRate(orgId, resourceId, asOfDate) {
  * Create a manual rate row. The presence of this row is what makes the rate
  * manual; no rate_type column is required for the current business rule.
  */
-export async function addRate(orgId, resourceId, { rate, unit_code, effective_from, remarks }) {
-    const resource = await ensureResourceExists(orgId, resourceId);
+async function _writeManualRateVersion(orgId, resource, { rate, unit_code, effective_from, remarks }, dbClient = db) {
     const numericRate = Number(rate);
     if (rate === undefined || rate === null || rate === '' || !Number.isFinite(numericRate) || numericRate < 0) {
         throw new AppError('rate must be a non-negative number', 400);
@@ -326,45 +325,48 @@ export async function addRate(orgId, resourceId, { rate, unit_code, effective_fr
 
     const effectiveFrom = toDateOnly(effective_from);
 
-    return db.transaction(async (trx) => {
-        // The active flag tracks the latest edit, while effective dates still
-        // determine which historical row applies to a requested date.
-        const activeRate = await trx('res_rates')
-            .where({ resource_id: resourceId, is_active: 1 })
-            .orderBy('id', 'desc')
-            .forUpdate()
-            .first('id', 'effective_from', 'effective_to');
+    // The active flag tracks the latest edit, while effective dates still
+    // determine which historical row applies to a requested date.
+    const activeRate = await dbClient('res_rates')
+        .where({ resource_id: resource.id, is_active: 1 })
+        .orderBy('id', 'desc')
+        .forUpdate()
+        .first('id', 'effective_from', 'effective_to');
 
-        if (activeRate) {
-            const activeFrom = toDateOnly(activeRate.effective_from);
-            if (effectiveFrom < activeFrom) {
-                throw new AppError(
-                    `New rate effective_from ${effectiveFrom} cannot be earlier than the active rate ${activeFrom}`,
-                    400
-                );
-            }
-
-            await trx('res_rates').where({ id: activeRate.id }).update({
-                is_active: 0,
-                // A same-day edit replaces the rate for that day. For a later
-                // edit, close the previous version the day before the new one.
-                effective_to: effectiveFrom === activeFrom
-                    ? effectiveFrom
-                    : subtractOneDay(effectiveFrom)
-            });
+    if (activeRate) {
+        const activeFrom = toDateOnly(activeRate.effective_from);
+        if (effectiveFrom < activeFrom) {
+            throw new AppError(
+                `New rate effective_from ${effectiveFrom} cannot be earlier than the active rate ${activeFrom}`,
+                400
+            );
         }
 
-        const [insertId] = await trx('res_rates').insert({
-            resource_id: resourceId,
-            rate: numericRate,
-            unit_code,
-            effective_from: effectiveFrom,
-            effective_to: null,
-            is_active: 1,
-            remarks: remarks || null
+        await dbClient('res_rates').where({ id: activeRate.id }).update({
+            is_active: 0,
+            // A same-day edit replaces the rate for that day. For a later
+            // edit, close the previous version the day before the new one.
+            effective_to: effectiveFrom === activeFrom
+                ? effectiveFrom
+                : subtractOneDay(effectiveFrom)
         });
-        return insertId;
+    }
+
+    const [insertId] = await dbClient('res_rates').insert({
+        resource_id: resource.id,
+        rate: numericRate,
+        unit_code,
+        effective_from: effectiveFrom,
+        effective_to: null,
+        is_active: 1,
+        remarks: remarks || null
     });
+    return insertId;
+}
+
+export async function addRate(orgId, resourceId, rateData) {
+    const resource = await ensureResourceExists(orgId, resourceId);
+    return db.transaction(async (trx) => _writeManualRateVersion(orgId, resource, rateData, trx));
 }
 
 /**
@@ -454,7 +456,9 @@ export async function getResources(orgId, { type, search, limit = 100, offset = 
                 'r2.name as component_name',
                 'r2.code as component_code',
                 'c.quantity',
-                'c.unit_code'
+                'c.unit_code',
+                'c.effective_from',
+                'c.effective_to'
             );
 
         const compositionsByRes = {};
@@ -462,6 +466,8 @@ export async function getResources(orgId, { type, search, limit = 100, offset = 
             const u = UNIT_REGISTRY[c.unit_code];
             c.unit_name = u ? u.name : '';
             c.unit_symbol = u ? u.symbol : '';
+            c.effective_from = toIsoDate(c.effective_from);
+            c.effective_to = toIsoDate(c.effective_to);
             if (!compositionsByRes[c.parent_resource_id]) compositionsByRes[c.parent_resource_id] = [];
             compositionsByRes[c.parent_resource_id].push(c);
         });
@@ -490,7 +496,7 @@ export async function getResources(orgId, { type, search, limit = 100, offset = 
 // Get single resource with full detail
 // ─────────────────────────────────────────────────────────────────────────────
 
-export async function getResourceById(orgId, id) {
+export async function getResourceById(orgId, id, asOfDate) {
     const resource = await db('res_resources')
         .where({ id, org_id: orgId })
         .select('id', 'name', 'code', 'type', 'description', 'remarks', 'base_unit_code')
@@ -517,7 +523,7 @@ export async function getResourceById(orgId, id) {
 
     // Fetch compositions (only meaningful for items)
     if (resource.type === 'item') {
-        const compositionDate = toDateOnly();
+        const compositionDate = toDateOnly(asOfDate);
         const compositions = await db('res_compositions as c')
             .join('res_resources as r2', 'c.component_resource_id', 'r2.id')
             .where('c.parent_resource_id', id)
@@ -600,7 +606,21 @@ async function _replaceConversions(orgId, resourceId, conversions, baseUnit, dbC
  * Create a resource.
  * For items, optionally pass compositions: [{ component_resource_id, quantity, unit_code }]
  */
-export async function createResource(orgId, { name, code, type, base_unit_code, description, remarks, compositions = [], conversions = [] }) {
+export async function createResource(orgId, {
+    name,
+    code,
+    type,
+    base_unit_code,
+    description,
+    remarks,
+    compositions = [],
+    conversions = [],
+    effective_from,
+    rate,
+    rate_unit_code,
+    rate_effective_from,
+    rate_remarks
+}) {
     if (!name || !type || !base_unit_code) {
         throw new AppError('name, type, and base_unit_code are required', 400);
     }
@@ -632,9 +652,22 @@ export async function createResource(orgId, { name, code, type, base_unit_code, 
             await _replaceConversions(orgId, id, conversions, unit, trx);
         }
 
+        if (rate !== undefined && rate !== null && rate !== '') {
+            await _writeManualRateVersion(orgId, {
+                id,
+                type,
+                base_unit_code
+            }, {
+                rate,
+                unit_code: rate_unit_code || base_unit_code,
+                effective_from: rate_effective_from,
+                remarks: rate_remarks || remarks
+            }, trx);
+        }
+
         // If item, insert compositions
         if (type === 'item' && compositions.length > 0) {
-            await _replaceCompositions(orgId, id, compositions, trx);
+            await _replaceCompositions(orgId, id, compositions, trx, effective_from);
         }
 
         return id;
@@ -647,7 +680,21 @@ export async function createResource(orgId, { name, code, type, base_unit_code, 
 // Update
 // ─────────────────────────────────────────────────────────────────────────────
 
-export async function updateResource(orgId, id, { name, code, type, base_unit_code, description, remarks, compositions, conversions }) {
+export async function updateResource(orgId, id, {
+    name,
+    code,
+    type,
+    base_unit_code,
+    description,
+    remarks,
+    compositions,
+    conversions,
+    effective_from,
+    rate,
+    rate_unit_code,
+    rate_effective_from,
+    rate_remarks
+}) {
     const resource = await ensureResourceExists(orgId, id);
 
     await db.transaction(async (trx) => {
@@ -701,7 +748,20 @@ export async function updateResource(orgId, id, { name, code, type, base_unit_co
 
         // Replace compositions if provided (items only)
         if (compositions !== undefined && activeType === 'item') {
-            await _replaceCompositions(orgId, id, compositions, trx);
+            await _replaceCompositions(orgId, id, compositions, trx, effective_from);
+        }
+
+        if (rate !== undefined && rate !== null && rate !== '') {
+            await _writeManualRateVersion(orgId, {
+                id,
+                type: activeType,
+                base_unit_code: activeBaseUnitCode
+            }, {
+                rate,
+                unit_code: rate_unit_code || activeBaseUnitCode,
+                effective_from: rate_effective_from,
+                remarks: rate_remarks || remarks
+            }, trx);
         }
     });
 
@@ -958,7 +1018,21 @@ export async function bulkInsertResources(orgId, resources) {
     await db.transaction(async (trx) => {
         for (let i = 0; i < resources.length; i++) {
             const res = resources[i];
-            const { name, code, type, base_unit_code, description, remarks, compositions, conversions } = res;
+            const {
+                name,
+                code,
+                type,
+                base_unit_code,
+                description,
+                remarks,
+                compositions,
+                conversions,
+                effective_from,
+                rate,
+                rate_unit_code,
+                rate_effective_from,
+                rate_remarks
+            } = res;
 
             try {
                 if (!name || !type || !base_unit_code) {
@@ -981,6 +1055,19 @@ export async function bulkInsertResources(orgId, resources) {
                     description: description || null,
                     remarks: remarks || null
                 });
+
+                if (rate !== undefined && rate !== null && rate !== '') {
+                    await _writeManualRateVersion(orgId, {
+                        id: insertId,
+                        type,
+                        base_unit_code
+                    }, {
+                        rate,
+                        unit_code: rate_unit_code || base_unit_code,
+                        effective_from: rate_effective_from,
+                        remarks: rate_remarks || remarks
+                    }, trx);
+                }
 
                 // Handle custom conversions if provided
                 if (Array.isArray(conversions) && conversions.length > 0) {
@@ -1010,7 +1097,7 @@ export async function bulkInsertResources(orgId, resources) {
                     // All composition writes go through the same validator as
                     // normal create/update requests. This includes the
                     // transaction-scoped cycle check and effective-date logic.
-                    await _replaceCompositions(orgId, insertId, compositions, trx);
+                    await _replaceCompositions(orgId, insertId, compositions, trx, effective_from);
                 }
 
                 report.successCount++;
@@ -1048,7 +1135,21 @@ export async function bulkUpdateResources(orgId, resources) {
     await db.transaction(async (trx) => {
         for (let i = 0; i < resources.length; i++) {
             const res = resources[i];
-            const { id, name, code, type, base_unit_code, description, remarks } = res;
+            const {
+                id,
+                name,
+                code,
+                type,
+                base_unit_code,
+                description,
+                remarks,
+                compositions,
+                effective_from,
+                rate,
+                rate_unit_code,
+                rate_effective_from,
+                rate_remarks
+            } = res;
 
             try {
                 if (!id) {
@@ -1099,6 +1200,23 @@ export async function bulkUpdateResources(orgId, resources) {
 
                 if (Object.keys(updates).length > 0) {
                     await trx('res_resources').where({ id, org_id: orgId }).update(updates);
+                }
+
+                if (compositions !== undefined && activeType === 'item') {
+                    await _replaceCompositions(orgId, id, compositions, trx, effective_from);
+                }
+
+                if (rate !== undefined && rate !== null && rate !== '') {
+                    await _writeManualRateVersion(orgId, {
+                        id,
+                        type: activeType,
+                        base_unit_code: activeBaseUnitCode
+                    }, {
+                        rate,
+                        unit_code: rate_unit_code || activeBaseUnitCode,
+                        effective_from: rate_effective_from,
+                        remarks: rate_remarks || remarks
+                    }, trx);
                 }
 
                 report.successCount++;

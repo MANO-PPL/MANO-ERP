@@ -1,11 +1,18 @@
 import React, { useState, useEffect } from 'react';
-import { X, Plus, Trash2, Info } from 'lucide-react';
+import { X, Plus, Trash2, Info, Calendar } from 'lucide-react';
 import { resourceApi } from '../../services/resourceApi';
 import { UNIT_OPTIONS, UNIT_REGISTRY, UNIT_GROUPS } from './resourceConstants';
 import { motion } from 'framer-motion';
 import ConfirmModal from '../../components/ConfirmModal';
 
 const unitTypeLabel = { weight: 'Weight', volume: 'Volume', length: 'Length', area: 'Area', count: 'Count', time: 'Time' };
+const today = () => new Date().toISOString().slice(0, 10);
+const nextDate = (value) => {
+    if (!value) return today();
+    const date = new Date(`${String(value).slice(0, 10)}T00:00:00.000Z`);
+    date.setUTCDate(date.getUTCDate() + 1);
+    return date.toISOString().slice(0, 10);
+};
 
 const FormField = ({ label, required, children, hint }) => (
     <div>
@@ -30,6 +37,8 @@ const ResourceForm = ({ resource, onClose, onSave }) => {
     });
 
     const [compositions, setCompositions] = useState([]);
+    const [compositionEffectiveFrom, setCompositionEffectiveFrom] = useState(today());
+    const [compositionChanged, setCompositionChanged] = useState(false);
     const [conversions, setConversions] = useState([]);
     const [allResources, setAllResources] = useState([]);
     const [isLoading, setIsLoading] = useState(false);
@@ -63,6 +72,14 @@ const ResourceForm = ({ resource, onClose, onSave }) => {
                 quantity: c.quantity,
                 unit_code: c.unit_code
             })));
+            const latestCompositionDate = (resource.compositions || [])
+                .map(c => c.effective_from)
+                .filter(Boolean)
+                .map(c => String(c).slice(0, 10))
+                .sort()
+                .pop();
+            setCompositionEffectiveFrom(latestCompositionDate ? nextDate(latestCompositionDate) : today());
+            setCompositionChanged(false);
             if (resource.conversions) setConversions(resource.conversions.map(c => ({
                 name: c.name,
                 quantity: c.quantity,
@@ -90,6 +107,7 @@ const ResourceForm = ({ resource, onClose, onSave }) => {
     // ─── Compositions ────────────────────────────────────────────────────────────
     const handleAddComposition = () => {
         setCompositions([...compositions, { component_resource_id: '', quantity: '', unit_code: '' }]);
+        setCompositionChanged(true);
     };
 
     const handleCompositionChange = (index, field, value) => {
@@ -101,6 +119,7 @@ const ResourceForm = ({ resource, onClose, onSave }) => {
             if (mat) newComps[index].unit_code = mat.base_unit_code;
         }
         setCompositions(newComps);
+        setCompositionChanged(true);
     };
 
     const handleRemoveComposition = (index) => {
@@ -117,6 +136,7 @@ const ResourceForm = ({ resource, onClose, onSave }) => {
             isLoading: false,
             onConfirm: () => {
                 setCompositions(compositions.filter((_, i) => i !== index));
+                setCompositionChanged(true);
                 setConfirmModal(prev => ({ ...prev, isOpen: false }));
             }
         });
@@ -172,15 +192,18 @@ const ResourceForm = ({ resource, onClose, onSave }) => {
                         quantity: parseFloat(c.quantity),
                         unit_code: c.unit_code
                     })),
-                compositions: formData.type === 'item'
-                    ? compositions
-                        .filter(c => c.component_resource_id && c.quantity && c.unit_code)
-                        .map(c => ({
-                            component_resource_id: parseInt(c.component_resource_id),
-                            quantity: parseFloat(c.quantity),
-                            unit_code: c.unit_code
-                        }))
-                    : []
+                ...(formData.type === 'item' && (compositionChanged || !isEditing)
+                    ? {
+                        compositions: compositions
+                            .filter(c => c.component_resource_id && c.quantity && c.unit_code)
+                            .map(c => ({
+                                component_resource_id: parseInt(c.component_resource_id),
+                                quantity: parseFloat(c.quantity),
+                                unit_code: c.unit_code
+                            })),
+                        effective_from: compositionEffectiveFrom
+                    }
+                    : {})
             };
 
             if (isEditing) {
@@ -432,20 +455,36 @@ const ResourceForm = ({ resource, onClose, onSave }) => {
 
                         {activeTab === 'composition' && formData.type === 'item' && (
                             <div className="space-y-4">
-                                <div className="flex items-start justify-between">
+                                <div className="flex items-start justify-between gap-3">
                                     <div>
                                         <h3 className="text-sm font-bold text-gray-900 dark:text-white">Item Composition</h3>
                                         <p className="text-xs text-gray-400 mt-0.5">
                                             Define which materials/labour make up this item. Unit must match component's unit category.
                                         </p>
                                     </div>
-                                    <button
-                                        type="button"
-                                        onClick={handleAddComposition}
-                                        className="flex items-center gap-1.5 px-3 py-1.5 bg-blue-50 dark:bg-blue-900/20 text-blue-600 dark:text-blue-400 border border-blue-200 dark:border-blue-500/30 rounded-lg text-xs font-semibold hover:bg-blue-100 transition-colors"
-                                    >
-                                        <Plus size={12} /> Add Component
-                                    </button>
+                                    <div className="flex items-center gap-2 shrink-0">
+                                        <label className="flex items-center gap-1.5 px-2 py-1.5 bg-white dark:bg-[#0d1117] border border-gray-200 dark:border-white/10 rounded-lg text-[10px] font-bold text-gray-500 uppercase">
+                                            <Calendar size={12} />
+                                            <span>Effective</span>
+                                            <input
+                                                type="date"
+                                                required
+                                                value={compositionEffectiveFrom}
+                                                onChange={e => {
+                                                    setCompositionEffectiveFrom(e.target.value);
+                                                    setCompositionChanged(true);
+                                                }}
+                                                className="bg-transparent text-xs font-semibold text-gray-800 dark:text-gray-200 outline-none normal-case"
+                                            />
+                                        </label>
+                                        <button
+                                            type="button"
+                                            onClick={handleAddComposition}
+                                            className="flex items-center gap-1.5 px-3 py-1.5 bg-blue-50 dark:bg-blue-900/20 text-blue-600 dark:text-blue-400 border border-blue-200 dark:border-blue-500/30 rounded-lg text-xs font-semibold hover:bg-blue-100 transition-colors"
+                                        >
+                                            <Plus size={12} /> Add Component
+                                        </button>
+                                    </div>
                                 </div>
 
                                 {compositions.length === 0 ? (

@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import {
     Layers, Plus, Trash2, Save, RefreshCw, AlertCircle, ArrowRight,
-    CheckCircle2, Search, Calendar, ChevronDown, WandSparkles, Calculator
+    CheckCircle2, Search, Calendar, History, ChevronDown, WandSparkles, Calculator
 } from 'lucide-react';
 import { resourceApi } from '../../services/resourceApi';
 import { UNIT_GROUPS, UNIT_REGISTRY } from './resourceConstants';
@@ -33,6 +33,8 @@ const ResourceRecipesTab = ({
 
     // Composition recipe rows state
     const [recipeRows, setRecipeRows] = useState([]);
+    const [compositionHistory, setCompositionHistory] = useState([]);
+    const [isLoadingHistory, setIsLoadingHistory] = useState(false);
     const [componentRates, setComponentRates] = useState({}); // { resId: { rate, unitCode } }
     const [isSaving, setIsSaving] = useState(false);
     const [errorMsg, setErrorMsg] = useState('');
@@ -49,6 +51,25 @@ const ResourceRecipesTab = ({
         onConfirm: () => { }
     });
 
+    const compositionVersions = useMemo(() => {
+        const grouped = new Map();
+        compositionHistory.forEach(row => {
+            const date = dateOnly(row.effective_from);
+            if (!grouped.has(date)) grouped.set(date, []);
+            grouped.get(date).push(row);
+        });
+        return Array.from(grouped.entries()).map(([date, rows]) => ({
+            date,
+            rows,
+            effectiveTo: rows.find(row => row.effective_to)?.effective_to
+                ? dateOnly(rows.find(row => row.effective_to).effective_to)
+                : null,
+            isActive: rows.some(row => Number(row.is_active) === 1)
+        }));
+    }, [compositionHistory]);
+
+    const latestCompositionDate = compositionVersions[0]?.date || null;
+
     // Pre-select item if initialResourceId passed or default to first item
     useEffect(() => {
         if (initialResourceId && itemsList.some(r => String(r.id) === String(initialResourceId))) {
@@ -64,7 +85,7 @@ const ResourceRecipesTab = ({
         setIsLoadingDetail(true);
         setErrorMsg('');
         try {
-            const detailRes = await resourceApi.getResourceById(selectedItemId);
+            const detailRes = await resourceApi.getResourceById(selectedItemId, effectiveFrom);
             const itemData = detailRes.resource;
             setSelectedItemDetail(itemData);
 
@@ -108,6 +129,30 @@ const ResourceRecipesTab = ({
             fetchItemRecipe();
         }
     }, [selectedItemId, effectiveFrom]);
+
+    useEffect(() => {
+        let cancelled = false;
+        const loadHistory = async () => {
+            if (!selectedItemId) {
+                setCompositionHistory([]);
+                return;
+            }
+
+            setIsLoadingHistory(true);
+            try {
+                const result = await resourceApi.getCompositionHistory(selectedItemId);
+                if (!cancelled) setCompositionHistory(result.compositions || []);
+            } catch (err) {
+                if (!cancelled) setCompositionHistory([]);
+                console.warn('Failed to load composition history', err);
+            } finally {
+                if (!cancelled) setIsLoadingHistory(false);
+            }
+        };
+
+        loadHistory();
+        return () => { cancelled = true; };
+    }, [selectedItemId]);
 
     // Handle adding a component row
     const handleAddRow = () => {
@@ -172,6 +217,16 @@ const ResourceRecipesTab = ({
     const handleSaveRecipe = async (e) => {
         e.preventDefault();
         if (!selectedItemId) return;
+
+        if (!effectiveFrom) {
+            setErrorMsg('Choose an effective-from date before saving the recipe.');
+            return;
+        }
+        if (latestCompositionDate && effectiveFrom <= latestCompositionDate) {
+            setErrorMsg(`This recipe already has a version effective ${latestCompositionDate}. Choose a later date for the new version.`);
+            return;
+        }
+
         setIsSaving(true);
         setErrorMsg('');
 
@@ -187,7 +242,13 @@ const ResourceRecipesTab = ({
 
             await resourceApi.setCompositions(selectedItemId, formattedCompositions, effectiveFrom);
             if (showToast) showToast('success', 'Recipe Saved', 'Item composition saved with effective date.');
-            fetchItemRecipe();
+            await Promise.all([
+                fetchItemRecipe(),
+                (async () => {
+                    const result = await resourceApi.getCompositionHistory(selectedItemId);
+                    setCompositionHistory(result.compositions || []);
+                })()
+            ]);
             if (onRefreshResources) onRefreshResources();
         } catch (err) {
             console.error('Failed to save recipe', err);
@@ -302,6 +363,8 @@ const ResourceRecipesTab = ({
                                     <input
                                         type="date"
                                         value={effectiveFrom}
+                                        required
+                                        disabled={!canWrite}
                                         onChange={e => setEffectiveFrom(e.target.value)}
                                         className="bg-transparent text-xs font-semibold text-gray-800 dark:text-gray-200 outline-none"
                                     />
@@ -449,6 +512,66 @@ const ResourceRecipesTab = ({
                                     </table>
                                 </div>
                             )}
+
+                            {/* Effective-dated composition history */}
+                            <div className="border border-gray-200 dark:border-white/10 rounded-2xl overflow-hidden">
+                                <div className="px-4 py-3 bg-gray-50 dark:bg-[#161b22] border-b border-gray-200 dark:border-white/10 flex items-center justify-between gap-3">
+                                    <div className="flex items-center gap-2">
+                                        <History size={15} className="text-purple-500" />
+                                        <div>
+                                            <h3 className="text-xs font-black uppercase tracking-wider text-gray-500 dark:text-gray-300">Composition Version History</h3>
+                                            <p className="text-[10px] text-gray-400 mt-0.5">Every saved recipe remains available for historical rate calculations.</p>
+                                        </div>
+                                    </div>
+                                    {latestCompositionDate && (
+                                        <span className="text-[10px] font-semibold text-gray-400 whitespace-nowrap">
+                                            Latest: {latestCompositionDate}
+                                        </span>
+                                    )}
+                                </div>
+
+                                {isLoadingHistory ? (
+                                    <div className="px-4 py-6 text-center text-xs text-gray-400">
+                                        <RefreshCw size={16} className="animate-spin mx-auto mb-2 text-purple-500" />
+                                        Loading version history...
+                                    </div>
+                                ) : compositionVersions.length === 0 ? (
+                                    <div className="px-4 py-6 text-center text-xs text-gray-400">
+                                        No saved composition versions yet.
+                                    </div>
+                                ) : (
+                                    <div className="divide-y divide-gray-100 dark:divide-white/5">
+                                        {compositionVersions.map(version => (
+                                            <div key={version.date} className="px-4 py-3 space-y-2">
+                                                <div className="flex items-center justify-between gap-3">
+                                                    <div className="flex items-center gap-2">
+                                                        <span className="text-xs font-bold text-gray-800 dark:text-gray-200">From {version.date}</span>
+                                                        <span className="text-[10px] text-gray-400">to {version.effectiveTo || 'open-ended'}</span>
+                                                    </div>
+                                                    <div className="flex items-center gap-1.5">
+                                                        {dateOnly(effectiveFrom) === version.date && (
+                                                            <span className="px-1.5 py-0.5 rounded bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300 text-[9px] font-bold uppercase">Viewing</span>
+                                                        )}
+                                                        {version.isActive && (
+                                                            <span className="px-1.5 py-0.5 rounded bg-emerald-100 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-300 text-[9px] font-bold uppercase">Active</span>
+                                                        )}
+                                                    </div>
+                                                </div>
+                                                <div className="flex flex-wrap gap-1.5">
+                                                    {version.rows.length === 0 ? (
+                                                        <span className="text-[10px] italic text-gray-400">Empty composition (cleared)</span>
+                                                    ) : version.rows.map(row => (
+                                                        <span key={row.id} className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded border border-gray-200 dark:border-white/10 text-[10px] text-gray-600 dark:text-gray-300">
+                                                            <span className="font-semibold">{row.component_name || `Component #${row.component_resource_id}`}</span>
+                                                            <span className="font-mono text-gray-400">{row.quantity} {row.unit_code}</span>
+                                                        </span>
+                                                    ))}
+                                                </div>
+                                            </div>
+                                        ))}
+                                    </div>
+                                )}
+                            </div>
 
                             {/* Estimated Unit Rate Footer summary card */}
                             <div className="p-4 bg-purple-50/50 dark:bg-purple-900/10 border border-purple-200 dark:border-purple-500/20 rounded-2xl flex flex-col sm:flex-row items-center justify-between gap-4">

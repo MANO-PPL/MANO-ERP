@@ -26,6 +26,7 @@ const TYPE_CONFIG = {
 };
 
 const unitTypeLabel = { weight: 'Weight', volume: 'Volume', length: 'Length', area: 'Area', count: 'Count', time: 'Time' };
+const today = () => new Date().toISOString().slice(0, 10);
 
 const GRID_COLUMNS = ['code', 'name', 'type', 'base_unit_code', 'rate', 'compositions', 'conversions', 'description', 'remarks'];
 
@@ -142,6 +143,35 @@ const CustomPageSizeDropdown = ({ pageSize, setPageSize, totalCount }) => {
     );
 };
 
+const ResourceSubNav = ({ activeTab, onChange }) => {
+    const tabs = [
+        { id: 'grid', label: 'Resource Grid' },
+        { id: 'recipes', label: 'Recipes & History' },
+        { id: 'rates', label: 'Rates' },
+        { id: 'conversions', label: 'Conversions' }
+    ];
+
+    return (
+        <div className="px-3 py-2 border-b border-gray-200 dark:border-white/10 bg-gray-50/70 dark:bg-[#161b22]/70 shrink-0">
+            <div className="flex items-center gap-1 overflow-x-auto">
+                {tabs.map(tab => (
+                    <button
+                        key={tab.id}
+                        type="button"
+                        onClick={() => onChange(tab.id)}
+                        className={`px-3 py-1.5 rounded-lg text-xs font-bold whitespace-nowrap transition-colors ${activeTab === tab.id
+                            ? 'bg-blue-600 text-white shadow-sm'
+                            : 'text-gray-500 dark:text-gray-400 hover:bg-white dark:hover:bg-white/5 hover:text-gray-800 dark:hover:text-gray-200'
+                            }`}
+                    >
+                        {tab.label}
+                    </button>
+                ))}
+            </div>
+        </div>
+    );
+};
+
 const ResourceList = () => {
     const { hasPermission } = useAuth();
     const canWrite = hasPermission('resources', 2);
@@ -205,6 +235,12 @@ const ResourceList = () => {
         return count + deletedIds.size;
     }, [gridData, deletedIds]);
 
+    const hasPendingCompositionChanges = useMemo(() => gridData.some(row => (
+        row._compositionModified && row.type === 'item'
+    )), [gridData]);
+
+    const hasPendingRateChanges = useMemo(() => gridData.some(row => row._rateModified), [gridData]);
+
     // Undo / Redo Stacks
     const undoStackRef = useRef([]);
     const redoStackRef = useRef([]);
@@ -220,6 +256,8 @@ const ResourceList = () => {
     const [isLoading, setIsLoading] = useState(() => initialResources.length === 0);
     const [isSaving, setIsSaving] = useState(false);
     const [lastSavedTime, setLastSavedTime] = useState(null);
+    const [compositionEffectiveFrom, setCompositionEffectiveFrom] = useState(today());
+    const [rateEffectiveFrom, setRateEffectiveFrom] = useState(today());
 
     const [searchTerm, setSearchTerm] = useState('');
     const [filterType, setFilterType] = useState('');
@@ -331,6 +369,7 @@ const ResourceList = () => {
                     return {
                         ...row,
                         compositions: updatedComps,
+                        _compositionModified: true,
                         _status: row._status === 'new' ? 'new' : 'modified'
                     };
                 }
@@ -361,6 +400,7 @@ const ResourceList = () => {
                             return {
                                 ...row,
                                 compositions: updatedComps,
+                                _compositionModified: true,
                                 _status: row._status === 'new' ? 'new' : 'modified'
                             };
                         }
@@ -598,6 +638,47 @@ const ResourceList = () => {
         fetchData();
     }, []);
 
+    const prepareResourcePayload = (row) => {
+        const {
+            _status,
+            _errors,
+            _compositionModified,
+            _rateModified,
+            base_unit_name,
+            base_unit_symbol,
+            ...payload
+        } = row;
+
+        if (_compositionModified && row.type === 'item') {
+            payload.compositions = (row.compositions || [])
+                .filter(comp => comp.component_resource_id && Number(comp.quantity) > 0 && comp.unit_code)
+                .map(comp => ({
+                    component_resource_id: Number(comp.component_resource_id),
+                    quantity: Number(comp.quantity),
+                    unit_code: comp.unit_code
+                }));
+            payload.effective_from = compositionEffectiveFrom;
+        } else {
+            delete payload.compositions;
+            delete payload.effective_from;
+        }
+
+        if (_rateModified) {
+            payload.rate = row.rate;
+            payload.rate_unit_code = row.rate_unit_code || row.base_unit_code;
+            payload.rate_effective_from = rateEffectiveFrom;
+            payload.rate_remarks = row.remarks || null;
+        } else {
+            delete payload.rate;
+            delete payload.rate_source;
+            delete payload.rate_unit_code;
+            delete payload.rate_effective_from;
+            delete payload.rate_remarks;
+        }
+
+        return payload;
+    };
+
     // ─── Manual Batch Save Engine ──────────────────────────────────────────────
     const saveGridRows = async () => {
         const targetGrid = gridDataRef.current;
@@ -631,13 +712,17 @@ const ResourceList = () => {
 
             let createdResults = [];
             if (newPayloadRows.length > 0) {
-                const cleanPayload = newPayloadRows.map(({ id, _status, _errors, ...rest }) => rest);
+                const cleanPayload = newPayloadRows.map(row => {
+                    const payload = prepareResourcePayload(row);
+                    delete payload.id;
+                    return payload;
+                });
                 const res = await resourceApi.bulkCreateResources(cleanPayload);
                 createdResults = res?.resources || res?.data || (Array.isArray(res) ? res : []);
             }
 
             if (validModifiedRows.length > 0) {
-                const cleanPayload = validModifiedRows.map(({ _status, _errors, base_unit_name, base_unit_symbol, ...rest }) => rest);
+                const cleanPayload = validModifiedRows.map(prepareResourcePayload);
                 await resourceApi.bulkUpdateResources(cleanPayload);
             }
 
@@ -651,7 +736,7 @@ const ResourceList = () => {
 
                 return prevGrid.map(row => {
                     if (validModifiedRows.some(m => m.id === row.id)) {
-                        return { ...row, _status: 'saved', _errors: {} };
+                        return { ...row, _status: 'saved', _errors: {}, _compositionModified: false, _rateModified: false };
                     }
                     if (createdMap.has(row.id)) {
                         const realRes = createdMap.get(row.id);
@@ -660,7 +745,9 @@ const ResourceList = () => {
                             id: realRes.id,
                             code: realRes.code || row.code,
                             _status: 'saved',
-                            _errors: {}
+                            _errors: {},
+                            _compositionModified: false,
+                            _rateModified: false
                         };
                     }
                     return row;
@@ -671,7 +758,13 @@ const ResourceList = () => {
                 const updated = prev.filter(r => !pendingDeleteIds.includes(r.id));
                 validModifiedRows.forEach(mod => {
                     const idx = updated.findIndex(r => r.id === mod.id);
-                    if (idx !== -1) updated[idx] = { ...updated[idx], ...mod, _status: 'saved' };
+                    if (idx !== -1) updated[idx] = {
+                        ...updated[idx],
+                        ...mod,
+                        _status: 'saved',
+                        _compositionModified: false,
+                        _rateModified: false
+                    };
                 });
                 if (createdResults.length > 0) {
                     createdResults.forEach(c => {
@@ -1236,6 +1329,7 @@ const ResourceList = () => {
                     remarks,
                     compositions: [],
                     conversions: [],
+                    _rateModified: rate !== null,
                     _status: 'new',
                     _errors: {}
                 });
@@ -1385,6 +1479,10 @@ const ResourceList = () => {
 
             const row = { ...updated[realIdx] };
             row[field] = value;
+
+            if (field === 'rate') {
+                row._rateModified = true;
+            }
 
             if (field === 'type' && value !== 'item') {
                 row.compositions = [];
@@ -2026,8 +2124,50 @@ const ResourceList = () => {
 
     const bounds = getSelectionBounds();
 
+    if (activeTab !== 'grid') {
+        const tabContent = activeTab === 'recipes' ? (
+            <ResourceRecipesTab
+                initialResourceId={targetResourceId}
+                resources={resources}
+                onRefreshResources={() => fetchData(true)}
+                showToast={showToast}
+            />
+        ) : activeTab === 'rates' ? (
+            <ResourceRatesTab
+                initialResourceId={targetResourceId}
+                resources={resources}
+                onRefreshResources={() => fetchData(true)}
+                showToast={showToast}
+            />
+        ) : (
+            <ResourceConversionsTab
+                initialResourceId={targetResourceId}
+                resources={resources}
+                onRefreshResources={() => fetchData(true)}
+                showToast={showToast}
+            />
+        );
+
+        return (
+            <div className="flex-1 min-h-0 flex flex-col overflow-hidden bg-white dark:bg-[#0d1117] h-full">
+                <ResourceSubNav
+                    activeTab={activeTab}
+                    onChange={tab => setActiveTab(tab, targetResourceId || null)}
+                />
+                <div className="flex-1 min-h-0 overflow-hidden">
+                    {tabContent}
+                </div>
+            </div>
+        );
+    }
+
     return (
         <div className="flex-1 min-h-0 flex flex-col overflow-hidden bg-white dark:bg-[#0d1117] transition-colors h-full relative">
+
+            <ResourceSubNav
+                activeTab={activeTab}
+                onChange={tab => setActiveTab(tab, targetResourceId || null)}
+            />
 
 
             {/* Custom Confirmation Dialog */}
@@ -2066,6 +2206,30 @@ const ResourceList = () => {
             {/* Toolbar - Save Changes, Search Bar, Add Resource, Refresh & Actions */}
             <div className="px-3 py-1.5 flex items-center justify-between border-b border-gray-200 dark:border-white/5 shrink-0 gap-3">
                 <div className="flex items-center gap-3">
+                    {hasPendingCompositionChanges && (
+                        <label className="flex items-center gap-1.5 px-2.5 py-1.5 bg-white dark:bg-[#0d1117] border border-purple-200 dark:border-purple-500/30 rounded-lg text-[10px] font-bold text-purple-600 dark:text-purple-300 uppercase whitespace-nowrap">
+                            <span>Recipe effective from</span>
+                            <input
+                                type="date"
+                                required
+                                value={compositionEffectiveFrom}
+                                onChange={e => setCompositionEffectiveFrom(e.target.value)}
+                                className="bg-transparent text-xs font-semibold text-gray-800 dark:text-gray-200 outline-none normal-case"
+                            />
+                        </label>
+                    )}
+                    {hasPendingRateChanges && (
+                        <label className="flex items-center gap-1.5 px-2.5 py-1.5 bg-white dark:bg-[#0d1117] border border-emerald-200 dark:border-emerald-500/30 rounded-lg text-[10px] font-bold text-emerald-600 dark:text-emerald-300 uppercase whitespace-nowrap">
+                            <span>Rate effective from</span>
+                            <input
+                                type="date"
+                                required
+                                value={rateEffectiveFrom}
+                                onChange={e => setRateEffectiveFrom(e.target.value)}
+                                className="bg-transparent text-xs font-semibold text-gray-800 dark:text-gray-200 outline-none normal-case"
+                            />
+                        </label>
+                    )}
                     {/* Manual Save Button & Sync Status */}
                     <div className="flex items-center gap-2">
                         <button

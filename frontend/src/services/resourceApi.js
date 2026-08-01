@@ -8,8 +8,10 @@ export const resourceApi = {
     },
 
     // ─── Get single resource with conversions & compositions ──────────────────
-    getResourceById: async (id) => {
-        const response = await api.get(`/resources/${id}`);
+    getResourceById: async (id, date) => {
+        const response = await api.get(`/resources/${id}`, {
+            params: date ? { date } : undefined
+        });
         return response.data;
     },
 
