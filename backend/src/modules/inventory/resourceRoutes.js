@@ -18,6 +18,7 @@ router.delete('/:id', resourceController.deleteResource);
 
 // Compositions (Items only)
 router.put('/:id/compositions', resourceController.setCompositions);
+router.get('/:id/compositions', resourceController.getCompositionHistory);
 
 // Unit Conversions
 router.post('/:id/conversions', resourceController.addConversion);

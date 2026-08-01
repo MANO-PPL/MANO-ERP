@@ -13,6 +13,74 @@ async function ensureResourceExists(orgId, id) {
     return resource;
 }
 
+async function hasIndex(tableName, indexName) {
+    const [rows] = await db.raw('SHOW INDEX FROM ?? WHERE Key_name = ?', [tableName, indexName]);
+    return rows.length > 0;
+}
+
+/**
+ * Add composition versioning to installations that predate effective dates.
+ * Existing rows are backfilled to their created date when available, or to
+ * today's date as a last-resort migration baseline. No composition rows are
+ * deleted by this initializer.
+ */
+export async function initializeResourceSchema() {
+    if (!(await db.schema.hasTable('res_compositions'))) return;
+
+    const hasCreatedAt = await db.schema.hasColumn('res_compositions', 'created_at');
+    const hasEffectiveFrom = await db.schema.hasColumn('res_compositions', 'effective_from');
+    const hasEffectiveTo = await db.schema.hasColumn('res_compositions', 'effective_to');
+    const hasIsActive = await db.schema.hasColumn('res_compositions', 'is_active');
+
+    if (!hasEffectiveFrom) {
+        await db.schema.alterTable('res_compositions', table => table.date('effective_from').nullable());
+    }
+    if (!hasEffectiveTo) {
+        await db.schema.alterTable('res_compositions', table => table.date('effective_to').nullable());
+    }
+    if (!hasIsActive) {
+        await db.schema.alterTable('res_compositions', table => table.boolean('is_active').notNullable().defaultTo(1));
+    } else {
+        await db('res_compositions').whereNull('is_active').update({ is_active: 1 });
+        await db.schema.alterTable('res_compositions', table => {
+            table.boolean('is_active').notNullable().alter();
+        });
+    }
+
+    const nullEffectiveFrom = await db('res_compositions').whereNull('effective_from').count('id as count').first();
+    if (Number(nullEffectiveFrom?.count || 0) > 0) {
+        if (hasCreatedAt) {
+            await db('res_compositions')
+                .whereNull('effective_from')
+                .update({ effective_from: db.raw('DATE(created_at)') });
+        }
+
+        const stillNull = await db('res_compositions').whereNull('effective_from').count('id as count').first();
+        if (Number(stillNull?.count || 0) > 0) {
+            await db('res_compositions')
+                .whereNull('effective_from')
+                .update({ effective_from: db.raw('CURRENT_DATE') });
+            console.warn('[Resource Schema] Backfilled composition effective_from using CURRENT_DATE for legacy rows without created_at.');
+        }
+    }
+
+    // Make the version start mandatory after all legacy rows are backfilled.
+    await db.schema.alterTable('res_compositions', table => {
+        table.date('effective_from').notNullable().alter();
+    });
+
+    if (!(await hasIndex('res_compositions', 'idx_res_compositions_parent_effective'))) {
+        await db.schema.alterTable('res_compositions', table => {
+            table.index(['parent_resource_id', 'effective_from', 'effective_to'], 'idx_res_compositions_parent_effective');
+        });
+    }
+    if (!(await hasIndex('res_compositions', 'idx_res_compositions_component'))) {
+        await db.schema.alterTable('res_compositions', table => {
+            table.index(['component_resource_id'], 'idx_res_compositions_component');
+        });
+    }
+}
+
 const toIsoDate = (value) => {
   if (!value) return null;
   if (typeof value === 'string') return value.slice(0, 10);
@@ -685,18 +753,18 @@ async function _replaceCompositions(orgId, parentResourceId, compositions, dbCli
         throw new AppError('All composition rows in one version must use the same effective_from date', 400);
     }
 
-    // Versions are append-only. Re-submitting the same effective date is
-    // treated as replacing that date's draft/version; going backwards would
-    // rewrite history and make historical costing ambiguous.
+    // Versions are append-only. Reusing an effective date would rewrite the
+    // composition that applies on that date, so every new version must start
+    // after the latest recorded version.
     const latestVersion = await dbClient('res_compositions')
         .where('parent_resource_id', parentResourceId)
         .max('effective_from as latest_effective_from')
         .first();
     if (latestVersion?.latest_effective_from) {
         const latestDate = toDateOnly(latestVersion.latest_effective_from);
-        if (effectiveFrom < latestDate) {
+        if (effectiveFrom <= latestDate) {
             throw new AppError(
-                `Composition effective_from ${effectiveFrom} cannot be earlier than the latest version ${latestDate}`,
+                `Composition effective_from ${effectiveFrom} must be later than the latest version ${latestDate}`,
                 400
             );
         }
@@ -753,16 +821,10 @@ async function _replaceCompositions(orgId, parentResourceId, compositions, dbCli
         .andWhere(function () {
             this.whereNull('effective_to').orWhere('effective_to', '>=', effectiveFrom);
         })
-        .update({ effective_to: subtractOneDay(effectiveFrom), 
-        is_active: 0
+        .update({
+            effective_to: subtractOneDay(effectiveFrom),
+            is_active: 0
         });
-
-    // Retrying the same version date is idempotent and is safe under the
-    // unique index below.
-    await dbClient('res_compositions')
-        .where('parent_resource_id', parentResourceId)
-        .andWhere('effective_from', effectiveFrom)
-        .del();
 
     if (compositions.length > 0) {
         const rows = compositions.map(c => ({
@@ -791,6 +853,40 @@ export async function setCompositions(orgId, resourceId, compositions, effective
         await _replaceCompositions(orgId, resourceId, compositions, trx, effectiveFrom);
     });
     return true;
+}
+
+/**
+ * Return every composition row/version for an item, newest version first.
+ * Consumers can group rows by effective_from to render a version timeline.
+ */
+export async function getCompositionHistory(orgId, resourceId) {
+    const resource = await ensureResourceExists(orgId, resourceId);
+    if (resource.type !== 'item') return [];
+
+    const rows = await db('res_compositions as c')
+        .join('res_resources as component', 'c.component_resource_id', 'component.id')
+        .where('c.parent_resource_id', resourceId)
+        .andWhere('component.org_id', orgId)
+        .select(
+            'c.id',
+            'c.parent_resource_id',
+            'c.component_resource_id',
+            'component.name as component_name',
+            'component.code as component_code',
+            'c.quantity',
+            'c.unit_code',
+            'c.effective_from',
+            'c.effective_to',
+            'c.is_active'
+        )
+        .orderBy('c.effective_from', 'desc')
+        .orderBy('c.id', 'desc');
+
+    return rows.map(row => ({
+        ...row,
+        effective_from: toIsoDate(row.effective_from),
+        effective_to: toIsoDate(row.effective_to)
+    }));
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -1087,7 +1183,9 @@ export default {
     createResource,
     updateResource,
     deleteResource,
+    initializeResourceSchema,
     setCompositions,
+    getCompositionHistory,
     addConversion,
     removeConversion,
     bulkInsertResources,

@@ -66,6 +66,11 @@ export const resourceApi = {
         return response.data;
     },
 
+    getCompositionHistory: async (id) => {
+        const response = await api.get(`/resources/${id}/compositions`);
+        return response.data;
+    },
+
     // ─── Add a single conversion to a resource ────────────────────────────────
     // data: { name, quantity, unit_code }
     addConversion: async (id, data) => {

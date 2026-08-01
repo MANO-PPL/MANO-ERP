@@ -116,6 +116,13 @@ export const setCompositions = catchAsync(async (req, res) => {
     res.json({ success: true, message: 'Compositions updated' });
 });
 
+export const getCompositionHistory = catchAsync(async (req, res) => {
+    const { id } = req.params;
+    if (!id || isNaN(parseInt(id))) throw new AppError('Invalid Resource ID', 400);
+    const compositions = await resourceService.getCompositionHistory(req.user.org_id, parseInt(id));
+    res.json({ success: true, compositions });
+});
+
 export const addConversion = catchAsync(async (req, res) => {
     const { id } = req.params;
     if (!id || isNaN(parseInt(id))) throw new AppError('Invalid Resource ID', 400);
@@ -198,6 +205,7 @@ export default {
     updateResource,
     deleteResource,
     setCompositions,
+    getCompositionHistory,
     addConversion,
     addRate,
     getRateHistory,
