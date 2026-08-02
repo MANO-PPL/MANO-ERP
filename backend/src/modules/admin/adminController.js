@@ -88,15 +88,16 @@ export const deleteDesignation = catchAsync(async (req, res) => {
 });
 
 export const createUser = catchAsync(async (req, res) => {
-    const { project_ids, ...userData } = req.body;
+    const { project_ids, project_permissions, ...userData } = req.body;
     const newUserId = await userService.createUser(req.user.org_id, userData);
 
     if (project_ids && Array.isArray(project_ids) && project_ids.length > 0) {
+        const permsObj = project_permissions ? (typeof project_permissions === 'string' ? JSON.parse(project_permissions) : project_permissions) : {};
         const inserts = project_ids.map(pid => ({
             project_id: pid,
             user_id: newUserId,
             org_id: req.user.org_id,
-            project_permissions: JSON.stringify({})
+            project_permissions: JSON.stringify(permsObj)
         }));
         await db('proj_members').insert(inserts);
     }
@@ -110,7 +111,7 @@ export const updateUser = catchAsync(async (req, res) => {
         throw new AppError('Invalid User ID', 400);
     }
 
-    const { project_ids, ...userData } = req.body;
+    const { project_ids, project_permissions, ...userData } = req.body;
     const updatePayload = { ...userData };
 
     // Handle profile image if uploaded (req.file.buffer)
@@ -126,6 +127,9 @@ export const updateUser = catchAsync(async (req, res) => {
     await userService.updateUser(req.user.org_id, user_id, updatePayload);
 
     if (project_ids !== undefined && Array.isArray(project_ids)) {
+        const permsObj = project_permissions ? (typeof project_permissions === 'string' ? JSON.parse(project_permissions) : project_permissions) : {};
+        const permsJson = JSON.stringify(permsObj);
+
         // Sync proj_members table
         const existing = await db('proj_members')
             .where({ user_id: user_id, org_id: req.user.org_id })
@@ -134,6 +138,7 @@ export const updateUser = catchAsync(async (req, res) => {
 
         const toAdd = project_ids.filter(id => !existingIds.includes(id));
         const toRemove = existingIds.filter(id => !project_ids.includes(id));
+        const toKeep = existingIds.filter(id => project_ids.includes(id));
 
         if (toRemove.length > 0) {
             await db('proj_members')
@@ -147,9 +152,16 @@ export const updateUser = catchAsync(async (req, res) => {
                 project_id: pid,
                 user_id: user_id,
                 org_id: req.user.org_id,
-                project_permissions: JSON.stringify({})
+                project_permissions: permsJson
             }));
             await db('proj_members').insert(inserts);
+        }
+
+        if (toKeep.length > 0) {
+            await db('proj_members')
+                .where({ user_id: user_id, org_id: req.user.org_id })
+                .whereIn('project_id', toKeep)
+                .update({ project_permissions: permsJson });
         }
     }
 

@@ -166,7 +166,7 @@ export async function seedDefaultTemplatesForOrg(orgId) {
         }
     ];
 
-    await db('permission_templates').insert(defaultTemplates);
+    await db('iam_permission_templates').insert(defaultTemplates);
 }
 
 export async function getTemplates(orgId, type) {
@@ -177,7 +177,7 @@ export async function getTemplates(orgId, type) {
     const templates = await query;
     if (templates.length === 0) {
         await seedDefaultTemplatesForOrg(orgId);
-        let freshQuery = db('permission_templates').where('org_id', orgId);
+        let freshQuery = db('iam_permission_templates').where('org_id', orgId);
         if (type) {
             freshQuery = freshQuery.andWhere('type', type);
         }

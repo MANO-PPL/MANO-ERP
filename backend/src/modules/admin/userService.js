@@ -86,8 +86,11 @@ export async function getUserById(orgId, userId) {
     // Fetch assigned projects
     const projects = await db('proj_members')
         .where({ user_id: userId, org_id: orgId })
-        .select('project_id');
+        .select('project_id', 'project_permissions');
     user.assigned_projects = projects.map(p => p.project_id);
+    if (projects.length > 0 && projects[0].project_permissions) {
+        user.project_permissions = projects[0].project_permissions;
+    }
 
     return user;
 }
@@ -138,6 +141,18 @@ export async function createUser(org_id, userData) {
             .where({ org_id: org_id })
             .update({ last_user_number: nextNumber });
 
+        let resolvedDeptId = dept_id || null;
+        if (!resolvedDeptId && userData.department && userData.department.trim() !== '') {
+            const deptName = userData.department.trim();
+            let dept = await trx('iam_departments').where({ dept_name: deptName, org_id: org_id }).first();
+            if (!dept) {
+                const [newDeptId] = await trx('iam_departments').insert({ dept_name: deptName, org_id: org_id });
+                resolvedDeptId = newDeptId;
+            } else {
+                resolvedDeptId = dept.dept_id;
+            }
+        }
+
         const validatedPerms = system_permissions ? validateSystemPermissions(system_permissions) : null;
 
         const [id] = await trx('iam_users').insert({
@@ -146,7 +161,7 @@ export async function createUser(org_id, userData) {
             email,
             phone_no: phoneToSave,
             desg_id,
-            dept_id,
+            dept_id: resolvedDeptId,
             user_type: typeToSave,
             org_id: org_id,
             user_code: userCode,
@@ -227,6 +242,17 @@ export async function updateUser(orgId, userId, updateData) {
                     updates[key] = updateData[key];
                 }
             }
+        }
+    }
+
+    if (updateData.department && updateData.department.trim() !== '') {
+        const deptName = updateData.department.trim();
+        let dept = await db('iam_departments').where({ dept_name: deptName, org_id: orgId }).first();
+        if (!dept) {
+            const [newDeptId] = await db('iam_departments').insert({ dept_name: deptName, org_id: orgId });
+            updates.dept_id = newDeptId;
+        } else {
+            updates.dept_id = dept.dept_id;
         }
     }
 
