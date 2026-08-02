@@ -4,6 +4,7 @@ import AppError from '../../../utils/AppError.js';
 import { db } from '../../../config/database.js';
 import s3Service from '../../shared/s3Service.js';
 import path from 'path';
+import { isAdmin } from '../../../utils/userUtils.js';
 
 export const listProjects = catchAsync(async (req, res) => {
     const projects = await projectService.getProjects(req.user.org_id, req.user.user_id, req.user.user_type);
@@ -14,7 +15,7 @@ export const getProject = catchAsync(async (req, res) => {
     const { id } = req.params;
     if (!id || isNaN(parseInt(id))) throw new AppError('Invalid Project ID', 400);
 
-    const isUserAdmin = ['admin', 'super admin', 'superadmin', 'super_admin'].includes(req.user.user_type?.toLowerCase());
+    const isUserAdmin = isAdmin(req.user);
     
     let projectPermissions = null;
     if (isUserAdmin) {

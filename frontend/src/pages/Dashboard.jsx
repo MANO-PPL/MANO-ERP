@@ -34,11 +34,7 @@ const DashboardCard = ({ title, value, subtext, icon: Icon, color, index }) => (
 );
 
 const Dashboard = () => {
-    const { user } = useAuth();
-    const role = (user?.user_type || '').toLowerCase();
-    
-    const isAdmin = ['admin', 'super admin', 'superadmin', 'super_admin'].includes(role);
-    const isClient = role === 'client';
+    const { user, isAdmin, isClient } = useAuth();
     
     // Checklist state for employee dashboard
     const [employeeTasks, setEmployeeTasks] = useState([

@@ -3,6 +3,7 @@ import jwt from 'jsonwebtoken';
 import { db } from '../config/database.js';
 import AppError from '../utils/AppError.js';
 import catchAsync from '../utils/catchAsync.js';
+import { isAdmin, isClient } from '../utils/userUtils.js';
 
 export const authenticateJWT = catchAsync(async (req, res, next) => {
     let token = req.cookies?.accessToken;
@@ -71,14 +72,13 @@ export const requireSystemPermission = (module) => {
         const { user_type, system_permissions } = req.user;
         const requiredLevel = req.method === 'GET' ? 'view' : 'edit';
 
-        // Normalized Admin/Superadmin bypass
-        const normRole = (user_type || '').toLowerCase();
-        if (['admin', 'super admin', 'superadmin', 'super_admin'].includes(normRole)) {
+        // Admin bypass via central userUtils
+        if (isAdmin(req.user)) {
             return next();
         }
 
         // Clients have no access to global system-level modules
-        if (user_type === 'client') {
+        if (isClient(req.user)) {
             return res.status(403).json({
                 success: false,
                 message: "Forbidden: Clients do not have access to global administration modules."
@@ -115,9 +115,8 @@ export const requireProjectAssignment = async (req, res, next) => {
         return res.status(400).json({ success: false, message: "Project ID is required" });
     }
 
-    // Normalized Admin/Superadmin bypass
-    const normRole = (user_type || '').toLowerCase();
-    if (['admin', 'super admin', 'superadmin', 'super_admin'].includes(normRole)) {
+    // Admin bypass via central userUtils
+    if (isAdmin(req.user)) {
         return next();
     }
 
@@ -150,9 +149,8 @@ export const requireProjectPermission = (module) => {
             return res.status(400).json({ success: false, message: "Project ID is required" });
         }
 
-        // Normalized Admin/Superadmin bypass
-        const normRole = (user_type || '').toLowerCase();
-        if (['admin', 'super admin', 'superadmin', 'super_admin'].includes(normRole)) {
+        // Admin bypass via central userUtils
+        if (isAdmin(req.user)) {
             return next();
         }
 

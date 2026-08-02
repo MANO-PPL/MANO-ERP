@@ -1,5 +1,6 @@
 import { db } from '../../config/database.js';
 import AppError from '../../utils/AppError.js';
+import { isAdmin } from '../../utils/userUtils.js';
 
 const CONTENT_TABLES = [
     { name: 'wf_document_lines', pk: 'line_id' },
@@ -51,7 +52,7 @@ async function verifyAccess(orgId, instanceId, userId) {
 
     // 1. Allow if user is an admin
     const user = await db('iam_users').where({ user_id: userId }).first();
-    const isUserAdmin = user && ['admin', 'super admin', 'superadmin', 'super_admin'].includes(user.user_type?.toLowerCase());
+    const isUserAdmin = isAdmin(user);
     if (isUserAdmin) {
         return instance;
     }

@@ -8,7 +8,7 @@ import {
 import { toast } from 'react-toastify';
 
 const WorkflowPanel = ({ projectId, templateName, instanceId: propInstanceId, onStateChange, onRefreshContent }) => {
-    const { user } = useAuth();
+    const { user, isAdmin: isUserAdmin } = useAuth();
     const [loading, setLoading] = useState(true);
     const [actionLoading, setActionLoading] = useState(false);
     const [template, setTemplate] = useState(null);
@@ -267,7 +267,7 @@ const WorkflowPanel = ({ projectId, templateName, instanceId: propInstanceId, on
     const currentUserId = user?.user_id ?? user?.id;
     const isHolder = String(currentCycle?.current_holder_id) === String(currentUserId);
     const isCycleAuthor = String(currentCycle?.initiated_by) === String(currentUserId);
-    const isUserAdmin = user && ['admin', 'super admin', 'superadmin', 'super_admin'].includes(user.user_type?.toLowerCase());
+
     const documentRoles = templateDetail?.document_roles || [];
     const reporterRoles = documentRoles.filter(role => role.role === 'reporter');
     const isUserReporter = reporterRoles.length > 0

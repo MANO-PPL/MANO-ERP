@@ -1,6 +1,7 @@
 import { db } from '../../config/database.js';
 import AppError from '../../utils/AppError.js';
 import { triggerApprovalHooks } from '../../services/hookRegistry.js';
+import { isAdmin } from '../../utils/userUtils.js';
 
 const CONTENT_TABLES = [
     // Generic lines are scoped by instance/cycle/version, not project_id.
@@ -118,7 +119,7 @@ export async function initiateCycle(orgId, instanceId, userId) {
         // the cycle's reporter/author. Other reporters may initialize future
         // cycles, but cannot take over an active cycle.
         const user = await trx('iam_users').where({ user_id: userId }).first();
-        const isUserAdmin = user && ['admin', 'super admin', 'superadmin', 'super_admin'].includes(user.user_type?.toLowerCase());
+        const isUserAdmin = isAdmin(user);
         const reporterRoles = await trx('wf_document_roles')
             .where({ document_id: instance.document_id, role: 'reporter' })
             .select('user_id');

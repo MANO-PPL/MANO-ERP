@@ -75,14 +75,18 @@ export const AuthProvider = ({ children }) => {
         }
     };
 
+    const userType = (user?.user_type || '').toLowerCase();
+    const isAdmin = userType === 'admin';
+    const isClient = userType === 'client';
+    const isEmployee = userType === 'employee';
+
     // Helper to check user system_permissions
     // Levels: None = 0, Read = 1, Write = 2, Full = 3
     const hasPermission = (pageId, requiredLevel = 1) => {
         if (!user) return false;
         
         // Admins have absolute access to everything
-        const userType = (user.user_type || '').toLowerCase();
-        if (userType === 'admin' || userType === 'super admin' || userType === 'super_admin') {
+        if (isAdmin) {
             return true;
         }
 
@@ -97,7 +101,7 @@ export const AuthProvider = ({ children }) => {
     };
 
     return (
-        <AuthContext.Provider value={{ user, loading, login, logout, refreshUser, hasPermission }}>
+        <AuthContext.Provider value={{ user, loading, login, logout, refreshUser, hasPermission, isAdmin, isClient, isEmployee }}>
             {children}
         </AuthContext.Provider>
     );

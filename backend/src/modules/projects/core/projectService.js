@@ -1,6 +1,7 @@
 import { db } from '../../../config/database.js';
 import AppError from '../../../utils/AppError.js';
 import s3Service from '../../shared/s3Service.js';
+import { isAdmin } from '../../../utils/userUtils.js';
 
 export function getS3KeyFromUrl(url) {
     if (!url) return null;
@@ -83,7 +84,7 @@ export async function createProject(orgId, { name, location, status = 'active', 
 }
 
 export async function getProjects(orgId, userId, userType) {
-    const isUserAdmin = ['admin', 'super admin', 'superadmin', 'super_admin'].includes(userType?.toLowerCase());
+    const isUserAdmin = isAdmin(userType);
     let projects = [];
     if (isUserAdmin) {
         projects = await db('proj_projects as p')

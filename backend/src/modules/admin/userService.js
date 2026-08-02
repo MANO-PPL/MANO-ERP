@@ -1,6 +1,9 @@
 import bcrypt from 'bcrypt';
 import AppError from '../../utils/AppError.js';
 import { db } from '../../config/database.js';
+import { normalizeUserType } from '../../utils/userUtils.js';
+
+export { normalizeUserType };
 
 export function validateSystemPermissions(permissions) {
     if (!permissions) return null;
@@ -106,11 +109,7 @@ export async function createUser(org_id, userData) {
         throw new AppError('Missing required fields (Name, Password, Email)', 400);
     }
 
-    const allowedTypes = new Set(['admin', 'employee', 'client']);
-    const typeToSave = user_type ? user_type.toLowerCase() : 'employee';
-    if (!allowedTypes.has(typeToSave)) {
-        throw new AppError("Invalid user_type. Must be 'admin', 'employee', or 'client'", 400);
-    }
+    const typeToSave = normalizeUserType(user_type);
 
     const existingEmail = await db('iam_users').where({ email }).first();
     if (existingEmail) throw new AppError('Email is already taken', 400);
@@ -217,12 +216,7 @@ export async function updateUser(orgId, userId, updateData) {
                     updates.phone_no = null;
                 }
             } else if (key === 'user_type') {
-                const allowedTypes = new Set(['admin', 'employee', 'client']);
-                const typeToSave = updateData.user_type ? updateData.user_type.toLowerCase() : 'employee';
-                if (!allowedTypes.has(typeToSave)) {
-                    throw new AppError("Invalid user_type. Must be 'admin', 'employee', or 'client'", 400);
-                }
-                updates.user_type = typeToSave;
+                updates.user_type = normalizeUserType(updateData.user_type);
             } else if (key === 'system_permissions') {
                 const validatedPerms = updateData.system_permissions ? validateSystemPermissions(updateData.system_permissions) : null;
                 updates.system_permissions = validatedPerms ? JSON.stringify(validatedPerms) : null;

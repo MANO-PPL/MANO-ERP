@@ -26,7 +26,7 @@ import ProjectSettings from './Settings/ProjectSettings';
 const ProjectDetails = () => {
     const { id } = useParams();
     const navigate = useNavigate();
-    const { user } = useAuth();
+    const { user, isAdmin } = useAuth();
     const [searchParams, setSearchParams] = useSearchParams();
     const activeTab = searchParams.get('tab') || 'Dashboard';
 
@@ -100,7 +100,6 @@ const ProjectDetails = () => {
         setExtraBreadcrumbs([]); // Clear on tab switch
     };
 
-    const isAdmin = ['admin', 'super admin', 'superadmin', 'super_admin'].includes(user?.user_type?.toLowerCase());
 
     const allTabs = [
         'Dashboard', 'Tasks', 'WIP', 'Reports', 'General Documents', 'Drawings', 

@@ -71,6 +71,24 @@ const defaultPermissions = () => {
     return p;
 };
 
+const getPresetPermissions = (templateName) => {
+    const p = defaultPermissions();
+    if (templateName === 'Admin') {
+        ALL_PERM_KEYS.forEach(k => { p[k] = 2; });
+    } else if (templateName === 'Employee') {
+        ALL_PERM_KEYS.forEach(k => {
+            if (k === 'admin') p[k] = 0;
+            else p[k] = 2;
+        });
+    } else if (templateName === 'Client') {
+        ALL_PERM_KEYS.forEach(k => {
+            if (['projects', 'dashboard', 'collaboration'].includes(k)) p[k] = 1;
+            else p[k] = 0;
+        });
+    }
+    return p;
+};
+
 const getDynamicPageTree = (projectsList) => {
     return PAGE_TREE.map(node => {
         if (node.id === 'projects') {
@@ -112,7 +130,7 @@ const Avatar = ({ name, size = 10 }) => (
 // ─── Add User Drawer ──────────────────────────────────────────────────────────
 const AddUserDrawer = ({ open, onClose, onAdd, allProjects = [], templates = [], initialTab = 'form' }) => {
     const [tab, setTab] = useState(initialTab);
-    const [form, setForm] = useState({ name: '', email: '', role: 'Viewer', department: '', password: '' });
+    const [form, setForm] = useState({ name: '', email: '', role: 'Employee', department: '', password: '' });
     const [showPw, setShowPw] = useState(false);
     const [file, setFile] = useState(null);
     const [dragging, setDragging] = useState(false);
@@ -214,10 +232,22 @@ const AddUserDrawer = ({ open, onClose, onAdd, allProjects = [], templates = [],
 
                             <div className="grid grid-cols-2 gap-4">
                                 <div>
-                                    <label className="block text-xs font-bold text-gray-500 dark:text-gray-400 mb-1.5 uppercase tracking-wide">Role</label>
-                                    <select value={form.role} onChange={e => setForm(p => ({ ...p, role: e.target.value }))}
+                                    <label className="block text-xs font-bold text-gray-500 dark:text-gray-400 mb-1.5 uppercase tracking-wide">Permission Template</label>
+                                    <select value={form.role || 'Employee'} onChange={e => {
+                                            const val = e.target.value;
+                                            setForm(p => ({ ...p, role: val }));
+                                            if (val !== 'Custom') {
+                                                setPermissions(getPresetPermissions(val));
+                                                setShowPerms(false);
+                                            } else {
+                                                setShowPerms(true);
+                                            }
+                                        }}
                                         className="w-full px-4 py-2.5 bg-gray-50 dark:bg-[#0d1117] border border-gray-200 dark:border-white/10 rounded-xl text-sm focus:outline-none appearance-none">
-                                        {['Viewer', 'Site Lead', 'Project Manager', 'Admin', 'Super Admin'].map(r => <option key={r}>{r}</option>)}
+                                        <option value="Admin">Admin</option>
+                                        <option value="Employee">Employee</option>
+                                        <option value="Client">Client</option>
+                                        <option value="Custom">Custom</option>
                                     </select>
                                 </div>
                                 <div>
@@ -237,45 +267,6 @@ const AddUserDrawer = ({ open, onClose, onAdd, allProjects = [], templates = [],
                                     </button>
                                 </div>
                             </div>
-
-                            {/* Template Selector */}
-                            {templates.length > 0 && (
-                                <div>
-                                    <label className="block text-xs font-bold text-gray-500 dark:text-gray-400 mb-1.5 uppercase tracking-wide">Apply Permission Template</label>
-                                    <select 
-                                        onChange={e => {
-                                            const val = e.target.value;
-                                            if (val) {
-                                                const template = templates.find(t => t.id === parseInt(val));
-                                                if (template) {
-                                                    const perms = typeof template.permissions === 'string' ? JSON.parse(template.permissions) : template.permissions;
-                                                    const mappedPerms = {};
-                                                    const map = { 'none': 0, 'view': 1, 'edit': 2, 'read': 1, 'write': 2 };
-                                                    for (const [k, v] of Object.entries(perms || {})) {
-                                                        if (typeof v === 'string') {
-                                                            mappedPerms[k] = map[v.toLowerCase()] ?? 0;
-                                                        } else {
-                                                            mappedPerms[k] = v;
-                                                        }
-                                                    }
-                                                    setPermissions(p => ({
-                                                        ...p,
-                                                        ...mappedPerms
-                                                    }));
-                                                    toast.info(`Applied template: ${template.name}`);
-                                                }
-                                            }
-                                        }}
-                                        defaultValue=""
-                                        className="w-full px-4 py-2.5 bg-gray-50 dark:bg-[#0d1117] border border-gray-200 dark:border-white/10 rounded-xl text-sm focus:outline-none appearance-none"
-                                    >
-                                        <option value="" disabled>-- Select a template to apply --</option>
-                                        {templates.map(t => (
-                                            <option key={t.id} value={t.id}>{t.name}</option>
-                                        ))}
-                                    </select>
-                                </div>
-                            )}
 
                             {/* Assign Page Permissions */}
                             <div className="rounded-2xl border border-gray-200 dark:border-white/10 overflow-hidden">
@@ -556,43 +547,30 @@ const UserDetailDrawer = ({ user, open, onClose, onUpdate, onDelete, initialEdit
                     </div>
 
                     {/* Template Selector (only when editing) */}
-                    {editing && templates.length > 0 && (
+                    {editing && (
                         <div className="p-4 bg-gray-50 dark:bg-[#0d1117] rounded-2xl border border-gray-100 dark:border-white/5">
-                            <label className="block text-xs font-bold text-gray-500 dark:text-gray-400 mb-1.5 uppercase tracking-wide">Apply Permission Template</label>
+                            <label className="block text-xs font-bold text-gray-500 dark:text-gray-400 mb-1.5 uppercase tracking-wide">Permission Template</label>
                             <select 
+                                value={localUser.role || 'Employee'}
                                 onChange={e => {
                                     const val = e.target.value;
-                                    if (val) {
-                                        const template = templates.find(t => t.id === parseInt(val));
-                                        if (template) {
-                                            const perms = typeof template.permissions === 'string' ? JSON.parse(template.permissions) : template.permissions;
-                                            const mappedPerms = {};
-                                            const map = { 'none': 0, 'view': 1, 'edit': 2, 'read': 1, 'write': 2 };
-                                            for (const [k, v] of Object.entries(perms || {})) {
-                                                if (typeof v === 'string') {
-                                                    mappedPerms[k] = map[v.toLowerCase()] ?? 0;
-                                                } else {
-                                                    mappedPerms[k] = v;
-                                                }
-                                            }
-                                            setLocalUser(u => ({
-                                                ...u,
-                                                permissions: {
-                                                    ...u.permissions,
-                                                    ...mappedPerms
-                                                }
-                                            }));
-                                            toast.info(`Applied template: ${template.name}`);
+                                    const presetPerms = val !== 'Custom' ? getPresetPermissions(val) : localUser.permissions;
+                                    setLocalUser(u => ({
+                                        ...u,
+                                        role: val,
+                                        permissions: {
+                                            ...u.permissions,
+                                            ...presetPerms
                                         }
-                                    }
+                                    }));
+                                    toast.info(`Applied template: ${val}`);
                                 }}
-                                defaultValue=""
                                 className="w-full px-4 py-2.5 bg-white dark:bg-[#161b22] border border-gray-200 dark:border-white/10 rounded-xl text-sm focus:outline-none appearance-none"
                             >
-                                <option value="" disabled>-- Select a template to apply --</option>
-                                {templates.map(t => (
-                                    <option key={t.id} value={t.id}>{t.name}</option>
-                                ))}
+                                <option value="Admin">Admin</option>
+                                <option value="Employee">Employee</option>
+                                <option value="Client">Client</option>
+                                <option value="Custom">Custom</option>
                             </select>
                         </div>
                     )}
@@ -675,12 +653,13 @@ const mapUserFromBackend = (u) => {
             mappedPerms[k] = v;
         }
     }
+    const typeLabel = u.user_type ? u.user_type.charAt(0).toUpperCase() + u.user_type.slice(1).toLowerCase() : 'Employee';
     return {
         ...u,
         id: u.user_id || u.id,
         name: u.user_name || u.name,
         email: u.email || u.email_id,
-        role: u.user_type || u.roleName || u.role || 'Viewer',
+        role: u.role || typeLabel,
         department: u.departmentName || u.department || '-',
         status: u.user_status || u.status || 'Active',
         joined: u.created_at ? new Date(u.created_at).toLocaleDateString('en-US', {month: 'short', day: '2-digit', year: 'numeric'}) : '-',

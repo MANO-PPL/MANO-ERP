@@ -39,7 +39,7 @@ const WIP = ({ setExtraBreadcrumbs, projectPermissions, isAdmin, user }) => {
     // Selected Employee State
     const [selectedEmployeeId, setSelectedEmployeeId] = useState(null);
 
-    const isUserAdmin = ['admin', 'super admin', 'superadmin', 'super_admin'].includes(user?.user_type?.toLowerCase());
+    const isUserAdmin = isAdmin;
 
     const columns = [
         { id: 'open', title: 'Open', color: 'text-gray-500', accent: 'bg-gray-400', border: 'border-gray-200 dark:border-gray-700' },
