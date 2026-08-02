@@ -2,20 +2,249 @@ import React, { useState, useEffect } from 'react';
 import { useParams } from 'react-router-dom';
 import { 
     Users, Shield, UserPlus, Trash2, CheckCircle2, 
-    Save, ShieldCheck, Lock, ChevronRight, Loader2, Sparkles 
+    Save, ShieldCheck, Lock, ChevronRight, Loader2, Sparkles,
+    Plus, Edit3, Info, AlertCircle, X, Sliders, FolderKey
 } from 'lucide-react';
 import { toast } from 'react-toastify';
 import { projectApi } from '../../services/projectApi';
 import { adminApi } from '../../services/adminApi';
 
 const PROJECT_PAGES = [
-    'Tasks', 'WIP', 'Reports', 'General Documents', 'Drawings', 
-    'Planning', 'Contracts', 'Quality', 'Safety', 'Billing', 
-    'Material Management', 'Approvals'
+    { id: 'Tasks', label: 'Tasks' },
+    { id: 'WIP', label: 'Work In Progress (WIP)' },
+    { id: 'Reports', label: 'Reports & Analytics' },
+    { id: 'General Documents', label: 'General Documents' },
+    { id: 'Drawings', label: 'Drawings & Blueprints' },
+    { id: 'Planning', label: 'Project Planning' },
+    { id: 'Contracts', label: 'Contracts & Agreements' },
+    { id: 'Quality', label: 'Quality Control' },
+    { id: 'Safety', label: 'Safety & Compliance' },
+    { id: 'Billing', label: 'Billing & Invoicing' },
+    { id: 'Material Management', label: 'Material Management' },
+    { id: 'Approvals', label: 'Workflow Approvals' }
 ];
 
 const ACCESS_LEVELS = ['None', 'Read', 'Write'];
 
+// ─── Delete Project Template Modal ──────────────────────────────────────────────
+const DeleteTemplateModal = ({ open, onClose, onConfirm, template, isDeleting }) => {
+    if (!open || !template) return null;
+    return (
+        <div className="fixed inset-0 bg-black/50 backdrop-blur-xs z-[9999] flex items-center justify-center p-4">
+            <div className="bg-white dark:bg-[#161b22] border border-gray-200 dark:border-white/10 rounded-2xl w-full max-w-md shadow-2xl overflow-hidden animate-in fade-in zoom-in-95 duration-200">
+                <div className="p-6 text-center space-y-4">
+                    <div className="w-14 h-14 bg-amber-50 dark:bg-amber-950/40 text-amber-500 rounded-full flex items-center justify-center mx-auto border border-amber-200/50 dark:border-amber-500/30 shadow-xs">
+                        <AlertCircle size={28} />
+                    </div>
+                    <div>
+                        <h3 className="text-base font-bold text-gray-900 dark:text-white">Delete Project Template?</h3>
+                        <p className="text-xs text-gray-500 dark:text-gray-400 mt-1.5 leading-relaxed">
+                            Are you sure you want to delete template <span className="font-bold text-gray-900 dark:text-white">"{template.name}"</span>?
+                        </p>
+                    </div>
+                </div>
+
+                <div className="px-6 py-4 bg-gray-50 dark:bg-[#0d1117] border-t border-gray-100 dark:border-white/10 flex gap-3">
+                    <button
+                        type="button"
+                        onClick={onClose}
+                        disabled={isDeleting}
+                        className="flex-1 py-2.5 border border-gray-200 dark:border-white/10 rounded-xl text-xs font-bold text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-white/5 transition-all disabled:opacity-50"
+                    >
+                        Cancel
+                    </button>
+                    <button
+                        type="button"
+                        onClick={onConfirm}
+                        disabled={isDeleting}
+                        className="flex-1 py-2.5 bg-red-600 hover:bg-red-700 text-white rounded-xl text-xs font-bold transition-all shadow-md shadow-red-500/20 flex items-center justify-center gap-2 disabled:opacity-50"
+                    >
+                        {isDeleting ? (
+                            <>
+                                <Loader2 size={14} className="animate-spin" /> Deleting...
+                            </>
+                        ) : (
+                            <>
+                                <Trash2 size={14} /> Delete Template
+                            </>
+                        )}
+                    </button>
+                </div>
+            </div>
+        </div>
+    );
+};
+
+// ─── Project Template Editor Modal ─────────────────────────────────────────────
+const ProjectTemplateEditorModal = ({ open, onClose, onSave, templateToEdit, isSaving, initialPermissions }) => {
+    const [name, setName] = useState('');
+    const [permissions, setPermissions] = useState({});
+
+    useEffect(() => {
+        if (templateToEdit) {
+            setName(templateToEdit.name || '');
+            const perms = templateToEdit.permissions || {};
+            setPermissions(typeof perms === 'string' ? JSON.parse(perms) : { ...perms });
+        } else {
+            setName('');
+            const initPerms = initialPermissions && Object.keys(initialPermissions).length > 0 ? { ...initialPermissions } : {};
+            PROJECT_PAGES.forEach(m => {
+                if (initPerms[m.id] === undefined) initPerms[m.id] = 2;
+            });
+            setPermissions(initPerms);
+        }
+    }, [templateToEdit, open, initialPermissions]);
+
+    const handlePreset = (level) => {
+        const updated = {};
+        PROJECT_PAGES.forEach(m => {
+            updated[m.id] = level;
+        });
+        setPermissions(updated);
+    };
+
+    const handleSubmit = (e) => {
+        e.preventDefault();
+        if (!name.trim()) {
+            toast.error('Please enter a template name');
+            return;
+        }
+        onSave({
+            id: templateToEdit?.id,
+            name: name.trim(),
+            type: 'project',
+            permissions
+        });
+    };
+
+    if (!open) return null;
+
+    return (
+        <div className="fixed inset-0 bg-black/50 backdrop-blur-xs z-[9999] flex items-center justify-center p-4">
+            <div className="bg-white dark:bg-[#161b22] border border-gray-200 dark:border-white/10 rounded-2xl w-full max-w-xl shadow-2xl overflow-hidden flex flex-col max-h-[90vh] animate-in fade-in zoom-in-95 duration-200">
+                {/* Header */}
+                <div className="px-6 py-4 bg-gray-50/80 dark:bg-[#0d1117]/80 border-b border-gray-200 dark:border-white/10 flex items-center justify-between shrink-0">
+                    <div className="flex items-center gap-2.5">
+                        <div className="w-9 h-9 rounded-xl bg-emerald-50 dark:bg-emerald-900/30 text-emerald-600 dark:text-emerald-400 flex items-center justify-center border border-emerald-200/50 dark:border-emerald-500/20">
+                            <Sparkles size={18} />
+                        </div>
+                        <div>
+                            <h3 className="text-sm font-bold text-gray-900 dark:text-white">
+                                {templateToEdit ? 'Edit Project Template' : 'Create Project Permission Template'}
+                            </h3>
+                            <p className="text-[11px] text-gray-500 dark:text-gray-400">
+                                Configure page access levels reusable for project team members
+                            </p>
+                        </div>
+                    </div>
+                    <button onClick={onClose} className="p-1 text-gray-400 hover:text-gray-600 dark:hover:text-white rounded-lg">
+                        <X size={18} />
+                    </button>
+                </div>
+
+                {/* Form Content */}
+                <form onSubmit={handleSubmit} className="flex-1 overflow-y-auto custom-scrollbar p-6 space-y-5">
+                    <div>
+                        <label className="block text-[10px] font-bold text-gray-500 dark:text-gray-400 mb-1.5 uppercase tracking-wide">Template Name *</label>
+                        <input
+                            type="text"
+                            placeholder="e.g. Site Engineer (Project)"
+                            value={name}
+                            onChange={e => setName(e.target.value)}
+                            className="w-full px-3.5 py-2 bg-gray-50 dark:bg-[#0d1117] border border-gray-200 dark:border-white/10 rounded-xl text-xs font-semibold focus:outline-none focus:ring-2 focus:ring-emerald-500/40"
+                            required
+                        />
+                    </div>
+
+                    {/* Presets Toolbar */}
+                    <div className="flex items-center justify-between p-3 bg-gray-50 dark:bg-[#0d1117] rounded-xl border border-gray-200 dark:border-white/10 text-xs">
+                        <span className="font-bold text-gray-700 dark:text-gray-300">Presets:</span>
+                        <div className="flex gap-2">
+                            <button
+                                type="button"
+                                onClick={() => handlePreset(2)}
+                                className="px-2.5 py-1 bg-emerald-50 dark:bg-emerald-950/40 text-emerald-600 dark:text-emerald-400 rounded-lg text-[11px] font-bold border border-emerald-200/50 dark:border-emerald-500/30 hover:bg-emerald-100 transition-all"
+                            >
+                                All Write
+                            </button>
+                            <button
+                                type="button"
+                                onClick={() => handlePreset(1)}
+                                className="px-2.5 py-1 bg-blue-50 dark:bg-blue-950/40 text-blue-600 dark:text-blue-400 rounded-lg text-[11px] font-bold border border-blue-200/50 dark:border-blue-500/30 hover:bg-blue-100 transition-all"
+                            >
+                                All Read
+                            </button>
+                            <button
+                                type="button"
+                                onClick={() => handlePreset(0)}
+                                className="px-2.5 py-1 bg-gray-100 dark:bg-white/10 text-gray-600 dark:text-gray-400 rounded-lg text-[11px] font-bold hover:bg-gray-200 transition-all"
+                            >
+                                Clear All
+                            </button>
+                        </div>
+                    </div>
+
+                    {/* Module List */}
+                    <div className="space-y-1.5">
+                        {PROJECT_PAGES.map(mod => {
+                            const lvl = permissions[mod.id] ?? 0;
+                            return (
+                                <div key={mod.id} className="p-2.5 bg-gray-50/50 dark:bg-[#161b22]/50 rounded-xl border border-gray-100 dark:border-white/5 flex items-center justify-between">
+                                    <span className="text-xs font-semibold text-gray-800 dark:text-gray-200">{mod.label}</span>
+                                    <div className="flex gap-1">
+                                        {ACCESS_LEVELS.map((name, i) => (
+                                            <button
+                                                key={i}
+                                                type="button"
+                                                onClick={() => setPermissions(p => ({ ...p, [mod.id]: i }))}
+                                                className={`px-2.5 py-1 rounded-lg text-[11px] font-bold transition-all ${
+                                                    lvl === i
+                                                        ? i === 2 ? 'bg-emerald-600 text-white shadow-xs' : i === 1 ? 'bg-blue-600 text-white shadow-xs' : 'bg-gray-600 text-white'
+                                                        : 'bg-gray-100 dark:bg-white/5 text-gray-400 hover:bg-gray-200'
+                                                }`}
+                                            >
+                                                {name}
+                                            </button>
+                                        ))}
+                                    </div>
+                                </div>
+                            );
+                        })}
+                    </div>
+
+                    {/* Footer */}
+                    <div className="pt-4 border-t border-gray-100 dark:border-white/10 flex gap-3">
+                        <button
+                            type="button"
+                            onClick={onClose}
+                            disabled={isSaving}
+                            className="flex-1 py-2.5 border border-gray-200 dark:border-white/10 rounded-xl text-xs font-bold text-gray-600 dark:text-gray-400 hover:bg-gray-100 transition-all"
+                        >
+                            Cancel
+                        </button>
+                        <button
+                            type="submit"
+                            disabled={isSaving}
+                            className="flex-1 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold transition-all shadow-md shadow-emerald-500/20 flex items-center justify-center gap-2 disabled:opacity-50"
+                        >
+                            {isSaving ? (
+                                <>
+                                    <Loader2 size={14} className="animate-spin" /> Saving...
+                                </>
+                            ) : (
+                                <>
+                                    <Sparkles size={14} /> {templateToEdit ? 'Save Changes' : 'Create Project Template'}
+                                </>
+                            )}
+                        </button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    );
+};
+
+// ─── Main Access Control Component ─────────────────────────────────────────────
 const AccessControl = () => {
     const { id } = useParams(); // project_id
     const [members, setMembers] = useState([]);
@@ -29,6 +258,13 @@ const AccessControl = () => {
     const [selectedNewUser, setSelectedNewUser] = useState('');
     const [isSaving, setIsSaving] = useState(false);
     const [isAdding, setIsAdding] = useState(false);
+
+    // Template Modals
+    const [templateEditorOpen, setTemplateEditorOpen] = useState(false);
+    const [templateToEdit, setTemplateToEdit] = useState(null);
+    const [deletingTemplate, setDeletingTemplate] = useState(null);
+    const [isSavingTemplate, setIsSavingTemplate] = useState(false);
+    const [isDeletingTemplate, setIsDeletingTemplate] = useState(false);
 
     const loadData = async () => {
         setIsLoading(true);
@@ -58,7 +294,6 @@ const AccessControl = () => {
                 });
                 setMembers(mappedMembers);
                 
-                // Keep selected member reference updated
                 if (selectedMember) {
                     const updated = mappedMembers.find(x => x.user_id === selectedMember.user_id);
                     if (updated) {
@@ -75,8 +310,8 @@ const AccessControl = () => {
                 setAllUsers(usersRes.users);
             }
             
-            if (templatesRes.success) {
-                setTemplates(templatesRes.templates);
+            if (templatesRes.success && templatesRes.templates) {
+                setTemplates(templatesRes.templates.filter(t => t.type === 'project'));
             }
         } catch (err) {
             console.error('Failed to load access control details:', err);
@@ -103,11 +338,16 @@ const AccessControl = () => {
     };
 
     const handleApplyTemplate = (templateId) => {
-        const template = templates.find(t => t.id === parseInt(templateId));
+        const template = templates.find(t => String(t.id) === String(templateId));
         if (template) {
             const perms = typeof template.permissions === 'string' ? JSON.parse(template.permissions) : template.permissions;
-            setLocalPermissions(perms);
-            toast.success(`Loaded template permissions for "${template.name}"`);
+            const newPerms = {};
+            const map = { 'none': 0, 'view': 1, 'edit': 2, 'read': 1, 'write': 2 };
+            for (const [k, v] of Object.entries(perms || {})) {
+                newPerms[k] = typeof v === 'string' ? (map[v.toLowerCase()] ?? 0) : Number(v);
+            }
+            setLocalPermissions(newPerms);
+            toast.success(`Applied template permissions: "${template.name}"`);
         }
     };
 
@@ -136,6 +376,43 @@ const AccessControl = () => {
             toast.error('Failed to save permissions');
         } finally {
             setIsSaving(false);
+        }
+    };
+
+    const handleSaveTemplate = async (templateData) => {
+        setIsSavingTemplate(true);
+        try {
+            if (templateData.id) {
+                await adminApi.updatePermissionTemplate(templateData.id, templateData);
+                toast.success(`Project template "${templateData.name}" updated!`);
+            } else {
+                await adminApi.createPermissionTemplate(templateData);
+                toast.success(`Project template "${templateData.name}" created!`);
+            }
+            setTemplateEditorOpen(false);
+            setTemplateToEdit(null);
+            await loadData();
+        } catch (error) {
+            console.error(error);
+            toast.error(error.response?.data?.message || 'Failed to save template');
+        } finally {
+            setIsSavingTemplate(false);
+        }
+    };
+
+    const confirmDeleteTemplate = async () => {
+        if (!deletingTemplate) return;
+        setIsDeletingTemplate(true);
+        try {
+            await adminApi.deleteTemplate(deletingTemplate.id);
+            toast.success(`Template "${deletingTemplate.name}" deleted successfully`);
+            setDeletingTemplate(null);
+            await loadData();
+        } catch (error) {
+            console.error(error);
+            toast.error(error.response?.data?.message || 'Failed to delete template');
+        } finally {
+            setIsDeletingTemplate(false);
         }
     };
 
@@ -173,7 +450,6 @@ const AccessControl = () => {
         }
     };
 
-    // Filter list of users in organization who are not already project members
     const memberUserIds = new Set(members.map(m => m.user_id));
     const nonMembers = allUsers.filter(u => !memberUserIds.has(u.user_id || u.id));
 
@@ -185,9 +461,6 @@ const AccessControl = () => {
             </div>
         );
     }
-
-    const accessLevelColor = (lvl) => ['text-gray-400', 'text-blue-400', 'text-green-500'][lvl] || 'text-gray-400';
-    const accessLevelBg = (lvl) => ['bg-gray-100 dark:bg-white/5', 'bg-blue-50 dark:bg-blue-900/20', 'bg-green-50 dark:bg-green-900/20'][lvl] || '';
 
     return (
         <div className="flex-1 flex overflow-hidden bg-white dark:bg-[#0d1117] text-gray-900 dark:text-gray-100">
@@ -269,11 +542,11 @@ const AccessControl = () => {
                 </div>
             </div>
 
-            {/* Right Panel: Permissions Editor */}
+            {/* Right Panel: Permissions Editor & Project Templates */}
             <div className="flex-1 flex flex-col min-w-0 overflow-y-auto p-8">
                 {selectedMember ? (
                     <div className="w-full space-y-6">
-                        {/* Member Details */}
+                        {/* Member Details Header */}
                         <div className="flex items-center justify-between bg-gray-50 dark:bg-[#161b22] border border-gray-200 dark:border-white/10 p-5 rounded-2xl">
                             <div className="flex items-center gap-4">
                                 <div className="w-12 h-12 rounded-full bg-blue-100 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400 flex items-center justify-center font-bold text-sm shadow-inner shrink-0">
@@ -290,29 +563,76 @@ const AccessControl = () => {
                             </div>
                         </div>
 
-                        {/* Template Quick Actions */}
-                        {templates.length > 0 && (
-                            <div className="p-4 bg-blue-50/20 dark:bg-blue-900/10 border border-blue-100/50 dark:border-blue-500/20 rounded-2xl flex items-center justify-between gap-4">
-                                <div className="flex items-center gap-2 text-xs font-semibold text-blue-700 dark:text-blue-400">
-                                    <Sparkles size={14} /> Quick Apply Project Template
+                        {/* Interactive Project Templates Bar */}
+                        <div className="p-4 bg-emerald-50/30 dark:bg-emerald-900/10 border border-emerald-100/60 dark:border-emerald-500/20 rounded-2xl space-y-3">
+                            <div className="flex items-center justify-between">
+                                <div className="flex items-center gap-2 text-xs font-bold text-emerald-800 dark:text-emerald-300">
+                                    <Sparkles size={15} className="text-emerald-500" />
+                                    <span>Project Permission Templates</span>
+                                    <span className="px-2 py-0.2 bg-emerald-100 dark:bg-emerald-900/40 text-emerald-700 dark:text-emerald-300 text-[10px] rounded-full font-bold">
+                                        {templates.length} Available
+                                    </span>
                                 </div>
-                                <select 
-                                    onChange={e => {
-                                        if (e.target.value) {
-                                            handleApplyTemplate(e.target.value);
-                                            e.target.value = ''; // Reset select after applying
-                                        }
-                                    }}
-                                    defaultValue=""
-                                    className="px-3 py-1.5 bg-white dark:bg-[#0d1117] border border-gray-200 dark:border-white/10 rounded-xl text-xs font-semibold focus:outline-none appearance-none cursor-pointer"
-                                >
-                                    <option value="" disabled>-- Select a template --</option>
-                                    {templates.map(t => (
-                                        <option key={t.id} value={t.id}>{t.name}</option>
-                                    ))}
-                                </select>
+                                <div className="flex items-center gap-2">
+                                    <button
+                                        type="button"
+                                        onClick={() => {
+                                            setTemplateToEdit(null);
+                                            setTemplateEditorOpen(true);
+                                        }}
+                                        className="px-2.5 py-1 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-xs font-bold shadow-xs transition-all flex items-center gap-1"
+                                    >
+                                        <Plus size={13} /> Create Template
+                                    </button>
+                                </div>
                             </div>
-                        )}
+
+                            {/* Templates Quick Cards */}
+                            {templates.length > 0 ? (
+                                <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-2.5 pt-1">
+                                    {templates.map(t => (
+                                        <div
+                                            key={t.id}
+                                            className="p-3 bg-white dark:bg-[#161b22] border border-gray-200/80 dark:border-white/10 rounded-xl hover:border-emerald-400 transition-all flex flex-col justify-between group shadow-2xs"
+                                        >
+                                            <div className="flex items-center justify-between mb-1.5">
+                                                <h5 className="text-xs font-bold text-gray-900 dark:text-white truncate">{t.name}</h5>
+                                                <div className="flex items-center gap-1">
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => {
+                                                            setTemplateToEdit(t);
+                                                            setTemplateEditorOpen(true);
+                                                        }}
+                                                        className="p-1 text-gray-400 hover:text-emerald-600 rounded transition-colors"
+                                                        title="Edit Template"
+                                                    >
+                                                        <Edit3 size={12} />
+                                                    </button>
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => setDeletingTemplate(t)}
+                                                        className="p-1 text-gray-400 hover:text-red-500 rounded transition-colors"
+                                                        title="Delete Template"
+                                                    >
+                                                        <Trash2 size={12} />
+                                                    </button>
+                                                </div>
+                                            </div>
+                                            <button
+                                                type="button"
+                                                onClick={() => handleApplyTemplate(t.id)}
+                                                className="w-full py-1 mt-1 bg-emerald-50 dark:bg-emerald-950/40 hover:bg-emerald-600 hover:text-white text-emerald-700 dark:text-emerald-400 text-[11px] font-bold rounded-lg transition-all border border-emerald-200/50 dark:border-emerald-500/30 flex items-center justify-center gap-1"
+                                            >
+                                                <Sparkles size={11} /> Apply to Member
+                                            </button>
+                                        </div>
+                                    ))}
+                                </div>
+                            ) : (
+                                <p className="text-xs text-gray-400 italic py-1">No project templates created yet. Click "Create Template" to add one.</p>
+                            )}
+                        </div>
 
                         {/* Permissions Grid */}
                         <div className="space-y-3">
@@ -325,16 +645,16 @@ const AccessControl = () => {
 
                             <div className="border border-gray-200 dark:border-white/10 rounded-2xl overflow-hidden shadow-sm divide-y divide-gray-100 dark:divide-white/5">
                                 {PROJECT_PAGES.map(page => {
-                                    const lvl = localPermissions[page] ?? 0;
+                                    const lvl = localPermissions[page.id] ?? 0;
                                     return (
-                                        <div key={page} className="flex items-center justify-between px-5 py-3 hover:bg-gray-50 dark:hover:bg-white/[0.01] transition-colors">
-                                            <span className="text-sm font-semibold text-gray-700 dark:text-gray-200">{page}</span>
+                                        <div key={page.id} className="flex items-center justify-between px-5 py-3 hover:bg-gray-50 dark:hover:bg-white/[0.01] transition-colors">
+                                            <span className="text-sm font-semibold text-gray-700 dark:text-gray-200">{page.label}</span>
                                             <div className="flex gap-1.5">
                                                 {ACCESS_LEVELS.map((name, i) => (
                                                     <button
                                                         key={i}
                                                         type="button"
-                                                        onClick={() => handleLevelChange(page, i)}
+                                                        onClick={() => handleLevelChange(page.id, i)}
                                                         className={`px-3 py-1 rounded-xl text-xs font-bold transition-all ${
                                                             lvl === i 
                                                                 ? 'bg-blue-600 text-white shadow-sm' 
@@ -351,22 +671,35 @@ const AccessControl = () => {
                             </div>
                         </div>
 
-                        {/* Save Trigger */}
-                        <div className="flex justify-end gap-3 pt-2">
+                        {/* Save Actions */}
+                        <div className="flex items-center justify-between pt-2">
                             <button
-                                onClick={() => setLocalPermissions(selectedMember.permissions || {})}
-                                className="px-5 py-2.5 border border-gray-200 dark:border-white/10 rounded-xl text-sm font-semibold text-gray-600 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-white/5 transition-all"
+                                type="button"
+                                onClick={() => {
+                                    setTemplateToEdit(null);
+                                    setTemplateEditorOpen(true);
+                                }}
+                                className="px-4 py-2 border border-emerald-200 dark:border-emerald-500/30 text-emerald-600 dark:text-emerald-400 hover:bg-emerald-50 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5"
                             >
-                                Reset Changes
+                                <Sparkles size={14} /> Save Current Access as Template
                             </button>
-                            <button
-                                onClick={handleSavePermissions}
-                                disabled={isSaving}
-                                className="px-6 py-2.5 bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white font-bold rounded-xl text-sm transition-all active:scale-95 shadow-md shadow-blue-500/20 flex items-center gap-2"
-                            >
-                                {isSaving ? <Loader2 size={16} className="animate-spin" /> : <Save size={16} />}
-                                Save Permissions
-                            </button>
+
+                            <div className="flex gap-3">
+                                <button
+                                    onClick={() => setLocalPermissions(selectedMember.permissions || {})}
+                                    className="px-5 py-2.5 border border-gray-200 dark:border-white/10 rounded-xl text-sm font-semibold text-gray-600 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-white/5 transition-all"
+                                >
+                                    Reset Changes
+                                </button>
+                                <button
+                                    onClick={handleSavePermissions}
+                                    disabled={isSaving}
+                                    className="px-6 py-2.5 bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white font-bold rounded-xl text-sm transition-all active:scale-95 shadow-md shadow-blue-500/20 flex items-center gap-2"
+                                >
+                                    {isSaving ? <Loader2 size={16} className="animate-spin" /> : <Save size={16} />}
+                                    Save Permissions
+                                </button>
+                            </div>
                         </div>
                     </div>
                 ) : (
@@ -377,6 +710,28 @@ const AccessControl = () => {
                     </div>
                 )}
             </div>
+
+            {/* Template Editor Modal */}
+            <ProjectTemplateEditorModal
+                open={templateEditorOpen}
+                onClose={() => {
+                    setTemplateEditorOpen(false);
+                    setTemplateToEdit(null);
+                }}
+                onSave={handleSaveTemplate}
+                templateToEdit={templateToEdit}
+                isSaving={isSavingTemplate}
+                initialPermissions={localPermissions}
+            />
+
+            {/* Delete Template Modal */}
+            <DeleteTemplateModal
+                open={!!deletingTemplate}
+                onClose={() => setDeletingTemplate(null)}
+                onConfirm={confirmDeleteTemplate}
+                template={deletingTemplate}
+                isDeleting={isDeletingTemplate}
+            />
         </div>
     );
 };
