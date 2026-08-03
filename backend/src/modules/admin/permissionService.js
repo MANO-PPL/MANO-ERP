@@ -8,7 +8,6 @@ export async function seedDefaultTemplatesForOrg(orgId) {
             name: 'Administrator',
             type: 'system',
             permissions: JSON.stringify({
-                dashboard: 2,
                 projects: 2,
                 vendors: 2,
                 clients: 2,
@@ -23,7 +22,6 @@ export async function seedDefaultTemplatesForOrg(orgId) {
             name: 'Project Manager (Global)',
             type: 'system',
             permissions: JSON.stringify({
-                dashboard: 2,
                 projects: 2,
                 vendors: 2,
                 clients: 2,
@@ -38,7 +36,6 @@ export async function seedDefaultTemplatesForOrg(orgId) {
             name: 'Site Lead (Global)',
             type: 'system',
             permissions: JSON.stringify({
-                dashboard: 2,
                 projects: 1,
                 vendors: 0,
                 clients: 0,
@@ -53,7 +50,6 @@ export async function seedDefaultTemplatesForOrg(orgId) {
             name: 'Viewer / Client (Global)',
             type: 'system',
             permissions: JSON.stringify({
-                dashboard: 1,
                 projects: 1,
                 vendors: 0,
                 clients: 0,
@@ -69,7 +65,6 @@ export async function seedDefaultTemplatesForOrg(orgId) {
             name: 'Project Admin',
             type: 'project',
             permissions: JSON.stringify({
-                'Dashboard': 2,
                 'Tasks': 2,
                 'WIP': 2,
                 'Reports': 2,
@@ -89,7 +84,6 @@ export async function seedDefaultTemplatesForOrg(orgId) {
             name: 'Project Manager (Project)',
             type: 'project',
             permissions: JSON.stringify({
-                'Dashboard': 2,
                 'Tasks': 2,
                 'WIP': 2,
                 'Reports': 2,
@@ -109,7 +103,6 @@ export async function seedDefaultTemplatesForOrg(orgId) {
             name: 'Site Engineer (Project)',
             type: 'project',
             permissions: JSON.stringify({
-                'Dashboard': 2,
                 'Tasks': 2,
                 'WIP': 2,
                 'Reports': 2,
@@ -129,7 +122,6 @@ export async function seedDefaultTemplatesForOrg(orgId) {
             name: 'Subcontractor / Vendor (Project)',
             type: 'project',
             permissions: JSON.stringify({
-                'Dashboard': 1,
                 'Tasks': 2,
                 'WIP': 2,
                 'Reports': 1,
@@ -149,7 +141,6 @@ export async function seedDefaultTemplatesForOrg(orgId) {
             name: 'Client / Viewer (Project)',
             type: 'project',
             permissions: JSON.stringify({
-                'Dashboard': 1,
                 'Tasks': 1,
                 'WIP': 1,
                 'Reports': 1,

@@ -85,6 +85,11 @@ export const AuthProvider = ({ children }) => {
     const hasPermission = (pageId, requiredLevel = 1) => {
         if (!user) return false;
         
+        // Dashboard is universal for all users
+        if (pageId === 'dashboard' || pageId === 'Dashboard') {
+            return true;
+        }
+
         // Admins have absolute access to everything
         if (isAdmin) {
             return true;

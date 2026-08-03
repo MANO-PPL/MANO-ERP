@@ -10,30 +10,37 @@ const errorHandler = (err, req, res, next) => {
         }
     }
 
+    // Format MySQL foreign key and duplicate entry errors
+    if (err.code === 'ER_ROW_IS_REFERENCED_2' || err.errno === 1451) {
+        err.statusCode = 400;
+        err.message = 'Cannot delete this employee account because active drawings, QA/QC reports, or workflow logs are associated with it.';
+        err.isOperational = true;
+    } else if (err.code === 'ER_DUP_ENTRY' || err.errno === 1062) {
+        err.statusCode = 400;
+        err.message = 'A record with this information already exists.';
+        err.isOperational = true;
+    }
+
     err.statusCode = err.statusCode || 500;
     err.status = err.status || 'error';
+
+    const responseMessage = err.message || 'Something went wrong!';
 
     if (process.env.NODE_ENV === 'development') {
         res.status(err.statusCode).json({
             status: err.status,
+            success: false,
+            message: responseMessage,
             error: err,
-            message: err.message,
             stack: err.stack,
         });
     } else {
         // Production error handling
-        if (err.isOperational) {
-            res.status(err.statusCode).json({
-                status: err.status,
-                message: err.message,
-            });
-        } else {
-            console.error('ERROR 💥', err);
-            res.status(500).json({
-                status: 'error',
-                message: 'Something went very wrong!',
-            });
-        }
+        res.status(err.statusCode).json({
+            status: err.status,
+            success: false,
+            message: err.isOperational ? responseMessage : 'Something went wrong on the server.',
+        });
     }
 };
 

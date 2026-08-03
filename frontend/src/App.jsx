@@ -3,10 +3,13 @@ import React, { Suspense, lazy } from 'react';
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
 import MainLayout from './components/layout/MainLayout';
 import PageSkeleton from './components/PageSkeleton';
+import LoadingScreen from './components/LoadingScreen';
+import LogoLoader from './components/LogoLoader';
 import { AuthProvider, useAuth } from './context/AuthContext';
 import { ToastProvider } from './context/ToastContext';
 import { customToast } from './utils/toast';
-import { toast as reactToastify } from 'react-toastify';
+import { toast as reactToastify, ToastContainer } from 'react-toastify';
+import 'react-toastify/dist/ReactToastify.css';
 
 // Intercept react-toastify calls platform-wide to use MANO-ERP custom Toast
 if (reactToastify) {
@@ -40,7 +43,7 @@ const ProtectedRoute = ({ children, pageId, requiredLevel = 1 }) => {
   const { user, loading, hasPermission } = useAuth();
 
   if (loading) {
-    return <PageSkeleton variant="grid" />;
+    return <LoadingScreen message="Securing connection..." />;
   }
 
   if (!user) {
@@ -92,7 +95,7 @@ function App() {
             } />
             <Route path="projects/:id" element={
               <ProtectedRoute pageId="projects">
-                <Suspense fallback={<PageSkeleton variant="table" />}>
+                <Suspense fallback={<LogoLoader text="Rendering Project Workspace..." size="lg" fullPage={true} />}>
                   <ProjectDetails />
                 </Suspense>
               </ProtectedRoute>
@@ -165,6 +168,7 @@ function App() {
           } />
         </Routes>
       </Router>
+      <ToastContainer position="bottom-center" autoClose={3000} limit={2} hideProgressBar={true} newestOnTop={true} closeOnClick={true} />
       </ToastProvider>
     </AuthProvider>
   );
