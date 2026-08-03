@@ -56,7 +56,6 @@ const UnitsPage = () => {
                                         : 'border-transparent text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 hover:bg-gray-50 dark:hover:bg-white/[0.03]'
                                     }`}
                             >
-                                <Icon size={15} />
                                 <span>{tab.label}</span>
                                 <span className={`text-[10px] hidden sm:inline ml-1 ${isActive ? 'text-blue-400/70' : 'text-gray-400/70'}`}>
                                 </span>

@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { X, Search, Trash2, Plus, Loader2 } from 'lucide-react';
 import { toast } from 'react-toastify';
 import api from '../services/api';
+import LogoLoader from './LogoLoader';
 
 /**
  * A reusable modal to manage metadata like Job Natures, Sectors, Departments, and Designations.
@@ -13,16 +14,16 @@ import api from '../services/api';
  * @param {string} listKey - The key for the array in the response (e.g., "job_natures")
  * @param {string} addPlaceholder - Placeholder for the add input
  */
-const ManageMetadataModal = ({ 
-    isOpen, 
-    onClose, 
-    title, 
-    endpoint, 
-    itemNameKey, 
-    itemIdKey, 
+const ManageMetadataModal = ({
+    isOpen,
+    onClose,
+    title,
+    endpoint,
+    itemNameKey,
+    itemIdKey,
     listKey,
     addPlaceholder = "Add new item...",
-    onUpdate 
+    onUpdate
 }) => {
     const [items, setItems] = useState([]);
     const [newItemName, setNewItemName] = useState('');
@@ -91,7 +92,7 @@ const ManageMetadataModal = ({
 
     const handleDelete = async (id) => {
         if (!window.confirm('Are you sure you want to delete this item?')) return;
-        
+
         setIsActionLoading(true);
         try {
             const res = await api.delete(`${endpoint}/${id}`);
@@ -107,7 +108,7 @@ const ManageMetadataModal = ({
         }
     };
 
-    const filteredItems = items.filter(item => 
+    const filteredItems = items.filter(item =>
         item[itemNameKey]?.toLowerCase().includes(searchTerm.toLowerCase())
     );
 
@@ -125,7 +126,7 @@ const ManageMetadataModal = ({
             <div
                 className={`fixed top-0 right-0 h-full w-full max-w-md bg-white dark:bg-[#161b22] shadow-2xl z-[5000] transform transition-transform duration-300 flex flex-col border-l border-gray-200 dark:border-white/10 overflow-hidden ${isOpen ? 'translate-x-0' : 'translate-x-full'}`}
             >
-                
+
                 <div className="px-6 py-4 flex justify-between items-center border-b border-gray-100 dark:border-white/5 bg-gray-50/50 dark:bg-white/[0.02]">
                     <h2 className="text-lg font-bold text-gray-900 dark:text-white">{title}</h2>
                     <button onClick={onClose} className="text-gray-400 hover:text-gray-900 dark:hover:text-white transition-colors">
@@ -169,7 +170,7 @@ const ManageMetadataModal = ({
                     <div className="flex-1 overflow-y-auto custom-scrollbar border border-gray-100 dark:border-white/5 rounded-lg dark:bg-[#0d1117]">
                         {isLoading ? (
                             <div className="flex items-center justify-center p-8">
-                                <Loader2 className="animate-spin text-blue-500" />
+                                <LogoLoader text="Rendering Metadata..." size="sm" fullPage={false} />
                             </div>
                         ) : filteredItems.length > 0 ? (
                             <div className="divide-y divide-gray-100 dark:divide-white/5">

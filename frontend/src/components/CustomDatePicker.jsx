@@ -1,8 +1,9 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { Calendar as CalendarIcon, ChevronLeft, ChevronRight } from 'lucide-react';
 import { format, addMonths, subMonths, startOfMonth, startOfWeek, endOfMonth, endOfWeek, isSameMonth, isSameDay, addDays } from 'date-fns';
+import { formatOrdinalDate } from '../utils/dateUtils';
 
-const CustomDatePicker = ({ label, value: externalValue, onChange: externalOnChange, className }) => {
+const CustomDatePicker = ({ label, value: externalValue, onChange: externalOnChange, className, disabled = false }) => {
     const [isOpen, setIsOpen] = useState(false);
     const [currentMonth, setCurrentMonth] = useState(new Date());
     const [internalValue, setInternalValue] = useState('');
@@ -141,12 +142,12 @@ const CustomDatePicker = ({ label, value: externalValue, onChange: externalOnCha
             {label && <label className="block text-[13px] font-medium text-gray-700 dark:text-gray-300 mb-1.5">{label}</label>}
 
             <div
-                onClick={() => setIsOpen(!isOpen)}
-                className={`w-full bg-white dark:bg-[#161b22] border rounded-lg px-2.5 py-1.5 flex items-center justify-between gap-2 transition-all cursor-pointer shadow-xs dark:shadow-none
+                onClick={() => !disabled && setIsOpen(!isOpen)}
+                className={`w-full bg-white dark:bg-[#161b22] border rounded-lg px-2.5 py-1.5 flex items-center justify-between gap-2 transition-all shadow-xs dark:shadow-none ${disabled ? 'opacity-60 cursor-not-allowed' : 'cursor-pointer'}
                 ${isOpen ? 'border-blue-500 ring-2 ring-blue-500/10 shadow-lg shadow-blue-500/5' : 'border-gray-200 dark:border-white/10 hover:border-blue-500/30 dark:hover:border-white/20'}`}
             >
                 <span className={`text-xs font-medium tracking-tight whitespace-nowrap ${selectedDate ? 'text-gray-900 dark:text-white' : 'text-gray-500 dark:text-[#7A8AAB]'}`}>
-                    {selectedDate ? format(selectedDate, 'dd - MM - yyyy') : 'dd - mm - yyyy'}
+                    {selectedDate ? formatOrdinalDate(selectedDate) : 'Select Date'}
                 </span>
                 <CalendarIcon size={14} className={`shrink-0 ${isOpen ? 'text-blue-500' : 'text-gray-400 dark:text-[#7A8AAB]'}`} />
             </div>
