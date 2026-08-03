@@ -14,7 +14,6 @@ import { projectApi } from '../../services/projectApi';
 
 // ─── Base Page Tree Structure (System Modules) ─────────────────────────────
 const BASE_PAGE_TREE = [
-    { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard, children: [] },
     { id: 'projects', label: 'Projects', icon: Briefcase, children: [] },
     { id: 'vendors', label: 'Vendors', icon: Map, children: [] },
     { id: 'clients', label: 'Clients', icon: Users, children: [] },
@@ -33,7 +32,6 @@ const BASE_PAGE_TREE = [
 const ACCESS_LEVELS = ['None', 'Read', 'Write'];
 
 const PROJECT_MODULES_LIST = [
-    { id: 'Dashboard', label: 'Dashboard' },
     { id: 'Tasks', label: 'Tasks' },
     { id: 'WIP', label: 'Work In Progress (WIP)' },
     { id: 'Reports', label: 'Reports & Analytics' },
@@ -77,10 +75,10 @@ const DeleteConfirmationModal = ({ open, onClose, onConfirm, user, isDeleting })
     if (!open || !user) return null;
     return (
         <div className="fixed inset-0 bg-black/50 backdrop-blur-xs z-[9999] flex items-center justify-center p-4">
-            <div className="bg-white dark:bg-[#161b22] border border-gray-200 dark:border-white/10 rounded-2xl w-full max-w-md shadow-2xl overflow-hidden animate-in fade-in zoom-in-95 duration-200">
+            <div className="bg-white dark:bg-[#161b22] border border-gray-200 dark:border-white/10 rounded-md w-full max-w-md shadow-2xl overflow-hidden animate-in fade-in zoom-in-95 duration-200">
                 <div className="p-6 text-center space-y-4">
-                    <div className="w-14 h-14 bg-red-50 dark:bg-red-950/40 text-red-500 rounded-full flex items-center justify-center mx-auto border border-red-200/50 dark:border-red-500/30 shadow-xs">
-                        <AlertCircle size={28} />
+                    <div className="w-12 h-12 bg-red-50 dark:bg-red-950/40 text-red-500 rounded-md flex items-center justify-center mx-auto border border-red-200/50 dark:border-red-500/30 shadow-xs">
+                        <AlertCircle size={24} />
                     </div>
                     <div>
                         <h3 className="text-base font-bold text-gray-900 dark:text-white">Delete Employee Account?</h3>
@@ -88,7 +86,7 @@ const DeleteConfirmationModal = ({ open, onClose, onConfirm, user, isDeleting })
                             Are you sure you want to permanently delete <span className="font-bold text-gray-900 dark:text-white">{user.name}</span> ({user.email})? This action will remove all platform access and project memberships immediately.
                         </p>
                     </div>
-                    <div className="p-3 bg-red-50/50 dark:bg-red-950/20 border border-red-100 dark:border-red-500/20 rounded-xl text-[11px] text-red-600 dark:text-red-400 font-semibold flex items-center justify-center gap-1.5">
+                    <div className="p-3 bg-red-50/50 dark:bg-red-950/20 border border-red-100 dark:border-red-500/20 rounded-md text-[11px] text-red-600 dark:text-red-400 font-semibold flex items-center justify-center gap-1.5">
                         <AlertCircle size={14} className="shrink-0" /> This action cannot be undone.
                     </div>
                 </div>
@@ -98,7 +96,7 @@ const DeleteConfirmationModal = ({ open, onClose, onConfirm, user, isDeleting })
                         type="button"
                         onClick={onClose}
                         disabled={isDeleting}
-                        className="flex-1 py-2.5 border border-gray-200 dark:border-white/10 rounded-xl text-xs font-bold text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-white/5 transition-all disabled:opacity-50"
+                        className="flex-1 py-2.5 border border-gray-200 dark:border-white/10 rounded-md text-xs font-bold text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-white/5 transition-all disabled:opacity-50"
                     >
                         Cancel
                     </button>
@@ -106,7 +104,7 @@ const DeleteConfirmationModal = ({ open, onClose, onConfirm, user, isDeleting })
                         type="button"
                         onClick={onConfirm}
                         disabled={isDeleting}
-                        className="flex-1 py-2.5 bg-red-600 hover:bg-red-700 text-white rounded-xl text-xs font-bold transition-all shadow-md shadow-red-500/20 flex items-center justify-center gap-2 disabled:opacity-50"
+                        className="flex-1 py-2.5 bg-red-600 hover:bg-red-700 text-white rounded-md text-xs font-bold transition-all shadow-md shadow-red-500/20 flex items-center justify-center gap-2 disabled:opacity-50"
                     >
                         {isDeleting ? (
                             <>
@@ -129,10 +127,10 @@ const DeleteTemplateModal = ({ open, onClose, onConfirm, template, isDeleting })
     if (!open || !template) return null;
     return (
         <div className="fixed inset-0 bg-black/50 backdrop-blur-xs z-[9999] flex items-center justify-center p-4">
-            <div className="bg-white dark:bg-[#161b22] border border-gray-200 dark:border-white/10 rounded-2xl w-full max-w-md shadow-2xl overflow-hidden animate-in fade-in zoom-in-95 duration-200">
+            <div className="bg-white dark:bg-[#161b22] border border-gray-200 dark:border-white/10 rounded-md w-full max-w-md shadow-2xl overflow-hidden animate-in fade-in zoom-in-95 duration-200">
                 <div className="p-6 text-center space-y-4">
-                    <div className="w-14 h-14 bg-amber-50 dark:bg-amber-950/40 text-amber-500 rounded-full flex items-center justify-center mx-auto border border-amber-200/50 dark:border-amber-500/30 shadow-xs">
-                        <AlertCircle size={28} />
+                    <div className="w-12 h-12 bg-amber-50 dark:bg-amber-950/40 text-amber-500 rounded-md flex items-center justify-center mx-auto border border-amber-200/50 dark:border-amber-500/30 shadow-xs">
+                        <AlertCircle size={24} />
                     </div>
                     <div>
                         <h3 className="text-base font-bold text-gray-900 dark:text-white">Delete Permission Template?</h3>
@@ -140,7 +138,7 @@ const DeleteTemplateModal = ({ open, onClose, onConfirm, template, isDeleting })
                             Are you sure you want to delete template <span className="font-bold text-gray-900 dark:text-white">"{template.name}"</span>?
                         </p>
                     </div>
-                    <div className="p-3 bg-amber-50/50 dark:bg-amber-950/20 border border-amber-100 dark:border-amber-500/20 rounded-xl text-[11px] text-amber-600 dark:text-amber-400 font-semibold flex items-center justify-center gap-1.5">
+                    <div className="p-3 bg-amber-50/50 dark:bg-amber-950/20 border border-amber-100 dark:border-amber-500/20 rounded-md text-[11px] text-amber-600 dark:text-amber-400 font-semibold flex items-center justify-center gap-1.5">
                         <Info size={14} className="shrink-0" /> Existing users using this template will retain their current permissions.
                     </div>
                 </div>
@@ -150,7 +148,7 @@ const DeleteTemplateModal = ({ open, onClose, onConfirm, template, isDeleting })
                         type="button"
                         onClick={onClose}
                         disabled={isDeleting}
-                        className="flex-1 py-2.5 border border-gray-200 dark:border-white/10 rounded-xl text-xs font-bold text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-white/5 transition-all disabled:opacity-50"
+                        className="flex-1 py-2.5 border border-gray-200 dark:border-white/10 rounded-md text-xs font-bold text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-white/5 transition-all disabled:opacity-50"
                     >
                         Cancel
                     </button>
@@ -158,7 +156,7 @@ const DeleteTemplateModal = ({ open, onClose, onConfirm, template, isDeleting })
                         type="button"
                         onClick={onConfirm}
                         disabled={isDeleting}
-                        className="flex-1 py-2.5 bg-red-600 hover:bg-red-700 text-white rounded-xl text-xs font-bold transition-all shadow-md shadow-red-500/20 flex items-center justify-center gap-2 disabled:opacity-50"
+                        className="flex-1 py-2.5 bg-red-600 hover:bg-red-700 text-white rounded-md text-xs font-bold transition-all shadow-md shadow-red-500/20 flex items-center justify-center gap-2 disabled:opacity-50"
                     >
                         {isDeleting ? (
                             <>
@@ -229,8 +227,8 @@ const TemplateEditorDrawer = ({ open, onClose, onSave, templateToEdit, isSaving 
                 {/* Header */}
                 <div className="px-6 py-4 border-b border-gray-100 dark:border-white/10 flex items-center justify-between shrink-0 bg-gray-50/50 dark:bg-[#0d1117]">
                     <div className="flex items-center gap-3">
-                        <div className="w-10 h-10 rounded-xl bg-blue-50 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400 flex items-center justify-center border border-blue-200/50 dark:border-blue-500/20 shadow-xs">
-                            <Sparkles size={20} />
+                        <div className="w-9 h-9 rounded-md bg-blue-50 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400 flex items-center justify-center border border-blue-200/50 dark:border-blue-500/20 shadow-xs">
+                            <Sparkles size={18} />
                         </div>
                         <div>
                             <h2 className="text-sm font-bold text-gray-900 dark:text-white">
@@ -241,7 +239,7 @@ const TemplateEditorDrawer = ({ open, onClose, onSave, templateToEdit, isSaving 
                             </p>
                         </div>
                     </div>
-                    <button onClick={onClose} className="p-1.5 rounded-lg text-gray-400 hover:text-gray-600 dark:hover:text-white hover:bg-gray-100 dark:hover:bg-white/5 transition-all">
+                    <button onClick={onClose} className="p-1.5 rounded-md text-gray-400 hover:text-gray-600 dark:hover:text-white hover:bg-gray-100 dark:hover:bg-white/5 transition-all">
                         <X size={18} />
                     </button>
                 </div>
@@ -257,12 +255,12 @@ const TemplateEditorDrawer = ({ open, onClose, onSave, templateToEdit, isSaving 
                                 placeholder="e.g. Senior Site Engineer"
                                 value={name}
                                 onChange={e => setName(e.target.value)}
-                                className="w-full px-3.5 py-2.5 bg-gray-50 dark:bg-[#0d1117] border border-gray-200 dark:border-white/10 rounded-xl text-xs font-semibold focus:outline-none focus:ring-2 focus:ring-blue-500/40"
+                                className="w-full px-3.5 py-2 bg-gray-50 dark:bg-[#0d1117] border border-gray-200 dark:border-white/10 rounded-md text-xs font-semibold focus:outline-none focus:ring-2 focus:ring-blue-500/40"
                                 required
                             />
                         </div>
 
-                        <div className="p-3 bg-blue-50/50 dark:bg-blue-900/10 border border-blue-200/50 dark:border-blue-500/20 rounded-xl flex items-center justify-between">
+                        <div className="p-3 bg-blue-50/50 dark:bg-blue-900/10 border border-blue-200/50 dark:border-blue-500/20 rounded-md flex items-center justify-between">
                             <div className="flex items-center gap-2">
                                 <Shield size={16} className="text-blue-600 dark:text-blue-400" />
                                 <span className="text-xs font-bold text-blue-900 dark:text-blue-300">System Level Permission Template</span>
@@ -274,27 +272,27 @@ const TemplateEditorDrawer = ({ open, onClose, onSave, templateToEdit, isSaving 
                     </div>
 
                     {/* Presets Toolbar */}
-                    <div className="flex items-center justify-between p-3 bg-gray-50 dark:bg-[#0d1117] rounded-xl border border-gray-200 dark:border-white/10 text-xs">
+                    <div className="flex items-center justify-between p-3 bg-gray-50 dark:bg-[#0d1117] rounded-md border border-gray-200 dark:border-white/10 text-xs">
                         <span className="font-bold text-gray-700 dark:text-gray-300">Quick Presets:</span>
                         <div className="flex gap-2">
                             <button
                                 type="button"
                                 onClick={() => handlePreset(2)}
-                                className="px-2.5 py-1 bg-emerald-50 dark:bg-emerald-950/40 text-emerald-600 dark:text-emerald-400 rounded-lg text-[11px] font-bold border border-emerald-200/50 dark:border-emerald-500/30 hover:bg-emerald-100 transition-all"
+                                className="px-2.5 py-1 bg-emerald-50 dark:bg-emerald-950/40 text-emerald-600 dark:text-emerald-400 rounded-md text-[11px] font-bold border border-emerald-200/50 dark:border-emerald-500/30 hover:bg-emerald-100 transition-all"
                             >
                                 Grant All Write
                             </button>
                             <button
                                 type="button"
                                 onClick={() => handlePreset(1)}
-                                className="px-2.5 py-1 bg-blue-50 dark:bg-blue-950/40 text-blue-600 dark:text-blue-400 rounded-lg text-[11px] font-bold border border-blue-200/50 dark:border-blue-500/30 hover:bg-blue-100 transition-all"
+                                className="px-2.5 py-1 bg-blue-50 dark:bg-blue-950/40 text-blue-600 dark:text-blue-400 rounded-md text-[11px] font-bold border border-blue-200/50 dark:border-blue-500/30 hover:bg-blue-100 transition-all"
                             >
                                 Grant All Read
                             </button>
                             <button
                                 type="button"
                                 onClick={() => handlePreset(0)}
-                                className="px-2.5 py-1 bg-gray-100 dark:bg-white/10 text-gray-600 dark:text-gray-400 rounded-lg text-[11px] font-bold hover:bg-gray-200 transition-all"
+                                className="px-2.5 py-1 bg-gray-100 dark:bg-white/10 text-gray-600 dark:text-gray-400 rounded-md text-[11px] font-bold hover:bg-gray-200 transition-all"
                             >
                                 Clear All
                             </button>
@@ -311,7 +309,7 @@ const TemplateEditorDrawer = ({ open, onClose, onSave, templateToEdit, isSaving 
                             {BASE_PAGE_TREE.map(section => {
                                 const lvl = permissions[section.id] ?? 0;
                                 return (
-                                    <div key={section.id} className="py-2.5 px-2 hover:bg-gray-50 dark:hover:bg-white/[0.02] rounded-xl flex items-center justify-between transition-colors">
+                                    <div key={section.id} className="py-2 px-2 hover:bg-gray-50 dark:hover:bg-white/[0.02] rounded-md flex items-center justify-between transition-colors">
                                         <div className="flex items-center gap-2.5 min-w-0 mr-3">
                                             <section.icon size={15} className="text-blue-500 shrink-0" />
                                             <span className="text-xs font-semibold text-gray-800 dark:text-gray-200 truncate">{section.label}</span>
@@ -322,7 +320,7 @@ const TemplateEditorDrawer = ({ open, onClose, onSave, templateToEdit, isSaving 
                                                     key={i}
                                                     type="button"
                                                     onClick={() => setPermissions(p => ({ ...p, [section.id]: i }))}
-                                                    className={`px-2.5 py-1 rounded-lg text-[11px] font-bold transition-all ${
+                                                    className={`px-2.5 py-1 rounded-md text-[11px] font-bold transition-all ${
                                                         lvl === i
                                                             ? i === 2 ? 'bg-emerald-600 text-white shadow-xs' : i === 1 ? 'bg-blue-600 text-white shadow-xs' : 'bg-gray-600 text-white'
                                                             : 'bg-gray-100 dark:bg-white/5 text-gray-400 hover:bg-gray-200 dark:hover:bg-white/10'
@@ -344,14 +342,14 @@ const TemplateEditorDrawer = ({ open, onClose, onSave, templateToEdit, isSaving 
                             type="button"
                             onClick={onClose}
                             disabled={isSaving}
-                            className="flex-1 py-2.5 border border-gray-200 dark:border-white/10 rounded-xl text-xs font-bold text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-white/5 transition-all"
+                            className="flex-1 py-2.5 border border-gray-200 dark:border-white/10 rounded-md text-xs font-bold text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-white/5 transition-all"
                         >
                             Cancel
                         </button>
                         <button
                             type="submit"
                             disabled={isSaving}
-                            className="flex-1 py-2.5 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-bold transition-all shadow-md shadow-blue-500/20 flex items-center justify-center gap-2 disabled:opacity-50"
+                            className="flex-1 py-2.5 bg-blue-600 hover:bg-blue-700 text-white rounded-md text-xs font-bold transition-all shadow-md shadow-blue-500/20 flex items-center justify-center gap-2 disabled:opacity-50"
                         >
                             {isSaving ? (
                                 <>
@@ -392,14 +390,14 @@ const CustomSelect = ({ value, options, onChange, placeholder = 'Select option',
             <button
                 type="button"
                 onClick={() => setIsOpen(!isOpen)}
-                className="w-full px-3.5 py-2 bg-white dark:bg-[#161b22] border border-gray-200 dark:border-white/10 rounded-xl text-xs font-semibold text-gray-900 dark:text-white flex items-center justify-between shadow-xs hover:border-blue-500/50 transition-all focus:outline-none focus:ring-2 focus:ring-blue-500/30"
+                className="w-full px-3.5 py-2 bg-white dark:bg-[#161b22] border border-gray-200 dark:border-white/10 rounded-md text-xs font-semibold text-gray-900 dark:text-white flex items-center justify-between shadow-xs hover:border-blue-500/50 transition-all focus:outline-none focus:ring-2 focus:ring-blue-500/30"
             >
                 <span className="truncate">{selectedOption ? selectedOption.label : placeholder}</span>
                 <ChevronDown size={14} className={`text-gray-400 shrink-0 ml-2 transition-transform ${isOpen ? 'rotate-180' : ''}`} />
             </button>
 
             {isOpen && (
-                <div className="absolute left-0 right-0 top-full mt-1 bg-white dark:bg-[#161b22] border border-gray-200 dark:border-white/10 rounded-xl shadow-xl z-[5000] py-1 max-h-52 overflow-y-auto custom-scrollbar animate-in fade-in-50 duration-150">
+                <div className="absolute left-0 right-0 top-full mt-1 bg-white dark:bg-[#161b22] border border-gray-200 dark:border-white/10 rounded-md shadow-xl z-[5000] py-1 max-h-52 overflow-y-auto custom-scrollbar animate-in fade-in-50 duration-150">
                     {options.map((opt) => (
                         <button
                             key={opt.value}
@@ -444,7 +442,7 @@ const VisualTemplateSelector = ({ templates = [], onSelectTemplate }) => {
     };
 
     return (
-        <div className="p-3.5 rounded-2xl bg-blue-50/40 dark:bg-blue-900/10 border border-blue-200/50 dark:border-blue-500/20 space-y-3">
+        <div className="p-3.5 rounded-md bg-blue-50/40 dark:bg-blue-900/10 border border-blue-200/50 dark:border-blue-500/20 space-y-3">
             <div className="flex items-center justify-between">
                 <div className="flex items-center gap-2">
                     <Shield size={15} className="text-blue-500" />
@@ -1176,12 +1174,11 @@ const UserDetailDrawer = ({ user, open, onClose, onUpdate, onDelete, initialEdit
 const PermissionTemplatesTab = ({
     templates,
     isLoading,
+    searchQuery = '',
     onCreateClick,
     onEditClick,
     onDeleteClick
 }) => {
-    const [searchQuery, setSearchQuery] = useState('');
-
     // Only show system templates in Admin page
     const systemTemplates = templates.filter(t => t.type !== 'project');
 
@@ -1204,46 +1201,15 @@ const PermissionTemplatesTab = ({
 
     return (
         <div className="flex-1 flex flex-col overflow-hidden bg-gray-50/50 dark:bg-[#0d1117]">
-            {/* Action Header */}
-            <div className="px-6 py-4 border-b border-gray-200 dark:border-white/5 bg-white dark:bg-[#161b22] flex flex-col md:flex-row md:items-center justify-between gap-4 shrink-0">
-                <div className="flex items-center gap-2">
-                    <Shield className="text-blue-500" size={18} />
-                    <span className="text-xs font-bold text-gray-700 dark:text-gray-300">
-                        System Level Permission Templates ({systemTemplates.length})
-                    </span>
-                </div>
-
-                <div className="flex items-center gap-3">
-                    <div className="relative w-64">
-                        <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={14} />
-                        <input
-                            type="text"
-                            placeholder="Search templates..."
-                            value={searchQuery}
-                            onChange={e => setSearchQuery(e.target.value)}
-                            className="w-full pl-9 pr-3 py-1.5 bg-gray-50 dark:bg-white/5 border border-gray-200 dark:border-white/10 rounded-xl text-xs focus:outline-none focus:ring-1 focus:ring-blue-500"
-                        />
-                    </div>
-
-                    <button
-                        onClick={onCreateClick}
-                        className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-bold shadow-md shadow-blue-500/20 transition-all flex items-center gap-2 shrink-0"
-                    >
-                        <Plus size={15} />
-                        <span>Create Permission Template</span>
-                    </button>
-                </div>
-            </div>
-
             {/* Grid View */}
             <div className="flex-1 overflow-y-auto custom-scrollbar p-6">
                 {isLoading ? (
                     <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
                         {Array.from({ length: 6 }).map((_, i) => (
-                            <div key={i} className="h-44 bg-white dark:bg-[#161b22] rounded-2xl border border-gray-200 dark:border-white/10 p-5 animate-pulse space-y-4">
+                            <div key={i} className="h-44 bg-white dark:bg-[#161b22] rounded-md border border-gray-200 dark:border-white/10 p-5 animate-pulse space-y-4">
                                 <div className="h-4 bg-gray-200 dark:bg-white/10 rounded w-2/3"></div>
                                 <div className="h-3 bg-gray-100 dark:bg-white/5 rounded w-1/2"></div>
-                                <div className="h-10 bg-gray-100 dark:bg-white/5 rounded-xl"></div>
+                                <div className="h-10 bg-gray-100 dark:bg-white/5 rounded-md"></div>
                             </div>
                         ))}
                     </div>
@@ -1256,14 +1222,14 @@ const PermissionTemplatesTab = ({
                                 <div
                                     key={template.id}
                                     onClick={() => onEditClick(template)}
-                                    className="bg-white dark:bg-[#161b22] rounded-2xl border border-gray-200 dark:border-white/10 shadow-xs hover:shadow-md hover:border-blue-500/40 cursor-pointer transition-all p-5 flex flex-col justify-between group"
+                                    className="bg-white dark:bg-[#161b22] rounded-md border border-gray-200 dark:border-white/10 shadow-xs hover:shadow-md hover:border-blue-500/40 cursor-pointer transition-all p-5 flex flex-col justify-between group"
                                 >
                                     <div>
                                         {/* Header */}
                                         <div className="flex items-start justify-between gap-3 mb-4">
                                             <div className="flex items-center gap-3 min-w-0">
-                                                <div className="w-10 h-10 rounded-xl flex items-center justify-center shrink-0 border bg-blue-50 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400 border-blue-200/50 dark:border-blue-500/20">
-                                                    <Shield size={20} />
+                                                <div className="w-9 h-9 rounded-md flex items-center justify-center shrink-0 border bg-blue-50 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400 border-blue-200/50 dark:border-blue-500/20">
+                                                    <Shield size={18} />
                                                 </div>
                                                 <div className="min-w-0">
                                                     <h3 className="text-sm font-bold text-gray-900 dark:text-white truncate">
@@ -1279,14 +1245,14 @@ const PermissionTemplatesTab = ({
                                             <div className="flex items-center gap-1 opacity-90 group-hover:opacity-100 transition-opacity" onClick={e => e.stopPropagation()}>
                                                 <button
                                                     onClick={() => onEditClick(template)}
-                                                    className="p-1.5 text-gray-400 hover:text-blue-600 dark:hover:text-blue-400 hover:bg-blue-50 dark:hover:bg-blue-900/20 rounded-lg transition-all"
+                                                    className="p-1.5 text-gray-400 hover:text-blue-600 dark:hover:text-blue-400 hover:bg-blue-50 dark:hover:bg-blue-900/20 rounded-md transition-all"
                                                     title="Edit Template in Drawer"
                                                 >
                                                     <Edit3 size={15} />
                                                 </button>
                                                 <button
                                                     onClick={() => onDeleteClick(template)}
-                                                    className="p-1.5 text-gray-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-950/30 rounded-lg transition-all"
+                                                    className="p-1.5 text-gray-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-950/30 rounded-md transition-all"
                                                     title="Delete Template"
                                                 >
                                                     <Trash2 size={15} />
@@ -1295,7 +1261,7 @@ const PermissionTemplatesTab = ({
                                         </div>
 
                                         {/* Stats Summary */}
-                                        <div className="grid grid-cols-3 gap-2 p-2.5 bg-gray-50 dark:bg-[#0d1117] rounded-xl border border-gray-100 dark:border-white/5 text-center text-xs">
+                                        <div className="grid grid-cols-3 gap-2 p-2.5 bg-gray-50 dark:bg-[#0d1117] rounded-md border border-gray-100 dark:border-white/5 text-center text-xs">
                                             <div>
                                                 <span className="block text-[10px] font-bold text-gray-400">Full Access</span>
                                                 <span className="font-bold text-emerald-600 dark:text-emerald-400">{stats.full}</span>
@@ -1316,7 +1282,7 @@ const PermissionTemplatesTab = ({
                     </div>
                 ) : (
                     <div className="py-16 text-center text-gray-500 dark:text-gray-400">
-                        <div className="w-14 h-14 bg-blue-50 dark:bg-blue-900/20 text-blue-500 rounded-full flex items-center justify-center mx-auto mb-3">
+                        <div className="w-14 h-14 bg-blue-50 dark:bg-blue-900/20 text-blue-500 rounded-md flex items-center justify-center mx-auto mb-3">
                             <Sparkles size={24} />
                         </div>
                         <h4 className="text-sm font-bold text-gray-900 dark:text-white">No System Permission Templates Found</h4>
@@ -1325,7 +1291,7 @@ const PermissionTemplatesTab = ({
                         </p>
                         <button
                             onClick={onCreateClick}
-                            className="mt-4 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-bold shadow-md shadow-blue-500/20 transition-all inline-flex items-center gap-2"
+                            className="mt-4 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-md text-xs font-bold shadow-md shadow-blue-500/20 transition-all inline-flex items-center gap-2"
                         >
                             <Plus size={15} /> Create First Template
                         </button>
@@ -1365,6 +1331,7 @@ const AdminPage = () => {
     const [deletingTemplate, setDeletingTemplate] = useState(null);
     const [isSavingTemplate, setIsSavingTemplate] = useState(false);
     const [isDeletingTemplate, setIsDeletingTemplate] = useState(false);
+    const [templateSearchQuery, setTemplateSearchQuery] = useState('');
 
     const dropdownRef = useRef(null);
     const filterDropdownRef = useRef(null);
@@ -1589,184 +1556,206 @@ const AdminPage = () => {
     return (
         <div className="flex flex-col h-full bg-white dark:bg-[#0d1117] text-gray-900 dark:text-gray-100 overflow-hidden font-sans">
             {/* Top Toolbar Navigation Header */}
-            <div className="px-6 py-3 flex items-center justify-between border-b border-gray-200 dark:border-white/5 bg-white dark:bg-[#0d1117] shrink-0">
+            <div className="px-3 py-2.5 flex flex-wrap items-center justify-between border-b border-gray-200 dark:border-white/5 bg-white dark:bg-[#0d1117] shrink-0 gap-3">
                 <div className="flex items-center gap-3">
-
-
                     {/* Main Section Navigation Switcher */}
-                    <div className="flex items-center gap-1 bg-gray-100 dark:bg-white/5 p-1 rounded-xl">
+                    <div className="flex items-center gap-1 bg-gray-100 dark:bg-white/5 p-1 rounded-md">
                         <button
                             onClick={() => setMainTab('employees')}
-                            className={`flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${
+                            className={`flex items-center gap-2 px-3 py-1.5 rounded text-xs font-bold transition-all ${
                                 mainTab === 'employees'
                                     ? 'bg-white dark:bg-[#161b22] text-blue-600 dark:text-blue-400 shadow-xs'
                                     : 'text-gray-600 dark:text-gray-400 hover:text-gray-900'
                             }`}
                         >
-                            <Users size={14} />
                             <span>Employees Management</span>
-                            <span className="px-1.5 py-0.2 bg-blue-100 dark:bg-blue-900/40 text-blue-600 dark:text-blue-400 text-[10px] rounded-full">
+                            <span className="px-1.5 py-0.2 bg-blue-100 dark:bg-blue-900/40 text-blue-600 dark:text-blue-400 text-[10px] rounded-md">
                                 {users.length}
                             </span>
                         </button>
 
                         <button
                             onClick={() => setMainTab('templates')}
-                            className={`flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${
+                            className={`flex items-center gap-2 px-3 py-1.5 rounded text-xs font-bold transition-all ${
                                 mainTab === 'templates'
                                     ? 'bg-white dark:bg-[#161b22] text-purple-600 dark:text-purple-400 shadow-xs'
                                     : 'text-gray-600 dark:text-gray-400 hover:text-gray-900'
                             }`}
                         >
-                            <Sparkles size={14} />
                             <span>Permission Templates</span>
-                            <span className="px-1.5 py-0.2 bg-purple-100 dark:bg-purple-900/40 text-purple-600 dark:text-purple-400 text-[10px] rounded-full">
+                            <span className="px-1.5 py-0.2 bg-purple-100 dark:bg-purple-900/40 text-purple-600 dark:text-purple-400 text-[10px] rounded-md">
                                 {templates.length}
                             </span>
                         </button>
                     </div>
                 </div>
 
-                {mainTab === 'employees' && (
-                    <div className="relative" ref={dropdownRef}>
-                        <button
-                            onClick={() => setIsManageDropdownOpen(!isManageDropdownOpen)}
-                            className="flex items-center space-x-2 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-bold shadow-md shadow-blue-500/20 transition-all"
-                        >
-                            <UserPlus size={15} />
-                            <span>Manage Employees</span>
-                            <ChevronDown size={14} className={`transition-transform duration-200 ${isManageDropdownOpen ? 'rotate-180' : ''}`} />
-                        </button>
-
-                        {isManageDropdownOpen && (
-                            <div className="absolute right-0 mt-2 w-52 bg-white dark:bg-[#161b22] rounded-xl shadow-xl border border-gray-200 dark:border-white/10 z-[5000] overflow-hidden">
-                                <button
-                                    onClick={() => { setDrawerTab('form'); setAddOpen(true); setIsManageDropdownOpen(false); }}
-                                    className="w-full flex items-center px-4 py-3 text-xs font-bold text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-white/5 transition-colors"
-                                >
-                                    <UserPlus size={16} className="mr-3 text-emerald-500" />
-                                    Add New Employee
-                                </button>
-                                <button
-                                    onClick={() => { setDrawerTab('bulk'); setAddOpen(true); setIsManageDropdownOpen(false); }}
-                                    className="w-full flex items-center px-4 py-3 text-xs font-bold text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-white/5 border-t border-gray-100 dark:border-white/5 transition-colors"
-                                >
-                                    <UploadCloud size={16} className="mr-3 text-blue-500" />
-                                    Bulk Upload CSV
-                                </button>
+                {/* Inline Search, Filter & Action Buttons on the Tab Bar */}
+                <div className="flex items-center gap-3">
+                    {mainTab === 'employees' ? (
+                        <>
+                            <div className="relative w-56 md:w-72">
+                                <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={14} />
+                                <input
+                                    type="text"
+                                    placeholder="Search employees..."
+                                    className="w-full pl-9 pr-3 py-1.5 bg-gray-50 dark:bg-white/[0.02] border border-gray-200 dark:border-white/10 rounded-md text-xs text-gray-900 dark:text-white focus:outline-none focus:ring-1 focus:ring-blue-500 placeholder-gray-400"
+                                    value={searchTerm}
+                                    onChange={e => setSearchTerm(e.target.value)}
+                                />
                             </div>
-                        )}
-                    </div>
-                )}
+
+                            {/* Inline Filter Dropdown */}
+                            <div className="relative" ref={filterDropdownRef}>
+                                <button
+                                    onClick={() => setIsFilterDropdownOpen(!isFilterDropdownOpen)}
+                                    className={`flex items-center space-x-2 px-3 py-1.5 border rounded-md text-xs font-bold transition-all ${
+                                        activeFilterCount > 0
+                                            ? 'border-blue-500 bg-blue-500/10 text-blue-600 dark:text-blue-400'
+                                            : 'border-gray-200 dark:border-white/10 bg-gray-50 dark:bg-white/5 text-gray-700 dark:text-gray-300 hover:bg-gray-100'
+                                    }`}
+                                >
+                                    <Filter size={14} />
+                                    <span>Filter</span>
+                                    {activeFilterCount > 0 && (
+                                        <span className="bg-blue-600 text-white text-[10px] w-4 h-4 rounded-md flex items-center justify-center font-bold">
+                                            {activeFilterCount}
+                                        </span>
+                                    )}
+                                    <ChevronDown size={13} className={`transition-transform duration-200 ${isFilterDropdownOpen ? 'rotate-180' : ''}`} />
+                                </button>
+
+                                {isFilterDropdownOpen && (
+                                    <div className="absolute right-0 mt-2 w-80 bg-white dark:bg-[#161b22] border border-gray-200 dark:border-white/10 rounded-md shadow-2xl z-[5000] p-4 space-y-4 text-xs">
+                                        <div className="flex justify-between items-center pb-2 border-b border-gray-100 dark:border-white/10">
+                                            <h4 className="font-bold text-gray-900 dark:text-white flex items-center gap-1.5">
+                                                <Filter size={14} className="text-blue-500" /> Filter Employees
+                                            </h4>
+                                            {activeFilterCount > 0 && (
+                                                <button
+                                                    onClick={() => setActiveFilters({ userTypes: [], departments: [] })}
+                                                    className="text-[11px] text-blue-600 dark:text-blue-400 font-bold hover:underline"
+                                                >
+                                                    Clear All ({activeFilterCount})
+                                                </button>
+                                            )}
+                                        </div>
+
+                                        {/* Account Type */}
+                                        <div>
+                                            <label className="block text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-1.5">Account Type</label>
+                                            <div className="flex flex-wrap gap-1.5">
+                                                {['Admin', 'Employee'].map(type => {
+                                                    const isChecked = activeFilters.userTypes?.includes(type);
+                                                    return (
+                                                        <button
+                                                            key={type}
+                                                            type="button"
+                                                            onClick={() => toggleFilter('userTypes', type)}
+                                                            className={`px-2.5 py-1 rounded-md text-[11px] font-bold border transition-all ${
+                                                                isChecked
+                                                                    ? 'bg-blue-600 text-white border-blue-600 shadow-xs'
+                                                                    : 'bg-gray-50 dark:bg-white/5 border-gray-200 dark:border-white/10 text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-white/10'
+                                                            }`}
+                                                        >
+                                                            {type}
+                                                        </button>
+                                                    );
+                                                })}
+                                            </div>
+                                        </div>
+
+                                        {/* Departments */}
+                                        {allDepartments.length > 0 && (
+                                            <div>
+                                                <label className="block text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-1.5">Department</label>
+                                                <div className="flex flex-wrap gap-1.5 max-h-36 overflow-y-auto custom-scrollbar">
+                                                    {allDepartments.map(dept => {
+                                                        const isChecked = activeFilters.departments?.includes(dept);
+                                                        return (
+                                                            <button
+                                                                key={dept}
+                                                                type="button"
+                                                                onClick={() => toggleFilter('departments', dept)}
+                                                                className={`px-2.5 py-1 rounded-md text-[11px] font-bold border transition-all ${
+                                                                    isChecked
+                                                                        ? 'bg-blue-600 text-white border-blue-600 shadow-xs'
+                                                                        : 'bg-gray-50 dark:bg-white/5 border-gray-200 dark:border-white/10 text-gray-600 dark:text-gray-400 hover:bg-gray-100'
+                                                                }`}
+                                                            >
+                                                                {dept}
+                                                            </button>
+                                                        );
+                                                    })}
+                                                </div>
+                                            </div>
+                                        )}
+                                    </div>
+                                )}
+                            </div>
+
+                            <div className="relative" ref={dropdownRef}>
+                                <button
+                                    onClick={() => setIsManageDropdownOpen(!isManageDropdownOpen)}
+                                    className="flex items-center space-x-2 px-3.5 py-1.5 bg-blue-600 hover:bg-blue-700 text-white rounded-md text-xs font-bold shadow-sm transition-all"
+                                >
+                                    <UserPlus size={14} />
+                                    <span>Manage Employees</span>
+                                    <ChevronDown size={14} className={`transition-transform duration-200 ${isManageDropdownOpen ? 'rotate-180' : ''}`} />
+                                </button>
+
+                                {isManageDropdownOpen && (
+                                    <div className="absolute right-0 mt-2 w-52 bg-white dark:bg-[#161b22] rounded-md shadow-xl border border-gray-200 dark:border-white/10 z-[5000] overflow-hidden">
+                                        <button
+                                            onClick={() => { setDrawerTab('form'); setAddOpen(true); setIsManageDropdownOpen(false); }}
+                                            className="w-full flex items-center px-4 py-2.5 text-xs font-bold text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-white/5 transition-colors"
+                                        >
+                                            <UserPlus size={15} className="mr-3 text-emerald-500" />
+                                            Add New Employee
+                                        </button>
+                                        <button
+                                            onClick={() => { setDrawerTab('bulk'); setAddOpen(true); setIsManageDropdownOpen(false); }}
+                                            className="w-full flex items-center px-4 py-2.5 text-xs font-bold text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-white/5 border-t border-gray-100 dark:border-white/5 transition-colors"
+                                        >
+                                            <UploadCloud size={15} className="mr-3 text-blue-500" />
+                                            Bulk Upload CSV
+                                        </button>
+                                    </div>
+                                )}
+                            </div>
+                        </>
+                    ) : (
+                        <>
+                            <div className="relative w-56 md:w-72">
+                                <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={14} />
+                                <input
+                                    type="text"
+                                    placeholder="Search templates..."
+                                    value={templateSearchQuery}
+                                    onChange={e => setTemplateSearchQuery(e.target.value)}
+                                    className="w-full pl-9 pr-3 py-1.5 bg-gray-50 dark:bg-white/[0.02] border border-gray-200 dark:border-white/10 rounded-md text-xs text-gray-900 dark:text-white focus:outline-none focus:ring-1 focus:ring-blue-500 placeholder-gray-400"
+                                />
+                            </div>
+
+                            <button
+                                onClick={() => {
+                                    setTemplateToEdit(null);
+                                    setTemplateEditorOpen(true);
+                                }}
+                                className="px-3.5 py-1.5 bg-blue-600 hover:bg-blue-700 text-white rounded-md text-xs font-bold shadow-sm transition-all flex items-center gap-2 shrink-0"
+                            >
+                                <Plus size={14} />
+                                <span>Create Permission Template</span>
+                            </button>
+                        </>
+                    )}
+                </div>
             </div>
 
             {/* TAB CONTENT */}
             {mainTab === 'employees' ? (
                 /* EMPLOYEES TAB */
                 <div className="flex-1 flex flex-col overflow-hidden">
-                    {/* Search & Filter Bar */}
-                    <div className="px-6 py-3 flex items-center justify-end border-b border-gray-200 dark:border-white/5 bg-white dark:bg-[#0d1117] shrink-0 gap-3">
-                        <div className="relative w-64 md:w-80">
-                            <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={15} />
-                            <input
-                                type="text"
-                                placeholder="Search employees by name, email, department..."
-                                className="w-full pl-9 pr-3 py-1.5 bg-gray-50 dark:bg-white/[0.02] border border-gray-200 dark:border-white/10 rounded-xl text-xs text-gray-900 dark:text-white focus:outline-none focus:ring-1 focus:ring-blue-500 placeholder-gray-400"
-                                value={searchTerm}
-                                onChange={e => setSearchTerm(e.target.value)}
-                            />
-                        </div>
-
-                        {/* Inline Filter Dropdown */}
-                        <div className="relative" ref={filterDropdownRef}>
-                            <button
-                                onClick={() => setIsFilterDropdownOpen(!isFilterDropdownOpen)}
-                                className={`flex items-center space-x-2 px-3.5 py-1.5 border rounded-xl text-xs font-bold transition-all ${
-                                    activeFilterCount > 0
-                                        ? 'border-blue-500 bg-blue-500/10 text-blue-600 dark:text-blue-400'
-                                        : 'border-gray-200 dark:border-white/10 bg-gray-50 dark:bg-white/5 text-gray-700 dark:text-gray-300 hover:bg-gray-100'
-                                }`}
-                            >
-                                <Filter size={14} />
-                                <span>Filter</span>
-                                {activeFilterCount > 0 && (
-                                    <span className="bg-blue-600 text-white text-[10px] w-4 h-4 rounded-full flex items-center justify-center font-bold">
-                                        {activeFilterCount}
-                                    </span>
-                                )}
-                                <ChevronDown size={13} className={`transition-transform duration-200 ${isFilterDropdownOpen ? 'rotate-180' : ''}`} />
-                            </button>
-
-                            {isFilterDropdownOpen && (
-                                <div className="absolute right-0 mt-2 w-80 bg-white dark:bg-[#161b22] border border-gray-200 dark:border-white/10 rounded-2xl shadow-2xl z-[5000] p-4 space-y-4 text-xs">
-                                    <div className="flex justify-between items-center pb-2 border-b border-gray-100 dark:border-white/10">
-                                        <h4 className="font-bold text-gray-900 dark:text-white flex items-center gap-1.5">
-                                            <Filter size={14} className="text-blue-500" /> Filter Employees
-                                        </h4>
-                                        {activeFilterCount > 0 && (
-                                            <button
-                                                onClick={() => setActiveFilters({ userTypes: [], departments: [] })}
-                                                className="text-[11px] text-blue-600 dark:text-blue-400 font-bold hover:underline"
-                                            >
-                                                Clear All ({activeFilterCount})
-                                            </button>
-                                        )}
-                                    </div>
-
-                                    {/* Account Type */}
-                                    <div>
-                                        <label className="block text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-1.5">Account Type</label>
-                                        <div className="flex flex-wrap gap-1.5">
-                                            {['Admin', 'Employee'].map(type => {
-                                                const isChecked = activeFilters.userTypes?.includes(type);
-                                                return (
-                                                    <button
-                                                        key={type}
-                                                        type="button"
-                                                        onClick={() => toggleFilter('userTypes', type)}
-                                                        className={`px-2.5 py-1 rounded-lg text-[11px] font-bold border transition-all ${
-                                                            isChecked
-                                                                ? 'bg-blue-600 text-white border-blue-600 shadow-xs'
-                                                                : 'bg-gray-50 dark:bg-white/5 border-gray-200 dark:border-white/10 text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-white/10'
-                                                        }`}
-                                                    >
-                                                        {type}
-                                                    </button>
-                                                );
-                                            })}
-                                        </div>
-                                    </div>
-
-                                    {/* Departments */}
-                                    {allDepartments.length > 0 && (
-                                        <div>
-                                            <label className="block text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-1.5">Department</label>
-                                            <div className="flex flex-wrap gap-1.5 max-h-36 overflow-y-auto custom-scrollbar">
-                                                {allDepartments.map(dept => {
-                                                    const isChecked = activeFilters.departments?.includes(dept);
-                                                    return (
-                                                        <button
-                                                            key={dept}
-                                                            type="button"
-                                                            onClick={() => toggleFilter('departments', dept)}
-                                                            className={`px-2.5 py-1 rounded-lg text-[11px] font-bold border transition-all ${
-                                                                isChecked
-                                                                    ? 'bg-blue-600 text-white border-blue-600 shadow-xs'
-                                                                    : 'bg-gray-50 dark:bg-white/5 border-gray-200 dark:border-white/10 text-gray-600 dark:text-gray-400 hover:bg-gray-100'
-                                                            }`}
-                                                        >
-                                                            {dept}
-                                                        </button>
-                                                    );
-                                                })}
-                                            </div>
-                                        </div>
-                                    )}
-                                </div>
-                            )}
-                        </div>
-                    </div>
-
                     {/* Table View */}
                     <div className="flex-1 overflow-auto custom-scrollbar p-0">
                         <table className="w-full text-left whitespace-nowrap text-[13px] border-collapse bg-white dark:bg-[#0d1117]">
@@ -1888,6 +1877,7 @@ const AdminPage = () => {
                 <PermissionTemplatesTab
                     templates={templates}
                     isLoading={isLoadingTemplates}
+                    searchQuery={templateSearchQuery}
                     onCreateClick={() => {
                         setTemplateToEdit(null);
                         setTemplateEditorOpen(true);

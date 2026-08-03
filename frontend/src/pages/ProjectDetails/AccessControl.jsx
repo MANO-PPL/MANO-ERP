@@ -1,7 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { useParams } from 'react-router-dom';
-import { 
-    Users, Shield, UserPlus, Trash2, CheckCircle2, 
+import { motion, AnimatePresence } from 'framer-motion';
+import {
+    Users, Shield, UserPlus, Trash2, CheckCircle2,
     Save, ShieldCheck, Lock, ChevronRight, Loader2, Sparkles,
     Plus, Edit3, Info, AlertCircle, X, Sliders, FolderKey
 } from 'lucide-react';
@@ -28,50 +29,73 @@ const ACCESS_LEVELS = ['None', 'Read', 'Write'];
 
 // ─── Delete Project Template Modal ──────────────────────────────────────────────
 const DeleteTemplateModal = ({ open, onClose, onConfirm, template, isDeleting }) => {
+    useEffect(() => {
+        if (!open) return;
+        const handleKeyDown = (e) => {
+            if (e.key === 'Escape') {
+                onClose();
+            }
+        };
+        window.addEventListener('keydown', handleKeyDown);
+        return () => window.removeEventListener('keydown', handleKeyDown);
+    }, [open, onClose]);
+
     if (!open || !template) return null;
     return (
-        <div className="fixed inset-0 bg-black/50 backdrop-blur-xs z-[9999] flex items-center justify-center p-4">
-            <div className="bg-white dark:bg-[#161b22] border border-gray-200 dark:border-white/10 rounded-2xl w-full max-w-md shadow-2xl overflow-hidden animate-in fade-in zoom-in-95 duration-200">
-                <div className="p-6 text-center space-y-4">
-                    <div className="w-14 h-14 bg-amber-50 dark:bg-amber-950/40 text-amber-500 rounded-full flex items-center justify-center mx-auto border border-amber-200/50 dark:border-amber-500/30 shadow-xs">
-                        <AlertCircle size={28} />
+        <AnimatePresence>
+            <div 
+                className="fixed inset-0 bg-black/50 backdrop-blur-xs z-[9999] flex items-center justify-center p-4"
+                onClick={onClose}
+            >
+                <motion.div
+                    initial={{ opacity: 0, scale: 0.95 }}
+                    animate={{ opacity: 1, scale: 1 }}
+                    exit={{ opacity: 0, scale: 0.95 }}
+                    transition={{ duration: 0.15 }}
+                    onClick={(e) => e.stopPropagation()}
+                    className="bg-white dark:bg-[#161b22] border border-gray-200 dark:border-white/10 rounded-md w-full max-w-md shadow-2xl overflow-hidden"
+                >
+                    <div className="p-6 text-center space-y-4">
+                        <div className="w-14 h-14 bg-amber-50 dark:bg-amber-950/40 text-amber-500 rounded-md flex items-center justify-center mx-auto border border-amber-200/50 dark:border-amber-500/30 shadow-xs">
+                            <AlertCircle size={28} />
+                        </div>
+                        <div>
+                            <h3 className="text-base font-bold text-gray-900 dark:text-white">Delete Project Template?</h3>
+                            <p className="text-xs text-gray-500 dark:text-gray-400 mt-1.5 leading-relaxed">
+                                Are you sure you want to delete template <span className="font-bold text-gray-900 dark:text-white">"{template.name}"</span>?
+                            </p>
+                        </div>
                     </div>
-                    <div>
-                        <h3 className="text-base font-bold text-gray-900 dark:text-white">Delete Project Template?</h3>
-                        <p className="text-xs text-gray-500 dark:text-gray-400 mt-1.5 leading-relaxed">
-                            Are you sure you want to delete template <span className="font-bold text-gray-900 dark:text-white">"{template.name}"</span>?
-                        </p>
-                    </div>
-                </div>
 
-                <div className="px-6 py-4 bg-gray-50 dark:bg-[#0d1117] border-t border-gray-100 dark:border-white/10 flex gap-3">
-                    <button
-                        type="button"
-                        onClick={onClose}
-                        disabled={isDeleting}
-                        className="flex-1 py-2.5 border border-gray-200 dark:border-white/10 rounded-xl text-xs font-bold text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-white/5 transition-all disabled:opacity-50"
-                    >
-                        Cancel
-                    </button>
-                    <button
-                        type="button"
-                        onClick={onConfirm}
-                        disabled={isDeleting}
-                        className="flex-1 py-2.5 bg-red-600 hover:bg-red-700 text-white rounded-xl text-xs font-bold transition-all shadow-md shadow-red-500/20 flex items-center justify-center gap-2 disabled:opacity-50"
-                    >
-                        {isDeleting ? (
-                            <>
-                                <Loader2 size={14} className="animate-spin" /> Deleting...
-                            </>
-                        ) : (
-                            <>
-                                <Trash2 size={14} /> Delete Template
-                            </>
-                        )}
-                    </button>
-                </div>
+                    <div className="px-6 py-4 bg-gray-50 dark:bg-[#0d1117] border-t border-gray-100 dark:border-white/10 flex gap-3">
+                        <button
+                            type="button"
+                            onClick={onClose}
+                            disabled={isDeleting}
+                            className="flex-1 py-2.5 border border-gray-300 dark:border-white/20 rounded-md text-xs font-bold text-gray-700 dark:text-gray-200 bg-white dark:bg-[#161b22] hover:bg-gray-100 dark:hover:bg-white/10 transition-all disabled:opacity-50"
+                        >
+                            Cancel
+                        </button>
+                        <button
+                            type="button"
+                            onClick={onConfirm}
+                            disabled={isDeleting}
+                            className="flex-1 py-2.5 bg-red-600 hover:bg-red-700 text-white rounded-md text-xs font-bold transition-all shadow-md shadow-red-500/20 flex items-center justify-center gap-2 disabled:opacity-50"
+                        >
+                            {isDeleting ? (
+                                <>
+                                    <Loader2 size={14} className="animate-spin" /> Deleting...
+                                </>
+                            ) : (
+                                <>
+                                    <Trash2 size={14} /> Delete Template
+                                </>
+                            )}
+                        </button>
+                    </div>
+                </motion.div>
             </div>
-        </div>
+        </AnimatePresence>
     );
 };
 
@@ -79,6 +103,17 @@ const DeleteTemplateModal = ({ open, onClose, onConfirm, template, isDeleting })
 const ProjectTemplateEditorModal = ({ open, onClose, onSave, templateToEdit, isSaving, initialPermissions }) => {
     const [name, setName] = useState('');
     const [permissions, setPermissions] = useState({});
+
+    useEffect(() => {
+        if (!open) return;
+        const handleKeyDown = (e) => {
+            if (e.key === 'Escape') {
+                onClose();
+            }
+        };
+        window.addEventListener('keydown', handleKeyDown);
+        return () => window.removeEventListener('keydown', handleKeyDown);
+    }, [open, onClose]);
 
     useEffect(() => {
         if (templateToEdit) {
@@ -120,14 +155,21 @@ const ProjectTemplateEditorModal = ({ open, onClose, onSave, templateToEdit, isS
     if (!open) return null;
 
     return (
-        <div className="fixed inset-0 bg-black/50 backdrop-blur-xs z-[9999] flex items-center justify-center p-4">
-            <div className="bg-white dark:bg-[#161b22] border border-gray-200 dark:border-white/10 rounded-2xl w-full max-w-xl shadow-2xl overflow-hidden flex flex-col max-h-[90vh] animate-in fade-in zoom-in-95 duration-200">
-                {/* Header */}
-                <div className="px-6 py-4 bg-gray-50/80 dark:bg-[#0d1117]/80 border-b border-gray-200 dark:border-white/10 flex items-center justify-between shrink-0">
-                    <div className="flex items-center gap-2.5">
-                        <div className="w-9 h-9 rounded-xl bg-emerald-50 dark:bg-emerald-900/30 text-emerald-600 dark:text-emerald-400 flex items-center justify-center border border-emerald-200/50 dark:border-emerald-500/20">
-                            <Sparkles size={18} />
-                        </div>
+        <AnimatePresence>
+            <div 
+                className="fixed inset-0 bg-black/50 backdrop-blur-xs z-[9999] flex items-center justify-center p-4"
+                onClick={onClose}
+            >
+                <motion.div
+                    initial={{ opacity: 0, scale: 0.95, y: 10 }}
+                    animate={{ opacity: 1, scale: 1, y: 0 }}
+                    exit={{ opacity: 0, scale: 0.95, y: 10 }}
+                    transition={{ duration: 0.2 }}
+                    onClick={(e) => e.stopPropagation()}
+                    className="bg-white dark:bg-[#161b22] border border-gray-200 dark:border-white/10 rounded-md w-full max-w-3xl shadow-2xl overflow-hidden flex flex-col max-h-[90vh]"
+                >
+                    {/* Header */}
+                    <div className="px-6 py-4 bg-gray-50/80 dark:bg-[#0d1117]/80 border-b border-gray-200 dark:border-white/10 flex items-center justify-between shrink-0">
                         <div>
                             <h3 className="text-sm font-bold text-gray-900 dark:text-white">
                                 {templateToEdit ? 'Edit Project Template' : 'Create Project Permission Template'}
@@ -136,111 +178,110 @@ const ProjectTemplateEditorModal = ({ open, onClose, onSave, templateToEdit, isS
                                 Configure page access levels reusable for project team members
                             </p>
                         </div>
-                    </div>
-                    <button onClick={onClose} className="p-1 text-gray-400 hover:text-gray-600 dark:hover:text-white rounded-lg">
-                        <X size={18} />
-                    </button>
-                </div>
-
-                {/* Form Content */}
-                <form onSubmit={handleSubmit} className="flex-1 overflow-y-auto custom-scrollbar p-6 space-y-5">
-                    <div>
-                        <label className="block text-[10px] font-bold text-gray-500 dark:text-gray-400 mb-1.5 uppercase tracking-wide">Template Name *</label>
-                        <input
-                            type="text"
-                            placeholder="e.g. Site Engineer (Project)"
-                            value={name}
-                            onChange={e => setName(e.target.value)}
-                            className="w-full px-3.5 py-2 bg-gray-50 dark:bg-[#0d1117] border border-gray-200 dark:border-white/10 rounded-xl text-xs font-semibold focus:outline-none focus:ring-2 focus:ring-emerald-500/40"
-                            required
-                        />
+                        <button onClick={onClose} className="p-1 text-gray-400 hover:text-gray-600 dark:hover:text-white rounded-md">
+                            <X size={18} />
+                        </button>
                     </div>
 
-                    {/* Presets Toolbar */}
-                    <div className="flex items-center justify-between p-3 bg-gray-50 dark:bg-[#0d1117] rounded-xl border border-gray-200 dark:border-white/10 text-xs">
-                        <span className="font-bold text-gray-700 dark:text-gray-300">Presets:</span>
-                        <div className="flex gap-2">
-                            <button
-                                type="button"
-                                onClick={() => handlePreset(2)}
-                                className="px-2.5 py-1 bg-emerald-50 dark:bg-emerald-950/40 text-emerald-600 dark:text-emerald-400 rounded-lg text-[11px] font-bold border border-emerald-200/50 dark:border-emerald-500/30 hover:bg-emerald-100 transition-all"
-                            >
-                                All Write
-                            </button>
-                            <button
-                                type="button"
-                                onClick={() => handlePreset(1)}
-                                className="px-2.5 py-1 bg-blue-50 dark:bg-blue-950/40 text-blue-600 dark:text-blue-400 rounded-lg text-[11px] font-bold border border-blue-200/50 dark:border-blue-500/30 hover:bg-blue-100 transition-all"
-                            >
-                                All Read
-                            </button>
-                            <button
-                                type="button"
-                                onClick={() => handlePreset(0)}
-                                className="px-2.5 py-1 bg-gray-100 dark:bg-white/10 text-gray-600 dark:text-gray-400 rounded-lg text-[11px] font-bold hover:bg-gray-200 transition-all"
-                            >
-                                Clear All
-                            </button>
+                    {/* Form Content */}
+                    <form onSubmit={handleSubmit} className="flex-1 overflow-y-auto custom-scrollbar p-6 space-y-5">
+                        <div>
+                            <label className="block text-[10px] font-bold text-gray-500 dark:text-gray-400 mb-1.5 uppercase tracking-wide">Template Name *</label>
+                            <input
+                                type="text"
+                                placeholder="e.g. Site Engineer (Project)"
+                                value={name}
+                                onChange={e => setName(e.target.value)}
+                                className="w-full px-3.5 py-2 bg-gray-50 dark:bg-[#0d1117] border border-gray-200 dark:border-white/10 rounded-md text-xs font-semibold focus:outline-none focus:ring-2 focus:ring-emerald-500/40"
+                                required
+                            />
                         </div>
-                    </div>
 
-                    {/* Module List */}
-                    <div className="space-y-1.5">
-                        {PROJECT_PAGES.map(mod => {
-                            const lvl = permissions[mod.id] ?? 0;
-                            return (
-                                <div key={mod.id} className="p-2.5 bg-gray-50/50 dark:bg-[#161b22]/50 rounded-xl border border-gray-100 dark:border-white/5 flex items-center justify-between">
-                                    <span className="text-xs font-semibold text-gray-800 dark:text-gray-200">{mod.label}</span>
-                                    <div className="flex gap-1">
-                                        {ACCESS_LEVELS.map((name, i) => (
-                                            <button
-                                                key={i}
-                                                type="button"
-                                                onClick={() => setPermissions(p => ({ ...p, [mod.id]: i }))}
-                                                className={`px-2.5 py-1 rounded-lg text-[11px] font-bold transition-all ${
-                                                    lvl === i
+                        {/* Presets Toolbar */}
+                        <div className="flex items-center justify-between p-3 bg-gray-50 dark:bg-[#0d1117] rounded-md border border-gray-200 dark:border-white/10 text-xs">
+                            <span className="font-bold text-gray-700 dark:text-gray-300">Presets:</span>
+                            <div className="flex gap-2">
+                                <button
+                                    type="button"
+                                    onClick={() => handlePreset(2)}
+                                    className="px-2.5 py-1 bg-emerald-50 dark:bg-emerald-950/40 text-emerald-600 dark:text-emerald-400 rounded-md text-[11px] font-bold border border-emerald-200/50 dark:border-emerald-500/30 hover:bg-emerald-100 transition-all"
+                                >
+                                    All Write
+                                </button>
+                                <button
+                                    type="button"
+                                    onClick={() => handlePreset(1)}
+                                    className="px-2.5 py-1 bg-blue-50 dark:bg-blue-950/40 text-blue-600 dark:text-blue-400 rounded-md text-[11px] font-bold border border-blue-200/50 dark:border-blue-500/30 hover:bg-blue-100 transition-all"
+                                >
+                                    All Read
+                                </button>
+                                <button
+                                    type="button"
+                                    onClick={() => handlePreset(0)}
+                                    className="px-2.5 py-1 bg-gray-100 dark:bg-white/10 text-gray-600 dark:text-gray-400 rounded-md text-[11px] font-bold hover:bg-gray-200 transition-all"
+                                >
+                                    Clear All
+                                </button>
+                            </div>
+                        </div>
+
+                        {/* Module List */}
+                        <div className="space-y-1.5">
+                            {PROJECT_PAGES.map(mod => {
+                                const lvl = permissions[mod.id] ?? 0;
+                                return (
+                                    <div key={mod.id} className="p-2.5 bg-gray-50/50 dark:bg-[#161b22]/50 rounded-md border border-gray-100 dark:border-white/5 flex items-center justify-between">
+                                        <span className="text-xs font-semibold text-gray-800 dark:text-gray-200">{mod.label}</span>
+                                        <div className="flex gap-1">
+                                            {ACCESS_LEVELS.map((name, i) => (
+                                                <button
+                                                    key={i}
+                                                    type="button"
+                                                    onClick={() => setPermissions(p => ({ ...p, [mod.id]: i }))}
+                                                    className={`px-2.5 py-1 rounded-md text-[11px] font-bold transition-all ${lvl === i
                                                         ? i === 2 ? 'bg-emerald-600 text-white shadow-xs' : i === 1 ? 'bg-blue-600 text-white shadow-xs' : 'bg-gray-600 text-white'
                                                         : 'bg-gray-100 dark:bg-white/5 text-gray-400 hover:bg-gray-200'
-                                                }`}
-                                            >
-                                                {name}
-                                            </button>
-                                        ))}
+                                                        }`}
+                                                >
+                                                    {name}
+                                                </button>
+                                            ))}
+                                        </div>
                                     </div>
-                                </div>
-                            );
-                        })}
-                    </div>
+                                );
+                            })}
+                        </div>
 
-                    {/* Footer */}
-                    <div className="pt-4 border-t border-gray-100 dark:border-white/10 flex gap-3">
-                        <button
-                            type="button"
-                            onClick={onClose}
-                            disabled={isSaving}
-                            className="flex-1 py-2.5 border border-gray-200 dark:border-white/10 rounded-xl text-xs font-bold text-gray-600 dark:text-gray-400 hover:bg-gray-100 transition-all"
-                        >
-                            Cancel
-                        </button>
-                        <button
-                            type="submit"
-                            disabled={isSaving}
-                            className="flex-1 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold transition-all shadow-md shadow-emerald-500/20 flex items-center justify-center gap-2 disabled:opacity-50"
-                        >
-                            {isSaving ? (
-                                <>
-                                    <Loader2 size={14} className="animate-spin" /> Saving...
-                                </>
-                            ) : (
-                                <>
-                                    <Sparkles size={14} /> {templateToEdit ? 'Save Changes' : 'Create Project Template'}
-                                </>
-                            )}
-                        </button>
-                    </div>
-                </form>
+                        {/* Footer */}
+                        <div className="pt-4 border-t border-gray-100 dark:border-white/10 flex gap-3">
+                            <button
+                                type="button"
+                                onClick={onClose}
+                                disabled={isSaving}
+                                className="flex-1 py-2.5 border border-gray-300 dark:border-white/20 rounded-md text-xs font-bold text-gray-700 dark:text-gray-200 bg-white dark:bg-[#161b22] hover:bg-gray-100 dark:hover:bg-white/10 transition-all disabled:opacity-50"
+                            >
+                                Cancel
+                            </button>
+                            <button
+                                type="submit"
+                                disabled={isSaving}
+                                className="flex-1 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-md text-xs font-bold transition-all shadow-md shadow-emerald-500/20 flex items-center justify-center gap-2 disabled:opacity-50"
+                            >
+                                {isSaving ? (
+                                    <>
+                                        <Loader2 size={14} className="animate-spin" /> Saving...
+                                    </>
+                                ) : (
+                                    <>
+                                        <Sparkles size={14} /> {templateToEdit ? 'Save Changes' : 'Create Project Template'}
+                                    </>
+                                )}
+                            </button>
+                        </div>
+                    </form>
+                </motion.div>
             </div>
-        </div>
+        </AnimatePresence>
     );
 };
 
@@ -251,10 +292,10 @@ const AccessControl = () => {
     const [allUsers, setAllUsers] = useState([]);
     const [templates, setTemplates] = useState([]);
     const [isLoading, setIsLoading] = useState(true);
-    
+
     const [selectedMember, setSelectedMember] = useState(null);
     const [localPermissions, setLocalPermissions] = useState({});
-    
+
     const [selectedNewUser, setSelectedNewUser] = useState('');
     const [isSaving, setIsSaving] = useState(false);
     const [isAdding, setIsAdding] = useState(false);
@@ -274,7 +315,7 @@ const AccessControl = () => {
                 adminApi.getUsers(),
                 adminApi.getPermissionTemplates('project')
             ]);
-            
+
             if (membersRes.success) {
                 const mappedMembers = membersRes.members.map(m => {
                     const basePerms = m.project_permissions ? (typeof m.project_permissions === 'string' ? JSON.parse(m.project_permissions) : m.project_permissions) : {};
@@ -293,7 +334,7 @@ const AccessControl = () => {
                     };
                 });
                 setMembers(mappedMembers);
-                
+
                 if (selectedMember) {
                     const updated = mappedMembers.find(x => x.user_id === selectedMember.user_id);
                     if (updated) {
@@ -305,11 +346,11 @@ const AccessControl = () => {
                     setLocalPermissions(mappedMembers[0].permissions);
                 }
             }
-            
+
             if (usersRes.success) {
                 setAllUsers(usersRes.users);
             }
-            
+
             if (templatesRes.success && templatesRes.templates) {
                 setTemplates(templatesRes.templates.filter(t => t.type === 'project'));
             }
@@ -450,30 +491,76 @@ const AccessControl = () => {
         }
     };
 
+// ─── Custom Shimmer Skeleton Rendering Component ─────────────────────────────
+const AccessControlSkeleton = () => (
+    <div className="flex-1 flex overflow-hidden bg-white dark:bg-[#0d1117] text-gray-900 dark:text-gray-100">
+        {/* Left Skeleton Panel */}
+        <div className="w-[270px] sm:w-[280px] border-r border-gray-200 dark:border-white/10 flex flex-col p-3 space-y-3 shrink-0">
+            <div className="h-3 bg-gray-200 dark:bg-white/10 rounded w-1/2 animate-pulse" />
+            <div className="h-8 bg-gray-100 dark:bg-white/5 rounded-md w-full animate-pulse" />
+            <div className="space-y-1.5 pt-1">
+                {[1, 2, 3, 4, 5].map(i => (
+                    <div key={i} className="flex items-center gap-2.5 p-2 rounded-md bg-gray-50 dark:bg-white/[0.02] border border-gray-100 dark:border-white/5 animate-pulse">
+                        <div className="w-7 h-7 rounded-md bg-gray-200 dark:bg-white/10 shrink-0" />
+                        <div className="space-y-1 flex-1">
+                            <div className="h-3 bg-gray-200 dark:bg-white/10 rounded w-3/4" />
+                            <div className="h-2 bg-gray-200 dark:bg-white/5 rounded w-1/2" />
+                        </div>
+                    </div>
+                ))}
+            </div>
+        </div>
+        {/* Right Skeleton Panel */}
+        <div className="flex-1 p-4 sm:p-5 space-y-4">
+            <div className="p-3.5 rounded-md border border-gray-200 dark:border-white/10 space-y-3 animate-pulse">
+                <div className="h-3.5 bg-gray-200 dark:bg-white/10 rounded w-1/3" />
+                <div className="grid grid-cols-3 gap-2">
+                    {[1, 2, 3].map(i => (
+                        <div key={i} className="h-14 bg-gray-100 dark:bg-white/5 rounded-md" />
+                    ))}
+                </div>
+            </div>
+            <div className="space-y-2 border border-gray-200 dark:border-white/10 rounded-md p-3 animate-pulse">
+                <div className="h-3.5 bg-gray-200 dark:bg-white/10 rounded w-1/4 mb-2" />
+                {[1, 2, 3, 4, 5, 6].map(i => (
+                    <div key={i} className="h-9 bg-gray-50 dark:bg-white/[0.02] rounded-md flex justify-between items-center px-3">
+                        <div className="h-3 bg-gray-200 dark:bg-white/10 rounded w-1/4" />
+                        <div className="flex gap-1.5">
+                            <div className="w-10 h-6 bg-gray-200 dark:bg-white/10 rounded" />
+                            <div className="w-10 h-6 bg-gray-200 dark:bg-white/10 rounded" />
+                            <div className="w-10 h-6 bg-gray-200 dark:bg-white/10 rounded" />
+                        </div>
+                    </div>
+                ))}
+            </div>
+        </div>
+    </div>
+);
+
     const memberUserIds = new Set(members.map(m => m.user_id));
     const nonMembers = allUsers.filter(u => !memberUserIds.has(u.user_id || u.id));
 
     if (isLoading) {
-        return (
-            <div className="flex-1 flex flex-col items-center justify-center p-12 bg-white dark:bg-[#0d1117]">
-                <Loader2 size={36} className="text-blue-500 animate-spin mb-4" />
-                <p className="text-sm text-gray-400">Loading access control parameters...</p>
-            </div>
-        );
+        return <AccessControlSkeleton />;
     }
 
     return (
-        <div className="flex-1 flex overflow-hidden bg-white dark:bg-[#0d1117] text-gray-900 dark:text-gray-100">
-            {/* Left Panel: Members list */}
-            <div className="w-[320px] border-r border-gray-200 dark:border-white/10 flex flex-col bg-gray-50/50 dark:bg-transparent">
+        <motion.div
+            initial={{ opacity: 0, y: 6 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.25, ease: [0.25, 0.1, 0.25, 1.0] }}
+            className="flex-1 flex overflow-hidden bg-white dark:bg-[#0d1117] text-gray-900 dark:text-gray-100"
+        >
+            {/* Left Panel: Members list (brought closer to sidebar) */}
+            <div className="w-[270px] sm:w-[280px] border-r border-gray-200 dark:border-white/10 flex flex-col bg-gray-50/50 dark:bg-transparent shrink-0">
                 {/* Add member section */}
-                <div className="p-4 border-b border-gray-200 dark:border-white/10 space-y-3">
-                    <label className="block text-xs font-bold text-gray-500 dark:text-gray-400 uppercase tracking-wider">Add Team Member</label>
-                    <div className="flex gap-2">
+                <div className="p-3 border-b border-gray-200 dark:border-white/10 space-y-2">
+                    <label className="block text-[11px] font-bold text-gray-500 dark:text-gray-400 uppercase tracking-wider">Add Team Member</label>
+                    <div className="flex gap-1.5">
                         <select
                             value={selectedNewUser}
                             onChange={e => setSelectedNewUser(e.target.value)}
-                            className="flex-1 px-3 py-2 bg-white dark:bg-[#161b22] border border-gray-200 dark:border-white/10 rounded-xl text-xs focus:outline-none appearance-none font-medium truncate"
+                            className="flex-1 px-2.5 py-1.5 bg-white dark:bg-[#161b22] border border-gray-200 dark:border-white/10 rounded-md text-xs focus:outline-none appearance-none font-medium truncate"
                         >
                             <option value="">Select a user...</option>
                             {nonMembers.map(u => (
@@ -485,36 +572,35 @@ const AccessControl = () => {
                         <button
                             onClick={handleAddMember}
                             disabled={!selectedNewUser || isAdding}
-                            className="p-2 bg-blue-600 hover:bg-blue-700 text-white rounded-xl disabled:opacity-50 transition-all flex items-center justify-center shrink-0 active:scale-95 shadow-sm"
+                            className="p-1.5 bg-blue-600 hover:bg-blue-700 text-white rounded-md disabled:opacity-50 transition-all flex items-center justify-center shrink-0 active:scale-95 shadow-sm"
                             title="Add member"
                         >
-                            {isAdding ? <Loader2 size={16} className="animate-spin" /> : <UserPlus size={16} />}
+                            {isAdding ? <Loader2 size={15} className="animate-spin" /> : <UserPlus size={15} />}
                         </button>
                     </div>
                 </div>
 
                 {/* Members list */}
-                <div className="flex-1 overflow-y-auto p-3 space-y-1">
-                    <div className="px-2 mb-2">
-                        <span className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">Project Members ({members.length})</span>
-                    </div>
+                <div className="flex-1 overflow-y-auto p-2 space-y-1 custom-scrollbar">
                     {members.length === 0 ? (
                         <div className="py-8 text-center text-xs text-gray-400">
                             No team members assigned to this project.
                         </div>
                     ) : (
-                        members.map(member => (
-                            <div
+                        members.map((member, idx) => (
+                            <motion.div
                                 key={member.user_id}
+                                initial={{ opacity: 0, x: -8 }}
+                                animate={{ opacity: 1, x: 0 }}
+                                transition={{ duration: 0.2, delay: idx * 0.03, ease: 'easeOut' }}
                                 onClick={() => handleSelectMember(member)}
-                                className={`flex items-center justify-between p-2.5 rounded-xl cursor-pointer group transition-all ${
-                                    selectedMember?.user_id === member.user_id
-                                        ? 'bg-blue-50 dark:bg-blue-900/20 border border-blue-200/50 dark:border-blue-500/30'
-                                        : 'hover:bg-gray-100 dark:hover:bg-white/[0.02] border border-transparent'
-                                }`}
+                                className={`flex items-center justify-between px-2.5 py-2 rounded-md cursor-pointer group transition-all ${selectedMember?.user_id === member.user_id
+                                    ? 'bg-blue-50 dark:bg-blue-900/20 border border-blue-200/50 dark:border-blue-500/30 shadow-xs'
+                                    : 'hover:bg-gray-100 dark:hover:bg-white/[0.02] border border-transparent'
+                                    }`}
                             >
-                                <div className="flex items-center gap-3 min-w-0">
-                                    <div className="w-8 h-8 rounded-full bg-gradient-to-br from-blue-100 to-indigo-100 dark:from-blue-900/40 dark:to-indigo-900/40 flex items-center justify-center text-blue-600 dark:text-blue-400 font-bold text-xs shrink-0 shadow-sm">
+                                <div className="flex items-center gap-2.5 min-w-0">
+                                    <div className="w-7 h-7 rounded-md bg-gradient-to-br from-blue-100 to-indigo-100 dark:from-blue-900/40 dark:to-indigo-900/40 flex items-center justify-center text-blue-600 dark:text-blue-400 font-bold text-xs shrink-0 shadow-xs">
                                         {member.user_name.split(' ').map(n => n[0]).join('').slice(0, 2)}
                                     </div>
                                     <div className="min-w-0">
@@ -531,184 +617,205 @@ const AccessControl = () => {
                                         e.stopPropagation();
                                         handleRemoveMember(member.user_id, member.user_name);
                                     }}
-                                    className="p-1.5 text-gray-400 hover:text-red-500 rounded-lg hover:bg-gray-100 dark:hover:bg-white/5 opacity-0 group-hover:opacity-100 transition-opacity shrink-0"
+                                    className="p-1 text-gray-400 hover:text-red-500 rounded-md hover:bg-gray-100 dark:hover:bg-white/5 opacity-0 group-hover:opacity-100 transition-opacity shrink-0"
                                     title="Remove from project"
                                 >
                                     <Trash2 size={13} />
                                 </button>
-                            </div>
+                            </motion.div>
                         ))
                     )}
                 </div>
             </div>
 
-            {/* Right Panel: Permissions Editor & Project Templates */}
-            <div className="flex-1 flex flex-col min-w-0 overflow-y-auto p-8">
-                {selectedMember ? (
-                    <div className="w-full space-y-6">
-                        {/* Member Details Header */}
-                        <div className="flex items-center justify-between bg-gray-50 dark:bg-[#161b22] border border-gray-200 dark:border-white/10 p-5 rounded-2xl">
-                            <div className="flex items-center gap-4">
-                                <div className="w-12 h-12 rounded-full bg-blue-100 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400 flex items-center justify-center font-bold text-sm shadow-inner shrink-0">
-                                    {selectedMember.user_name.split(' ').map(n => n[0]).join('').slice(0, 2)}
+            {/* Right Panel: Permissions Editor & Project Templates (brought closer to header & employee list) */}
+            <div className="flex-1 flex flex-col min-w-0 overflow-y-auto p-4 sm:p-5 custom-scrollbar">
+                <AnimatePresence mode="wait">
+                    {selectedMember ? (
+                        <motion.div
+                            key={selectedMember.user_id}
+                            initial={{ opacity: 0, y: 8, scale: 0.99 }}
+                            animate={{ opacity: 1, y: 0, scale: 1 }}
+                            exit={{ opacity: 0, y: -8, scale: 0.99 }}
+                            transition={{ duration: 0.22, ease: [0.25, 0.1, 0.25, 1.0] }}
+                            className="w-full space-y-4"
+                        >
+                            {/* Interactive Project Templates Bar */}
+                            <motion.div
+                                initial={{ opacity: 0, y: 6 }}
+                                animate={{ opacity: 1, y: 0 }}
+                                transition={{ duration: 0.2, delay: 0.04 }}
+                                className="p-3.5 bg-emerald-50/30 dark:bg-emerald-900/10 border border-emerald-100/60 dark:border-emerald-500/20 rounded-md space-y-2.5"
+                            >
+                                <div className="flex items-center justify-between">
+                                    <div className="flex items-center gap-2 text-xs font-bold text-emerald-800 dark:text-emerald-300">
+                                        <span>Project Permission Templates</span>
+                                        <span className="px-2 py-0.5 bg-emerald-100 dark:bg-emerald-900/40 text-emerald-700 dark:text-emerald-300 text-[10px] rounded-md font-bold">
+                                            {templates.length} Available
+                                        </span>
+                                    </div>
+                                    <div className="flex items-center gap-2">
+                                        <button
+                                            type="button"
+                                            onClick={() => {
+                                                setTemplateToEdit(null);
+                                                setTemplateEditorOpen(true);
+                                            }}
+                                            className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-md text-xs font-bold shadow-xs transition-all flex items-center gap-1 active:scale-95"
+                                        >
+                                            <Plus size={13} /> Create Template
+                                        </button>
+                                    </div>
                                 </div>
-                                <div>
-                                    <h3 className="text-base font-bold text-gray-900 dark:text-white">{selectedMember.user_name}</h3>
-                                    <p className="text-xs text-gray-400 mt-0.5">{selectedMember.email} • {selectedMember.user_type}</p>
-                                </div>
-                            </div>
-                            <div className="flex items-center gap-2">
-                                <ShieldCheck size={16} className="text-green-500" />
-                                <span className="text-xs font-bold text-green-500 uppercase tracking-wide">Project Member</span>
-                            </div>
-                        </div>
 
-                        {/* Interactive Project Templates Bar */}
-                        <div className="p-4 bg-emerald-50/30 dark:bg-emerald-900/10 border border-emerald-100/60 dark:border-emerald-500/20 rounded-2xl space-y-3">
-                            <div className="flex items-center justify-between">
-                                <div className="flex items-center gap-2 text-xs font-bold text-emerald-800 dark:text-emerald-300">
-                                    <Sparkles size={15} className="text-emerald-500" />
-                                    <span>Project Permission Templates</span>
-                                    <span className="px-2 py-0.2 bg-emerald-100 dark:bg-emerald-900/40 text-emerald-700 dark:text-emerald-300 text-[10px] rounded-full font-bold">
-                                        {templates.length} Available
-                                    </span>
+                                {/* Templates Quick Cards */}
+                                {templates.length > 0 ? (
+                                    <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-2 pt-0.5">
+                                        {templates.map((t, idx) => (
+                                            <motion.div
+                                                key={t.id}
+                                                initial={{ opacity: 0, scale: 0.95 }}
+                                                animate={{ opacity: 1, scale: 1 }}
+                                                transition={{ duration: 0.18, delay: 0.04 + idx * 0.03 }}
+                                                className="p-2.5 bg-white dark:bg-[#161b22] border border-gray-200/80 dark:border-white/10 rounded-md hover:border-emerald-400 transition-all flex flex-col justify-between group shadow-2xs"
+                                            >
+                                                <div className="flex items-center justify-between mb-1">
+                                                    <h5 className="text-xs font-bold text-gray-900 dark:text-white truncate">{t.name}</h5>
+                                                    <div className="flex items-center gap-1">
+                                                        <button
+                                                            type="button"
+                                                            onClick={() => {
+                                                                setTemplateToEdit(t);
+                                                                setTemplateEditorOpen(true);
+                                                            }}
+                                                            className="p-1 text-gray-400 hover:text-emerald-600 rounded-md transition-colors"
+                                                            title="Edit Template"
+                                                        >
+                                                            <Edit3 size={12} />
+                                                        </button>
+                                                        <button
+                                                            type="button"
+                                                            onClick={() => setDeletingTemplate(t)}
+                                                            className="p-1 text-gray-400 hover:text-red-500 rounded-md transition-colors"
+                                                            title="Delete Template"
+                                                        >
+                                                            <Trash2 size={12} />
+                                                        </button>
+                                                    </div>
+                                                </div>
+                                                <button
+                                                    type="button"
+                                                    onClick={() => handleApplyTemplate(t.id)}
+                                                    className="w-full py-1 mt-1 bg-emerald-50 dark:bg-emerald-950/40 hover:bg-emerald-600 hover:text-white text-emerald-700 dark:text-emerald-400 text-[11px] font-bold rounded-md transition-all border border-emerald-200/50 dark:border-emerald-500/30 flex items-center justify-center gap-1 active:scale-95"
+                                                >
+                                                    Apply to Member
+                                                </button>
+                                            </motion.div>
+                                        ))}
+                                    </div>
+                                ) : (
+                                    <p className="text-xs text-gray-400 italic py-1">No project templates created yet. Click "Create Template" to add one.</p>
+                                )}
+                            </motion.div>
+
+                            {/* Permissions Grid */}
+                            <motion.div
+                                initial={{ opacity: 0, y: 6 }}
+                                animate={{ opacity: 1, y: 0 }}
+                                transition={{ duration: 0.2, delay: 0.08 }}
+                                className="space-y-2.5"
+                            >
+                                <div className="flex items-center justify-between px-1">
+                                    <h4 className="text-xs font-bold text-gray-500 dark:text-gray-400 uppercase tracking-widest flex items-center gap-1.5">
+                                        Page Level Access in Project
+                                    </h4>
+                                    <span className="text-[10px] text-gray-400">Configure permission level for each page</span>
                                 </div>
-                                <div className="flex items-center gap-2">
+
+                                <div className="border border-gray-200 dark:border-white/10 rounded-md overflow-hidden shadow-sm divide-y divide-gray-100 dark:divide-white/5">
+                                    {PROJECT_PAGES.map((page, idx) => {
+                                        const lvl = localPermissions[page.id] ?? 0;
+                                        return (
+                                            <motion.div
+                                                key={page.id}
+                                                initial={{ opacity: 0, x: -5 }}
+                                                animate={{ opacity: 1, x: 0 }}
+                                                transition={{ duration: 0.15, delay: 0.06 + idx * 0.02 }}
+                                                className="flex items-center justify-between px-4 py-2.5 hover:bg-gray-50 dark:hover:bg-white/[0.01] transition-colors"
+                                            >
+                                                <span className="text-xs font-semibold text-gray-700 dark:text-gray-200">{page.label}</span>
+                                                <div className="flex gap-1">
+                                                    {ACCESS_LEVELS.map((name, i) => (
+                                                        <button
+                                                            key={i}
+                                                            type="button"
+                                                            onClick={() => handleLevelChange(page.id, i)}
+                                                            className={`px-3 py-1 rounded-md text-xs font-bold transition-all ${lvl === i
+                                                                ? 'bg-blue-600 text-white shadow-sm'
+                                                                : 'bg-gray-100 dark:bg-white/5 text-gray-400 hover:bg-gray-200 dark:hover:bg-white/10'
+                                                                }`}
+                                                        >
+                                                            {name}
+                                                        </button>
+                                                    ))}
+                                                </div>
+                                            </motion.div>
+                                        );
+                                    })}
+                                </div>
+                            </motion.div>
+
+                            {/* Save Actions */}
+                            <motion.div
+                                initial={{ opacity: 0, y: 6 }}
+                                animate={{ opacity: 1, y: 0 }}
+                                transition={{ duration: 0.2, delay: 0.12 }}
+                                className="flex items-center justify-between pt-1 gap-4"
+                            >
+                                <button
+                                    type="button"
+                                    onClick={() => {
+                                        setTemplateToEdit(null);
+                                        setTemplateEditorOpen(true);
+                                    }}
+                                    className="px-6 py-2.5 border border-emerald-300 dark:border-emerald-500/40 text-emerald-600 dark:text-emerald-400 hover:bg-emerald-50 dark:hover:bg-emerald-950/30 rounded-md text-xs font-bold transition-all shrink-0 active:scale-95 shadow-2xs"
+                                >
+                                    Save Current Access as Template
+                                </button>
+
+                                <div className="flex gap-2.5">
                                     <button
-                                        type="button"
-                                        onClick={() => {
-                                            setTemplateToEdit(null);
-                                            setTemplateEditorOpen(true);
-                                        }}
-                                        className="px-2.5 py-1 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-xs font-bold shadow-xs transition-all flex items-center gap-1"
+                                        onClick={() => setLocalPermissions(selectedMember.permissions || {})}
+                                        className="px-4 py-2 border border-gray-200 dark:border-white/10 rounded-md text-xs font-semibold text-gray-600 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-white/5 transition-all"
                                     >
-                                        <Plus size={13} /> Create Template
+                                        Reset Changes
+                                    </button>
+                                    <button
+                                        onClick={handleSavePermissions}
+                                        disabled={isSaving}
+                                        className="px-5 py-2 bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white font-bold rounded-md text-xs transition-all active:scale-95 shadow-md shadow-blue-500/20 flex items-center gap-1.5"
+                                    >
+                                        {isSaving ? <Loader2 size={15} className="animate-spin" /> : <Save size={15} />}
+                                        Save Permissions
                                     </button>
                                 </div>
-                            </div>
-
-                            {/* Templates Quick Cards */}
-                            {templates.length > 0 ? (
-                                <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-2.5 pt-1">
-                                    {templates.map(t => (
-                                        <div
-                                            key={t.id}
-                                            className="p-3 bg-white dark:bg-[#161b22] border border-gray-200/80 dark:border-white/10 rounded-xl hover:border-emerald-400 transition-all flex flex-col justify-between group shadow-2xs"
-                                        >
-                                            <div className="flex items-center justify-between mb-1.5">
-                                                <h5 className="text-xs font-bold text-gray-900 dark:text-white truncate">{t.name}</h5>
-                                                <div className="flex items-center gap-1">
-                                                    <button
-                                                        type="button"
-                                                        onClick={() => {
-                                                            setTemplateToEdit(t);
-                                                            setTemplateEditorOpen(true);
-                                                        }}
-                                                        className="p-1 text-gray-400 hover:text-emerald-600 rounded transition-colors"
-                                                        title="Edit Template"
-                                                    >
-                                                        <Edit3 size={12} />
-                                                    </button>
-                                                    <button
-                                                        type="button"
-                                                        onClick={() => setDeletingTemplate(t)}
-                                                        className="p-1 text-gray-400 hover:text-red-500 rounded transition-colors"
-                                                        title="Delete Template"
-                                                    >
-                                                        <Trash2 size={12} />
-                                                    </button>
-                                                </div>
-                                            </div>
-                                            <button
-                                                type="button"
-                                                onClick={() => handleApplyTemplate(t.id)}
-                                                className="w-full py-1 mt-1 bg-emerald-50 dark:bg-emerald-950/40 hover:bg-emerald-600 hover:text-white text-emerald-700 dark:text-emerald-400 text-[11px] font-bold rounded-lg transition-all border border-emerald-200/50 dark:border-emerald-500/30 flex items-center justify-center gap-1"
-                                            >
-                                                <Sparkles size={11} /> Apply to Member
-                                            </button>
-                                        </div>
-                                    ))}
-                                </div>
-                            ) : (
-                                <p className="text-xs text-gray-400 italic py-1">No project templates created yet. Click "Create Template" to add one.</p>
-                            )}
-                        </div>
-
-                        {/* Permissions Grid */}
-                        <div className="space-y-3">
-                            <div className="flex items-center justify-between px-2">
-                                <h4 className="text-xs font-bold text-gray-500 dark:text-gray-400 uppercase tracking-widest flex items-center gap-1.5">
-                                    <Lock size={12} /> Page Level Access in Project
-                                </h4>
-                                <span className="text-[10px] text-gray-400">Configure permission level for each page</span>
-                            </div>
-
-                            <div className="border border-gray-200 dark:border-white/10 rounded-2xl overflow-hidden shadow-sm divide-y divide-gray-100 dark:divide-white/5">
-                                {PROJECT_PAGES.map(page => {
-                                    const lvl = localPermissions[page.id] ?? 0;
-                                    return (
-                                        <div key={page.id} className="flex items-center justify-between px-5 py-3 hover:bg-gray-50 dark:hover:bg-white/[0.01] transition-colors">
-                                            <span className="text-sm font-semibold text-gray-700 dark:text-gray-200">{page.label}</span>
-                                            <div className="flex gap-1.5">
-                                                {ACCESS_LEVELS.map((name, i) => (
-                                                    <button
-                                                        key={i}
-                                                        type="button"
-                                                        onClick={() => handleLevelChange(page.id, i)}
-                                                        className={`px-3 py-1 rounded-xl text-xs font-bold transition-all ${
-                                                            lvl === i 
-                                                                ? 'bg-blue-600 text-white shadow-sm' 
-                                                                : 'bg-gray-100 dark:bg-white/5 text-gray-400 hover:bg-gray-200 dark:hover:bg-white/10'
-                                                        }`}
-                                                    >
-                                                        {name}
-                                                    </button>
-                                                ))}
-                                            </div>
-                                        </div>
-                                    );
-                                })}
-                            </div>
-                        </div>
-
-                        {/* Save Actions */}
-                        <div className="flex items-center justify-between pt-2">
-                            <button
-                                type="button"
-                                onClick={() => {
-                                    setTemplateToEdit(null);
-                                    setTemplateEditorOpen(true);
-                                }}
-                                className="px-4 py-2 border border-emerald-200 dark:border-emerald-500/30 text-emerald-600 dark:text-emerald-400 hover:bg-emerald-50 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5"
-                            >
-                                <Sparkles size={14} /> Save Current Access as Template
-                            </button>
-
-                            <div className="flex gap-3">
-                                <button
-                                    onClick={() => setLocalPermissions(selectedMember.permissions || {})}
-                                    className="px-5 py-2.5 border border-gray-200 dark:border-white/10 rounded-xl text-sm font-semibold text-gray-600 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-white/5 transition-all"
-                                >
-                                    Reset Changes
-                                </button>
-                                <button
-                                    onClick={handleSavePermissions}
-                                    disabled={isSaving}
-                                    className="px-6 py-2.5 bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white font-bold rounded-xl text-sm transition-all active:scale-95 shadow-md shadow-blue-500/20 flex items-center gap-2"
-                                >
-                                    {isSaving ? <Loader2 size={16} className="animate-spin" /> : <Save size={16} />}
-                                    Save Permissions
-                                </button>
-                            </div>
-                        </div>
-                    </div>
-                ) : (
-                    <div className="flex-1 flex flex-col items-center justify-center p-12 text-center">
-                        <Users size={48} className="text-gray-300 dark:text-gray-600 mb-3" />
-                        <h3 className="text-sm font-bold text-gray-700 dark:text-gray-300">No Member Selected</h3>
-                        <p className="text-xs text-gray-400 mt-1 max-w-[280px]">Select a project member on the left or add a new team member to configure specific page access levels.</p>
-                    </div>
-                )}
+                            </motion.div>
+                        </motion.div>
+                    ) : (
+                        <motion.div
+                            key="empty"
+                            initial={{ opacity: 0, scale: 0.98 }}
+                            animate={{ opacity: 1, scale: 1 }}
+                            exit={{ opacity: 0, scale: 0.98 }}
+                            transition={{ duration: 0.2 }}
+                            className="flex-1 flex flex-col items-center justify-center p-8 text-center"
+                        >
+                            <Users size={40} className="text-gray-300 dark:text-gray-600 mb-2.5" />
+                            <h3 className="text-xs font-bold text-gray-700 dark:text-gray-300">No Member Selected</h3>
+                            <p className="text-[11px] text-gray-400 mt-1 max-w-[260px]">Select a project member on the left or add a new team member to configure specific page access levels.</p>
+                        </motion.div>
+                    )}
+                </AnimatePresence>
             </div>
 
             {/* Template Editor Modal */}
@@ -732,7 +839,7 @@ const AccessControl = () => {
                 template={deletingTemplate}
                 isDeleting={isDeletingTemplate}
             />
-        </div>
+        </motion.div>
     );
 };
 

@@ -13,7 +13,6 @@ import {
 } from 'lucide-react';
 
 const mockPages = [
-    { id: 'dashboard', label: 'Dashboard', path: '/' },
     { id: 'projects', label: 'Projects', path: '/projects' },
     { id: 'vendors', label: 'Vendors', path: '/vendors' },
     { id: 'clients', label: 'Clients', path: '/clients' },
@@ -107,12 +106,12 @@ const PermissionsGrid = () => {
                                         {[0, 1, 2, 3].map(level => (
                                             <td key={level} className="px-6 py-4 text-center">
                                                 <button
-                                                    className={`w-5 h-5 rounded-full border-2 transition-all flex items-center justify-center m-auto ${page.id === 'dashboard' && level === 3
+                                                    className={`w-5 h-5 rounded-full border-2 transition-all flex items-center justify-center m-auto ${level === 2
                                                         ? 'bg-blue-600 border-blue-600 text-white ring-4 ring-blue-500/10'
                                                         : 'border-gray-200 dark:border-white/10 hover:border-blue-400'
                                                         }`}
                                                 >
-                                                    {page.id === 'dashboard' && level === 3 && <Check size={12} strokeWidth={4} />}
+                                                    {level === 2 && <Check size={12} strokeWidth={4} />}
                                                 </button>
                                             </td>
                                         ))}
