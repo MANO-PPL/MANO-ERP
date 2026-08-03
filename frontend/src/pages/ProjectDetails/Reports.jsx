@@ -205,7 +205,6 @@ const Reports = ({ setExtraBreadcrumbs, canWrite, project }) => {
                                     : 'text-gray-500 hover:bg-gray-50 dark:hover:bg-white/[0.02] hover:text-gray-900 dark:hover:text-gray-300'
                                     }`}
                             >
-                                <tab.icon size={18} strokeWidth={activeTab === tab.id ? 2 : 1.5} className="mr-3.5" />
                                 <div className="text-left">
                                     <p className={`text-[13px] ${activeTab === tab.id ? 'font-medium' : 'font-normal'}`}>
                                         {tab.label}

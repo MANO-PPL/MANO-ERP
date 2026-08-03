@@ -1,10 +1,17 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Filter, Plus, List, Zap, MoreHorizontal, ArrowUpDown, ChevronDown, ChevronRight, Box, GripVertical, Pencil, Trash2, Info, X, Search } from 'lucide-react';
+import { Filter, Plus, List, Zap, MoreHorizontal, ArrowUpDown, ChevronDown, ChevronRight, Box, GripVertical, Pencil, Trash2, Info, X, Search, MapPin, Building2, Users, Calendar, Layers, AlertCircle } from 'lucide-react';
 import NewProjectSlideOut from '../components/NewProjectSlideOut';
 import { projectApi } from '../services/projectApi';
 import { useAuth } from '../context/AuthContext';
 import { customToast } from '../utils/toast';
+import { formatOrdinalDate } from '../utils/dateUtils';
+
+// ─── Helper to strip emojis ──────────────────────────────────────────────────
+const stripEmojis = (str) => {
+    if (!str) return '';
+    return String(str).replace(/[\u{1F300}-\u{1F9FF}]|[\u{2600}-\u{26FF}]|[\u{2700}-\u{27BF}]|[\u{1F600}-\u{1F64F}]|[\u{1F680}-\u{1F6FF}]|📍|🏢/gu, '').trim();
+};
 
 // ─── Project Filter Modal ────────────────────────────────────────────────────
 const ProjectFilterModal = ({ open, onClose, activeFilters, setActiveFilters, allOwners }) => {
@@ -28,17 +35,17 @@ const ProjectFilterModal = ({ open, onClose, activeFilters, setActiveFilters, al
             <div className="relative w-full max-w-md bg-white dark:bg-[#161b22] rounded-2xl shadow-2xl border border-gray-200 dark:border-white/10 p-6 z-10 text-left">
                 <div className="flex justify-between items-center pb-4 border-b border-gray-100 dark:border-white/10">
                     <h3 className="text-base font-bold text-gray-900 dark:text-white">Filter Projects</h3>
-                    <button onClick={onClose} className="p-1 text-gray-400 hover:text-gray-700 dark:hover:text-white rounded-lg">
+                    <button onClick={onClose} className="text-gray-400 hover:text-gray-600 dark:hover:text-white">
                         <X size={18} />
                     </button>
                 </div>
 
-                <div className="py-4 space-y-5 max-h-[60vh] overflow-y-auto custom-scrollbar">
+                <div className="py-4 space-y-4">
                     {/* Status */}
                     <div>
                         <p className="text-xs font-bold text-gray-500 uppercase tracking-wider mb-2">Status</p>
                         <div className="flex flex-wrap gap-2">
-                            {['Active', 'Completed'].map(st => {
+                            {['Active', 'Planning', 'Completed', 'On Hold'].map(st => {
                                 const isSel = activeFilters.status.includes(st);
                                 return (
                                     <button
@@ -55,27 +62,25 @@ const ProjectFilterModal = ({ open, onClose, activeFilters, setActiveFilters, al
                     </div>
 
                     {/* Owner */}
-                    {allOwners.length > 0 && (
-                        <div>
-                            <p className="text-xs font-bold text-gray-500 uppercase tracking-wider mb-2">Owner / Employer</p>
-                            <div className="flex flex-wrap gap-2">
-                                {allOwners.map(owner => {
-                                    if (!owner) return null;
-                                    const isSel = activeFilters.owners.includes(owner);
-                                    return (
-                                        <button
-                                            key={owner}
-                                            onClick={() => toggleFilter('owners', owner)}
-                                            className={`px-3 py-1.5 rounded-lg text-xs font-semibold border transition-all ${isSel ? 'bg-blue-600 text-white border-blue-600' : 'bg-gray-50 dark:bg-white/5 border-gray-200 dark:border-white/10 text-gray-700 dark:text-gray-300'
-                                                }`}
-                                        >
-                                            {owner}
-                                        </button>
-                                    );
-                                })}
-                            </div>
+                    <div>
+                        <p className="text-xs font-bold text-gray-500 uppercase tracking-wider mb-2">Employer / Owner</p>
+                        <div className="flex flex-wrap gap-2 max-h-32 overflow-y-auto">
+                            {allOwners.map(owner => {
+                                const cleanO = stripEmojis(owner);
+                                const isSel = activeFilters.owners.includes(owner);
+                                return (
+                                    <button
+                                        key={owner}
+                                        onClick={() => toggleFilter('owners', owner)}
+                                        className={`px-3 py-1.5 rounded-lg text-xs font-semibold border transition-all ${isSel ? 'bg-blue-600 text-white border-blue-600' : 'bg-gray-50 dark:bg-white/5 border-gray-200 dark:border-white/10 text-gray-700 dark:text-gray-300'
+                                            }`}
+                                    >
+                                        {cleanO}
+                                    </button>
+                                );
+                            })}
                         </div>
-                    )}
+                    </div>
 
                     {/* Issues */}
                     <div>
@@ -111,9 +116,108 @@ const ProjectFilterModal = ({ open, onClose, activeFilters, setActiveFilters, al
     );
 };
 
+// ─── S3 Image Cache & Signing Helper ─────────────────────────────────────────
+const s3SignedUrlCache = new Map();
+
+const getS3SignedUrl = (url) => {
+    if (!url) return '';
+    if (s3SignedUrlCache.has(url)) {
+        return s3SignedUrlCache.get(url);
+    }
+    let finalUrl = url;
+    if (url.startsWith('/uploads') || url.startsWith('uploads')) {
+        const origin = window.location.origin;
+        finalUrl = `${origin}${url.startsWith('/') ? '' : '/'}${url}`;
+    }
+    s3SignedUrlCache.set(url, finalUrl);
+    return finalUrl;
+};
+
 // ─── Project Overview Drawer ──────────────────────────────────────────────────
 const ProjectOverviewDrawer = ({ open, onClose, project, navigate, canWrite, onEdit, getIssueStyles }) => {
+    const [liveDetails, setLiveDetails] = useState(null);
+    const [memberCount, setMemberCount] = useState(project?.memberCount || 0);
+
+    useEffect(() => {
+        setLiveDetails(null);
+        setMemberCount(project?.memberCount || 0);
+
+        if (!open || !project?.dbId) return;
+        let isMounted = true;
+
+        const fetchLiveProject = async () => {
+            try {
+                const [projRes, membersRes] = await Promise.all([
+                    projectApi.getProject(project.dbId).catch(() => null),
+                    projectApi.getProjectMembers(project.dbId).catch(() => null)
+                ]);
+
+                if (!isMounted) return;
+
+                if (projRes && projRes.success && projRes.project) {
+                    const p = projRes.project;
+                    let meta = {};
+                    if (p.metadata) {
+                        try {
+                            meta = typeof p.metadata === 'string' ? JSON.parse(p.metadata) : p.metadata;
+                        } catch (e) {
+                            console.error("Failed to parse metadata", e);
+                        }
+                    }
+                    const phasesList = meta.phases || [];
+                    const totalPhases = phasesList.length;
+                    const completedPhases = phasesList.filter(ph => ph.progress === 100).length;
+
+                    setLiveDetails({
+                        name: p.name,
+                        code: p.project_code || p.id?.toString(),
+                        status: p.status ? p.status.charAt(0).toUpperCase() + p.status.slice(1) : project.status,
+                        location: stripEmojis(p.location || project.location),
+                        owner: stripEmojis(meta.employer || meta.client || project.owner || 'System'),
+                        completion: meta.completion !== undefined ? meta.completion : (project.completion || 0),
+                        startDate: p.start_date ? formatOrdinalDate(p.start_date) : project.startDate,
+                        endDate: p.end_date ? formatOrdinalDate(p.end_date) : project.endDate,
+                        totalPhases: totalPhases || project.totalPhases,
+                        completedPhases: completedPhases || project.completedPhases,
+                        issues: meta.issues || project.issues || 'None',
+                        tags: meta.tags || project.tags || [],
+                        logoUrl: p.logo_url || meta.logo_url || project.logoUrl || ''
+                    });
+                }
+
+                if (membersRes && membersRes.success && membersRes.members) {
+                    setMemberCount(membersRes.members.length);
+                }
+            } catch (err) {
+                console.error("Failed to fetch live project details:", err);
+            }
+        };
+
+        fetchLiveProject();
+        return () => { isMounted = false; };
+    }, [open, project?.dbId]);
+
     if (!open || !project) return null;
+
+    const display = liveDetails || {
+        name: project.name,
+        code: project.id,
+        status: project.status,
+        location: stripEmojis(project.location),
+        owner: stripEmojis(project.owner),
+        completion: project.completion || 0,
+        startDate: project.startDate,
+        endDate: project.endDate,
+        totalPhases: project.totalPhases,
+        completedPhases: project.completedPhases,
+        issues: project.issues || 'None',
+        tags: project.tags || [],
+        logoUrl: project.logoUrl || ''
+    };
+
+    const cleanOwner = stripEmojis(display.owner) || 'System';
+    const cleanLocation = stripEmojis(display.location);
+    const bannerSrc = getS3SignedUrl(display.logoUrl);
 
     return (
         <div className="fixed inset-0 z-[5000] flex justify-end text-left anim-fade-in font-sans">
@@ -122,27 +226,51 @@ const ProjectOverviewDrawer = ({ open, onClose, project, navigate, canWrite, onE
 
             {/* Slideout Panel */}
             <div className="relative w-full max-w-lg bg-white dark:bg-[#0d1117] shadow-2xl border-l border-gray-200 dark:border-white/10 overflow-hidden flex flex-col h-full anim-slide-left z-10">
-                {/* Header */}
-                <div className="px-6 py-5 border-b border-gray-100 dark:border-white/5 flex justify-between items-start bg-gray-50/50 dark:bg-white/[0.02]">
-                    <div className="space-y-1">
-                        <div className="flex items-center gap-2">
-                            <span className="px-2 py-0.5 rounded text-[10px] font-mono font-bold bg-blue-100 dark:bg-blue-900/40 text-blue-600 dark:text-blue-400">
-                                {project.id}
+                {/* Project Banner Image if available */}
+                {bannerSrc && (
+                    <div className="w-full h-44 bg-gray-100 dark:bg-white/5 relative overflow-hidden border-b border-gray-100 dark:border-white/10 shrink-0">
+                        <img
+                            src={bannerSrc}
+                            alt={display.name}
+                            className="w-full h-full object-cover"
+                            onError={(e) => { e.target.style.display = 'none'; }}
+                        />
+                        <div className="absolute inset-0 bg-gradient-to-t from-black/70 via-black/20 to-transparent" />
+                        <div className="absolute bottom-3 left-6 right-6 flex items-center justify-between">
+                            <span className="px-2.5 py-1 rounded text-[10px] font-mono font-bold bg-blue-600/90 text-white backdrop-blur-xs shadow-md">
+                                {display.code}
                             </span>
-                            <span className={`px-2.5 py-0.5 rounded text-[10px] font-bold ${project.statusColor}`}>
-                                {project.status}
+                            <span className={`px-2.5 py-1 rounded text-[10px] font-bold shadow-md ${project.statusColor || 'bg-blue-600 text-white'}`}>
+                                {display.status}
                             </span>
                         </div>
-                        <h2 className="text-xl font-bold text-gray-900 dark:text-white leading-tight">{project.name}</h2>
-                        {project.location && (
-                            <p className="text-xs text-gray-500 dark:text-gray-400 flex items-center gap-1">
-                                📍 {project.location}
+                    </div>
+                )}
+
+                {/* Header */}
+                <div className="px-6 py-5 border-b border-gray-100 dark:border-white/5 flex justify-between items-start bg-gray-50/50 dark:bg-white/[0.02]">
+                    <div className="space-y-1 min-w-0 flex-1 pr-3">
+                        {!bannerSrc && (
+                            <div className="flex items-center gap-2 mb-1">
+                                <span className="px-2 py-0.5 rounded text-[10px] font-mono font-bold bg-blue-100 dark:bg-blue-900/40 text-blue-600 dark:text-blue-400">
+                                    {display.code}
+                                </span>
+                                <span className={`px-2.5 py-0.5 rounded text-[10px] font-bold ${project.statusColor || 'bg-blue-600 text-white'}`}>
+                                    {display.status}
+                                </span>
+                            </div>
+                        )}
+                        <h2 className="text-xl font-bold text-gray-900 dark:text-white leading-tight break-words">{display.name}</h2>
+                        {cleanLocation && (
+                            <p className="text-xs text-gray-500 dark:text-gray-400 flex items-start gap-1.5 pt-0.5 break-words">
+                                <MapPin size={13} className="text-blue-500 shrink-0 mt-0.5" />
+                                <span className="break-words">{cleanLocation}</span>
                             </p>
                         )}
                     </div>
                     <button
                         onClick={onClose}
-                        className="p-1.5 text-gray-400 hover:text-gray-900 dark:hover:text-white hover:bg-gray-100 dark:hover:bg-white/5 rounded-full transition-colors"
+                        className="p-1.5 text-gray-400 hover:text-gray-900 dark:hover:text-white hover:bg-gray-100 dark:hover:bg-white/5 rounded-full transition-colors shrink-0"
                     >
                         <X size={18} />
                     </button>
@@ -154,10 +282,10 @@ const ProjectOverviewDrawer = ({ open, onClose, project, navigate, canWrite, onE
                     <div className="p-4 bg-blue-50/50 dark:bg-blue-900/10 border border-blue-100 dark:border-blue-500/20 rounded-2xl">
                         <div className="flex justify-between items-center mb-2">
                             <span className="font-bold text-gray-700 dark:text-gray-300 uppercase tracking-wider text-[10px]">Project Completion</span>
-                            <span className="font-extrabold text-blue-600 dark:text-blue-400 text-sm">{project.completion}%</span>
+                            <span className="font-extrabold text-blue-600 dark:text-blue-400 text-sm">{display.completion}%</span>
                         </div>
                         <div className="w-full bg-gray-200 dark:bg-white/10 h-2 rounded-full overflow-hidden">
-                            <div className="bg-blue-600 h-full rounded-full transition-all duration-500" style={{ width: `${project.completion}%` }} />
+                            <div className="bg-blue-600 h-full rounded-full transition-all duration-500" style={{ width: `${display.completion}%` }} />
                         </div>
                     </div>
 
@@ -166,49 +294,49 @@ const ProjectOverviewDrawer = ({ open, onClose, project, navigate, canWrite, onE
                         <div className="p-3.5 bg-gray-50 dark:bg-white/[0.02] border border-gray-100 dark:border-white/5 rounded-xl">
                             <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-1">Employer / Owner</p>
                             <div className="flex items-center gap-2">
-                                <div className="w-5 h-5 rounded-full bg-gradient-to-br from-orange-400 to-orange-600 flex justify-center items-center text-[9px] font-bold text-white shrink-0">
-                                    {project.owner.charAt(0)}
+                                <div className="w-6 h-6 rounded-full bg-gradient-to-br from-blue-500 to-indigo-600 flex justify-center items-center text-[10px] font-bold text-white shrink-0 shadow-xs">
+                                    {cleanOwner.charAt(0).toUpperCase()}
                                 </div>
-                                <span className="font-semibold text-gray-900 dark:text-white">{project.owner}</span>
+                                <span className="font-semibold text-gray-900 dark:text-white break-words text-xs">{cleanOwner}</span>
                             </div>
                         </div>
 
                         <div className="p-3.5 bg-gray-50 dark:bg-white/[0.02] border border-gray-100 dark:border-white/5 rounded-xl">
                             <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-1">Team Size</p>
-                            <p className="font-bold text-gray-900 dark:text-white text-sm">{project.memberCount} Members</p>
+                            <p className="font-bold text-gray-900 dark:text-white text-sm">{memberCount} Members</p>
                         </div>
 
                         <div className="p-3.5 bg-gray-50 dark:bg-white/[0.02] border border-gray-100 dark:border-white/5 rounded-xl">
                             <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-1">Start Date</p>
-                            <p className="font-semibold text-gray-900 dark:text-white">{project.startDate}</p>
+                            <p className="font-semibold text-gray-900 dark:text-white">{display.startDate}</p>
                         </div>
 
                         <div className="p-3.5 bg-gray-50 dark:bg-white/[0.02] border border-gray-100 dark:border-white/5 rounded-xl">
                             <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-1">End Date</p>
-                            <p className="font-semibold text-gray-900 dark:text-white">{project.endDate}</p>
+                            <p className="font-semibold text-gray-900 dark:text-white">{display.endDate}</p>
                         </div>
 
                         <div className="p-3.5 bg-gray-50 dark:bg-white/[0.02] border border-gray-100 dark:border-white/5 rounded-xl">
                             <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-1">Phases Status</p>
-                            <p className="font-semibold text-gray-900 dark:text-white">{project.completedPhases} / {project.totalPhases} Completed</p>
+                            <p className="font-semibold text-gray-900 dark:text-white">{display.completedPhases} / {display.totalPhases} Completed</p>
                         </div>
 
                         <div className="p-3.5 bg-gray-50 dark:bg-white/[0.02] border border-gray-100 dark:border-white/5 rounded-xl">
                             <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-1">Issues Status</p>
-                            <span className={`inline-block px-2 py-0.5 rounded text-[10px] font-bold ${getIssueStyles(project.issues)}`}>
-                                {project.issues}
+                            <span className={`inline-block px-2 py-0.5 rounded text-[10px] font-bold ${getIssueStyles(display.issues)}`}>
+                                {display.issues}
                             </span>
                         </div>
                     </div>
 
                     {/* Tags */}
-                    {project.tags && project.tags.length > 0 && (
+                    {display.tags && display.tags.length > 0 && (
                         <div>
                             <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-2">Tags</p>
                             <div className="flex flex-wrap gap-1.5">
-                                {project.tags.map((tag, tIdx) => (
+                                {display.tags.map((tag, tIdx) => (
                                     <span key={tIdx} className="px-2.5 py-1 rounded-full text-[10px] font-semibold bg-blue-50 dark:bg-blue-900/20 text-blue-600 dark:text-blue-400 border border-blue-100 dark:border-blue-500/20">
-                                        {tag}
+                                        {stripEmojis(tag)}
                                     </span>
                                 ))}
                             </div>
@@ -221,7 +349,7 @@ const ProjectOverviewDrawer = ({ open, onClose, project, navigate, canWrite, onE
                     {canWrite && onEdit && (
                         <button
                             onClick={() => { onClose(); onEdit(project); }}
-                            className="flex items-center gap-1.5 px-4 py-2 border border-gray-200 dark:border-white/10 rounded-xl text-gray-700 dark:text-gray-300 font-semibold hover:bg-gray-100 dark:hover:bg-white/5 transition-all text-xs"
+                            className="flex items-center gap-1.5 px-4 py-2 border border-gray-200 dark:border-white/10 rounded-xl text-gray-700 dark:text-gray-300 font-semibold hover:bg-gray-100 dark:hover:bg-white/5 transition-all text-xs cursor-pointer"
                         >
                             <Pencil size={14} /> Edit Details
                         </button>
@@ -229,7 +357,7 @@ const ProjectOverviewDrawer = ({ open, onClose, project, navigate, canWrite, onE
 
                     <button
                         onClick={() => { onClose(); navigate(`/projects/${project.dbId}`); }}
-                        className="flex-1 flex items-center justify-center gap-2 px-5 py-2.5 bg-blue-600 hover:bg-blue-700 text-white font-bold rounded-xl shadow-md shadow-blue-500/20 transition-all text-xs"
+                        className="flex-1 flex items-center justify-center gap-2 px-5 py-2.5 bg-blue-600 hover:bg-blue-700 text-white font-bold rounded-xl shadow-md shadow-blue-500/20 transition-all text-xs cursor-pointer"
                     >
                         <span>Access Project Directory</span>
                         <ChevronRight size={14} />
@@ -337,8 +465,8 @@ const Projects = () => {
                         totalPhases,
                         completedPhases,
                         issues: meta.issues || 'None',
-                        startDate: p.start_date ? new Date(p.start_date).toLocaleDateString('en-US', { month: '2-digit', day: '2-digit', year: 'numeric' }).replace(/\//g, ' ') : 'N/A',
-                        endDate: p.end_date ? new Date(p.end_date).toLocaleDateString('en-US', { month: '2-digit', day: '2-digit', year: 'numeric' }).replace(/\//g, ' ') : 'N/A',
+                        startDate: p.start_date ? formatOrdinalDate(p.start_date) : 'N/A',
+                        endDate: p.end_date ? formatOrdinalDate(p.end_date) : 'N/A',
                         startDateRaw: p.start_date ? p.start_date.split('T')[0] : '',
                         endDateRaw: p.end_date ? p.end_date.split('T')[0] : '',
                         daysAlert: '',
@@ -788,6 +916,7 @@ const Projects = () => {
 
             {/* Overview Sidebar Drawer */}
             <ProjectOverviewDrawer
+                key={overviewProject?.dbId || 'none'}
                 open={!!overviewProject}
                 onClose={() => setOverviewProject(null)}
                 project={overviewProject}

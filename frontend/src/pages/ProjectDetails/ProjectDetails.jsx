@@ -5,6 +5,7 @@ import { toast } from 'react-toastify';
 import { projectApi } from '../../services/projectApi';
 import { useAuth } from '../../context/AuthContext';
 import PageSkeleton from '../../components/PageSkeleton';
+import LogoLoader from '../../components/LogoLoader';
 
 // Tab Components
 import Dashboard from './Dashboard';
@@ -109,7 +110,9 @@ const ProjectDetails = () => {
     const allowedTabs = allTabs.filter(tab => {
         if (tab === 'Dashboard') return true;
         if (isAdmin) return true;
-        const lvl = projectPermissions?.[tab] ?? 0;
+        if (!projectPermissions || Object.keys(projectPermissions).length === 0) return true;
+        const lvl = projectPermissions?.[tab];
+        if (lvl === undefined || lvl === null) return true;
         return lvl >= 1;
     });
 
@@ -120,11 +123,15 @@ const ProjectDetails = () => {
     }, [activeTab, allowedTabs, loading, setSearchParams]);
 
     if (loading) {
-        return <PageSkeleton variant="grid" />;
+        return (
+            <div className="flex-1 w-full h-full min-h-[400px] flex items-center justify-center bg-white dark:bg-[#0d1117]">
+                <LogoLoader text="Rendering Project Workspace..." size="lg" fullPage={false} />
+            </div>
+        );
     }
 
     const renderTabContent = () => {
-        const activeTabLvl = projectPermissions?.[activeTab] ?? 0;
+        const activeTabLvl = (isAdmin || !projectPermissions || projectPermissions[activeTab] === undefined) ? 2 : (projectPermissions[activeTab] ?? 0);
         const canWrite = isAdmin || activeTabLvl >= 2;
         const props = { setExtraBreadcrumbs, project, projectPermissions, isAdmin, user, canWrite, setActiveTab };
         switch (activeTab) {
@@ -166,7 +173,7 @@ const ProjectDetails = () => {
     return (
         <div className="flex flex-col h-full w-full text-gray-900 dark:text-gray-300 bg-white dark:bg-[#0d1117] font-sans">
             {/* Minimal Header */}
-            <div className="flex justify-between items-center px-3.5 py-2 border-b border-gray-200 dark:border-gh-border bg-[#f9fafb] dark:bg-gh-bg transition-colors">
+            <div className="flex justify-between items-center px-3 py-1.5 border-b border-gray-200 dark:border-gh-border bg-[#f9fafb] dark:bg-gh-bg transition-colors shrink-0">
                 <div className="flex items-center space-x-1.5 text-xs">
                     <button
                         onClick={() => navigate('/projects')}
@@ -195,13 +202,13 @@ const ProjectDetails = () => {
                 </div>
             </div>
 
-            {/* Sub-Navigation */}
-            <div className="flex px-2 pt-2 border-b border-gray-200 dark:border-gh-border bg-[#f9fafb] dark:bg-gh-bg transition-colors overflow-x-auto custom-scrollbar">
+            {/* Sub-Navigation Tabs */}
+            <div className="flex px-2 pt-1 border-b border-gray-200 dark:border-gh-border bg-[#f9fafb] dark:bg-gh-bg transition-colors overflow-x-auto custom-scrollbar shrink-0">
                 {allowedTabs.map((tab) => (
                     <button
                         key={tab}
                         onClick={() => setActiveTab(tab)}
-                        className={`pb-2 px-3 text-xs font-semibold border-b-2 transition-colors duration-200 whitespace-nowrap ${activeTab === tab
+                        className={`pb-1.5 px-2.5 text-xs font-semibold border-b-2 transition-colors duration-200 whitespace-nowrap cursor-pointer ${activeTab === tab
                             ? 'border-blue-600 text-blue-600 dark:border-blue-500 dark:text-blue-400'
                             : 'border-transparent text-gray-500 dark:text-gray-400 hover:text-gray-800 dark:hover:text-gray-200 hover:border-gray-300 dark:hover:border-gray-500'
                             }`}
