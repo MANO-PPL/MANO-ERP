@@ -4,6 +4,7 @@ import { resourceApi } from '../../services/resourceApi';
 import { UNIT_OPTIONS, UNIT_REGISTRY, UNIT_GROUPS } from './resourceConstants';
 import { motion } from 'framer-motion';
 import ConfirmModal from '../../components/ConfirmModal';
+import CustomDatePicker from '../../components/CustomDatePicker';
 
 const unitTypeLabel = { weight: 'Weight', volume: 'Volume', length: 'Length', area: 'Area', count: 'Count', time: 'Time' };
 const today = () => new Date().toISOString().slice(0, 10);
@@ -463,20 +464,17 @@ const ResourceForm = ({ resource, onClose, onSave }) => {
                                         </p>
                                     </div>
                                     <div className="flex items-center gap-2 shrink-0">
-                                        <label className="flex items-center gap-1.5 px-2 py-1.5 bg-white dark:bg-[#0d1117] border border-gray-200 dark:border-white/10 rounded-lg text-[10px] font-bold text-gray-500 uppercase">
-                                            <Calendar size={12} />
-                                            <span>Effective</span>
-                                            <input
-                                                type="date"
-                                                required
+                                        <div className="flex items-center gap-1.5">
+                                            <span className="text-[10px] font-bold text-gray-400 uppercase tracking-wider whitespace-nowrap">Effective:</span>
+                                            <CustomDatePicker
                                                 value={compositionEffectiveFrom}
                                                 onChange={e => {
                                                     setCompositionEffectiveFrom(e.target.value);
                                                     setCompositionChanged(true);
                                                 }}
-                                                className="bg-transparent text-xs font-semibold text-gray-800 dark:text-gray-200 outline-none normal-case"
+                                                className="w-[160px]"
                                             />
-                                        </label>
+                                        </div>
                                         <button
                                             type="button"
                                             onClick={handleAddComposition}

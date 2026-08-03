@@ -7,6 +7,8 @@ import { resourceApi } from '../../services/resourceApi';
 import { UNIT_OPTIONS, UNIT_REGISTRY, UNIT_GROUPS } from './resourceConstants';
 import { motion, AnimatePresence } from 'framer-motion';
 import ConfirmModal from '../../components/ConfirmModal';
+import CustomDatePicker from '../../components/CustomDatePicker';
+import LogoLoader from '../../components/LogoLoader';
 
 const unitTypeLabel = { weight: 'Weight', volume: 'Volume', length: 'Length', area: 'Area', count: 'Count', time: 'Time' };
 const today = () => new Date().toISOString().slice(0, 10);
@@ -24,11 +26,16 @@ const TYPE_CONFIG = {
 };
 
 const SectionHeader = ({ title, badge }) => (
-    <div className="flex items-center justify-between mb-2">
+    <div className="flex items-center gap-2">
         <h3 className="text-[10px] font-black text-gray-400 dark:text-gray-500 uppercase tracking-widest">{title}</h3>
-        {badge && <span className="text-[10px] font-semibold text-gray-400">{badge}</span>}
+        {badge && (
+            <span className="px-2 py-0.5 rounded-full text-[10px] font-extrabold bg-gray-100 dark:bg-white/5 text-gray-500 dark:text-gray-400 border border-gray-200/60 dark:border-white/10 shrink-0">
+                {badge}
+            </span>
+        )}
     </div>
 );
+
 
 const ResourceDetail = ({
     resourceId,
@@ -356,10 +363,7 @@ Remarks       : ${formData.remarks || '-'}
         if (isLoading) {
             return (
                 <div className="flex-1 flex items-center justify-center p-8">
-                    <div className="text-center">
-                        <RefreshCw size={24} className="animate-spin text-blue-500 mx-auto mb-3" />
-                        <p className="text-sm font-semibold text-gray-500 dark:text-gray-400">Loading spreadsheet details...</p>
-                    </div>
+                    <LogoLoader text="Rendering Resource Inspector..." size="md" fullPage={false} />
                 </div>
             );
         }
@@ -526,14 +530,14 @@ Remarks       : ${formData.remarks || '-'}
                     {/* General Information Inspector */}
                     <section>
                         <SectionHeader title="General Information Inspector" />
-                        <div className="bg-gray-50/70 dark:bg-white/[0.02] rounded-xl border border-gray-200/70 dark:border-white/10 p-3 space-y-3">
+                        <div className="bg-gray-50/70 dark:bg-white/[0.02] rounded-xl border border-gray-200/70 dark:border-white/10 p-3.5 space-y-3 mt-2">
                             {/* Base Unit Selector */}
-                            <div className="flex items-center justify-between gap-3">
-                                <label className="text-xs font-bold text-gray-600 dark:text-gray-400 w-28">Base Unit <span className="text-red-500">*</span></label>
+                            <div className="grid grid-cols-[100px_1fr] items-center gap-3">
+                                <label className="text-xs font-bold text-gray-600 dark:text-gray-400">Base Unit <span className="text-red-500">*</span></label>
                                 <select
                                     value={formData.base_unit_code}
                                     onChange={e => updateFormField('base_unit_code', e.target.value)}
-                                    className="flex-1 px-2.5 py-1.5 bg-white dark:bg-[#0d1117] border border-gray-200 dark:border-white/10 rounded-lg text-xs font-bold text-gray-900 dark:text-white focus:ring-1 focus:ring-blue-500 focus:outline-none"
+                                    className="w-full px-2.5 py-1.5 bg-white dark:bg-[#0d1117] border border-gray-200 dark:border-white/10 rounded-lg text-xs font-bold text-gray-900 dark:text-white focus:ring-1 focus:ring-blue-500 focus:outline-none"
                                 >
                                     {Object.entries(UNIT_GROUPS).map(([groupType, units]) => (
                                         <optgroup key={groupType} label={unitTypeLabel[groupType] || groupType}>
@@ -546,25 +550,25 @@ Remarks       : ${formData.remarks || '-'}
                             </div>
 
                             {/* Description Input */}
-                            <div className="flex items-start justify-between gap-3">
-                                <label className="text-xs font-bold text-gray-600 dark:text-gray-400 w-28 pt-1.5">Description</label>
+                            <div className="grid grid-cols-[100px_1fr] items-start gap-3">
+                                <label className="text-xs font-bold text-gray-600 dark:text-gray-400 pt-1.5">Description</label>
                                 <textarea
                                     rows="2"
                                     value={formData.description}
                                     onChange={e => updateFormField('description', e.target.value)}
-                                    className="flex-1 px-2.5 py-1.5 bg-white dark:bg-[#0d1117] border border-gray-200 dark:border-white/10 rounded-lg text-xs font-medium text-gray-900 dark:text-white focus:ring-1 focus:ring-blue-500 focus:outline-none resize-none"
+                                    className="w-full px-2.5 py-1.5 bg-white dark:bg-[#0d1117] border border-gray-200 dark:border-white/10 rounded-lg text-xs font-medium text-gray-900 dark:text-white focus:ring-1 focus:ring-blue-500 focus:outline-none resize-none"
                                     placeholder="Enter resource description..."
                                 />
                             </div>
 
                             {/* Remarks Input */}
-                            <div className="flex items-center justify-between gap-3">
-                                <label className="text-xs font-bold text-gray-600 dark:text-gray-400 w-28">Remarks</label>
+                            <div className="grid grid-cols-[100px_1fr] items-center gap-3">
+                                <label className="text-xs font-bold text-gray-600 dark:text-gray-400">Remarks</label>
                                 <input
                                     type="text"
                                     value={formData.remarks}
                                     onChange={e => updateFormField('remarks', e.target.value)}
-                                    className="flex-1 px-2.5 py-1.5 bg-white dark:bg-[#0d1117] border border-gray-200 dark:border-white/10 rounded-lg text-xs font-medium text-gray-900 dark:text-white focus:ring-1 focus:ring-blue-500 focus:outline-none"
+                                    className="w-full px-2.5 py-1.5 bg-white dark:bg-[#0d1117] border border-gray-200 dark:border-white/10 rounded-lg text-xs font-medium text-gray-900 dark:text-white focus:ring-1 focus:ring-blue-500 focus:outline-none"
                                     placeholder="Internal specs or remarks..."
                                 />
                             </div>
@@ -573,12 +577,12 @@ Remarks       : ${formData.remarks || '-'}
 
                     {/* Unit Conversions Table Inspector */}
                     <section>
-                        <div className="flex items-center justify-between mb-2">
-                            <SectionHeader title="Unit Conversion Scales" badge={`${formData.conversions?.length || 0} Defined`} />
+                        <div className="flex items-center justify-between gap-2 mb-2 flex-wrap">
+                            <SectionHeader title="Unit Conversion Scales" />
                             {canWrite && (
                                 <button
                                     onClick={() => { setIsAddingConv(v => !v); setConvError(''); }}
-                                    className="flex items-center gap-1 px-2.5 py-1 bg-blue-50 dark:bg-blue-900/20 text-blue-600 dark:text-blue-400 border border-blue-200 dark:border-blue-500/20 rounded-lg text-[10px] font-bold hover:bg-blue-100 transition"
+                                    className="flex items-center gap-1 px-2.5 py-1 bg-blue-50 dark:bg-blue-900/20 text-blue-600 dark:text-blue-400 border border-blue-200 dark:border-blue-500/20 rounded-lg text-[10px] font-bold hover:bg-blue-100 transition shrink-0"
                                 >
                                     <Plus size={11} /> Add Scale
                                 </button>
@@ -640,23 +644,23 @@ Remarks       : ${formData.remarks || '-'}
                                 No unit conversion scales configured.
                             </div>
                         ) : (
-                            <div className="border border-gray-200 dark:border-white/10 rounded-xl overflow-hidden">
+                            <div className="border border-gray-200 dark:border-white/10 rounded-xl overflow-hidden shadow-sm">
                                 <table className="w-full text-left text-xs bg-white dark:bg-transparent">
-                                    <thead className="bg-[#f9fafb] dark:bg-[#161b22] text-gray-400 uppercase tracking-wider text-[10px] font-bold">
+                                    <thead className="bg-[#f9fafb] dark:bg-[#161b22] text-gray-400 uppercase tracking-wider text-[10px] font-bold border-b border-gray-200 dark:border-white/5">
                                         <tr>
-                                            <th className="px-3 py-2">Scale Name</th>
-                                            <th className="px-3 py-2">Equals Quantity</th>
-                                            <th className="px-3 py-2 w-8 text-center"></th>
+                                            <th className="px-3.5 py-2.5">Scale Name</th>
+                                            <th className="px-3.5 py-2.5 text-right w-40">Equals Quantity</th>
+                                            <th className="px-3 py-2.5 w-12 text-center">Action</th>
                                         </tr>
                                     </thead>
                                     <tbody className="divide-y divide-gray-100 dark:divide-white/5">
                                         {formData.conversions.map((c, idx) => (
                                             <tr key={c.id || idx} className="hover:bg-gray-50/50 dark:hover:bg-white/[0.02]">
-                                                <td className="px-3 py-2 font-semibold text-gray-900 dark:text-white">1 {c.name}</td>
-                                                <td className="px-3 py-2 text-gray-700 dark:text-gray-300 font-mono font-bold">
+                                                <td className="px-3.5 py-2.5 font-semibold text-gray-900 dark:text-white">1 {c.name}</td>
+                                                <td className="px-3.5 py-2.5 text-right text-gray-700 dark:text-gray-300 font-mono font-bold">
                                                     = {c.quantity} {c.unit_code}
                                                 </td>
-                                                <td className="px-3 py-2 text-center">
+                                                <td className="px-3 py-2.5 text-center">
                                                     {canWrite && (
                                                         <button
                                                             onClick={() => handleDeleteConversion(c.id, c.name)}
@@ -678,35 +682,34 @@ Remarks       : ${formData.remarks || '-'}
                     {/* Composite Recipe Ingredients Inspector (Items Only) */}
                     {formData.type === 'item' && (
                         <section>
-                            <div className="flex items-center justify-between mb-2">
-                                <SectionHeader title="Composite Recipe Ingredients" badge={`${formData.compositions?.length || 0} Ingredients`} />
-                                <div className="flex items-center gap-2">
-                                    <label className="flex items-center gap-1.5 px-2 py-1 bg-white dark:bg-[#0d1117] border border-gray-200 dark:border-white/10 rounded-lg text-[9px] font-bold text-gray-500 uppercase">
-                                        <Calendar size={11} />
-                                        <span>Effective</span>
-                                        <input
-                                            type="date"
-                                            required
-                                            disabled={!canWrite}
+                            <div className="flex items-center justify-between gap-3 mb-2 flex-wrap sm:flex-nowrap">
+                                <SectionHeader title="Composite Recipe Ingredients" />
+                                <div className="flex items-center gap-2.5 shrink-0 flex-wrap sm:flex-nowrap ml-auto">
+                                    <div className="flex items-center gap-1.5">
+                                        <span className="text-[10px] font-bold text-gray-400 dark:text-gray-500 uppercase tracking-wider whitespace-nowrap">Effective:</span>
+                                        <CustomDatePicker
                                             value={compositionEffectiveFrom}
+                                            disabled={!canWrite}
                                             onChange={e => {
                                                 setCompositionEffectiveFrom(e.target.value);
                                                 setHasLocalChanges(true);
                                                 setCompositionChanged(true);
                                             }}
-                                            className="bg-transparent text-[10px] font-semibold text-gray-800 dark:text-gray-200 outline-none normal-case"
+                                            className="w-[160px]"
                                         />
-                                    </label>
+                                    </div>
                                     {canWrite && (
                                         <button
+                                            type="button"
                                             onClick={() => { setIsAddingComp(v => !v); setCompError(''); }}
-                                            className="flex items-center gap-1 px-2.5 py-1 bg-purple-50 dark:bg-purple-900/20 text-purple-600 dark:text-purple-400 border border-purple-200 dark:border-purple-500/20 rounded-lg text-[10px] font-bold hover:bg-purple-100 transition"
+                                            className="flex items-center gap-1.5 px-3 py-1.5 bg-purple-600 hover:bg-purple-700 text-white rounded-lg text-xs font-bold transition-all shadow-xs active:scale-[0.98] cursor-pointer shrink-0"
                                         >
-                                            <Plus size={11} /> Add Ingredient
+                                            <Plus size={13} className="stroke-[3]" /> Add Ingredient
                                         </button>
                                     )}
                                 </div>
                             </div>
+
                             {latestCompositionDate && (
                                 <p className="text-[10px] text-gray-400 mb-2">Latest saved version: {latestCompositionDate}. New versions must use a later date.</p>
                             )}
@@ -773,25 +776,25 @@ Remarks       : ${formData.remarks || '-'}
                                     No recipe ingredients defined for this item.
                                 </div>
                             ) : (
-                                <div className="border border-gray-200 dark:border-white/10 rounded-xl overflow-hidden">
+                                <div className="border border-gray-200 dark:border-white/10 rounded-xl overflow-hidden shadow-sm">
                                     <table className="w-full text-left text-xs bg-white dark:bg-transparent">
-                                        <thead className="bg-[#f9fafb] dark:bg-[#161b22] text-gray-400 uppercase tracking-wider text-[10px] font-bold">
+                                        <thead className="bg-[#f9fafb] dark:bg-[#161b22] text-gray-400 uppercase tracking-wider text-[10px] font-bold border-b border-gray-200 dark:border-white/5">
                                             <tr>
-                                                <th className="px-3 py-2">Ingredient Component</th>
-                                                <th className="px-3 py-2 text-right">Quantity</th>
-                                                <th className="px-3 py-2 w-8 text-center"></th>
+                                                <th className="px-3.5 py-2.5">Ingredient Component</th>
+                                                <th className="px-3.5 py-2.5 text-right w-36">Quantity</th>
+                                                <th className="px-3 py-2.5 w-12 text-center">Action</th>
                                             </tr>
                                         </thead>
                                         <tbody className="divide-y divide-gray-100 dark:divide-white/5">
                                             {formData.compositions.map((comp, idx) => (
                                                 <tr key={comp.id || idx} className="hover:bg-purple-50/30 dark:hover:bg-purple-900/10">
-                                                    <td className="px-3 py-2 font-semibold text-gray-900 dark:text-white">
+                                                    <td className="px-3.5 py-2.5 font-semibold text-gray-900 dark:text-white">
                                                         {comp.component_name || `Component #${comp.component_resource_id}`}
                                                     </td>
-                                                    <td className="px-3 py-2 text-right font-mono font-bold text-purple-600 dark:text-purple-400">
+                                                    <td className="px-3.5 py-2.5 text-right font-mono font-bold text-purple-600 dark:text-purple-400">
                                                         {comp.quantity} {comp.unit_code}
                                                     </td>
-                                                    <td className="px-3 py-2 text-center">
+                                                    <td className="px-3 py-2.5 text-center">
                                                         {canWrite && (
                                                             <button
                                                                 onClick={() => handleDeleteComposition(comp.id, comp.component_name)}
@@ -809,6 +812,7 @@ Remarks       : ${formData.remarks || '-'}
                                 </div>
                             )}
                         </section>
+
                     )}
                 </div>
 
@@ -909,10 +913,11 @@ Remarks       : ${formData.remarks || '-'}
                 animate={{ x: 0 }}
                 exit={{ x: '100%' }}
                 transition={{ type: 'spring', damping: 30, stiffness: 300 }}
-                className="w-[480px] h-full bg-white dark:bg-[#0d1117] shadow-2xl border-l border-gray-200 dark:border-white/10 flex flex-col"
+                className="w-[580px] max-w-[90vw] h-full bg-white dark:bg-[#0d1117] shadow-2xl border-l border-gray-200 dark:border-white/10 flex flex-col"
             >
                 {renderContent()}
             </motion.div>
+
         </motion.div>
     );
 };

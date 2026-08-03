@@ -18,6 +18,8 @@ import ConfirmModal from '../../components/ConfirmModal';
 import DuplicateResolverModal from '../../components/DuplicateResolverModal';
 import Toast from '../../components/Toast';
 import ResourceFilterDropdown from './ResourceFilterDropdown';
+import CustomDatePicker from '../../components/CustomDatePicker';
+import LogoLoader from '../../components/LogoLoader';
 
 const TYPE_CONFIG = {
     material: { label: 'Material', icon: Package, color: 'text-amber-600 dark:text-amber-400', bg: 'bg-amber-100 dark:bg-amber-900/30' },
@@ -29,6 +31,22 @@ const unitTypeLabel = { weight: 'Weight', volume: 'Volume', length: 'Length', ar
 const today = () => new Date().toISOString().slice(0, 10);
 
 const GRID_COLUMNS = ['code', 'name', 'type', 'base_unit_code', 'rate', 'compositions', 'conversions', 'description', 'remarks'];
+const DEFAULT_GRID_COLUMNS = ['code', 'name', 'type', 'base_unit_code', 'rate', 'description', 'remarks'];
+
+const COLUMN_METADATA = [
+    { key: 'code', label: 'Code', default: true },
+    { key: 'name', label: 'Name', default: true, required: true },
+    { key: 'type', label: 'Type', default: true },
+    { key: 'base_unit_code', label: 'Base Unit', default: true },
+    { key: 'rate', label: 'Rate (₹)', default: true },
+    { key: 'compositions', label: 'Recipe / Components', default: false },
+    { key: 'conversions', label: 'Unit Conversions', default: false },
+    { key: 'description', label: 'Description', default: true },
+    { key: 'remarks', label: 'Remarks', default: true },
+];
+
+
+
 
 const resolveType = (rawStr) => {
     if (!rawStr) return 'material';
@@ -262,15 +280,71 @@ const ResourceList = () => {
     const [searchTerm, setSearchTerm] = useState('');
     const [filterType, setFilterType] = useState('');
 
+    // Column Visibility Privilege & Selection State
+    const getInitialVisibleColumns = () => {
+        try {
+            const saved = localStorage.getItem('mano_resource_grid_columns_v2');
+            if (saved) {
+                const parsed = JSON.parse(saved);
+                if (Array.isArray(parsed) && parsed.length > 0) {
+                    const requiredKeys = COLUMN_METADATA.filter(c => c.required).map(c => c.key);
+                    return Array.from(new Set([...parsed, ...requiredKeys]));
+                }
+            }
+        } catch (e) { }
+        return DEFAULT_GRID_COLUMNS;
+    };
+
+    const [visibleColumns, setVisibleColumns] = useState(getInitialVisibleColumns);
+    const [isColumnSelectorOpen, setIsColumnSelectorOpen] = useState(false);
+    const columnSelectorRef = useRef(null);
+
+    // Save column preferences to localStorage
+    useEffect(() => {
+        try {
+            localStorage.setItem('mano_resource_grid_columns_v2', JSON.stringify(visibleColumns));
+        } catch (e) { }
+    }, [visibleColumns]);
+
+    // Click outside handler for Column Selector Dropdown
+    useEffect(() => {
+        const handleClickOutside = (e) => {
+            if (columnSelectorRef.current && !columnSelectorRef.current.contains(e.target)) {
+                setIsColumnSelectorOpen(false);
+            }
+        };
+        if (isColumnSelectorOpen) {
+            document.addEventListener('mousedown', handleClickOutside);
+        }
+        return () => document.removeEventListener('mousedown', handleClickOutside);
+    }, [isColumnSelectorOpen]);
+
     const activeGridColumns = useMemo(() => {
-        if (filterType === 'material') {
-            return ['code', 'name', 'type', 'base_unit_code', 'rate', 'conversions', 'description', 'remarks'];
-        }
-        if (filterType === 'labour') {
-            return ['code', 'name', 'type', 'base_unit_code', 'rate', 'description', 'remarks'];
-        }
-        return ['code', 'name', 'type', 'base_unit_code', 'rate', 'compositions', 'conversions', 'description', 'remarks'];
-    }, [filterType]);
+        return GRID_COLUMNS.filter(colKey => {
+            if (!visibleColumns.includes(colKey)) return false;
+            if (filterType === 'material' && colKey === 'compositions') return false;
+            if (filterType === 'labour' && (colKey === 'compositions' || colKey === 'conversions')) return false;
+            return true;
+        });
+    }, [visibleColumns, filterType]);
+
+    const toggleColumnVisibility = (colKey) => {
+        const meta = COLUMN_METADATA.find(c => c.key === colKey);
+        if (meta?.required) return; // Necessary columns cannot be disabled
+        setVisibleColumns(prev => {
+            if (prev.includes(colKey)) {
+                if (prev.length <= 1) return prev;
+                return prev.filter(c => c !== colKey);
+            } else {
+                return [...prev, colKey];
+            }
+        });
+    };
+
+
+    const resetDefaultColumns = () => setVisibleColumns(DEFAULT_GRID_COLUMNS);
+    const selectAllColumns = () => setVisibleColumns(GRID_COLUMNS);
+
     const [isFilterDropdownOpen, setIsFilterDropdownOpen] = useState(false);
     const [filterUnitSearch, setFilterUnitSearch] = useState('');
     const [activeFilters, setActiveFilters] = useState({ types: [], units: [], statuses: [] });
@@ -2207,28 +2281,24 @@ const ResourceList = () => {
             <div className="px-3 py-1.5 flex items-center justify-between border-b border-gray-200 dark:border-white/5 shrink-0 gap-3">
                 <div className="flex items-center gap-3">
                     {hasPendingCompositionChanges && (
-                        <label className="flex items-center gap-1.5 px-2.5 py-1.5 bg-white dark:bg-[#0d1117] border border-purple-200 dark:border-purple-500/30 rounded-lg text-[10px] font-bold text-purple-600 dark:text-purple-300 uppercase whitespace-nowrap">
-                            <span>Recipe effective from</span>
-                            <input
-                                type="date"
-                                required
+                        <div className="flex items-center gap-1.5 border border-purple-200 dark:border-purple-500/30 bg-purple-50/50 dark:bg-purple-900/10 rounded-lg px-2 py-1">
+                            <span className="text-[10px] font-bold text-purple-600 dark:text-purple-300 uppercase whitespace-nowrap">Recipe effective:</span>
+                            <CustomDatePicker
                                 value={compositionEffectiveFrom}
                                 onChange={e => setCompositionEffectiveFrom(e.target.value)}
-                                className="bg-transparent text-xs font-semibold text-gray-800 dark:text-gray-200 outline-none normal-case"
+                                className="w-[150px]"
                             />
-                        </label>
+                        </div>
                     )}
                     {hasPendingRateChanges && (
-                        <label className="flex items-center gap-1.5 px-2.5 py-1.5 bg-white dark:bg-[#0d1117] border border-emerald-200 dark:border-emerald-500/30 rounded-lg text-[10px] font-bold text-emerald-600 dark:text-emerald-300 uppercase whitespace-nowrap">
-                            <span>Rate effective from</span>
-                            <input
-                                type="date"
-                                required
+                        <div className="flex items-center gap-1.5 border border-emerald-200 dark:border-emerald-500/30 bg-emerald-50/50 dark:bg-emerald-900/10 rounded-lg px-2 py-1">
+                            <span className="text-[10px] font-bold text-emerald-600 dark:text-emerald-300 uppercase whitespace-nowrap">Rate effective:</span>
+                            <CustomDatePicker
                                 value={rateEffectiveFrom}
                                 onChange={e => setRateEffectiveFrom(e.target.value)}
-                                className="bg-transparent text-xs font-semibold text-gray-800 dark:text-gray-200 outline-none normal-case"
+                                className="w-[150px]"
                             />
-                        </label>
+                        </div>
                     )}
                     {/* Manual Save Button & Sync Status */}
                     <div className="flex items-center gap-2">
@@ -2309,6 +2379,83 @@ const ResourceList = () => {
                         activeFilters={activeFilters}
                         onApply={(newFilters) => setActiveFilters(newFilters)}
                     />
+
+                    {/* Column Visibility Selector Dropdown */}
+                    <div className="relative" ref={columnSelectorRef}>
+                        <button
+                            type="button"
+                            onClick={() => setIsColumnSelectorOpen(!isColumnSelectorOpen)}
+                            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg border text-xs font-semibold transition ${visibleColumns.length < GRID_COLUMNS.length
+                                ? 'border-purple-500 bg-purple-500/10 text-purple-600 dark:text-purple-400'
+                                : 'border-gray-200 dark:border-white/10 text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-white/5'
+                                }`}
+                            title="Customize Grid Columns Visibility"
+                        >
+                            <Eye size={13} />
+                            <span>Columns</span>
+                            <span className="ml-0.5 bg-gray-200 dark:bg-white/10 text-gray-700 dark:text-gray-300 text-[10px] px-1.5 py-0.2 rounded-full font-bold">
+                                {visibleColumns.length}/{GRID_COLUMNS.length}
+                            </span>
+                            <ChevronDown size={12} className={`transition-transform duration-200 ${isColumnSelectorOpen ? 'rotate-180' : ''}`} />
+                        </button>
+
+                        {isColumnSelectorOpen && (
+                            <div className="absolute right-0 top-full mt-1.5 w-72 bg-white dark:bg-[#161b22] border border-gray-200 dark:border-white/10 rounded-xl shadow-2xl z-[6000] p-3 text-xs text-gray-800 dark:text-gray-200 flex flex-col gap-2 select-none animate-in fade-in zoom-in-95 duration-100">
+                                <div className="flex items-center justify-between border-b border-gray-100 dark:border-white/5 pb-2">
+                                    <span className="font-extrabold uppercase text-[10px] tracking-wider text-gray-500 dark:text-gray-400 flex items-center gap-1">
+                                        <Eye size={12} /> Visible Columns
+                                    </span>
+                                    <div className="flex items-center gap-2">
+                                        <button
+                                            type="button"
+                                            onClick={selectAllColumns}
+                                            className="text-[10px] font-bold text-blue-600 hover:text-blue-700 dark:text-blue-400 transition"
+                                        >
+                                            Select All
+                                        </button>
+                                        <span className="text-gray-300 dark:text-white/10">•</span>
+                                        <button
+                                            type="button"
+                                            onClick={resetDefaultColumns}
+                                            className="text-[10px] font-bold text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 transition"
+                                        >
+                                            Reset
+                                        </button>
+                                    </div>
+                                </div>
+
+                                <div className="space-y-1 max-h-72 overflow-y-auto no-scrollbar pr-0">
+                                    {COLUMN_METADATA.map(col => {
+                                        const isVisible = visibleColumns.includes(col.key);
+                                        const isRequired = col.required;
+                                        return (
+                                            <div
+                                                key={col.key}
+                                                onClick={() => !isRequired && toggleColumnVisibility(col.key)}
+                                                className={`flex items-center justify-between px-2.5 py-1.5 rounded-lg transition cursor-pointer ${isRequired ? 'opacity-60 cursor-not-allowed bg-gray-50 dark:bg-white/[0.02]' : 'hover:bg-gray-100 dark:hover:bg-white/5'
+                                                    }`}
+                                            >
+                                                <span className="font-semibold flex items-center gap-2 text-gray-800 dark:text-gray-200">
+                                                    <CustomCheckbox
+                                                        checked={isVisible}
+                                                        onChange={() => !isRequired && toggleColumnVisibility(col.key)}
+                                                    />
+                                                    <span>{col.label}</span>
+                                                </span>
+                                                {isRequired && (
+                                                    <span className="text-[9px] font-extrabold text-amber-600 dark:text-amber-400 uppercase bg-amber-50 dark:bg-amber-900/20 px-1.5 py-0.5 rounded">
+                                                        Required
+                                                    </span>
+                                                )}
+                                            </div>
+                                        );
+                                    })}
+                                </div>
+                            </div>
+                        )}
+
+                    </div>
+
 
                     {/* Remove Duplicates button */}
                     <button
@@ -2485,7 +2632,7 @@ const ResourceList = () => {
                 className="flex-1 min-h-0 flex overflow-hidden w-full relative"
             >
                 {/* Spreadsheet Grid Table */}
-                <div className="flex-1 min-h-0 overflow-auto no-scrollbar">
+                <div className="flex-1 min-h-0 overflow-auto table-scrollbar">
                     <table className="w-full min-w-[1900px] text-left whitespace-nowrap text-[13px] border-collapse bg-white dark:bg-[#0d1117] select-none">
                         <thead className="bg-[#f9fafb] dark:bg-[#161b22] text-gray-500 dark:text-gray-400 sticky top-0 z-20 border-b border-gray-200 dark:border-white/5 tracking-wider text-[10px] uppercase font-bold select-none shadow-sm">
                             <tr>
@@ -2503,53 +2650,63 @@ const ResourceList = () => {
                                 <th className="px-2 py-3 w-16 text-center border-r border-gray-150 dark:border-white/5">Status</th>
 
                                 {/* Sortable Column Headers */}
-                                <th
-                                    onClick={() => handleSort('code')}
-                                    className="px-3 py-3 w-32 border-r border-gray-150 dark:border-white/5 cursor-pointer hover:bg-gray-100 dark:hover:bg-white/5 transition"
-                                >
-                                    <div className="flex items-center justify-between">
-                                        <span>Code</span>
-                                        {sortConfig.key === 'code' && (sortConfig.direction === 'asc' ? <ArrowUp size={12} /> : <ArrowDown size={12} />)}
-                                    </div>
-                                </th>
-                                <th
-                                    onClick={() => handleSort('name')}
-                                    className="px-3 py-3 w-56 border-r border-gray-150 dark:border-white/5 cursor-pointer hover:bg-gray-100 dark:hover:bg-white/5 transition"
-                                >
-                                    <div className="flex items-center justify-between">
-                                        <span>Name <span className="text-red-500">*</span></span>
-                                        {sortConfig.key === 'name' && (sortConfig.direction === 'asc' ? <ArrowUp size={12} /> : <ArrowDown size={12} />)}
-                                    </div>
-                                </th>
-                                <th
-                                    onClick={() => handleSort('type')}
-                                    className="px-3 py-3 w-32 border-r border-gray-150 dark:border-white/5 cursor-pointer hover:bg-gray-100 dark:hover:bg-white/5 transition"
-                                >
-                                    <div className="flex items-center justify-between">
-                                        <span>Type</span>
-                                        {sortConfig.key === 'type' && (sortConfig.direction === 'asc' ? <ArrowUp size={12} /> : <ArrowDown size={12} />)}
-                                    </div>
-                                </th>
-                                <th
-                                    onClick={() => handleSort('base_unit_code')}
-                                    className="px-3 py-3 w-36 border-r border-gray-150 dark:border-white/5 cursor-pointer hover:bg-gray-100 dark:hover:bg-white/5 transition"
-                                >
-                                    <div className="flex items-center justify-between">
-                                        <span>Base Unit <span className="text-red-500">*</span></span>
-                                        {sortConfig.key === 'base_unit_code' && (sortConfig.direction === 'asc' ? <ArrowUp size={12} /> : <ArrowDown size={12} />)}
-                                    </div>
-                                </th>
-                                <th
-                                    onClick={() => handleSort('rate')}
-                                    className="px-3 py-3 w-44 border-r border-gray-150 dark:border-white/5 cursor-pointer hover:bg-gray-100 dark:hover:bg-white/5 transition"
-                                >
-                                    <div className="flex items-center justify-between">
-                                        <span className="flex items-center gap-1 text-emerald-600 dark:text-emerald-400">
-                                            <DollarSign size={12} /> Rate (₹)
-                                        </span>
-                                        {sortConfig.key === 'rate' && (sortConfig.direction === 'asc' ? <ArrowUp size={12} /> : <ArrowDown size={12} />)}
-                                    </div>
-                                </th>
+                                {activeGridColumns.includes('code') && (
+                                    <th
+                                        onClick={() => handleSort('code')}
+                                        className="px-3 py-3 w-32 border-r border-gray-150 dark:border-white/5 cursor-pointer hover:bg-gray-100 dark:hover:bg-white/5 transition"
+                                    >
+                                        <div className="flex items-center justify-between">
+                                            <span>Code</span>
+                                            {sortConfig.key === 'code' && (sortConfig.direction === 'asc' ? <ArrowUp size={12} /> : <ArrowDown size={12} />)}
+                                        </div>
+                                    </th>
+                                )}
+                                {activeGridColumns.includes('name') && (
+                                    <th
+                                        onClick={() => handleSort('name')}
+                                        className="px-3 py-3 w-56 border-r border-gray-150 dark:border-white/5 cursor-pointer hover:bg-gray-100 dark:hover:bg-white/5 transition"
+                                    >
+                                        <div className="flex items-center justify-between">
+                                            <span>Name <span className="text-red-500">*</span></span>
+                                            {sortConfig.key === 'name' && (sortConfig.direction === 'asc' ? <ArrowUp size={12} /> : <ArrowDown size={12} />)}
+                                        </div>
+                                    </th>
+                                )}
+                                {activeGridColumns.includes('type') && (
+                                    <th
+                                        onClick={() => handleSort('type')}
+                                        className="px-3 py-3 w-32 border-r border-gray-150 dark:border-white/5 cursor-pointer hover:bg-gray-100 dark:hover:bg-white/5 transition"
+                                    >
+                                        <div className="flex items-center justify-between">
+                                            <span>Type</span>
+                                            {sortConfig.key === 'type' && (sortConfig.direction === 'asc' ? <ArrowUp size={12} /> : <ArrowDown size={12} />)}
+                                        </div>
+                                    </th>
+                                )}
+                                {activeGridColumns.includes('base_unit_code') && (
+                                    <th
+                                        onClick={() => handleSort('base_unit_code')}
+                                        className="px-3 py-3 w-36 border-r border-gray-150 dark:border-white/5 cursor-pointer hover:bg-gray-100 dark:hover:bg-white/5 transition"
+                                    >
+                                        <div className="flex items-center justify-between">
+                                            <span>Base Unit <span className="text-red-500">*</span></span>
+                                            {sortConfig.key === 'base_unit_code' && (sortConfig.direction === 'asc' ? <ArrowUp size={12} /> : <ArrowDown size={12} />)}
+                                        </div>
+                                    </th>
+                                )}
+                                {activeGridColumns.includes('rate') && (
+                                    <th
+                                        onClick={() => handleSort('rate')}
+                                        className="px-3 py-3 w-44 border-r border-gray-150 dark:border-white/5 cursor-pointer hover:bg-gray-100 dark:hover:bg-white/5 transition"
+                                    >
+                                        <div className="flex items-center justify-between">
+                                            <span className="flex items-center gap-1 text-emerald-600 dark:text-emerald-400">
+                                                <DollarSign size={12} /> Rate (₹)
+                                            </span>
+                                            {sortConfig.key === 'rate' && (sortConfig.direction === 'asc' ? <ArrowUp size={12} /> : <ArrowDown size={12} />)}
+                                        </div>
+                                    </th>
+                                )}
                                 {activeGridColumns.includes('compositions') && (
                                     <th className="px-3 py-3 w-64 border-r border-gray-150 dark:border-white/5">
                                         <div className="flex items-center gap-1 text-purple-600 dark:text-purple-400">
@@ -2566,11 +2723,16 @@ const ResourceList = () => {
                                         </div>
                                     </th>
                                 )}
-                                <th className="px-3 py-3 w-48 border-r border-gray-150 dark:border-white/5">Description</th>
-                                <th className="px-3 py-3 w-48 border-r border-gray-150 dark:border-white/5">Remarks</th>
+                                {activeGridColumns.includes('description') && (
+                                    <th className="px-3 py-3 w-48 border-r border-gray-150 dark:border-white/5">Description</th>
+                                )}
+                                {activeGridColumns.includes('remarks') && (
+                                    <th className="px-3 py-3 w-48 border-r border-gray-150 dark:border-white/5">Remarks</th>
+                                )}
                                 <th className="px-3 py-3 w-28 text-center">Actions</th>
                             </tr>
                         </thead>
+
                         <tbody className="divide-y divide-gray-100 dark:divide-white/5">
                             {isLoading && resources.length === 0 ? (
                                 Array.from({ length: 8 }).map((_, i) => (
@@ -3078,13 +3240,18 @@ const ResourceList = () => {
                                             {/* Expanded Inline Sub-Sheet Row */}
                                             {isExpanded && (
                                                 <tr key={`expanded-${resource.id || rowIndex}`} className="bg-slate-50 dark:bg-[#121721] border-b-2 border-blue-500/30">
-                                                    <td colSpan={activeGridColumns.length + 4} className="p-4 pl-12">
+                                                    <td colSpan={activeGridColumns.length + 4} className="p-4 pl-12 sticky left-0">
                                                         <div className={`bg-white dark:bg-[#161b22] border border-gray-200 dark:border-white/10 rounded-xl p-4 shadow-lg space-y-4 ${resource.type !== 'item' ? 'max-w-2xl' : 'w-full'}`}>
                                                             {/* Header bar of expanded row */}
-                                                            <div className="flex items-center justify-between border-b border-gray-100 dark:border-white/5 pb-2">
-                                                                <span className="font-extrabold text-xs text-gray-900 dark:text-white uppercase tracking-wider">
-                                                                    {resource.name || 'Unnamed Resource'}
-                                                                </span>
+                                                            <div className="flex items-center justify-between border-b border-gray-100 dark:border-white/5 pb-2 gap-2 flex-wrap">
+                                                                <div className="flex items-center gap-3">
+                                                                    <span className="font-extrabold text-xs text-gray-900 dark:text-white uppercase tracking-wider">
+                                                                        {resource.name || 'Unnamed Resource'}
+                                                                    </span>
+                                                                    <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-blue-50 text-blue-700 dark:bg-blue-950/40 dark:text-blue-300 border border-blue-200 dark:border-blue-500/20 shadow-sm">
+                                                                        <ArrowLeftRight size={11} /> Scroll grid horizontally to view all columns
+                                                                    </span>
+                                                                </div>
                                                                 <button
                                                                     onClick={() => toggleExpandRow(resource.id)}
                                                                     className="text-xs text-gray-400 hover:text-gray-600 dark:hover:text-white font-semibold flex items-center gap-1"
