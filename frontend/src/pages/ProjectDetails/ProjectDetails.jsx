@@ -173,7 +173,7 @@ const ProjectDetails = () => {
     return (
         <div className="flex flex-col h-full w-full text-gray-900 dark:text-gray-300 bg-white dark:bg-[#0d1117] font-sans">
             {/* Minimal Header */}
-            <div className="flex justify-between items-center px-3 py-1.5 border-b border-gray-200 dark:border-gh-border bg-[#f9fafb] dark:bg-gh-bg transition-colors shrink-0">
+            <div className="flex justify-between items-center px-2 py-1.5 border-b border-gray-200 dark:border-gh-border bg-[#f9fafb] dark:bg-gh-bg transition-colors shrink-0">
                 <div className="flex items-center space-x-1.5 text-xs">
                     <button
                         onClick={() => navigate('/projects')}
@@ -193,7 +193,10 @@ const ProjectDetails = () => {
                             <ChevronRight size={13} className="text-gray-400 dark:text-gray-500" />
                             <span
                                 className={`transition-colors ${index === extraBreadcrumbs.length - 1 ? 'text-gray-900 dark:text-white font-semibold' : 'text-blue-600 dark:text-blue-400 font-medium cursor-pointer'}`}
-                                onClick={bc.onClick}
+                                onClick={() => {
+                                    if (bc.onClick) bc.onClick();
+                                    else if (bc.path) navigate(bc.path);
+                                }}
                             >
                                 {bc.label}
                             </span>
@@ -203,7 +206,7 @@ const ProjectDetails = () => {
             </div>
 
             {/* Sub-Navigation Tabs */}
-            <div className="flex px-2 pt-1 border-b border-gray-200 dark:border-gh-border bg-[#f9fafb] dark:bg-gh-bg transition-colors overflow-x-auto custom-scrollbar shrink-0">
+            <div className="flex px-1 pt-1 border-b border-gray-200 dark:border-gh-border bg-[#f9fafb] dark:bg-gh-bg transition-colors overflow-x-auto custom-scrollbar shrink-0">
                 {allowedTabs.map((tab) => (
                     <button
                         key={tab}

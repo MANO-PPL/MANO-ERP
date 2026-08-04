@@ -233,6 +233,9 @@ const WIP = ({ setExtraBreadcrumbs, projectPermissions, isAdmin, user }) => {
     const handleAssignTask = async (taskId) => {
         const task = tasks.find(t => t.id === taskId);
         if (!task) return;
+        if (task.status?.toLowerCase() === 'completed') {
+            return toast.warning('Cannot add or change assignees on a completed task');
+        }
 
         const previousTasks = JSON.parse(JSON.stringify(tasks));
         const newAssigneeIds = [...(task.assigneeIds || []), selectedEmployeeId];
