@@ -71,6 +71,7 @@ export const AuthProvider = ({ children }) => {
             setUser(null);
             setAccessToken(null);
             clearClientCaches();
+            sessionStorage.setItem('logged_out', 'true');
             window.location.href = '/login';
         }
     };

@@ -5,10 +5,17 @@ import { isAdmin } from '../../../utils/userUtils.js';
 
 export function getS3KeyFromUrl(url) {
     if (!url) return null;
+    const cleanUrl = String(url).split('?')[0];
     const marker = '.amazonaws.com/';
-    const index = url.indexOf(marker);
+    const index = cleanUrl.indexOf(marker);
     if (index !== -1) {
-        return url.substring(index + marker.length);
+        return cleanUrl.substring(index + marker.length);
+    }
+    if (cleanUrl.startsWith('projects/') || cleanUrl.startsWith('uploads/')) {
+        return cleanUrl;
+    }
+    if (cleanUrl.startsWith('/projects/') || cleanUrl.startsWith('/uploads/')) {
+        return cleanUrl.substring(1);
     }
     return null;
 }

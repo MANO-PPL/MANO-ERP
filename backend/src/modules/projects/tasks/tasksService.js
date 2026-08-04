@@ -201,19 +201,27 @@ export async function updateTaskAssignees(taskId, assigneeIds) {
         throw new AppError('assigneeIds must be an array of user IDs', 400);
     }
 
+    // Ignore temporary task IDs like temp-12345
+    if (typeof taskId === 'string' && taskId.startsWith('temp-')) {
+        return { taskId, assigneeIds };
+    }
+
+    const numericTaskId = Number(taskId);
+    const validTaskId = isNaN(numericTaskId) ? taskId : numericTaskId;
+
     await db.transaction(async (trx) => {
-        await trx('proj_task_assignees').where('task_id', taskId).del();
+        await trx('proj_task_assignees').where('task_id', validTaskId).del();
 
         if (assigneeIds.length > 0) {
             const rows = assigneeIds.map(uid => ({
-                task_id: taskId,
-                user_id: uid
+                task_id: validTaskId,
+                user_id: String(uid)
             }));
             await trx('proj_task_assignees').insert(rows);
         }
     });
 
-    return { taskId, assigneeIds };
+    return { taskId: validTaskId, assigneeIds };
 }
 
 export default {
