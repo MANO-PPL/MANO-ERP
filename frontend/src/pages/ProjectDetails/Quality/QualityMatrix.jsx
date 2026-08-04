@@ -1,7 +1,8 @@
 import React, { useState, useRef, useEffect, useCallback, useMemo } from 'react';
-import { 
+import {
     Plus, Trash2, ArrowLeft, Search, Layers, ChevronRight, GripVertical,
-    FolderPlus, Sparkles, MoveVertical, ArrowUp, ArrowDown, Split, Copy, ClipboardCheck
+    FolderPlus, Sparkles, MoveVertical, ArrowUp, ArrowDown, Split, Copy, ClipboardCheck, X,
+    Table, LayoutGrid, CheckCircle2
 } from 'lucide-react';
 import { toast } from 'react-toastify';
 
@@ -12,15 +13,15 @@ import { toast } from 'react-toastify';
  * - Shift + Enter: new line
  * - Enter: submit & return to highlight / move down
  */
-const AutoResizingTextarea = ({ 
-    value, 
-    onChange, 
-    placeholder, 
-    isEditing, 
-    onFocus, 
+const AutoResizingTextarea = ({
+    value,
+    onChange,
+    placeholder,
+    isEditing,
+    onFocus,
     onCommit,
-    className = '', 
-    ...props 
+    className = '',
+    ...props
 }) => {
     const textareaRef = useRef(null);
 
@@ -108,7 +109,7 @@ const AutoResizingTextarea = ({
 
     if (!isEditing) {
         return (
-            <div 
+            <div
                 className={`w-full px-1.5 py-1 text-xs leading-relaxed whitespace-pre-wrap break-words min-h-[24px] cursor-pointer select-none ${className}`}
             >
                 {value || <span className="text-gray-400 dark:text-gray-600 italic">{placeholder}</span>}
@@ -250,6 +251,7 @@ const COLUMNS = ['material', 'test', 'result', 'reference', 'interval', 'remarks
 const QualityMatrix = ({ project, canWrite, onBack }) => {
     const [matrixItems, setMatrixItems] = useState(INITIAL_MATRIX_DATA);
     const [searchTerm, setSearchTerm] = useState('');
+    const [activeView, setActiveView] = useState('matrix'); // 'matrix' | 'cards' | 'summary'
 
     // Excel Selection & Edit state
     const [activeCell, setActiveCell] = useState({
@@ -400,7 +402,7 @@ const QualityMatrix = ({ project, canWrite, onBack }) => {
         if (copiedBuffer.type === 'MATERIAL_BLOCK') {
             const sourceMat = copiedBuffer.data;
             const newMatId = `mat_${Date.now()}`;
-            
+
             const clonedMat = {
                 ...sourceMat,
                 id: newMatId,
@@ -525,7 +527,7 @@ const QualityMatrix = ({ project, canWrite, onBack }) => {
             title: `Section ${nextCode}`
         };
         setMatrixItems(prev => [...prev, newCat]);
-        toast.info(`Added Section ${nextCode}`);
+        toast.success(`Section ${nextCode} added successfully`);
     };
 
     // ─── Add Material under specific Category Section ──────────────────────────
@@ -540,7 +542,7 @@ const QualityMatrix = ({ project, canWrite, onBack }) => {
             lastItemIndex = i;
         }
 
-        const currentMatCount = matrixItems.filter((item, idx) => 
+        const currentMatCount = matrixItems.filter((item, idx) =>
             idx <= lastItemIndex && (item.type === 'material' || item.type === 'material_group')
         ).length + 1;
 
@@ -582,7 +584,7 @@ const QualityMatrix = ({ project, canWrite, onBack }) => {
         const updated = [...matrixItems];
         updated.splice(lastItemIndex + 1, 0, newMat);
         setMatrixItems(updated);
-        toast.success(`Added Material into Section`);
+        toast.success(hasSubdivisions ? 'Material Group added to Section' : 'Material added to Section');
     };
 
     // ─── Convert simple material into sub-divisions (a, b...) ────────────────
@@ -612,7 +614,7 @@ const QualityMatrix = ({ project, canWrite, onBack }) => {
             }
             return item;
         }));
-        toast.success('Converted material into sub-divisions (a, b...)!');
+        toast.success('Converted material into sub-divisions');
     };
 
     // ─── Add Sub-division (a, b, c) under Material Group ───────────────────────
@@ -634,7 +636,7 @@ const QualityMatrix = ({ project, canWrite, onBack }) => {
             }
             return item;
         }));
-        toast.info('Added Sub-division');
+        toast.success('Sub-division added successfully');
     };
 
     // ─── Add Test Row ──────────────────────────────────────────────────────────
@@ -668,13 +670,14 @@ const QualityMatrix = ({ project, canWrite, onBack }) => {
             }
             return item;
         }));
+        toast.success('Test row added');
     };
 
     // ─── Delete Item / Test Row ────────────────────────────────────────────────
     const handleDeleteItem = (itemId) => {
         pushUndoState(matrixItems);
         setMatrixItems(prev => prev.filter(i => i.id !== itemId));
-        toast.info('Item removed');
+        toast.warn('Section / Material item removed');
     };
 
     const handleDeleteTestRow = (matId, testId, subId = null) => {
@@ -695,6 +698,7 @@ const QualityMatrix = ({ project, canWrite, onBack }) => {
             }
             return item;
         }));
+        toast.warn('Test row removed');
     };
 
     // ─── Update Fields ────────────────────────────────────────────────────────
@@ -806,518 +810,686 @@ const QualityMatrix = ({ project, canWrite, onBack }) => {
     };
 
     return (
-        <div className="flex-1 flex flex-col h-full bg-white dark:bg-[#0d1117] overflow-hidden Poppins select-none">
-            {/* Top Toolbar */}
-            <div className="px-6 py-3.5 border-b border-gray-200 dark:border-white/10 flex flex-wrap items-center justify-between gap-4 shrink-0 bg-gray-50/50 dark:bg-white/[0.01]">
-                <div className="flex items-center space-x-4">
-                    <button
-                        onClick={onBack}
-                        className="p-2 rounded-xl text-gray-500 hover:text-gray-900 dark:text-gray-400 dark:hover:text-white hover:bg-gray-200/50 dark:hover:bg-white/10 transition-all flex items-center space-x-2 text-xs font-semibold"
-                    >
-                        <ArrowLeft size={16} />
-                        <span>Back</span>
-                    </button>
-                    <div>
-                        <h2 className="text-base font-black text-gray-900 dark:text-white uppercase tracking-tight flex items-center space-x-2">
-                            <span>QA/QC Matrix Parameters</span>
-                            <span className="text-[10px] px-2 py-0.5 rounded-md bg-blue-500/10 text-blue-600 dark:text-blue-400 font-bold uppercase tracking-wider">
-                                Excel Editor Mode
-                            </span>
-                        </h2>
-                        <p className="text-[11px] text-gray-500 dark:text-gray-400 font-normal">
-                            Single click edit · Enter to submit & next row · Shift+Enter new line · Double-click select all · Arrow keys navigate · Ctrl+Z Undo
-                        </p>
-                    </div>
-                </div>
-
-                <div className="flex flex-wrap items-center gap-3">
-                    <div className="relative">
-                        <input
-                            type="text"
-                            placeholder="Search material or test..."
-                            className="w-56 bg-white dark:bg-[#161b22] border border-gray-200 dark:border-white/10 rounded-lg pl-9 pr-3 py-1.5 text-xs text-gray-900 dark:text-white focus:outline-none focus:ring-1 focus:ring-blue-500"
-                            value={searchTerm}
-                            onChange={e => setSearchTerm(e.target.value)}
-                        />
-                        <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
-                    </div>
-
-                    {canWrite && (
+        <div className="flex flex-col h-full bg-white dark:bg-[#0d1117] overflow-hidden font-sans text-left select-none">
+            <div className="flex-1 overflow-y-auto [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden no-scrollbar">
+                {/* Top Action Bar with View Switching Tabs */}
+                <div className="flex flex-wrap items-center justify-between gap-3 px-2 sm:px-3 pt-2 pb-1.5 border-b border-gray-200 dark:border-white/10 bg-gray-50/50 dark:bg-[#161b22]/50 w-full">
+                    {/* Left: View Switching Tabs */}
+                    <div className="flex items-center bg-gray-200/70 dark:bg-white/5 p-1 rounded-lg border border-gray-200 dark:border-white/10">
                         <button
-                            onClick={handleAddCategory}
-                            className="px-3.5 py-1.5 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-xs font-bold shadow-sm transition-all flex items-center space-x-1.5"
+                            onClick={() => setActiveView('matrix')}
+                            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-semibold transition-all cursor-pointer ${activeView === 'matrix'
+                                    ? 'bg-white dark:bg-blue-600 text-blue-600 dark:text-white shadow-xs'
+                                    : 'text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white'
+                                }`}
                         >
-                            <Plus size={14} />
-                            <span>+ Add Section (A, B)</span>
+                            <Table size={14} />
+                            <span>Matrix Table</span>
                         </button>
-                    )}
+
+                        <button
+                            onClick={() => setActiveView('cards')}
+                            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-semibold transition-all cursor-pointer ${activeView === 'cards'
+                                    ? 'bg-white dark:bg-blue-600 text-blue-600 dark:text-white shadow-xs'
+                                    : 'text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white'
+                                }`}
+                        >
+                            <LayoutGrid size={14} />
+                            <span>Section Cards</span>
+                        </button>
+                    </div>
+
+                    {/* Right: Search & Add Controls */}
+                    <div className="flex items-center gap-2.5">
+                        <div className="relative w-64 md:w-80">
+                            <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
+                            <input
+                                type="text"
+                                placeholder="Search material or test..."
+                                className="w-full bg-gray-50 dark:bg-white/5 border border-gray-200 dark:border-white/10 rounded-md pl-9 pr-3 py-1.5 text-xs text-gray-900 dark:text-white placeholder-gray-400 focus:outline-none focus:ring-1 focus:ring-blue-500"
+                                value={searchTerm}
+                                onChange={e => setSearchTerm(e.target.value)}
+                            />
+                            {searchTerm && (
+                                <button onClick={() => setSearchTerm('')} className="absolute right-2.5 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 dark:hover:text-white cursor-pointer">
+                                    <X size={13} />
+                                </button>
+                            )}
+                        </div>
+
+                        {canWrite && (
+                            <button
+                                onClick={handleAddCategory}
+                                className="px-3.5 py-2 bg-blue-600 hover:bg-blue-700 active:scale-95 text-white rounded-md text-xs font-semibold transition-all shadow-sm shrink-0 cursor-pointer flex items-center gap-1.5"
+                            >
+                                <Plus size={15} />
+                                <span>Add Section (A, B)</span>
+                            </button>
+                        )}
+                    </div>
                 </div>
-            </div>
 
-            {/* Matrix Table View */}
-            <div className="flex-1 overflow-auto p-6 custom-scrollbar bg-gray-50/20 dark:bg-transparent">
-                <div className="border border-gray-200 dark:border-white/10 rounded-xl overflow-hidden shadow-sm bg-white dark:bg-[#0d1117]">
-                    <table className="w-full text-left border-collapse text-xs table-fixed">
-                        <thead>
-                            <tr className="bg-gray-100 dark:bg-[#161b22] text-gray-700 dark:text-gray-300 font-bold border-b border-gray-200 dark:border-white/10 uppercase tracking-wider text-[11px]">
-                                <th className="py-3 px-3 w-14 text-center border-r border-gray-200 dark:border-white/10">Sl. No.</th>
-                                <th className="py-3 px-4 w-[260px] border-r border-gray-200 dark:border-white/10">Description of Material / Item</th>
-                                <th className="py-3 px-4 w-[280px] border-r border-gray-200 dark:border-white/10">Tests to be conducted</th>
-                                <th className="py-3 px-4 w-[280px] border-r border-gray-200 dark:border-white/10">Acceptable Test Results</th>
-                                <th className="py-3 px-4 w-[200px] border-r border-gray-200 dark:border-white/10">Reference (IS Code)</th>
-                                <th className="py-3 px-4 w-[200px] border-r border-gray-200 dark:border-white/10">Time and Interval</th>
-                                <th className="py-3 px-4 border-r border-gray-200 dark:border-white/10">Remarks</th>
-                                {canWrite && <th className="py-3 px-3 w-16 text-center">Actions</th>}
-                            </tr>
-                        </thead>
-                        <tbody className="divide-y divide-gray-200 dark:divide-white/5">
-                            {filteredItems.map(item => {
-                                // 1. Render Category Banner with Contextual Actions
-                                if (item.type === 'category') {
-                                    return (
-                                        <tr key={item.id} className="bg-gray-200/90 dark:bg-white/[0.07] font-extrabold text-gray-900 dark:text-white text-xs group">
-                                            <td className="py-2.5 px-3 text-center border-r border-gray-300 dark:border-white/10 font-black text-blue-600 dark:text-blue-400">{item.code}</td>
-                                            <td 
-                                                colSpan={canWrite ? 5 : 6} 
-                                                onClick={() => setActiveCell({ matId: item.id, subId: null, testId: null, colKey: 'material', isEditing: false })}
-                                                onDoubleClick={() => setActiveCell({ matId: item.id, subId: null, testId: null, colKey: 'material', isEditing: true })}
-                                                className="py-2.5 px-4 uppercase tracking-wider text-blue-600 dark:text-blue-400"
-                                            >
-                                                <div className="flex items-center justify-between">
-                                                    <AutoResizingTextarea
-                                                        value={item.title}
-                                                        onChange={e => handleUpdateField(item.id, 'title', e.target.value)}
-                                                        isEditing={activeCell.matId === item.id && activeCell.isEditing}
-                                                        onCommit={handleCommit}
-                                                        className="font-black text-blue-600 dark:text-blue-400 uppercase tracking-wider text-sm"
-                                                    />
-                                                    
-                                                    {canWrite && (
-                                                        <div className="flex items-center space-x-2 opacity-90 group-hover:opacity-100 transition-opacity ml-4 shrink-0">
-                                                            <button
-                                                                onClick={() => handleAddMaterialToCategory(item.id, false)}
-                                                                className="px-2.5 py-1 bg-blue-600 hover:bg-blue-700 text-white rounded-md text-[10px] font-bold shadow-xs transition-all flex items-center space-x-1"
-                                                            >
-                                                                <Plus size={12} />
-                                                                <span>+ Material to Section {item.code}</span>
-                                                            </button>
-
-                                                            <button
-                                                                onClick={() => handleAddMaterialToCategory(item.id, true)}
-                                                                className="px-2.5 py-1 bg-purple-600 hover:bg-purple-700 text-white rounded-md text-[10px] font-bold shadow-xs transition-all flex items-center space-x-1"
-                                                            >
-                                                                <FolderPlus size={12} />
-                                                                <span>+ Group (a, b...)</span>
-                                                            </button>
-                                                        </div>
-                                                    )}
-                                                </div>
-                                            </td>
-                                            {canWrite && (
-                                                <td className="py-2.5 px-3 text-center border-l border-gray-300 dark:border-white/10">
-                                                    <button onClick={() => handleDeleteItem(item.id)} className="text-gray-400 hover:text-red-500 transition-colors p-1">
-                                                        <Trash2 size={14} />
-                                                    </button>
-                                                </td>
-                                            )}
-                                        </tr>
-                                    );
-                                }
-
-                                // 2. Render Material without sub-divisions (Simple Material)
-                                if (item.type === 'material') {
-                                    const testRows = item.tests && item.tests.length > 0 ? item.tests : [{ id: 'empty', name: '', result: '', interval: '' }];
-                                    const totalRows = testRows.length;
-
-                                    return testRows.map((test, index) => {
-                                        const isDragTarget = dragOverTarget && dragOverTarget.matId === item.id && !dragOverTarget.subId && dragOverTarget.index === index;
-
+                {/* 1. Matrix Table View */}
+                {activeView === 'matrix' && (
+                    <div className="overflow-x-auto [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden no-scrollbar border-t border-b border-gray-200 dark:border-white/10 w-full">
+                        <table className="w-full text-left border-collapse text-xs table-fixed min-w-[950px]">
+                            <thead>
+                                <tr className="bg-gray-100 dark:bg-[#161b22] text-gray-700 dark:text-gray-300 font-bold border-b border-gray-200 dark:border-white/10 uppercase tracking-wider text-[10px]">
+                                    <th className="py-2.5 px-2 w-[50px] min-w-[50px] text-center border-r border-gray-200 dark:border-white/10">Sl. No.</th>
+                                    <th className="py-2.5 px-3 w-[18%] border-r border-gray-200 dark:border-white/10">Description of Material / Item</th>
+                                    <th className="py-2.5 px-3 w-[22%] border-r border-gray-200 dark:border-white/10">Tests to be conducted</th>
+                                    <th className="py-2.5 px-3 w-[22%] border-r border-gray-200 dark:border-white/10">Acceptable Test Results</th>
+                                    <th className="py-2.5 px-3 w-[11%] border-r border-gray-200 dark:border-white/10">Reference (IS Code)</th>
+                                    <th className="py-2.5 px-3 w-[11%] border-r border-gray-200 dark:border-white/10">Time and Interval</th>
+                                    <th className="py-2.5 px-3 w-[12%] border-r border-gray-200 dark:border-white/10">Remarks</th>
+                                    {canWrite && <th className="py-2.5 px-2 w-[72px] min-w-[72px] text-center">Actions</th>}
+                                </tr>
+                            </thead>
+                            <tbody className="divide-y divide-gray-200 dark:divide-white/5">
+                                {filteredItems.map(item => {
+                                    // 1. Render Category Banner with Contextual Actions
+                                    if (item.type === 'category') {
                                         return (
-                                            <tr 
-                                                key={`${item.id}_${test.id}_${index}`} 
-                                                onDragOver={e => handleDragOverTest(e, item.id, null, index)}
-                                                onDrop={e => handleDropTest(e, item.id, null, index)}
-                                                className={`hover:bg-gray-50/50 dark:hover:bg-white/[0.01] transition-all group ${isDragTarget ? 'border-t-2 border-blue-500 bg-blue-500/5' : ''}`}
-                                            >
-                                                {/* Sl. No & Material Description (Spans across all test rows for this material) */}
-                                                {index === 0 && (
-                                                    <>
-                                                        <td rowSpan={totalRows} className="py-3 px-3 text-center font-black text-gray-900 dark:text-white align-top border-r border-gray-200 dark:border-white/10 bg-gray-50/30 dark:bg-white/[0.01]">
-                                                            {item.code}
-                                                        </td>
-                                                        <td 
-                                                            rowSpan={totalRows} 
-                                                            onClick={() => setActiveCell({ matId: item.id, subId: null, testId: test.id, colKey: 'material', isEditing: false })}
-                                                            onDoubleClick={() => setActiveCell({ matId: item.id, subId: null, testId: test.id, colKey: 'material', isEditing: true })}
-                                                            className={`py-3 px-4 align-top border-r border-gray-200 dark:border-white/10 transition-all ${isCellActive(item.id, 'material') ? 'ring-2 ring-blue-500 bg-blue-500/5 z-10' : ''}`}
-                                                        >
-                                                            <AutoResizingTextarea
-                                                                value={item.title}
-                                                                onChange={e => handleUpdateField(item.id, 'title', e.target.value)}
-                                                                isEditing={isCellActive(item.id, 'material') && activeCell.isEditing}
-                                                                onCommit={handleCommit}
-                                                                className="font-bold text-gray-900 dark:text-white mb-1"
-                                                                placeholder="Material Name"
-                                                            />
-                                                            <AutoResizingTextarea
-                                                                value={item.subtitle || ''}
-                                                                onChange={e => handleUpdateField(item.id, 'subtitle', e.target.value)}
-                                                                isEditing={isCellActive(item.id, 'material') && activeCell.isEditing}
-                                                                onCommit={handleCommit}
-                                                                className="text-[11px] text-gray-500 dark:text-gray-400 mb-2"
-                                                                placeholder="Spec / Subtitle (e.g. 43 grade)"
-                                                            />
-                                                            
-                                                            {canWrite && (
-                                                                <div className="flex flex-wrap items-center gap-2 pt-1 border-t border-gray-100 dark:border-white/5">
-                                                                    <button
-                                                                        onClick={(e) => { e.stopPropagation(); handleAddTestRow(item.id); }}
-                                                                        className="text-[10px] text-blue-600 dark:text-blue-400 font-semibold hover:underline flex items-center space-x-1"
-                                                                    >
-                                                                        <Plus size={11} />
-                                                                        <span>Add Test Row</span>
-                                                                    </button>
-
-                                                                    <button
-                                                                        onClick={(e) => { e.stopPropagation(); handleConvertToSubdivisions(item.id); }}
-                                                                        className="text-[10px] text-purple-600 dark:text-purple-400 font-semibold hover:underline flex items-center space-x-1 ml-2"
-                                                                    >
-                                                                        <Split size={11} />
-                                                                        <span>Group into Sub-divisions (a, b...)</span>
-                                                                    </button>
-                                                                </div>
-                                                            )}
-                                                        </td>
-                                                    </>
-                                                )}
-
-                                                {/* Test Name */}
-                                                <td 
-                                                    onClick={() => setActiveCell({ matId: item.id, subId: null, testId: test.id, colKey: 'test', isEditing: false })}
-                                                    onDoubleClick={() => setActiveCell({ matId: item.id, subId: null, testId: test.id, colKey: 'test', isEditing: true })}
-                                                    className={`py-2.5 px-4 align-top border-r border-gray-200 dark:border-white/10 transition-all ${isCellActive(item.id, 'test', test.id) ? 'ring-2 ring-blue-500 bg-blue-500/5 z-10' : ''}`}
-                                                >
-                                                    <div className="flex items-start space-x-1.5">
-                                                        {canWrite && (
-                                                            <div 
-                                                                draggable={true}
-                                                                onDragStart={e => handleDragStartTest(e, item.id, null, test.id, index)}
-                                                                className="cursor-grab active:cursor-grabbing text-gray-400 hover:text-blue-500 p-0.5 mt-0.5"
-                                                            >
-                                                                <GripVertical size={13} />
-                                                            </div>
-                                                        )}
-                                                        <AutoResizingTextarea
-                                                            value={test.name}
-                                                            onChange={e => handleUpdateField(item.id, 'name', e.target.value, test.id)}
-                                                            isEditing={isCellActive(item.id, 'test', test.id) && activeCell.isEditing}
-                                                            onCommit={handleCommit}
-                                                            className="text-gray-800 dark:text-gray-200"
-                                                            placeholder="Test Name"
-                                                        />
-                                                    </div>
-                                                </td>
-
-                                                {/* Acceptable Test Result */}
-                                                <td 
-                                                    onClick={() => setActiveCell({ matId: item.id, subId: null, testId: test.id, colKey: 'result', isEditing: false })}
-                                                    onDoubleClick={() => setActiveCell({ matId: item.id, subId: null, testId: test.id, colKey: 'result', isEditing: true })}
-                                                    className={`py-2.5 px-4 align-top border-r border-gray-200 dark:border-white/10 transition-all ${isCellActive(item.id, 'result', test.id) ? 'ring-2 ring-blue-500 bg-blue-500/5 z-10' : ''}`}
-                                                >
-                                                    <AutoResizingTextarea
-                                                        value={test.result}
-                                                        onChange={e => handleUpdateField(item.id, 'result', e.target.value, test.id)}
-                                                        isEditing={isCellActive(item.id, 'result', test.id) && activeCell.isEditing}
-                                                        onCommit={handleCommit}
-                                                        className="text-gray-800 dark:text-gray-200"
-                                                        placeholder="Acceptance criteria"
-                                                    />
-                                                </td>
-
-                                                {/* Reference IS Code */}
-                                                {index === 0 && (
-                                                    <td 
-                                                        rowSpan={totalRows} 
-                                                        onClick={() => setActiveCell({ matId: item.id, subId: null, testId: test.id, colKey: 'reference', isEditing: false })}
-                                                        onDoubleClick={() => setActiveCell({ matId: item.id, subId: null, testId: test.id, colKey: 'reference', isEditing: true })}
-                                                        className={`py-3 px-4 align-top border-r border-gray-200 dark:border-white/10 transition-all ${isCellActive(item.id, 'reference') ? 'ring-2 ring-blue-500 bg-blue-500/5 z-10' : ''}`}
-                                                    >
-                                                        <AutoResizingTextarea
-                                                            value={item.reference || ''}
-                                                            onChange={e => handleUpdateField(item.id, 'reference', e.target.value)}
-                                                            isEditing={isCellActive(item.id, 'reference') && activeCell.isEditing}
-                                                            onCommit={handleCommit}
-                                                            className="font-semibold text-gray-700 dark:text-gray-300"
-                                                            placeholder="e.g. IS 8112 / IS 12269"
-                                                        />
-                                                    </td>
-                                                )}
-
-                                                {/* Time and Interval */}
-                                                <td 
-                                                    onClick={() => setActiveCell({ matId: item.id, subId: null, testId: test.id, colKey: 'interval', isEditing: false })}
-                                                    onDoubleClick={() => setActiveCell({ matId: item.id, subId: null, testId: test.id, colKey: 'interval', isEditing: true })}
-                                                    className={`py-2.5 px-4 align-top border-r border-gray-200 dark:border-white/10 transition-all ${isCellActive(item.id, 'interval', test.id) ? 'ring-2 ring-blue-500 bg-blue-500/5 z-10' : ''}`}
-                                                >
-                                                    <AutoResizingTextarea
-                                                        value={test.interval || ''}
-                                                        onChange={e => handleUpdateField(item.id, 'interval', e.target.value, test.id)}
-                                                        isEditing={isCellActive(item.id, 'interval', test.id) && activeCell.isEditing}
-                                                        onCommit={handleCommit}
-                                                        className="text-gray-600 dark:text-gray-400"
-                                                        placeholder="Testing frequency"
-                                                    />
-                                                </td>
-
-                                                {/* Remarks */}
-                                                {index === 0 && (
-                                                    <td 
-                                                        rowSpan={totalRows} 
-                                                        onClick={() => setActiveCell({ matId: item.id, subId: null, testId: test.id, colKey: 'remarks', isEditing: false })}
-                                                        onDoubleClick={() => setActiveCell({ matId: item.id, subId: null, testId: test.id, colKey: 'remarks', isEditing: true })}
-                                                        className={`py-3 px-4 align-top border-r border-gray-200 dark:border-white/10 transition-all ${isCellActive(item.id, 'remarks') ? 'ring-2 ring-blue-500 bg-blue-500/5 z-10' : ''}`}
-                                                    >
-                                                        <AutoResizingTextarea
-                                                            value={item.remarks || ''}
-                                                            onChange={e => handleUpdateField(item.id, 'remarks', e.target.value)}
-                                                            isEditing={isCellActive(item.id, 'remarks') && activeCell.isEditing}
-                                                            onCommit={handleCommit}
-                                                            className="text-gray-500 dark:text-gray-400"
-                                                            placeholder="General remarks for material..."
-                                                        />
-                                                    </td>
-                                                )}
-
-                                                {/* Actions */}
-                                                {canWrite && (
-                                                    <td className="py-2.5 px-2 text-center align-top">
-                                                        {totalRows > 1 ? (
-                                                            <button
-                                                                onClick={() => handleDeleteTestRow(item.id, test.id)}
-                                                                className="text-gray-400 hover:text-red-500 transition-colors p-1"
-                                                            >
-                                                                <Trash2 size={13} />
-                                                            </button>
-                                                        ) : index === 0 ? (
-                                                            <button
-                                                                onClick={() => handleDeleteItem(item.id)}
-                                                                className="text-gray-400 hover:text-red-500 transition-colors p-1"
-                                                            >
-                                                                <Trash2 size={14} />
-                                                            </button>
-                                                        ) : null}
-                                                    </td>
-                                                )}
-                                            </tr>
-                                        );
-                                    });
-                                }
-
-                                // 3. Render Material Group with Sub-divisions (a, b, c)
-                                if (item.type === 'material_group') {
-                                    const totalSubRows = item.subdivisions.reduce((acc, sub) => acc + (sub.tests.length || 1), 0);
-
-                                    return (
-                                        <React.Fragment key={item.id}>
-                                            <tr className="bg-gray-100/60 dark:bg-white/[0.02] font-extrabold text-gray-900 dark:text-white">
-                                                <td rowSpan={totalSubRows + 1} className="py-3 px-3 text-center font-black align-top border-r border-gray-200 dark:border-white/10 bg-gray-50/50 dark:bg-white/[0.01]">
-                                                    {item.code}
-                                                </td>
-                                                <td 
-                                                    colSpan={canWrite ? 6 : 5} 
+                                            <tr key={item.id} className="bg-gray-200/90 dark:bg-white/[0.07] font-extrabold text-gray-900 dark:text-white text-xs group border-b border-gray-300 dark:border-white/10">
+                                                <td className="py-2.5 px-3 text-center border-r border-gray-300 dark:border-white/10 font-black text-blue-600 dark:text-blue-400">{item.code}</td>
+                                                <td
+                                                    colSpan={6}
                                                     onClick={() => setActiveCell({ matId: item.id, subId: null, testId: null, colKey: 'material', isEditing: false })}
                                                     onDoubleClick={() => setActiveCell({ matId: item.id, subId: null, testId: null, colKey: 'material', isEditing: true })}
-                                                    className={`py-2.5 px-4 font-black uppercase text-gray-900 dark:text-white border-b border-gray-200 dark:border-white/10 transition-all ${isCellActive(item.id, 'material') ? 'ring-2 ring-blue-500 bg-blue-500/5 z-10' : ''}`}
+                                                    className="py-2.5 px-4 uppercase tracking-wider text-blue-600 dark:text-blue-400 border-r border-gray-300 dark:border-white/10"
                                                 >
-                                                    <div className="flex items-center justify-between">
+                                                    <div className="flex items-center justify-between gap-4">
                                                         <AutoResizingTextarea
                                                             value={item.title}
                                                             onChange={e => handleUpdateField(item.id, 'title', e.target.value)}
-                                                            isEditing={isCellActive(item.id, 'material') && activeCell.isEditing}
+                                                            isEditing={activeCell.matId === item.id && activeCell.isEditing}
                                                             onCommit={handleCommit}
-                                                            className="font-black text-gray-900 dark:text-white uppercase"
+                                                            className="font-black text-blue-600 dark:text-blue-400 uppercase tracking-wider text-sm"
                                                         />
+
                                                         {canWrite && (
-                                                            <button
-                                                                onClick={(e) => { e.stopPropagation(); handleAddSubdivision(item.id); }}
-                                                                className="text-[11px] text-purple-600 dark:text-purple-400 font-bold hover:underline flex items-center space-x-1 shrink-0 ml-4"
-                                                            >
-                                                                <Plus size={13} />
-                                                                <span>+ Add Sub-division (a, b...)</span>
-                                                            </button>
+                                                            <div className="flex items-center space-x-2 opacity-90 group-hover:opacity-100 transition-opacity ml-auto shrink-0">
+                                                                <button
+                                                                    onClick={() => handleAddMaterialToCategory(item.id, false)}
+                                                                    className="px-2.5 py-1 bg-blue-600 hover:bg-blue-700 text-white rounded-md text-[10px] font-bold shadow-xs transition-all flex items-center space-x-1 cursor-pointer"
+                                                                >
+                                                                    <Plus size={12} />
+                                                                    <span>Material to Section {item.code}</span>
+                                                                </button>
+
+                                                                <button
+                                                                    onClick={() => handleAddMaterialToCategory(item.id, true)}
+                                                                    className="px-2.5 py-1 bg-purple-600 hover:bg-purple-700 text-white rounded-md text-[10px] font-bold shadow-xs transition-all flex items-center space-x-1 cursor-pointer"
+                                                                >
+                                                                    <FolderPlus size={12} />
+                                                                    <span>Group (a, b...)</span>
+                                                                </button>
+                                                            </div>
                                                         )}
                                                     </div>
                                                 </td>
                                                 {canWrite && (
-                                                    <td className="py-2 px-2 text-center border-b border-gray-200 dark:border-white/10">
-                                                        <button onClick={() => handleDeleteItem(item.id)} className="text-gray-400 hover:text-red-500 transition-colors">
+                                                    <td className="py-2.5 px-3 text-center">
+                                                        <button onClick={() => handleDeleteItem(item.id)} className="text-gray-400 hover:text-red-500 transition-colors p-1 cursor-pointer" title="Delete Section">
                                                             <Trash2 size={14} />
                                                         </button>
                                                     </td>
                                                 )}
                                             </tr>
+                                        );
+                                    }
 
-                                            {/* Sub-divisions Rendering */}
-                                            {item.subdivisions.map(sub => {
-                                                const subTests = sub.tests && sub.tests.length > 0 ? sub.tests : [{ id: 'empty', name: '', result: '', interval: '' }];
-                                                const subRowsCount = subTests.length;
+                                    // 2. Render Material without sub-divisions (Simple Material)
+                                    if (item.type === 'material') {
+                                        const testRows = item.tests && item.tests.length > 0 ? item.tests : [{ id: 'empty', name: '', result: '', interval: '' }];
+                                        const totalRows = testRows.length;
 
-                                                return subTests.map((t, tIndex) => {
-                                                    const isDragTarget = dragOverTarget && dragOverTarget.matId === item.id && dragOverTarget.subId === sub.id && dragOverTarget.index === tIndex;
+                                        return testRows.map((test, index) => {
+                                            const isDragTarget = dragOverTarget && dragOverTarget.matId === item.id && !dragOverTarget.subId && dragOverTarget.index === index;
 
-                                                    return (
-                                                        <tr 
-                                                            key={`${sub.id}_${t.id}_${tIndex}`} 
-                                                            onDragOver={e => handleDragOverTest(e, item.id, sub.id, tIndex)}
-                                                            onDrop={e => handleDropTest(e, item.id, sub.id, tIndex)}
-                                                            className={`hover:bg-gray-50/40 dark:hover:bg-white/[0.01] transition-all group ${isDragTarget ? 'border-t-2 border-purple-500 bg-purple-500/5' : ''}`}
-                                                        >
-                                                            {/* Sub-item Title */}
-                                                            {tIndex === 0 && (
-                                                                <td 
-                                                                    rowSpan={subRowsCount} 
-                                                                    onClick={() => setActiveCell({ matId: item.id, subId: sub.id, testId: t.id, colKey: 'material', isEditing: false })}
-                                                                    onDoubleClick={() => setActiveCell({ matId: item.id, subId: sub.id, testId: t.id, colKey: 'material', isEditing: true })}
-                                                                    className={`py-2.5 px-4 align-top border-r border-gray-200 dark:border-white/10 pl-6 transition-all ${isCellActive(item.id, 'material', t.id, sub.id) ? 'ring-2 ring-blue-500 bg-blue-500/5 z-10' : ''}`}
-                                                                >
-                                                                    <div className="flex items-start space-x-1.5">
-                                                                        <span className="font-extrabold text-purple-600 dark:text-purple-400 mt-0.5">{sub.code}.</span>
-                                                                        <AutoResizingTextarea
-                                                                            value={sub.title}
-                                                                            onChange={e => handleUpdateField(item.id, 'title', e.target.value, null, sub.id)}
-                                                                            isEditing={isCellActive(item.id, 'material', t.id, sub.id) && activeCell.isEditing}
-                                                                            onCommit={handleCommit}
-                                                                            className="font-bold text-gray-800 dark:text-gray-200 text-xs"
-                                                                        />
-                                                                    </div>
-                                                                    {canWrite && (
+                                            return (
+                                                <tr
+                                                    key={`${item.id}_${test.id}_${index}`}
+                                                    onDragOver={e => handleDragOverTest(e, item.id, null, index)}
+                                                    onDrop={e => handleDropTest(e, item.id, null, index)}
+                                                    className={`hover:bg-gray-50/50 dark:hover:bg-white/[0.01] transition-all group ${isDragTarget ? 'border-t-2 border-blue-500 bg-blue-500/5' : ''}`}
+                                                >
+                                                    {/* Sl. No & Material Description (Spans across all test rows for this material) */}
+                                                    {index === 0 && (
+                                                        <>
+                                                            <td rowSpan={totalRows} className="py-3 px-3 text-center font-black text-gray-900 dark:text-white align-top border-r border-gray-200 dark:border-white/10 bg-gray-50/30 dark:bg-white/[0.01]">
+                                                                {item.code}
+                                                            </td>
+                                                            <td
+                                                                rowSpan={totalRows}
+                                                                onClick={() => setActiveCell({ matId: item.id, subId: null, testId: test.id, colKey: 'material', isEditing: false })}
+                                                                onDoubleClick={() => setActiveCell({ matId: item.id, subId: null, testId: test.id, colKey: 'material', isEditing: true })}
+                                                                className={`py-3 px-4 align-top border-r border-gray-200 dark:border-white/10 transition-all ${isCellActive(item.id, 'material') ? 'ring-2 ring-blue-500 bg-blue-500/5 z-10' : ''}`}
+                                                            >
+                                                                <AutoResizingTextarea
+                                                                    value={item.title}
+                                                                    onChange={e => handleUpdateField(item.id, 'title', e.target.value)}
+                                                                    isEditing={isCellActive(item.id, 'material') && activeCell.isEditing}
+                                                                    onCommit={handleCommit}
+                                                                    className="font-bold text-gray-900 dark:text-white mb-1"
+                                                                    placeholder="Material Name"
+                                                                />
+                                                                <AutoResizingTextarea
+                                                                    value={item.subtitle || ''}
+                                                                    onChange={e => handleUpdateField(item.id, 'subtitle', e.target.value)}
+                                                                    isEditing={isCellActive(item.id, 'material') && activeCell.isEditing}
+                                                                    onCommit={handleCommit}
+                                                                    className="text-[11px] text-gray-500 dark:text-gray-400 mb-2"
+                                                                    placeholder="Spec / Subtitle (e.g. 43 grade)"
+                                                                />
+
+                                                                {canWrite && (
+                                                                    <div className="flex flex-wrap items-center gap-2 pt-1 border-t border-gray-100 dark:border-white/5">
                                                                         <button
-                                                                            onClick={(e) => { e.stopPropagation(); handleAddTestRow(item.id, sub.id); }}
-                                                                            className="mt-1 ml-4 text-[10px] text-blue-600 dark:text-blue-400 font-semibold hover:underline flex items-center space-x-1"
+                                                                            onClick={(e) => { e.stopPropagation(); handleAddTestRow(item.id); }}
+                                                                            className="text-[10px] text-blue-600 dark:text-blue-400 font-semibold hover:underline flex items-center space-x-1"
                                                                         >
                                                                             <Plus size={11} />
-                                                                            <span>Add Sub-test Row</span>
+                                                                            <span>Add Test Row</span>
                                                                         </button>
-                                                                    )}
-                                                                </td>
-                                                            )}
 
-                                                            {/* Test Name */}
-                                                            <td 
-                                                                onClick={() => setActiveCell({ matId: item.id, subId: sub.id, testId: t.id, colKey: 'test', isEditing: false })}
-                                                                onDoubleClick={() => setActiveCell({ matId: item.id, subId: sub.id, testId: t.id, colKey: 'test', isEditing: true })}
-                                                                className={`py-2 px-4 align-top border-r border-gray-200 dark:border-white/10 transition-all ${isCellActive(item.id, 'test', t.id, sub.id) ? 'ring-2 ring-blue-500 bg-blue-500/5 z-10' : ''}`}
-                                                            >
-                                                                <div className="flex items-start space-x-1.5">
-                                                                    {canWrite && (
-                                                                        <div 
-                                                                            draggable={true}
-                                                                            onDragStart={e => handleDragStartTest(e, item.id, sub.id, t.id, tIndex)}
-                                                                            className="cursor-grab active:cursor-grabbing text-gray-400 hover:text-purple-500 p-0.5 mt-0.5"
+                                                                        <button
+                                                                            onClick={(e) => { e.stopPropagation(); handleConvertToSubdivisions(item.id); }}
+                                                                            className="text-[10px] text-purple-600 dark:text-purple-400 font-semibold hover:underline flex items-center space-x-1 ml-2"
                                                                         >
-                                                                            <GripVertical size={13} />
+                                                                            <Split size={11} />
+                                                                            <span>Group into Sub-divisions (a, b...)</span>
+                                                                        </button>
+                                                                    </div>
+                                                                )}
+                                                            </td>
+                                                        </>
+                                                    )}
+
+                                                    {/* Test Name */}
+                                                    <td
+                                                        onClick={() => setActiveCell({ matId: item.id, subId: null, testId: test.id, colKey: 'test', isEditing: false })}
+                                                        onDoubleClick={() => setActiveCell({ matId: item.id, subId: null, testId: test.id, colKey: 'test', isEditing: true })}
+                                                        className={`py-2.5 px-4 align-top border-r border-gray-200 dark:border-white/10 transition-all ${isCellActive(item.id, 'test', test.id) ? 'ring-2 ring-blue-500 bg-blue-500/5 z-10' : ''}`}
+                                                    >
+                                                        <div className="flex items-start space-x-1.5">
+                                                            {canWrite && (
+                                                                <div
+                                                                    draggable={true}
+                                                                    onDragStart={e => handleDragStartTest(e, item.id, null, test.id, index)}
+                                                                    className="cursor-grab active:cursor-grabbing text-gray-400 hover:text-blue-500 p-0.5 mt-0.5"
+                                                                >
+                                                                    <GripVertical size={13} />
+                                                                </div>
+                                                            )}
+                                                            <AutoResizingTextarea
+                                                                value={test.name}
+                                                                onChange={e => handleUpdateField(item.id, 'name', e.target.value, test.id)}
+                                                                isEditing={isCellActive(item.id, 'test', test.id) && activeCell.isEditing}
+                                                                onCommit={handleCommit}
+                                                                className="text-gray-800 dark:text-gray-200"
+                                                                placeholder="Test Name"
+                                                            />
+                                                        </div>
+                                                    </td>
+
+                                                    {/* Acceptable Test Result */}
+                                                    <td
+                                                        onClick={() => setActiveCell({ matId: item.id, subId: null, testId: test.id, colKey: 'result', isEditing: false })}
+                                                        onDoubleClick={() => setActiveCell({ matId: item.id, subId: null, testId: test.id, colKey: 'result', isEditing: true })}
+                                                        className={`py-2.5 px-4 align-top border-r border-gray-200 dark:border-white/10 transition-all ${isCellActive(item.id, 'result', test.id) ? 'ring-2 ring-blue-500 bg-blue-500/5 z-10' : ''}`}
+                                                    >
+                                                        <AutoResizingTextarea
+                                                            value={test.result}
+                                                            onChange={e => handleUpdateField(item.id, 'result', e.target.value, test.id)}
+                                                            isEditing={isCellActive(item.id, 'result', test.id) && activeCell.isEditing}
+                                                            onCommit={handleCommit}
+                                                            className="text-gray-800 dark:text-gray-200"
+                                                            placeholder="Acceptance criteria"
+                                                        />
+                                                    </td>
+
+                                                    {/* Reference IS Code */}
+                                                    {index === 0 && (
+                                                        <td
+                                                            rowSpan={totalRows}
+                                                            onClick={() => setActiveCell({ matId: item.id, subId: null, testId: test.id, colKey: 'reference', isEditing: false })}
+                                                            onDoubleClick={() => setActiveCell({ matId: item.id, subId: null, testId: test.id, colKey: 'reference', isEditing: true })}
+                                                            className={`py-3 px-4 align-top border-r border-gray-200 dark:border-white/10 transition-all ${isCellActive(item.id, 'reference') ? 'ring-2 ring-blue-500 bg-blue-500/5 z-10' : ''}`}
+                                                        >
+                                                            <AutoResizingTextarea
+                                                                value={item.reference || ''}
+                                                                onChange={e => handleUpdateField(item.id, 'reference', e.target.value)}
+                                                                isEditing={isCellActive(item.id, 'reference') && activeCell.isEditing}
+                                                                onCommit={handleCommit}
+                                                                className="font-semibold text-gray-700 dark:text-gray-300"
+                                                                placeholder="e.g. IS 8112 / IS 12269"
+                                                            />
+                                                        </td>
+                                                    )}
+
+                                                    {/* Time and Interval */}
+                                                    <td
+                                                        onClick={() => setActiveCell({ matId: item.id, subId: null, testId: test.id, colKey: 'interval', isEditing: false })}
+                                                        onDoubleClick={() => setActiveCell({ matId: item.id, subId: null, testId: test.id, colKey: 'interval', isEditing: true })}
+                                                        className={`py-2.5 px-4 align-top border-r border-gray-200 dark:border-white/10 transition-all ${isCellActive(item.id, 'interval', test.id) ? 'ring-2 ring-blue-500 bg-blue-500/5 z-10' : ''}`}
+                                                    >
+                                                        <AutoResizingTextarea
+                                                            value={test.interval || ''}
+                                                            onChange={e => handleUpdateField(item.id, 'interval', e.target.value, test.id)}
+                                                            isEditing={isCellActive(item.id, 'interval', test.id) && activeCell.isEditing}
+                                                            onCommit={handleCommit}
+                                                            className="text-gray-600 dark:text-gray-400"
+                                                            placeholder="Testing frequency"
+                                                        />
+                                                    </td>
+
+                                                    {/* Remarks */}
+                                                    {index === 0 && (
+                                                        <td
+                                                            rowSpan={totalRows}
+                                                            onClick={() => setActiveCell({ matId: item.id, subId: null, testId: test.id, colKey: 'remarks', isEditing: false })}
+                                                            onDoubleClick={() => setActiveCell({ matId: item.id, subId: null, testId: test.id, colKey: 'remarks', isEditing: true })}
+                                                            className={`py-3 px-4 align-top border-r border-gray-200 dark:border-white/10 transition-all ${isCellActive(item.id, 'remarks') ? 'ring-2 ring-blue-500 bg-blue-500/5 z-10' : ''}`}
+                                                        >
+                                                            <AutoResizingTextarea
+                                                                value={item.remarks || ''}
+                                                                onChange={e => handleUpdateField(item.id, 'remarks', e.target.value)}
+                                                                isEditing={isCellActive(item.id, 'remarks') && activeCell.isEditing}
+                                                                onCommit={handleCommit}
+                                                                className="text-gray-500 dark:text-gray-400"
+                                                                placeholder="General remarks for material..."
+                                                            />
+                                                        </td>
+                                                    )}
+
+                                                    {/* Actions */}
+                                                    {canWrite && (
+                                                        <td className="py-2.5 px-2 text-center align-top">
+                                                            {totalRows > 1 ? (
+                                                                <button
+                                                                    onClick={() => handleDeleteTestRow(item.id, test.id)}
+                                                                    className="text-gray-400 hover:text-red-500 transition-colors p-1 cursor-pointer"
+                                                                    title="Delete Row"
+                                                                >
+                                                                    <Trash2 size={13} />
+                                                                </button>
+                                                            ) : index === 0 ? (
+                                                                <button
+                                                                    onClick={() => handleDeleteItem(item.id)}
+                                                                    className="text-gray-400 hover:text-red-500 transition-colors p-1 cursor-pointer"
+                                                                    title="Delete Material"
+                                                                >
+                                                                    <Trash2 size={14} />
+                                                                </button>
+                                                            ) : null}
+                                                        </td>
+                                                    )}
+                                                </tr>
+                                            );
+                                        });
+                                    }
+
+                                    // 3. Render Material Group with Sub-divisions (a, b, c)
+                                    if (item.type === 'material_group') {
+                                        const totalSubRows = item.subdivisions.reduce((acc, sub) => acc + (sub.tests.length || 1), 0);
+
+                                        return (
+                                            <React.Fragment key={item.id}>
+                                                <tr className="bg-gray-100/60 dark:bg-white/[0.02] font-extrabold text-gray-900 dark:text-white">
+                                                    <td rowSpan={totalSubRows + 1} className="py-3 px-3 text-center font-black align-top border-r border-gray-200 dark:border-white/10 bg-gray-50/50 dark:bg-white/[0.01]">
+                                                        {item.code}
+                                                    </td>
+                                                    <td
+                                                        colSpan={6}
+                                                        onClick={() => setActiveCell({ matId: item.id, subId: null, testId: null, colKey: 'material', isEditing: false })}
+                                                        onDoubleClick={() => setActiveCell({ matId: item.id, subId: null, testId: null, colKey: 'material', isEditing: true })}
+                                                        className={`py-2.5 px-4 font-black uppercase text-gray-900 dark:text-white border-b border-r border-gray-200 dark:border-white/10 transition-all ${isCellActive(item.id, 'material') ? 'ring-2 ring-blue-500 bg-blue-500/5 z-10' : ''}`}
+                                                    >
+                                                        <div className="flex items-center justify-between">
+                                                            <AutoResizingTextarea
+                                                                value={item.title}
+                                                                onChange={e => handleUpdateField(item.id, 'title', e.target.value)}
+                                                                isEditing={isCellActive(item.id, 'material') && activeCell.isEditing}
+                                                                onCommit={handleCommit}
+                                                                className="font-black text-gray-900 dark:text-white uppercase"
+                                                            />
+                                                            {canWrite && (
+                                                                <button
+                                                                    onClick={(e) => { e.stopPropagation(); handleAddSubdivision(item.id); }}
+                                                                    className="text-[11px] text-purple-600 dark:text-purple-400 font-bold hover:underline flex items-center space-x-1 shrink-0 ml-4"
+                                                                >
+                                                                    <Plus size={13} />
+                                                                    <span>+ Add Sub-division (a, b...)</span>
+                                                                </button>
+                                                            )}
+                                                        </div>
+                                                    </td>
+                                                    {canWrite && (
+                                                        <td className="py-2 px-2 text-center border-b border-gray-200 dark:border-white/10">
+                                                            <button onClick={() => handleDeleteItem(item.id)} className="text-gray-400 hover:text-red-500 transition-colors">
+                                                                <Trash2 size={14} />
+                                                            </button>
+                                                        </td>
+                                                    )}
+                                                </tr>
+
+                                                {/* Sub-divisions Rendering */}
+                                                {item.subdivisions.map(sub => {
+                                                    const subTests = sub.tests && sub.tests.length > 0 ? sub.tests : [{ id: 'empty', name: '', result: '', interval: '' }];
+                                                    const subRowsCount = subTests.length;
+
+                                                    return subTests.map((t, tIndex) => {
+                                                        const isDragTarget = dragOverTarget && dragOverTarget.matId === item.id && dragOverTarget.subId === sub.id && dragOverTarget.index === tIndex;
+
+                                                        return (
+                                                            <tr
+                                                                key={`${sub.id}_${t.id}_${tIndex}`}
+                                                                onDragOver={e => handleDragOverTest(e, item.id, sub.id, tIndex)}
+                                                                onDrop={e => handleDropTest(e, item.id, sub.id, tIndex)}
+                                                                className={`hover:bg-gray-50/40 dark:hover:bg-white/[0.01] transition-all group ${isDragTarget ? 'border-t-2 border-purple-500 bg-purple-500/5' : ''}`}
+                                                            >
+                                                                {/* Sub-item Title */}
+                                                                {tIndex === 0 && (
+                                                                    <td
+                                                                        rowSpan={subRowsCount}
+                                                                        onClick={() => setActiveCell({ matId: item.id, subId: sub.id, testId: t.id, colKey: 'material', isEditing: false })}
+                                                                        onDoubleClick={() => setActiveCell({ matId: item.id, subId: sub.id, testId: t.id, colKey: 'material', isEditing: true })}
+                                                                        className={`py-2.5 px-4 align-top border-r border-gray-200 dark:border-white/10 pl-6 transition-all ${isCellActive(item.id, 'material', t.id, sub.id) ? 'ring-2 ring-blue-500 bg-blue-500/5 z-10' : ''}`}
+                                                                    >
+                                                                        <div className="flex items-start space-x-1.5">
+                                                                            <span className="font-extrabold text-purple-600 dark:text-purple-400 mt-0.5">{sub.code}.</span>
+                                                                            <AutoResizingTextarea
+                                                                                value={sub.title}
+                                                                                onChange={e => handleUpdateField(item.id, 'title', e.target.value, null, sub.id)}
+                                                                                isEditing={isCellActive(item.id, 'material', t.id, sub.id) && activeCell.isEditing}
+                                                                                onCommit={handleCommit}
+                                                                                className="font-bold text-gray-800 dark:text-gray-200 text-xs"
+                                                                            />
                                                                         </div>
-                                                                    )}
+                                                                        {canWrite && (
+                                                                            <button
+                                                                                onClick={(e) => { e.stopPropagation(); handleAddTestRow(item.id, sub.id); }}
+                                                                                className="mt-1 ml-4 text-[10px] text-blue-600 dark:text-blue-400 font-semibold hover:underline flex items-center space-x-1"
+                                                                            >
+                                                                                <Plus size={11} />
+                                                                                <span>Add Sub-test Row</span>
+                                                                            </button>
+                                                                        )}
+                                                                    </td>
+                                                                )}
+
+                                                                {/* Test Name */}
+                                                                <td
+                                                                    onClick={() => setActiveCell({ matId: item.id, subId: sub.id, testId: t.id, colKey: 'test', isEditing: false })}
+                                                                    onDoubleClick={() => setActiveCell({ matId: item.id, subId: sub.id, testId: t.id, colKey: 'test', isEditing: true })}
+                                                                    className={`py-2 px-4 align-top border-r border-gray-200 dark:border-white/10 transition-all ${isCellActive(item.id, 'test', t.id, sub.id) ? 'ring-2 ring-blue-500 bg-blue-500/5 z-10' : ''}`}
+                                                                >
+                                                                    <div className="flex items-start space-x-1.5">
+                                                                        {canWrite && (
+                                                                            <div
+                                                                                draggable={true}
+                                                                                onDragStart={e => handleDragStartTest(e, item.id, sub.id, t.id, tIndex)}
+                                                                                className="cursor-grab active:cursor-grabbing text-gray-400 hover:text-purple-500 p-0.5 mt-0.5"
+                                                                            >
+                                                                                <GripVertical size={13} />
+                                                                            </div>
+                                                                        )}
+                                                                        <AutoResizingTextarea
+                                                                            value={t.name}
+                                                                            onChange={e => handleUpdateField(item.id, 'name', e.target.value, t.id, sub.id)}
+                                                                            isEditing={isCellActive(item.id, 'test', t.id, sub.id) && activeCell.isEditing}
+                                                                            onCommit={handleCommit}
+                                                                            className="text-gray-800 dark:text-gray-200"
+                                                                        />
+                                                                    </div>
+                                                                </td>
+
+                                                                {/* Acceptable Test Result */}
+                                                                <td
+                                                                    onClick={() => setActiveCell({ matId: item.id, subId: sub.id, testId: t.id, colKey: 'result', isEditing: false })}
+                                                                    onDoubleClick={() => setActiveCell({ matId: item.id, subId: sub.id, testId: t.id, colKey: 'result', isEditing: true })}
+                                                                    className={`py-2 px-4 align-top border-r border-gray-200 dark:border-white/10 transition-all ${isCellActive(item.id, 'result', t.id, sub.id) ? 'ring-2 ring-blue-500 bg-blue-500/5 z-10' : ''}`}
+                                                                >
                                                                     <AutoResizingTextarea
-                                                                        value={t.name}
-                                                                        onChange={e => handleUpdateField(item.id, 'name', e.target.value, t.id, sub.id)}
-                                                                        isEditing={isCellActive(item.id, 'test', t.id, sub.id) && activeCell.isEditing}
+                                                                        value={t.result}
+                                                                        onChange={e => handleUpdateField(item.id, 'result', e.target.value, t.id, sub.id)}
+                                                                        isEditing={isCellActive(item.id, 'result', t.id, sub.id) && activeCell.isEditing}
                                                                         onCommit={handleCommit}
                                                                         className="text-gray-800 dark:text-gray-200"
                                                                     />
-                                                                </div>
-                                                            </td>
-
-                                                            {/* Acceptable Test Result */}
-                                                            <td 
-                                                                onClick={() => setActiveCell({ matId: item.id, subId: sub.id, testId: t.id, colKey: 'result', isEditing: false })}
-                                                                onDoubleClick={() => setActiveCell({ matId: item.id, subId: sub.id, testId: t.id, colKey: 'result', isEditing: true })}
-                                                                className={`py-2 px-4 align-top border-r border-gray-200 dark:border-white/10 transition-all ${isCellActive(item.id, 'result', t.id, sub.id) ? 'ring-2 ring-blue-500 bg-blue-500/5 z-10' : ''}`}
-                                                            >
-                                                                <AutoResizingTextarea
-                                                                    value={t.result}
-                                                                    onChange={e => handleUpdateField(item.id, 'result', e.target.value, t.id, sub.id)}
-                                                                    isEditing={isCellActive(item.id, 'result', t.id, sub.id) && activeCell.isEditing}
-                                                                    onCommit={handleCommit}
-                                                                    className="text-gray-800 dark:text-gray-200"
-                                                                />
-                                                            </td>
-
-                                                            {/* Reference */}
-                                                            {tIndex === 0 && (
-                                                                <td 
-                                                                    rowSpan={subRowsCount} 
-                                                                    onClick={() => setActiveCell({ matId: item.id, subId: sub.id, testId: t.id, colKey: 'reference', isEditing: false })}
-                                                                    onDoubleClick={() => setActiveCell({ matId: item.id, subId: sub.id, testId: t.id, colKey: 'reference', isEditing: true })}
-                                                                    className={`py-2.5 px-4 align-top border-r border-gray-200 dark:border-white/10 transition-all ${isCellActive(item.id, 'reference', t.id, sub.id) ? 'ring-2 ring-blue-500 bg-blue-500/5 z-10' : ''}`}
-                                                                >
-                                                                    <AutoResizingTextarea
-                                                                        value={sub.reference || ''}
-                                                                        onChange={e => handleUpdateField(item.id, 'reference', e.target.value, null, sub.id)}
-                                                                        isEditing={isCellActive(item.id, 'reference', t.id, sub.id) && activeCell.isEditing}
-                                                                        onCommit={handleCommit}
-                                                                        className="font-semibold text-gray-700 dark:text-gray-300"
-                                                                    />
                                                                 </td>
-                                                            )}
 
-                                                            {/* Time and Interval */}
-                                                            <td 
-                                                                onClick={() => setActiveCell({ matId: item.id, subId: sub.id, testId: t.id, colKey: 'interval', isEditing: false })}
-                                                                onDoubleClick={() => setActiveCell({ matId: item.id, subId: sub.id, testId: t.id, colKey: 'interval', isEditing: true })}
-                                                                className={`py-2 px-4 align-top border-r border-gray-200 dark:border-white/10 transition-all ${isCellActive(item.id, 'interval', t.id, sub.id) ? 'ring-2 ring-blue-500 bg-blue-500/5 z-10' : ''}`}
-                                                            >
-                                                                <AutoResizingTextarea
-                                                                    value={t.interval || ''}
-                                                                    onChange={e => handleUpdateField(item.id, 'interval', e.target.value, t.id, sub.id)}
-                                                                    isEditing={isCellActive(item.id, 'interval', t.id, sub.id) && activeCell.isEditing}
-                                                                    onCommit={handleCommit}
-                                                                    className="text-gray-600 dark:text-gray-400"
-                                                                />
-                                                            </td>
-
-                                                            {/* Remarks */}
-                                                            {tIndex === 0 && (
-                                                                <td 
-                                                                    rowSpan={subRowsCount} 
-                                                                    onClick={() => setActiveCell({ matId: item.id, subId: sub.id, testId: t.id, colKey: 'remarks', isEditing: false })}
-                                                                    onDoubleClick={() => setActiveCell({ matId: item.id, subId: sub.id, testId: t.id, colKey: 'remarks', isEditing: true })}
-                                                                    className={`py-2.5 px-4 align-top border-r border-gray-200 dark:border-white/10 transition-all ${isCellActive(item.id, 'remarks', t.id, sub.id) ? 'ring-2 ring-blue-500 bg-blue-500/5 z-10' : ''}`}
-                                                                >
-                                                                    <AutoResizingTextarea
-                                                                        value={sub.remarks || ''}
-                                                                        onChange={e => handleUpdateField(item.id, 'remarks', e.target.value, null, sub.id)}
-                                                                        isEditing={isCellActive(item.id, 'remarks', t.id, sub.id) && activeCell.isEditing}
-                                                                        onCommit={handleCommit}
-                                                                        className="text-gray-500 dark:text-gray-400"
-                                                                    />
-                                                                </td>
-                                                            )}
-
-                                                            {/* Actions */}
-                                                            {canWrite && (
-                                                                <td className="py-2 px-2 text-center align-top">
-                                                                    <button
-                                                                        onClick={() => handleDeleteTestRow(item.id, t.id, sub.id)}
-                                                                        className="text-gray-400 hover:text-red-500 transition-colors p-1"
+                                                                {/* Reference */}
+                                                                {tIndex === 0 && (
+                                                                    <td
+                                                                        rowSpan={subRowsCount}
+                                                                        onClick={() => setActiveCell({ matId: item.id, subId: sub.id, testId: t.id, colKey: 'reference', isEditing: false })}
+                                                                        onDoubleClick={() => setActiveCell({ matId: item.id, subId: sub.id, testId: t.id, colKey: 'reference', isEditing: true })}
+                                                                        className={`py-2.5 px-4 align-top border-r border-gray-200 dark:border-white/10 transition-all ${isCellActive(item.id, 'reference', t.id, sub.id) ? 'ring-2 ring-blue-500 bg-blue-500/5 z-10' : ''}`}
                                                                     >
-                                                                        <Trash2 size={13} />
-                                                                    </button>
-                                                                </td>
-                                                            )}
-                                                        </tr>
-                                                    );
-                                                });
-                                            })}
-                                        </React.Fragment>
-                                    );
-                                }
+                                                                        <AutoResizingTextarea
+                                                                            value={sub.reference || ''}
+                                                                            onChange={e => handleUpdateField(item.id, 'reference', e.target.value, null, sub.id)}
+                                                                            isEditing={isCellActive(item.id, 'reference', t.id, sub.id) && activeCell.isEditing}
+                                                                            onCommit={handleCommit}
+                                                                            className="font-semibold text-gray-700 dark:text-gray-300"
+                                                                        />
+                                                                    </td>
+                                                                )}
 
-                                return null;
-                            })}
-                        </tbody>
-                    </table>
-                </div>
+                                                                {/* Time and Interval */}
+                                                                <td
+                                                                    onClick={() => setActiveCell({ matId: item.id, subId: sub.id, testId: t.id, colKey: 'interval', isEditing: false })}
+                                                                    onDoubleClick={() => setActiveCell({ matId: item.id, subId: sub.id, testId: t.id, colKey: 'interval', isEditing: true })}
+                                                                    className={`py-2 px-4 align-top border-r border-gray-200 dark:border-white/10 transition-all ${isCellActive(item.id, 'interval', t.id, sub.id) ? 'ring-2 ring-blue-500 bg-blue-500/5 z-10' : ''}`}
+                                                                >
+                                                                    <AutoResizingTextarea
+                                                                        value={t.interval || ''}
+                                                                        onChange={e => handleUpdateField(item.id, 'interval', e.target.value, t.id, sub.id)}
+                                                                        isEditing={isCellActive(item.id, 'interval', t.id, sub.id) && activeCell.isEditing}
+                                                                        onCommit={handleCommit}
+                                                                        className="text-gray-600 dark:text-gray-400"
+                                                                    />
+                                                                </td>
+
+                                                                {/* Remarks */}
+                                                                {tIndex === 0 && (
+                                                                    <td
+                                                                        rowSpan={subRowsCount}
+                                                                        onClick={() => setActiveCell({ matId: item.id, subId: sub.id, testId: t.id, colKey: 'remarks', isEditing: false })}
+                                                                        onDoubleClick={() => setActiveCell({ matId: item.id, subId: sub.id, testId: t.id, colKey: 'remarks', isEditing: true })}
+                                                                        className={`py-2.5 px-4 align-top border-r border-gray-200 dark:border-white/10 transition-all ${isCellActive(item.id, 'remarks', t.id, sub.id) ? 'ring-2 ring-blue-500 bg-blue-500/5 z-10' : ''}`}
+                                                                    >
+                                                                        <AutoResizingTextarea
+                                                                            value={sub.remarks || ''}
+                                                                            onChange={e => handleUpdateField(item.id, 'remarks', e.target.value, null, sub.id)}
+                                                                            isEditing={isCellActive(item.id, 'remarks', t.id, sub.id) && activeCell.isEditing}
+                                                                            onCommit={handleCommit}
+                                                                            className="text-gray-500 dark:text-gray-400"
+                                                                        />
+                                                                    </td>
+                                                                )}
+
+                                                                {/* Actions */}
+                                                                {canWrite && (
+                                                                    <td className="py-2 px-2 text-center align-top">
+                                                                        <button
+                                                                            onClick={() => handleDeleteTestRow(item.id, t.id, sub.id)}
+                                                                            className="text-gray-400 hover:text-red-500 transition-colors p-1 cursor-pointer"
+                                                                            title="Delete Sub-division Row"
+                                                                        >
+                                                                            <Trash2 size={13} />
+                                                                        </button>
+                                                                    </td>
+                                                                )}
+                                                            </tr>
+                                                        );
+                                                    });
+                                                })}
+                                            </React.Fragment>
+                                        );
+                                    }
+
+                                    return null;
+                                })}
+                            </tbody>
+                        </table>
+                    </div>
+                )}
+
+                {/* 2. Section Cards View */}
+                {activeView === 'cards' && (
+                    <div className="p-2 sm:p-3 space-y-3 w-full">
+                        {filteredItems.map((item) => {
+                            if (item.type === 'category') {
+                                return (
+                                    <div key={item.id} className="bg-gray-50/90 dark:bg-[#161b22] border border-gray-200 dark:border-white/10 rounded-lg p-3 sm:p-3.5 shadow-xs w-full">
+                                        <div className="flex items-center justify-between">
+                                            <div className="flex items-center gap-2.5">
+                                                <span className="w-7 h-7 rounded-md bg-blue-600 text-white font-black flex items-center justify-center text-xs shadow-xs">
+                                                    {item.code}
+                                                </span>
+                                                <h3 className="font-extrabold text-gray-900 dark:text-white text-sm sm:text-base tracking-wide uppercase">
+                                                    {item.title}
+                                                </h3>
+                                            </div>
+                                            {canWrite && (
+                                                <div className="flex items-center gap-2">
+                                                    <button
+                                                        onClick={() => handleAddMaterialToCategory(item.id, false)}
+                                                        className="px-2.5 py-1 bg-blue-600 hover:bg-blue-700 text-white rounded-md text-xs font-bold transition-all flex items-center gap-1 cursor-pointer"
+                                                    >
+                                                        <Plus size={13} />
+                                                        <span>Material</span>
+                                                    </button>
+                                                    <button
+                                                        onClick={() => handleAddMaterialToCategory(item.id, true)}
+                                                        className="px-2.5 py-1 bg-purple-600 hover:bg-purple-700 text-white rounded-md text-xs font-bold transition-all flex items-center gap-1 cursor-pointer"
+                                                    >
+                                                        <FolderPlus size={13} />
+                                                        <span>Group</span>
+                                                    </button>
+                                                    <button
+                                                        onClick={() => handleDeleteItem(item.id)}
+                                                        className="p-1 text-gray-400 hover:text-red-500 transition-colors cursor-pointer"
+                                                        title="Delete Section"
+                                                    >
+                                                        <Trash2 size={15} />
+                                                    </button>
+                                                </div>
+                                            )}
+                                        </div>
+                                    </div>
+                                );
+                            }
+
+                            if (item.type === 'material') {
+                                return (
+                                    <div key={item.id} className="bg-white dark:bg-[#0d1117] border border-gray-200 dark:border-white/10 rounded-lg p-3.5 shadow-xs hover:border-blue-500/50 transition-all w-full">
+                                        <div className="flex items-start justify-between gap-3 mb-2.5">
+                                            <div>
+                                                <div className="flex items-center gap-2">
+                                                    <span className="px-2 py-0.5 rounded bg-blue-50 dark:bg-blue-950/50 text-blue-600 dark:text-blue-400 font-black text-xs">
+                                                        {item.code}
+                                                    </span>
+                                                    <h4 className="font-bold text-gray-900 dark:text-white text-sm">
+                                                        {item.title}
+                                                    </h4>
+                                                </div>
+                                                {item.subtitle && (
+                                                    <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5 ml-8">
+                                                        {item.subtitle}
+                                                    </p>
+                                                )}
+                                            </div>
+                                            {item.reference && (
+                                                <span className="px-2.5 py-1 rounded-md bg-purple-50 dark:bg-purple-950/50 border border-purple-200 dark:border-purple-800/40 text-purple-700 dark:text-purple-300 font-bold text-[11px] shrink-0">
+                                                    Ref: {item.reference}
+                                                </span>
+                                            )}
+                                        </div>
+
+                                        {/* Tests List */}
+                                        <div className="space-y-1.5 mt-2.5 pt-2.5 border-t border-gray-100 dark:border-white/5">
+                                            {item.tests?.map((t, tIdx) => (
+                                                <div key={t.id || tIdx} className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 p-2 rounded-md bg-gray-50/80 dark:bg-white/[0.02] border border-gray-100 dark:border-white/5 text-xs">
+                                                    <div className="flex items-start gap-2">
+                                                        <CheckCircle2 size={14} className="text-emerald-500 shrink-0 mt-0.5" />
+                                                        <div>
+                                                            <span className="font-semibold text-gray-800 dark:text-gray-200">{t.name || 'Unnamed Test'}</span>
+                                                            {t.result && (
+                                                                <p className="text-[11px] text-gray-500 dark:text-gray-400 mt-0.5">
+                                                                    Acceptance: <span className="text-gray-700 dark:text-gray-300 font-medium">{t.result}</span>
+                                                                </p>
+                                                            )}
+                                                        </div>
+                                                    </div>
+                                                    {t.interval && (
+                                                        <span className="px-2 py-0.5 rounded-md bg-amber-50 dark:bg-amber-950/40 border border-amber-200/50 dark:border-amber-800/30 text-amber-700 dark:text-amber-300 text-[10px] font-medium shrink-0 self-start sm:self-center">
+                                                            {t.interval}
+                                                        </span>
+                                                    )}
+                                                </div>
+                                            ))}
+                                        </div>
+
+                                        {item.remarks && (
+                                            <p className="text-xs text-gray-500 dark:text-gray-400 italic mt-2.5 pt-2 border-t border-dashed border-gray-200 dark:border-white/10">
+                                                Remarks: {item.remarks}
+                                            </p>
+                                        )}
+                                    </div>
+                                );
+                            }
+
+                            if (item.type === 'material_group') {
+                                return (
+                                    <div key={item.id} className="bg-white dark:bg-[#0d1117] border border-purple-200 dark:border-purple-900/30 rounded-lg p-3.5 shadow-xs w-full">
+                                        <div className="flex items-center justify-between mb-2.5">
+                                            <div className="flex items-center gap-2">
+                                                <span className="px-2 py-0.5 rounded bg-purple-100 dark:bg-purple-950/60 text-purple-700 dark:text-purple-300 font-black text-xs">
+                                                    {item.code}
+                                                </span>
+                                                <h4 className="font-black text-gray-900 dark:text-white text-sm uppercase">
+                                                    {item.title}
+                                                </h4>
+                                            </div>
+                                        </div>
+
+                                        {/* Subdivisions */}
+                                        <div className="space-y-2 pl-1">
+                                            {item.subdivisions?.map((sub) => (
+                                                <div key={sub.id} className="p-2.5 rounded-md bg-purple-50/40 dark:bg-purple-950/10 border border-purple-100 dark:border-purple-900/20 text-xs">
+                                                    <div className="flex items-center justify-between mb-1.5">
+                                                        <span className="font-extrabold text-purple-700 dark:text-purple-300">
+                                                            {sub.code}. {sub.title}
+                                                        </span>
+                                                        {sub.reference && (
+                                                            <span className="px-2 py-0.5 rounded bg-white dark:bg-white/10 text-gray-700 dark:text-gray-300 font-semibold text-[10px]">
+                                                                Ref: {sub.reference}
+                                                            </span>
+                                                        )}
+                                                    </div>
+                                                    <div className="space-y-1">
+                                                        {sub.tests?.map((st, stIdx) => (
+                                                            <div key={st.id || stIdx} className="flex flex-col sm:flex-row sm:items-center justify-between gap-1 text-[11px] py-1 border-t border-purple-100/50 dark:border-white/5">
+                                                                <span className="text-gray-800 dark:text-gray-200 font-medium">{st.name}</span>
+                                                                <span className="text-gray-500 dark:text-gray-400">{st.result}</span>
+                                                            </div>
+                                                        ))}
+                                                    </div>
+                                                </div>
+                                            ))}
+                                        </div>
+                                    </div>
+                                );
+                            }
+
+                            return null;
+                        })}
+                    </div>
+                )}
             </div>
         </div>
     );
