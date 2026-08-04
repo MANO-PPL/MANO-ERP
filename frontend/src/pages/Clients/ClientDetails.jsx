@@ -1,7 +1,9 @@
 import React, { useState } from 'react';
-import { X, Copy, Plus, Calendar, MessageSquare, Phone, Mail, MapPin, Users, Send, Clock, Check } from 'lucide-react';
+import { X, Copy, Plus, Calendar, MessageSquare, Phone, Mail, MapPin, Users, Send, Clock, Check, Globe } from 'lucide-react';
 import api from '../../services/api';
 import { toast } from 'react-toastify';
+import CustomDatePicker from '../../components/CustomDatePicker';
+import CustomSelect from '../../components/CustomSelect';
 
 const ClientDetails = ({ isOpen, onClose, client, onUpdate }) => {
     const [copied, setCopied] = useState(false);
@@ -74,6 +76,14 @@ Reference     : ${client.reference || '-'}
         toast.info('Structured client details copied!');
     };
 
+    const typeOptions = [
+        { label: 'Call', value: 'Call' },
+        { label: 'WhatsApp', value: 'WhatsApp' },
+        { label: 'Email', value: 'Email' },
+        { label: 'Site Visit', value: 'Site Visit' },
+        { label: 'Meeting', value: 'Meeting' }
+    ];
+
     return (
         <div className="fixed inset-0 z-[5000] flex justify-end p-0 sm:p-0 anim-fade-in text-left">
             {/* Backdrop */}
@@ -117,12 +127,35 @@ Reference     : ${client.reference || '-'}
                         </div>
                         <div>
                             <p className="text-[10px] uppercase tracking-widest text-gray-400 font-bold mb-1">Contact No</p>
-                            <p className="text-sm font-medium text-gray-900 dark:text-gray-200">{client.contact_no || '-'}</p>
+                            {client.contact_no && client.contact_no !== '-' ? (
+                                <a
+                                    href={`tel:${client.contact_no}`}
+                                    className="text-sm font-semibold text-blue-600 dark:text-blue-400 hover:underline flex items-center gap-1.5"
+                                >
+                                    <Phone size={13} className="shrink-0 text-blue-500" />
+                                    <span>{client.contact_no}</span>
+                                </a>
+                            ) : (
+                                <p className="text-sm font-medium text-gray-900 dark:text-gray-200">-</p>
+                            )}
                         </div>
 
                         <div>
                             <p className="text-[10px] uppercase tracking-widest text-gray-400 font-bold mb-1">Email</p>
-                            <p className="text-sm font-medium text-gray-900 dark:text-gray-200">{client.email || '-'}</p>
+                            {client.email && client.email !== '-' ? (
+                                <a
+                                    href={`https://mail.google.com/mail/?view=cm&fs=1&to=${encodeURIComponent(client.email)}`}
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                    className="text-sm font-semibold text-blue-600 dark:text-blue-400 hover:underline flex items-center gap-1.5"
+                                    title={`Open Gmail to email ${client.email}`}
+                                >
+                                    <Mail size={13} className="shrink-0 text-blue-500" />
+                                    <span>{client.email}</span>
+                                </a>
+                            ) : (
+                                <p className="text-sm font-medium text-gray-900 dark:text-gray-200">-</p>
+                            )}
                         </div>
                         <div>
                             <p className="text-[10px] uppercase tracking-widest text-gray-400 font-bold mb-1">Location</p>
@@ -130,9 +163,15 @@ Reference     : ${client.reference || '-'}
                         </div>
                         <div>
                             <p className="text-[10px] uppercase tracking-widest text-gray-400 font-bold mb-1">Website</p>
-                            {client.website && client.website !== 'NA' ? (
-                                <a href={client.website.startsWith('http') ? client.website : `https://${client.website}`} target="_blank" rel="noopener noreferrer" className="text-sm font-medium text-blue-600 dark:text-blue-400 hover:underline">
-                                    {client.website}
+                            {client.website && client.website !== 'NA' && client.website !== '-' ? (
+                                <a
+                                    href={client.website.startsWith('http') ? client.website : `https://${client.website}`}
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                    className="text-sm font-semibold text-blue-600 dark:text-blue-400 hover:underline flex items-center gap-1.5"
+                                >
+                                    <Globe size={13} className="shrink-0 text-blue-500" />
+                                    <span>{client.website}</span>
                                 </a>
                             ) : (
                                 <p className="text-sm font-medium text-gray-900 dark:text-gray-200">NA</p>
@@ -157,24 +196,18 @@ Reference     : ${client.reference || '-'}
 
                     {/* Interaction History & Logger */}
                     <div className="pt-6 border-t border-gray-100 dark:border-white/5">
-                        <div className="flex justify-between items-center mb-4">
-                            <div className="flex items-center gap-3">
-                                <h3 className="text-[10px] uppercase tracking-widest text-gray-400 font-bold">Interactions</h3>
-                                <select 
-                                    className="bg-transparent border border-gray-200 dark:border-white/10 rounded-lg px-2 py-1 text-xs font-bold text-blue-600 dark:text-blue-400 outline-none focus:ring-1 focus:ring-blue-500 transition-all cursor-pointer"
+                        <div className="flex justify-between items-center mb-4 gap-4">
+                            <div className="flex items-center gap-3 min-w-[200px]">
+                                <span className="text-[10px] uppercase tracking-widest text-gray-400 font-bold shrink-0">Interactions</span>
+                                <CustomSelect
+                                    options={typeOptions}
                                     value={selectedTypeView}
                                     onChange={(e) => setSelectedTypeView(e.target.value)}
-                                >
-                                    <option value="Call">CALL</option>
-                                    <option value="WhatsApp">WHATSAPP</option>
-                                    <option value="Email">EMAIL</option>
-                                    <option value="Site Visit">SITE VISIT</option>
-                                    <option value="Meeting">MEETING</option>
-                                </select>
+                                />
                             </div>
                             <button 
                                 onClick={() => setIsLogging(!isLogging)}
-                                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${isLogging ? 'bg-red-50 text-red-600 dark:bg-red-500/10 dark:text-red-400' : 'bg-blue-50 text-blue-600 dark:bg-blue-500/10 dark:text-blue-400 hover:bg-blue-100 dark:hover:bg-blue-500/20'}`}
+                                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition-all shrink-0 ${isLogging ? 'bg-red-50 text-red-600 dark:bg-red-500/10 dark:text-red-400' : 'bg-blue-50 text-blue-600 dark:bg-blue-500/10 dark:text-blue-400 hover:bg-blue-100 dark:hover:bg-blue-500/20'}`}
                             >
                                 {isLogging ? <X size={14} /> : <Plus size={14} />}
                                 <span>{isLogging ? 'Cancel' : 'Log Interaction'}</span>
@@ -183,37 +216,27 @@ Reference     : ${client.reference || '-'}
 
                         {isLogging && (
                             <form onSubmit={handleInteractionSubmit} className="mb-6 p-4 bg-gray-50 dark:bg-white/[0.02] border border-gray-100 dark:border-white/5 rounded-xl space-y-4 anim-fade-in">
-                                <div className="grid grid-cols-2 gap-4">
+                                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                                     <div>
-                                        <label className="text-[10px] font-bold text-gray-500 uppercase mb-1 block">Type</label>
-                                        <select 
-                                            className="w-full bg-white dark:bg-[#0d1117] border border-gray-200 dark:border-white/10 rounded-lg px-3 py-2 text-sm text-gray-900 dark:text-gray-100 focus:ring-2 focus:ring-blue-500 outline-none transition-all"
+                                        <CustomSelect
+                                            label="TYPE"
+                                            options={typeOptions}
                                             value={interactionForm.type}
                                             onChange={(e) => setInteractionForm({...interactionForm, type: e.target.value})}
-                                        >
-                                            <option value="Call">Call</option>
-                                            <option value="WhatsApp">WhatsApp</option>
-                                            <option value="Email">Email</option>
-                                            <option value="Site Visit">Site Visit</option>
-                                            <option value="Meeting">Meeting</option>
-                                        </select>
+                                        />
                                     </div>
                                     <div>
-                                        <label className="text-[10px] font-bold text-gray-500 uppercase mb-1 block">Date</label>
-                                        <input 
-                                            type="date"
-                                            className="w-full bg-white dark:bg-[#0d1117] border border-gray-200 dark:border-white/10 rounded-lg px-3 py-2 text-sm text-gray-900 dark:text-gray-100 focus:ring-2 focus:ring-blue-500 outline-none transition-all"
+                                        <CustomDatePicker 
+                                            label="DATE"
                                             value={interactionForm.interaction_date}
                                             onChange={(e) => setInteractionForm({...interactionForm, interaction_date: e.target.value})}
                                         />
                                     </div>
                                 </div>
-                                <div className="grid grid-cols-2 gap-4">
+                                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                                     <div>
-                                        <label className="text-[10px] font-bold text-gray-500 uppercase mb-1 block">Follow-up Date</label>
-                                        <input 
-                                            type="date"
-                                            className="w-full bg-white dark:bg-[#0d1117] border border-gray-200 dark:border-white/10 rounded-lg px-3 py-2 text-sm text-gray-900 dark:text-gray-100 focus:ring-2 focus:ring-blue-500 outline-none transition-all"
+                                        <CustomDatePicker 
+                                            label="FOLLOW UP DATE"
                                             value={interactionForm.follow_up_date}
                                             onChange={(e) => setInteractionForm({...interactionForm, follow_up_date: e.target.value})}
                                         />
@@ -231,7 +254,7 @@ Reference     : ${client.reference || '-'}
                                 <button 
                                     type="submit"
                                     disabled={isSubmitting}
-                                    className="w-full py-2.5 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-sm font-bold flex items-center justify-center gap-2 transition-all active:scale-[0.98] disabled:opacity-70"
+                                    className="w-full py-2.5 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-sm font-bold flex items-center justify-center gap-2 transition-all active:scale-[0.98] disabled:opacity-70 cursor-pointer shadow-md shadow-blue-500/20"
                                 >
                                     {isSubmitting ? 'Logging...' : <><Send size={16} /> Save Interaction</>}
                                 </button>

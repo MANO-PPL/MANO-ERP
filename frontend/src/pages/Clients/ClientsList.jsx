@@ -2,8 +2,9 @@ import React, { useState, useEffect, useRef, useMemo } from 'react';
 import {
     Search, Plus, Trash2, Info, RefreshCw, Layers, Users, X, UploadCloud,
     Download, Save, RotateCcw, AlertCircle, ChevronDown, Copy, Eye, CheckSquare,
-    Square, ArrowUp, ArrowDown, Filter, Sparkles, Check, Building, Briefcase, Globe
+    Square, ArrowUp, ArrowDown, Filter, Sparkles, Check, Building, Briefcase, Globe, Phone, Mail
 } from 'lucide-react';
+import { format } from 'date-fns';
 import { useNavigate } from 'react-router-dom';
 import api from '../../services/api';
 import clientApi from '../../services/clientApi';
@@ -105,6 +106,59 @@ const CustomPageSizeDropdown = ({ pageSize, setPageSize, totalCount }) => {
             )}
         </div>
     );
+};
+
+const renderFollowUpBadge = (followUpDateStr) => {
+    if (!followUpDateStr) return null;
+    let followUpDate = new Date(followUpDateStr);
+    if (isNaN(followUpDate.getTime())) return null;
+
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+
+    const targetDate = new Date(followUpDate);
+    targetDate.setHours(0, 0, 0, 0);
+
+    const diffTime = targetDate.getTime() - today.getTime();
+    const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+
+    let formattedDate = followUpDateStr;
+    try {
+        formattedDate = format(followUpDate, 'dd MMM');
+    } catch (e) {}
+
+    if (diffDays < 0) {
+        const overdueDays = Math.abs(diffDays);
+        return (
+            <span
+                className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-extrabold bg-red-50 text-red-700 dark:bg-red-950/40 dark:text-red-400 border border-red-200 dark:border-red-500/30 shadow-xs shrink-0 cursor-pointer"
+                title={`Follow-up was due on ${formattedDate}`}
+            >
+                <span className="w-1.5 h-1.5 rounded-full bg-red-500 animate-pulse" />
+                Overdue: {overdueDays}d ({formattedDate})
+            </span>
+        );
+    } else if (diffDays === 0) {
+        return (
+            <span
+                className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-extrabold bg-emerald-50 text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-400 border border-emerald-200 dark:border-emerald-500/30 shadow-xs shrink-0 cursor-pointer"
+                title="Follow-up scheduled for Today!"
+            >
+                <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-ping" />
+                Follow-up Today!
+            </span>
+        );
+    } else {
+        return (
+            <span
+                className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-50 text-amber-700 dark:bg-amber-950/40 dark:text-amber-400 border border-amber-200 dark:border-amber-500/30 shadow-xs shrink-0 cursor-pointer"
+                title={`Follow-up scheduled on ${formattedDate}`}
+            >
+                <span className="w-1.5 h-1.5 rounded-full bg-amber-500" />
+                Follow-up: {formattedDate}
+            </span>
+        );
+    }
 };
 
 const ClientsList = () => {
@@ -2502,7 +2556,32 @@ const ClientsList = () => {
                                                             <div className="truncate w-full font-medium">
                                                                 {rawValue ? (
                                                                     colName === 'name' ? (
-                                                                        <span className="font-bold text-gray-900 dark:text-white">{rawValue}</span>
+                                                                        <div className="flex items-center justify-between gap-2 w-full">
+                                                                            <span className="font-bold text-gray-900 dark:text-white truncate">{rawValue}</span>
+                                                                            {renderFollowUpBadge(client.call_on_date || client.follow_up_date)}
+                                                                        </div>
+                                                                    ) : colName === 'telephone_no' ? (
+                                                                        <a
+                                                                            href={`tel:${rawValue}`}
+                                                                            onClick={(e) => e.stopPropagation()}
+                                                                            className="text-blue-600 dark:text-blue-400 hover:underline font-semibold flex items-center gap-1.5 truncate"
+                                                                            title={`Call ${rawValue}`}
+                                                                        >
+                                                                            <Phone size={12} className="shrink-0 text-blue-500" />
+                                                                            <span className="truncate">{rawValue}</span>
+                                                                        </a>
+                                                                    ) : colName === 'email' ? (
+                                                                        <a
+                                                                            href={`https://mail.google.com/mail/?view=cm&fs=1&to=${encodeURIComponent(rawValue)}`}
+                                                                            target="_blank"
+                                                                            rel="noopener noreferrer"
+                                                                            onClick={(e) => e.stopPropagation()}
+                                                                            className="text-blue-600 dark:text-blue-400 hover:underline font-semibold flex items-center gap-1.5 truncate"
+                                                                            title={`Open Gmail to email ${rawValue}`}
+                                                                        >
+                                                                            <Mail size={12} className="shrink-0 text-blue-500" />
+                                                                            <span className="truncate">{rawValue}</span>
+                                                                        </a>
                                                                     ) : (
                                                                         <span>{rawValue}</span>
                                                                     )

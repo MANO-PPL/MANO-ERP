@@ -116,11 +116,15 @@ const ProjectFilterModal = ({ open, onClose, activeFilters, setActiveFilters, al
     );
 };
 
-// ─── S3 Image Cache & Signing Helper ─────────────────────────────────────────
+// ─── S3 Image Cache & Signing Helpers ─────────────────────────────────────────
 const s3SignedUrlCache = new Map();
+const bannerCache = new Map();
 
-const getS3SignedUrl = (url) => {
+const getS3SignedUrl = (url, projectId = null) => {
     if (!url) return '';
+    if (projectId && bannerCache.has(projectId)) {
+        return bannerCache.get(projectId);
+    }
     if (s3SignedUrlCache.has(url)) {
         return s3SignedUrlCache.get(url);
     }
@@ -130,26 +134,37 @@ const getS3SignedUrl = (url) => {
         finalUrl = `${origin}${url.startsWith('/') ? '' : '/'}${url}`;
     }
     s3SignedUrlCache.set(url, finalUrl);
+    if (projectId) {
+        bannerCache.set(projectId, finalUrl);
+    }
     return finalUrl;
 };
 
 // ─── Project Overview Drawer ──────────────────────────────────────────────────
 const ProjectOverviewDrawer = ({ open, onClose, project, navigate, canWrite, onEdit, getIssueStyles }) => {
     const [liveDetails, setLiveDetails] = useState(null);
+    const [projectMembers, setProjectMembers] = useState([]);
     const [memberCount, setMemberCount] = useState(project?.memberCount || 0);
+    const [isBannerLoading, setIsBannerLoading] = useState(true);
+    const [bannerError, setBannerError] = useState(false);
+
+    const projectId = project?.dbId;
 
     useEffect(() => {
         setLiveDetails(null);
+        setProjectMembers([]);
         setMemberCount(project?.memberCount || 0);
+        setBannerError(false);
+        setIsBannerLoading(true);
 
-        if (!open || !project?.dbId) return;
+        if (!open || !projectId) return;
         let isMounted = true;
 
         const fetchLiveProject = async () => {
             try {
                 const [projRes, membersRes] = await Promise.all([
-                    projectApi.getProject(project.dbId).catch(() => null),
-                    projectApi.getProjectMembers(project.dbId).catch(() => null)
+                    projectApi.getProject(projectId).catch(() => null),
+                    projectApi.getProjectMembers(projectId).catch(() => null)
                 ]);
 
                 if (!isMounted) return;
@@ -167,12 +182,21 @@ const ProjectOverviewDrawer = ({ open, onClose, project, navigate, canWrite, onE
                     const phasesList = meta.phases || [];
                     const totalPhases = phasesList.length;
                     const completedPhases = phasesList.filter(ph => ph.progress === 100).length;
+                    const freshLogoUrl = p.logo_url || meta.logo_url || project.logoUrl || '';
+
+                    if (freshLogoUrl) {
+                        const signed = getS3SignedUrl(freshLogoUrl, projectId);
+                        bannerCache.set(projectId, signed);
+                    }
 
                     setLiveDetails({
                         name: p.name,
                         code: p.project_code || p.id?.toString(),
                         status: p.status ? p.status.charAt(0).toUpperCase() + p.status.slice(1) : project.status,
                         location: stripEmojis(p.location || project.location),
+                        description: meta.description || p.description || project.metadata?.description || '',
+                        employer: stripEmojis(meta.employer || project.employer || 'System'),
+                        client: stripEmojis(meta.client || project.client || ''),
                         owner: stripEmojis(meta.employer || meta.client || project.owner || 'System'),
                         completion: meta.completion !== undefined ? meta.completion : (project.completion || 0),
                         startDate: p.start_date ? formatOrdinalDate(p.start_date) : project.startDate,
@@ -181,11 +205,12 @@ const ProjectOverviewDrawer = ({ open, onClose, project, navigate, canWrite, onE
                         completedPhases: completedPhases || project.completedPhases,
                         issues: meta.issues || project.issues || 'None',
                         tags: meta.tags || project.tags || [],
-                        logoUrl: p.logo_url || meta.logo_url || project.logoUrl || ''
+                        logoUrl: freshLogoUrl
                     });
                 }
 
                 if (membersRes && membersRes.success && membersRes.members) {
+                    setProjectMembers(membersRes.members);
                     setMemberCount(membersRes.members.length);
                 }
             } catch (err) {
@@ -195,7 +220,7 @@ const ProjectOverviewDrawer = ({ open, onClose, project, navigate, canWrite, onE
 
         fetchLiveProject();
         return () => { isMounted = false; };
-    }, [open, project?.dbId]);
+    }, [open, projectId]);
 
     if (!open || !project) return null;
 
@@ -204,6 +229,9 @@ const ProjectOverviewDrawer = ({ open, onClose, project, navigate, canWrite, onE
         code: project.id,
         status: project.status,
         location: stripEmojis(project.location),
+        description: project.metadata?.description || '',
+        employer: stripEmojis(project.metadata?.employer || project.owner || 'System'),
+        client: stripEmojis(project.metadata?.client || ''),
         owner: stripEmojis(project.owner),
         completion: project.completion || 0,
         startDate: project.startDate,
@@ -217,7 +245,8 @@ const ProjectOverviewDrawer = ({ open, onClose, project, navigate, canWrite, onE
 
     const cleanOwner = stripEmojis(display.owner) || 'System';
     const cleanLocation = stripEmojis(display.location);
-    const bannerSrc = getS3SignedUrl(display.logoUrl);
+    const rawLogoUrl = display.logoUrl || project.logoUrl || '';
+    const bannerSrc = rawLogoUrl ? (bannerCache.get(projectId) || getS3SignedUrl(rawLogoUrl, projectId)) : '';
 
     return (
         <div className="fixed inset-0 z-[5000] flex justify-end text-left anim-fade-in font-sans">
@@ -226,17 +255,32 @@ const ProjectOverviewDrawer = ({ open, onClose, project, navigate, canWrite, onE
 
             {/* Slideout Panel */}
             <div className="relative w-full max-w-lg bg-white dark:bg-[#0d1117] shadow-2xl border-l border-gray-200 dark:border-white/10 overflow-hidden flex flex-col h-full anim-slide-left z-10">
-                {/* Project Banner Image if available */}
-                {bannerSrc && (
+                {/* Project Banner Image / Rendering Skeleton */}
+                {bannerSrc && !bannerError ? (
                     <div className="w-full h-44 bg-gray-100 dark:bg-white/5 relative overflow-hidden border-b border-gray-100 dark:border-white/10 shrink-0">
+                        {/* Skeleton loader while banner image is loading */}
+                        {isBannerLoading && (
+                            <div className="absolute inset-0 z-10 bg-gradient-to-r from-gray-200 via-gray-300 to-gray-200 dark:from-gray-800 dark:via-gray-700 dark:to-gray-800 animate-pulse flex flex-col items-center justify-center gap-2">
+                                <div className="w-7 h-7 rounded-full border-2 border-blue-500/40 border-t-blue-500 animate-spin" />
+                                <span className="text-[11px] font-semibold text-gray-500 dark:text-gray-400 tracking-wide uppercase">
+                                    Rendering Banner...
+                                </span>
+                            </div>
+                        )}
+
                         <img
+                            key={bannerSrc}
                             src={bannerSrc}
                             alt={display.name}
-                            className="w-full h-full object-cover"
-                            onError={(e) => { e.target.style.display = 'none'; }}
+                            className={`w-full h-full object-cover transition-opacity duration-300 ${isBannerLoading ? 'opacity-0' : 'opacity-100'}`}
+                            onLoad={() => setIsBannerLoading(false)}
+                            onError={() => {
+                                setIsBannerLoading(false);
+                                setBannerError(true);
+                            }}
                         />
-                        <div className="absolute inset-0 bg-gradient-to-t from-black/70 via-black/20 to-transparent" />
-                        <div className="absolute bottom-3 left-6 right-6 flex items-center justify-between">
+                        <div className="absolute inset-0 bg-gradient-to-t from-black/70 via-black/20 to-transparent pointer-events-none" />
+                        <div className="absolute bottom-3 left-6 right-6 flex items-center justify-between z-20">
                             <span className="px-2.5 py-1 rounded text-[10px] font-mono font-bold bg-blue-600/90 text-white backdrop-blur-xs shadow-md">
                                 {display.code}
                             </span>
@@ -245,12 +289,12 @@ const ProjectOverviewDrawer = ({ open, onClose, project, navigate, canWrite, onE
                             </span>
                         </div>
                     </div>
-                )}
+                ) : null}
 
                 {/* Header */}
                 <div className="px-6 py-5 border-b border-gray-100 dark:border-white/5 flex justify-between items-start bg-gray-50/50 dark:bg-white/[0.02]">
                     <div className="space-y-1 min-w-0 flex-1 pr-3">
-                        {!bannerSrc && (
+                        {(!bannerSrc || bannerError) && (
                             <div className="flex items-center gap-2 mb-1">
                                 <span className="px-2 py-0.5 rounded text-[10px] font-mono font-bold bg-blue-100 dark:bg-blue-900/40 text-blue-600 dark:text-blue-400">
                                     {display.code}
@@ -268,16 +312,27 @@ const ProjectOverviewDrawer = ({ open, onClose, project, navigate, canWrite, onE
                             </p>
                         )}
                     </div>
-                    <button
-                        onClick={onClose}
-                        className="p-1.5 text-gray-400 hover:text-gray-900 dark:hover:text-white hover:bg-gray-100 dark:hover:bg-white/5 rounded-full transition-colors shrink-0"
-                    >
-                        <X size={18} />
-                    </button>
+                    <div className="flex items-center gap-1 shrink-0">
+                        {canWrite && onEdit && (
+                            <button
+                                onClick={() => { onClose(); onEdit(project); }}
+                                className="p-1.5 text-gray-500 hover:text-blue-600 dark:text-gray-400 dark:hover:text-blue-400 hover:bg-blue-50 dark:hover:bg-blue-900/20 rounded-full transition-colors cursor-pointer"
+                                title="Edit Project Details"
+                            >
+                                <Pencil size={16} />
+                            </button>
+                        )}
+                        <button
+                            onClick={onClose}
+                            className="p-1.5 text-gray-400 hover:text-gray-900 dark:hover:text-white hover:bg-gray-100 dark:hover:bg-white/5 rounded-full transition-colors shrink-0 cursor-pointer"
+                        >
+                            <X size={18} />
+                        </button>
+                    </div>
                 </div>
 
                 {/* Body Content */}
-                <div className="p-6 overflow-y-auto custom-scrollbar flex-1 space-y-6 text-xs text-gray-700 dark:text-gray-300">
+                <div className="p-6 overflow-y-auto flex-1 space-y-6 text-xs text-gray-700 dark:text-gray-300 [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden">
                     {/* Overall Progress */}
                     <div className="p-4 bg-blue-50/50 dark:bg-blue-900/10 border border-blue-100 dark:border-blue-500/20 rounded-2xl">
                         <div className="flex justify-between items-center mb-2">
@@ -288,6 +343,14 @@ const ProjectOverviewDrawer = ({ open, onClose, project, navigate, canWrite, onE
                             <div className="bg-blue-600 h-full rounded-full transition-all duration-500" style={{ width: `${display.completion}%` }} />
                         </div>
                     </div>
+
+                    {/* Description (if present) */}
+                    {display.description && (
+                        <div className="p-4 bg-gray-50 dark:bg-white/[0.02] border border-gray-100 dark:border-white/5 rounded-2xl">
+                            <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-1.5">Description</p>
+                            <p className="text-xs text-gray-700 dark:text-gray-300 leading-relaxed whitespace-pre-wrap">{display.description}</p>
+                        </div>
+                    )}
 
                     {/* Key Details Grid */}
                     <div className="grid grid-cols-2 gap-4">
@@ -301,9 +364,70 @@ const ProjectOverviewDrawer = ({ open, onClose, project, navigate, canWrite, onE
                             </div>
                         </div>
 
-                        <div className="p-3.5 bg-gray-50 dark:bg-white/[0.02] border border-gray-100 dark:border-white/5 rounded-xl">
-                            <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-1">Team Size</p>
-                            <p className="font-bold text-gray-900 dark:text-white text-sm">{memberCount} Members</p>
+                        {display.client ? (
+                            <div className="p-3.5 bg-gray-50 dark:bg-white/[0.02] border border-gray-100 dark:border-white/5 rounded-xl">
+                                <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-1">Client</p>
+                                <p className="font-semibold text-gray-900 dark:text-white break-words text-xs">{display.client}</p>
+                            </div>
+                        ) : null}
+
+                        {/* TEAM SIZE & MEMBER AVATARS */}
+                        <div className="p-3.5 bg-gray-50 dark:bg-white/[0.02] border border-gray-100 dark:border-white/5 rounded-xl flex flex-col justify-between">
+                            <div className="flex justify-between items-center mb-1">
+                                <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">Team Size</p>
+                                <span className="font-bold text-gray-900 dark:text-white text-xs">{memberCount} Members</span>
+                            </div>
+                            <div className="flex items-center pt-1">
+                                {projectMembers && projectMembers.length > 0 ? (
+                                    <div className="flex items-center -space-x-2 overflow-hidden py-0.5">
+                                        {projectMembers.slice(0, 5).map((m, idx) => {
+                                            const avatarSrc = m.profile_image_url ? getS3SignedUrl(m.profile_image_url) : null;
+                                            const initial = (m.user_name || 'U').charAt(0).toUpperCase();
+                                            const bgColors = [
+                                                'from-blue-500 to-indigo-600',
+                                                'from-emerald-500 to-teal-600',
+                                                'from-purple-500 to-pink-600',
+                                                'from-amber-500 to-orange-600',
+                                                'from-cyan-500 to-blue-600'
+                                            ];
+                                            const grad = bgColors[idx % bgColors.length];
+
+                                            return (
+                                                <div
+                                                    key={m.user_id || idx}
+                                                    className="relative group/avatar cursor-pointer"
+                                                    title={`${m.user_name || 'User'} (${m.user_type || 'Member'})`}
+                                                >
+                                                    {avatarSrc ? (
+                                                        <img
+                                                            src={avatarSrc}
+                                                            alt={m.user_name || 'Member'}
+                                                            className="w-7 h-7 rounded-full border-2 border-white dark:border-[#0d1117] object-cover shadow-xs"
+                                                            onError={(e) => { e.target.style.display = 'none'; }}
+                                                        />
+                                                    ) : (
+                                                        <div className={`w-7 h-7 rounded-full bg-gradient-to-br ${grad} border-2 border-white dark:border-[#0d1117] flex items-center justify-center text-[10px] font-bold text-white shadow-xs`}>
+                                                            {initial}
+                                                        </div>
+                                                    )}
+                                                </div>
+                                            );
+                                        })}
+                                        {projectMembers.length > 5 && (
+                                            <div
+                                                className="w-7 h-7 rounded-full bg-gray-200 dark:bg-gray-700 border-2 border-white dark:border-[#0d1117] flex items-center justify-center text-[10px] font-extrabold text-gray-700 dark:text-gray-200 shadow-xs"
+                                                title={`${projectMembers.length - 5} more members`}
+                                            >
+                                                +{projectMembers.length - 5}
+                                            </div>
+                                        )}
+                                    </div>
+                                ) : (
+                                    <span className="text-[11px] font-semibold text-gray-400">
+                                        {memberCount > 0 ? `${memberCount} Assigned` : 'No Members'}
+                                    </span>
+                                )}
+                            </div>
                         </div>
 
                         <div className="p-3.5 bg-gray-50 dark:bg-white/[0.02] border border-gray-100 dark:border-white/5 rounded-xl">
@@ -922,7 +1046,7 @@ const Projects = () => {
                 project={overviewProject}
                 navigate={navigate}
                 canWrite={canWrite}
-                onEdit={setProjectToEdit}
+                onEdit={handleEditProjectClick}
                 getIssueStyles={getIssueStyles}
             />
 

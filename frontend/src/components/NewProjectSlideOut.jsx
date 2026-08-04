@@ -53,18 +53,47 @@ const NewProjectSlideOut = ({ isOpen, onClose, onProjectCreated, projectToEdit =
     useEffect(() => {
         if (isOpen) {
             if (projectToEdit) {
+                const initialLogo = projectToEdit.logoUrl || projectToEdit.logo_url || projectToEdit.metadata?.logo_url || '';
                 setFormData({
                     name: projectToEdit.name || '',
                     projectCode: projectToEdit.id || '',
                     description: projectToEdit.metadata?.description || '',
                     location: projectToEdit.location || '',
-                    employer: projectToEdit.metadata?.employer || '',
+                    employer: projectToEdit.metadata?.employer || projectToEdit.owner || '',
                     startDate: projectToEdit.startDateRaw || '',
                     endDate: projectToEdit.endDateRaw || '',
                     client: projectToEdit.metadata?.client || 'Select Client'
                 });
-                setLogoPreview(projectToEdit.logo_url || '');
+                setLogoPreview(initialLogo);
                 setLogoFile(null);
+
+                if (projectToEdit.dbId) {
+                    projectApi.getProject(projectToEdit.dbId).then(res => {
+                        if (res && res.success && res.project) {
+                            const p = res.project;
+                            let meta = {};
+                            if (p.metadata) {
+                                try {
+                                    meta = typeof p.metadata === 'string' ? JSON.parse(p.metadata) : p.metadata;
+                                } catch (e) {}
+                            }
+                            setFormData(prev => ({
+                                ...prev,
+                                name: p.name || prev.name,
+                                projectCode: p.project_code || prev.projectCode,
+                                description: meta.description || p.description || prev.description,
+                                location: p.location || prev.location,
+                                employer: meta.employer || prev.employer,
+                                startDate: p.start_date || prev.startDate,
+                                endDate: p.end_date || prev.endDate,
+                                client: meta.client || prev.client
+                            }));
+                            if (p.logo_url) {
+                                setLogoPreview(p.logo_url);
+                            }
+                        }
+                    }).catch(err => console.error("Failed to load live edit details", err));
+                }
             } else {
                 setFormData({
                     name: '', projectCode: '', description: '', location: '', employer: '', startDate: '', endDate: '', client: 'Select Client'
@@ -236,14 +265,14 @@ const NewProjectSlideOut = ({ isOpen, onClose, onProjectCreated, projectToEdit =
                     <h2 className="text-lg font-bold text-gray-900 dark:text-white">{projectToEdit ? 'Edit Project Details' : 'Create New Project'}</h2>
                     <button
                         onClick={onClose}
-                        className="p-1.5 text-gray-500 hover:text-gray-900 dark:text-[#7A8AAB] dark:hover:text-white hover:bg-gray-100 dark:hover:bg-[#2A3445] rounded-md transition-colors"
+                        className="p-1.5 text-gray-500 hover:text-gray-900 dark:text-[#7A8AAB] dark:hover:text-white hover:bg-gray-100 dark:hover:bg-[#2A3445] rounded-md transition-colors cursor-pointer"
                     >
                         <X size={18} />
                     </button>
                 </div>
 
                 {/* Body / Form */}
-                <div className="flex-1 overflow-y-auto p-6 space-y-6">
+                <div className="flex-1 overflow-y-auto p-6 space-y-6 [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden">
                     {/* Project Organisation Logo Upload */}
                     <div>
                         <label className="block text-xs font-semibold text-gray-500 dark:text-[#7A8AAB] uppercase tracking-wider mb-2">
@@ -259,29 +288,38 @@ const NewProjectSlideOut = ({ isOpen, onClose, onProjectCreated, projectToEdit =
                         />
 
                         {logoPreview ? (
-                            <div className="relative group w-full h-24 bg-gray-50 dark:bg-[#1A2235] border border-gray-200 dark:border-[#2A3445] rounded-xl flex items-center justify-center p-3">
+                            <div className="relative group w-full h-32 bg-gray-50 dark:bg-[#1A2235] border border-gray-200 dark:border-[#2A3445] rounded-xl flex items-center justify-center p-3 overflow-hidden shadow-inner">
                                 <img
                                     src={logoPreview}
                                     alt="Project Logo Preview"
-                                    className="max-h-full max-w-full object-contain rounded"
+                                    className="max-h-full max-w-full object-contain rounded transition-transform group-hover:scale-105"
                                     onError={(e) => {
                                         console.error("Logo image failed to load:", logoPreview);
                                     }}
                                 />
-                                <button
-                                    type="button"
-                                    onClick={removeLogo}
-                                    className="absolute top-2 right-2 p-1.5 bg-red-500 hover:bg-red-600 text-white rounded-lg opacity-90 transition-opacity shadow"
-                                    title="Remove Logo"
-                                >
-                                    <Trash2 size={14} />
-                                </button>
+                                <div className="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-2">
+                                    <button
+                                        type="button"
+                                        onClick={() => fileInputRef.current && fileInputRef.current.click()}
+                                        className="px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-xs font-semibold shadow flex items-center gap-1.5 cursor-pointer"
+                                    >
+                                        <Upload size={13} /> Change Logo
+                                    </button>
+                                    <button
+                                        type="button"
+                                        onClick={removeLogo}
+                                        className="px-3 py-1.5 bg-red-600 hover:bg-red-700 text-white rounded-lg text-xs font-semibold shadow flex items-center gap-1.5 cursor-pointer"
+                                        title="Remove Logo"
+                                    >
+                                        <Trash2 size={13} /> Remove
+                                    </button>
+                                </div>
                             </div>
                         ) : (
                             <button
                                 type="button"
                                 onClick={() => fileInputRef.current && fileInputRef.current.click()}
-                                className="w-full h-24 bg-gray-50 dark:bg-[#1A2235] border-2 border-dashed border-gray-200 dark:border-[#2A3445] hover:border-blue-500 dark:hover:border-blue-400 rounded-xl flex flex-col items-center justify-center gap-2 text-gray-400 dark:text-[#7A8AAB] transition-colors group"
+                                className="w-full h-24 bg-gray-50 dark:bg-[#1A2235] border-2 border-dashed border-gray-200 dark:border-[#2A3445] hover:border-blue-500 dark:hover:border-blue-400 rounded-xl flex flex-col items-center justify-center gap-2 text-gray-400 dark:text-[#7A8AAB] transition-colors group cursor-pointer"
                             >
                                 <div className="p-2 bg-gray-100 dark:bg-[#252D3F] rounded-full group-hover:bg-blue-50 dark:group-hover:bg-blue-900/30 text-gray-500 dark:text-[#7A8AAB] group-hover:text-blue-500 dark:group-hover:text-blue-400 transition-colors">
                                     <Upload size={18} />
