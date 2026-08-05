@@ -12,6 +12,7 @@ import projectInstanceRoutes from './instances/projectInstanceRoutes.js';
 import tasksRoutes from './tasks/tasksRoutes.js';
 import drawingsRoutes from './drawings/drawingsRoutes.js';
 import qualityRoutes from './quality/qualityRoutes.js';
+import projectResourceRoutes from './resources/projectResourceRoutes.js';
 import { authenticateJWT, restrictTo, requireProjectPermission, requireProjectAssignment } from '../../middleware/auth.js';
 
 const router = express.Router();
@@ -67,5 +68,8 @@ router.use('/:id/drawings', requireProjectPermission('Drawings'), drawingsRoutes
 
 // Project Quality (sub-resource under each project)
 router.use('/:id/quality', requireProjectPermission('Quality'), qualityRoutes);
+
+// Project-scoped resource rates and imported item compositions.
+router.use('/:id/resources', projectResourceRoutes);
 
 export default router;

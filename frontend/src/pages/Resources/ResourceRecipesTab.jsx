@@ -1,11 +1,12 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import {
     Plus, Trash2, Save, RefreshCw, AlertCircle, ArrowRight,
-    Search, Calendar, RotateCcw, Copy
+    Search, Calendar, RotateCcw, Copy, WandSparkles
 } from 'lucide-react';
 import { motion } from 'framer-motion';
 import { resourceApi } from '../../services/resourceApi';
-import { UNIT_GROUPS } from './resourceConstants';
+import { projectApi } from '../../services/projectApi';
+import { UNIT_GROUPS, UNIT_REGISTRY } from './resourceConstants';
 import { useAuth } from '../../context/AuthContext';
 import ConfirmModal from '../../components/ConfirmModal';
 import CustomDatePicker from '../../components/CustomDatePicker';
@@ -29,6 +30,9 @@ const ResourceRecipesTab = ({
     const [selectedItemId, setSelectedItemId] = useState(initialResourceId ? String(initialResourceId) : '');
     const [searchItem, setSearchItem] = useState('');
     const [effectiveFrom, setEffectiveFrom] = useState(dateOnly());
+    const [projects, setProjects] = useState([]);
+    const [selectedProjectId, setSelectedProjectId] = useState('');
+    const [isImporting, setIsImporting] = useState(false);
 
     const [selectedItemDetail, setSelectedItemDetail] = useState(null);
     const [isLoadingDetail, setIsLoadingDetail] = useState(false);
@@ -89,6 +93,21 @@ const ResourceRecipesTab = ({
     }, [compositionHistory, componentRates]);
 
     const latestCompositionDate = compositionVersions[0]?.date || null;
+    const projectItemImported = !selectedProjectId || compositionHistory.length > 0;
+
+    const rowsEffectiveOn = (history, date) => {
+        const eligibleDates = [...new Set(history
+            .map(row => dateOnly(row.effective_from))
+            .filter(versionDate => versionDate <= date))].sort().reverse();
+        const activeDate = eligibleDates[0];
+        return activeDate ? history.filter(row => dateOnly(row.effective_from) === activeDate) : [];
+    };
+
+    useEffect(() => {
+        projectApi.listProjects()
+            .then(result => setProjects(result.projects || []))
+            .catch(err => console.warn('Failed to load projects for recipe scope', err));
+    }, []);
 
     useEffect(() => {
         if (initialResourceId && itemsList.some(r => String(r.id) === String(initialResourceId))) {
@@ -107,8 +126,17 @@ const ResourceRecipesTab = ({
             const itemData = detailRes.resource;
             setSelectedItemDetail(itemData);
 
-            if (itemData.compositions && itemData.compositions.length > 0) {
-                setRecipeRows(itemData.compositions.map(c => ({
+            let compositionsForDate = itemData.compositions || [];
+            if (selectedProjectId) {
+                const historyResult = await projectApi.getProjectCompositionHistory(selectedProjectId, selectedItemId);
+                const projectHistory = historyResult.compositions || [];
+                setCompositionHistory(projectHistory);
+                compositionsForDate = rowsEffectiveOn(projectHistory, effectiveFrom);
+            }
+
+            // Populate recipe rows from the selected scope.
+            if (compositionsForDate.length > 0) {
+                setRecipeRows(compositionsForDate.map(c => ({
                     component_resource_id: String(c.component_resource_id),
                     quantity: String(c.quantity),
                     unit_code: c.unit_code || 'kg',
@@ -120,7 +148,9 @@ const ResourceRecipesTab = ({
 
             const ratePromises = rawComponents.map(async (comp) => {
                 try {
-                    const rateRes = await resourceApi.getResolvedRate(comp.id, effectiveFrom);
+                    const rateRes = selectedProjectId
+                        ? await projectApi.getResolvedResourceRate(selectedProjectId, comp.id, effectiveFrom)
+                        : await resourceApi.getResolvedRate(comp.id, effectiveFrom);
                     return { id: String(comp.id), rate: rateRes.rate?.rate ?? 0, unitCode: rateRes.rate?.unitCode || comp.base_unit_code };
                 } catch {
                     return { id: String(comp.id), rate: 0, unitCode: comp.base_unit_code };
@@ -144,7 +174,7 @@ const ResourceRecipesTab = ({
         if (selectedItemId) {
             fetchItemRecipe();
         }
-    }, [selectedItemId, effectiveFrom]);
+    }, [selectedItemId, effectiveFrom, selectedProjectId]);
 
     useEffect(() => {
         let cancelled = false;
@@ -156,7 +186,9 @@ const ResourceRecipesTab = ({
 
             setIsLoadingHistory(true);
             try {
-                const result = await resourceApi.getCompositionHistory(selectedItemId);
+                const result = selectedProjectId
+                    ? await projectApi.getProjectCompositionHistory(selectedProjectId, selectedItemId)
+                    : await resourceApi.getCompositionHistory(selectedItemId);
                 if (!cancelled) setCompositionHistory(result.compositions || []);
             } catch (err) {
                 if (!cancelled) setCompositionHistory([]);
@@ -168,7 +200,27 @@ const ResourceRecipesTab = ({
 
         loadHistory();
         return () => { cancelled = true; };
-    }, [selectedItemId]);
+    }, [selectedItemId, selectedProjectId]);
+
+    const handleImportItem = async () => {
+        if (!selectedProjectId || !selectedItemId) return;
+        setIsImporting(true);
+        setErrorMsg('');
+        try {
+            await projectApi.importResource(selectedProjectId, selectedItemId, effectiveFrom);
+            const result = await projectApi.getProjectCompositionHistory(selectedProjectId, selectedItemId);
+            setCompositionHistory(result.compositions || []);
+            await fetchItemRecipe();
+            if (showToast) showToast('success', 'Item Imported', 'Master composition copied into the project.');
+            if (onRefreshResources) onRefreshResources();
+        } catch (err) {
+            const msg = err.response?.data?.message || err.message || 'Failed to import item into project';
+            setErrorMsg(msg);
+            if (showToast) showToast('error', 'Import Failed', msg);
+        } finally {
+            setIsImporting(false);
+        }
+    };
 
     const handleAddRow = () => {
         const defaultComp = rawComponents[0];
@@ -270,6 +322,10 @@ const ResourceRecipesTab = ({
             setErrorMsg('Choose an effective-from date before saving the recipe.');
             return;
         }
+        if (selectedProjectId && !projectItemImported) {
+            setErrorMsg('Import this item into the selected project before saving a project composition.');
+            return;
+        }
         if (latestCompositionDate && effectiveFrom <= latestCompositionDate) {
             setErrorMsg(`This recipe already has a version effective ${latestCompositionDate}. Choose a later date for the new version.`);
             return;
@@ -288,12 +344,18 @@ const ResourceRecipesTab = ({
                     effective_from: effectiveFrom
                 }));
 
-            await resourceApi.setCompositions(selectedItemId, formattedCompositions, effectiveFrom);
+            if (selectedProjectId) {
+                await projectApi.setProjectCompositions(selectedProjectId, selectedItemId, formattedCompositions, effectiveFrom);
+            } else {
+                await resourceApi.setCompositions(selectedItemId, formattedCompositions, effectiveFrom);
+            }
             if (showToast) showToast('success', 'Recipe Saved', 'Item composition saved with effective date.');
             await Promise.all([
                 fetchItemRecipe(),
                 (async () => {
-                    const result = await resourceApi.getCompositionHistory(selectedItemId);
+                    const result = selectedProjectId
+                        ? await projectApi.getProjectCompositionHistory(selectedProjectId, selectedItemId)
+                        : await resourceApi.getCompositionHistory(selectedItemId);
                     setCompositionHistory(result.compositions || []);
                 })()
             ]);
@@ -384,7 +446,7 @@ const ResourceRecipesTab = ({
                 </div>
             </div>
 
-            {/* Right Workspace: Recipe Builder & Amazon Tracking Timeline */}
+            {/* Right Workspace: Recipe Builder & Timeline */}
             <div className="flex-1 flex flex-col overflow-hidden bg-white dark:bg-[#0d1117]">
                 {!selectedItem ? (
                     <div className="flex-1 flex items-center justify-center p-8 text-center text-gray-400">
@@ -413,10 +475,27 @@ const ResourceRecipesTab = ({
                                 </p>
                             </div>
 
-                            <div className="flex items-center gap-3 ml-auto shrink-0">
-                                <div className="flex items-center gap-2 bg-white dark:bg-[#0d1117] px-2.5 py-1.5 rounded-lg border border-gray-200 dark:border-white/10">
-                                    <span className="text-[10px] font-bold text-gray-500 dark:text-gray-400 uppercase tracking-wider whitespace-nowrap">Effective From:</span>
-                                    <CustomDatePicker
+                            <div className="flex items-center gap-3">
+                                <div className="flex items-center gap-2 bg-white dark:bg-[#0d1117] border border-gray-200 dark:border-white/10 rounded-lg px-2.5 py-1.5">
+                                    <span className="text-[10px] font-bold text-gray-400 uppercase">Scope:</span>
+                                    <select
+                                        value={selectedProjectId}
+                                        onChange={e => setSelectedProjectId(e.target.value)}
+                                        className="bg-transparent text-xs font-semibold outline-none max-w-[180px]"
+                                    >
+                                        <option value="">Master / Organization</option>
+                                        {projects.map(project => (
+                                            <option key={project.id} value={project.id}>{project.name}</option>
+                                        ))}
+                                    </select>
+                                </div>
+
+                                {/* Effective date picker */}
+                                <div className="flex items-center gap-1.5 bg-white dark:bg-[#0d1117] border border-gray-200 dark:border-white/10 rounded-lg px-2.5 py-1.5">
+                                    <Calendar size={13} className="text-gray-400" />
+                                    <span className="text-[10px] font-bold text-gray-400 uppercase">Effective:</span>
+                                    <input
+                                        type="date"
                                         value={effectiveFrom}
                                         disabled={!canWrite}
                                         onChange={e => setEffectiveFrom(e.target.value)}
@@ -424,14 +503,24 @@ const ResourceRecipesTab = ({
                                     />
                                 </div>
 
-                                {canWrite && (
+                                {canWrite && selectedProjectId && !projectItemImported ? (
+                                    <button
+                                        type="button"
+                                        onClick={handleImportItem}
+                                        disabled={isImporting}
+                                        className="flex items-center gap-1.5 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-xs font-bold transition-all shadow-sm disabled:opacity-50 cursor-pointer"
+                                    >
+                                        {isImporting ? <RefreshCw size={14} className="animate-spin" /> : <ArrowRight size={14} />}
+                                        <span>Import Master Composition</span>
+                                    </button>
+                                ) : canWrite && (
                                     <button
                                         type="submit"
                                         disabled={isSaving}
                                         className="flex items-center gap-1.5 px-4 py-2 bg-purple-600 hover:bg-purple-700 text-white rounded-lg text-xs font-bold transition-all shadow-xs disabled:opacity-50 cursor-pointer shrink-0"
                                     >
                                         {isSaving ? <RefreshCw size={14} className="animate-spin" /> : <Save size={14} />}
-                                        <span>Save New Recipe Version</span>
+                                        <span>{selectedProjectId ? 'Save Project Version' : 'Save Recipe Version'}</span>
                                     </button>
                                 )}
                             </div>
@@ -448,175 +537,180 @@ const ResourceRecipesTab = ({
                             </div>
                         )}
 
-                        {/* Work Area */}
-                        <div className="flex-1 overflow-y-auto custom-scrollbar p-5 space-y-6">
-                            
-                            {/* DRAFT SUB-COMPONENTS TABLE */}
-                            <div className="space-y-3">
-                                <div className="flex items-center justify-between">
-                                    <h3 className="text-xs font-bold uppercase tracking-wider text-gray-500 dark:text-gray-400">
-                                        Recipe Sub-Components ({recipeRows.length})
-                                    </h3>
-                                    {canWrite && (
+                        {selectedProjectId && !projectItemImported && (
+                            <div className="mx-6 mt-4 p-4 bg-blue-50 dark:bg-blue-950/20 border border-blue-200 dark:border-blue-500/30 rounded-xl text-xs text-blue-700 dark:text-blue-300">
+                                <p className="font-bold">This item is not imported into the selected project.</p>
+                                <p className="mt-1">Import the current master composition once. After that, project versions are independent from master changes.</p>
+                            </div>
+                        )}
+
+                        {/* Recipe Table */}
+                        <div className="flex-1 overflow-y-auto custom-scrollbar p-6 space-y-6">
+                            <div className="flex items-center justify-between">
+                                <h3 className="text-xs font-black uppercase tracking-wider text-gray-400">
+                                    Sub-Components ({recipeRows.length})
+                                </h3>
+                                {canWrite && projectItemImported && (
+                                    <button
+                                        type="button"
+                                        onClick={handleAddRow}
+                                        className="flex items-center gap-1 px-3 py-1.5 bg-purple-50 dark:bg-purple-900/20 text-purple-600 dark:text-purple-400 border border-purple-200 dark:border-purple-500/20 rounded-lg text-xs font-bold hover:bg-purple-100 transition-all cursor-pointer"
+                                    >
+                                        <Plus size={13} /> Add Component
+                                    </button>
+                                )}
+                            </div>
+
+                            {isLoadingDetail ? (
+                                <div className="py-12 text-center">
+                                    <RefreshCw size={24} className="animate-spin text-purple-500 mx-auto mb-2" />
+                                    <p className="text-xs text-gray-400">Loading recipe components...</p>
+                                </div>
+                            ) : recipeRows.length === 0 ? (
+                                <div className="p-8 text-center bg-gray-50 dark:bg-white/[0.02] border border-dashed border-gray-200 dark:border-white/10 rounded-2xl">
+                                    <WandSparkles size={28} className="text-gray-400 mx-auto mb-2" />
+                                    <p className="text-xs font-semibold text-gray-500">No components added to recipe yet.</p>
+                                    {canWrite && projectItemImported && (
                                         <button
                                             type="button"
                                             onClick={handleAddRow}
-                                            className="flex items-center gap-1 px-3 py-1 bg-purple-50 dark:bg-purple-950/40 text-purple-700 dark:text-purple-300 border border-purple-200 dark:border-purple-500/30 rounded-lg text-xs font-semibold hover:bg-purple-100 transition-colors cursor-pointer"
+                                            className="inline-flex items-center gap-1 px-3 py-1.5 bg-purple-600 text-white text-xs font-bold rounded-lg hover:bg-purple-700 transition-colors mt-3"
                                         >
                                             <Plus size={13} /> Add Component
                                         </button>
                                     )}
                                 </div>
+                            ) : (
+                                <div className="border border-gray-200 dark:border-white/10 rounded-xl overflow-hidden shadow-xs bg-white dark:bg-[#0d1117]">
+                                    <div className="overflow-x-auto custom-scrollbar">
+                                        <table className="w-full text-left text-xs">
+                                            <thead className="bg-gray-50 dark:bg-[#161b22] text-gray-500 dark:text-gray-400 uppercase tracking-wider text-[10px] border-b border-gray-200 dark:border-white/10 font-bold">
+                                                <tr>
+                                                    <th className="px-4 py-2.5">Component (Material / Labour)</th>
+                                                    <th className="px-4 py-2.5 w-32">Quantity</th>
+                                                    <th className="px-4 py-2.5 w-36">Recipe Unit</th>
+                                                    <th className="px-4 py-2.5 w-36">Unit Rate</th>
+                                                    <th className="px-4 py-2.5 w-36 text-right">Extended Cost</th>
+                                                    {canWrite && <th className="px-4 py-2.5 w-16 text-center">Actions</th>}
+                                                </tr>
+                                            </thead>
+                                            <tbody className="divide-y divide-gray-100 dark:divide-white/5">
+                                                {recipeRows.map((row, idx) => {
+                                                    const compRateObj = componentRates[row.component_resource_id];
+                                                    const unitRate = compRateObj ? compRateObj.rate : 0;
+                                                    const qty = parseFloat(row.quantity) || 0;
+                                                    const extCost = qty * unitRate;
 
-                                {isLoadingDetail ? (
-                                    <div className="py-12 border border-gray-200 dark:border-white/10 rounded-xl bg-gray-50/50 dark:bg-[#161b22]/30">
-                                        <LogoLoader text="Rendering Recipe Sub-Components..." size="sm" fullPage={false} />
+                                                    return (
+                                                        <tr key={idx} className="hover:bg-gray-50/50 dark:hover:bg-white/[0.02]">
+                                                            <td className="px-4 py-2">
+                                                                <select
+                                                                    value={row.component_resource_id}
+                                                                    onChange={e => handleRowChange(idx, 'component_resource_id', e.target.value)}
+                                                                    className="w-full bg-gray-50 dark:bg-[#161b22] border border-gray-200 dark:border-white/10 rounded-lg px-2.5 py-1.5 text-xs font-semibold focus:outline-none focus:ring-1 focus:ring-purple-500 text-gray-900 dark:text-gray-100"
+                                                                >
+                                                                    {rawComponents.map(c => (
+                                                                        <option key={c.id} value={c.id}>
+                                                                            {c.name} ({c.type.toUpperCase()}) — {c.base_unit_code}
+                                                                        </option>
+                                                                    ))}
+                                                                </select>
+                                                            </td>
+                                                            <td className="px-4 py-2">
+                                                                <input
+                                                                    type="number"
+                                                                    step="any"
+                                                                    min="0"
+                                                                    value={row.quantity}
+                                                                    onChange={e => handleRowChange(idx, 'quantity', e.target.value)}
+                                                                    className="w-full bg-gray-50 dark:bg-[#161b22] border border-gray-200 dark:border-white/10 rounded-lg px-2.5 py-1.5 text-xs font-bold focus:outline-none focus:ring-1 focus:ring-purple-500 text-gray-900 dark:text-gray-100"
+                                                                />
+                                                            </td>
+                                                            <td className="px-4 py-2">
+                                                                <select
+                                                                    value={row.unit_code}
+                                                                    onChange={e => handleRowChange(idx, 'unit_code', e.target.value)}
+                                                                    className="w-full bg-gray-50 dark:bg-[#161b22] border border-gray-200 dark:border-white/10 rounded-lg px-2.5 py-1.5 text-xs font-semibold focus:outline-none focus:ring-1 focus:ring-purple-500 text-gray-900 dark:text-gray-100"
+                                                                >
+                                                                    {Object.entries(UNIT_GROUPS).map(([cat, units]) => (
+                                                                        <optgroup key={cat} label={cat.toUpperCase()}>
+                                                                            {units.map(u => (
+                                                                                <option key={u.code} value={u.code}>{u.symbol} ({u.name})</option>
+                                                                            ))}
+                                                                        </optgroup>
+                                                                    ))}
+                                                                </select>
+                                                            </td>
+                                                            <td className="px-4 py-2 text-gray-600 dark:text-gray-300 font-mono text-xs font-medium">
+                                                                ₹{unitRate.toLocaleString('en-IN', { minimumFractionDigits: 2 })} / {compRateObj?.unitCode || 'unit'}
+                                                            </td>
+                                                            <td className="px-4 py-2 text-right font-mono font-bold text-gray-900 dark:text-white text-xs">
+                                                                ₹{extCost.toLocaleString('en-IN', { minimumFractionDigits: 2 })}
+                                                            </td>
+                                                            {canWrite && (
+                                                                <td className="px-4 py-2 text-center">
+                                                                    <div className="flex items-center justify-center gap-1">
+                                                                        <button
+                                                                            type="button"
+                                                                            onClick={() => handleDuplicateRow(idx)}
+                                                                            className="p-1 text-gray-400 hover:text-purple-600 hover:bg-purple-50 dark:hover:bg-purple-900/30 rounded-md transition-colors"
+                                                                            title="Duplicate row"
+                                                                        >
+                                                                            <Copy size={13} />
+                                                                        </button>
+                                                                        <button
+                                                                            type="button"
+                                                                            onClick={() => handleRemoveRow(idx)}
+                                                                            className="p-1 text-gray-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/30 rounded-md transition-colors"
+                                                                            title="Remove row"
+                                                                        >
+                                                                            <Trash2 size={13} />
+                                                                        </button>
+                                                                    </div>
+                                                                </td>
+                                                            )}
+                                                        </tr>
+                                                    );
+                                                })}
+                                            </tbody>
+                                        </table>
                                     </div>
-                                ) : recipeRows.length === 0 ? (
-                                    <div className="p-8 text-center bg-gray-50/50 dark:bg-[#161b22]/30 border border-dashed border-gray-200 dark:border-white/10 rounded-xl space-y-2">
-                                        <p className="text-xs text-gray-500 dark:text-gray-400">No components added to this recipe draft.</p>
-                                        {canWrite && (
-                                            <button
-                                                type="button"
-                                                onClick={handleAddRow}
-                                                className="inline-flex items-center gap-1 px-3 py-1.5 bg-purple-600 text-white text-xs font-bold rounded-lg hover:bg-purple-700 transition-colors"
-                                            >
-                                                <Plus size={13} /> Add Component
-                                            </button>
-                                        )}
-                                    </div>
-                                ) : (
-                                    <div className="border border-gray-200 dark:border-white/10 rounded-xl overflow-hidden shadow-xs bg-white dark:bg-[#0d1117]">
-                                        <div className="overflow-x-auto custom-scrollbar">
-                                            <table className="w-full text-left text-xs">
-                                                <thead className="bg-gray-50 dark:bg-[#161b22] text-gray-500 dark:text-gray-400 uppercase tracking-wider text-[10px] border-b border-gray-200 dark:border-white/10 font-bold">
-                                                    <tr>
-                                                        <th className="px-4 py-2.5">Component (Material / Labour)</th>
-                                                        <th className="px-4 py-2.5 w-32">Quantity</th>
-                                                        <th className="px-4 py-2.5 w-36">Recipe Unit</th>
-                                                        <th className="px-4 py-2.5 w-36">Unit Rate</th>
-                                                        <th className="px-4 py-2.5 w-36 text-right">Extended Cost</th>
-                                                        {canWrite && <th className="px-4 py-2.5 w-16 text-center">Actions</th>}
-                                                    </tr>
-                                                </thead>
-                                                <tbody className="divide-y divide-gray-100 dark:divide-white/5">
-                                                    {recipeRows.map((row, idx) => {
-                                                        const compRateObj = componentRates[row.component_resource_id];
-                                                        const unitRate = compRateObj ? compRateObj.rate : 0;
-                                                        const qty = parseFloat(row.quantity) || 0;
-                                                        const extCost = qty * unitRate;
+                                </div>
+                            )}
 
-                                                        return (
-                                                            <tr key={idx} className="hover:bg-gray-50/50 dark:hover:bg-white/[0.02]">
-                                                                <td className="px-4 py-2">
-                                                                    <select
-                                                                        value={row.component_resource_id}
-                                                                        onChange={e => handleRowChange(idx, 'component_resource_id', e.target.value)}
-                                                                        className="w-full bg-gray-50 dark:bg-[#161b22] border border-gray-200 dark:border-white/10 rounded-lg px-2.5 py-1.5 text-xs font-semibold focus:outline-none focus:ring-1 focus:ring-purple-500 text-gray-900 dark:text-gray-100"
-                                                                    >
-                                                                        {rawComponents.map(c => (
-                                                                            <option key={c.id} value={c.id}>
-                                                                                {c.name} ({c.type.toUpperCase()}) — {c.base_unit_code}
-                                                                            </option>
-                                                                        ))}
-                                                                    </select>
-                                                                </td>
-                                                                <td className="px-4 py-2">
-                                                                    <input
-                                                                        type="number"
-                                                                        step="any"
-                                                                        min="0"
-                                                                        value={row.quantity}
-                                                                        onChange={e => handleRowChange(idx, 'quantity', e.target.value)}
-                                                                        className="w-full bg-gray-50 dark:bg-[#161b22] border border-gray-200 dark:border-white/10 rounded-lg px-2.5 py-1.5 text-xs font-bold focus:outline-none focus:ring-1 focus:ring-purple-500 text-gray-900 dark:text-gray-100"
-                                                                    />
-                                                                </td>
-                                                                <td className="px-4 py-2">
-                                                                    <select
-                                                                        value={row.unit_code}
-                                                                        onChange={e => handleRowChange(idx, 'unit_code', e.target.value)}
-                                                                        className="w-full bg-gray-50 dark:bg-[#161b22] border border-gray-200 dark:border-white/10 rounded-lg px-2.5 py-1.5 text-xs font-semibold focus:outline-none focus:ring-1 focus:ring-purple-500 text-gray-900 dark:text-gray-100"
-                                                                    >
-                                                                        {Object.entries(UNIT_GROUPS).map(([cat, units]) => (
-                                                                            <optgroup key={cat} label={cat.toUpperCase()}>
-                                                                                {units.map(u => (
-                                                                                    <option key={u.code} value={u.code}>{u.symbol} ({u.name})</option>
-                                                                                ))}
-                                                                            </optgroup>
-                                                                        ))}
-                                                                    </select>
-                                                                </td>
-                                                                <td className="px-4 py-2 text-gray-600 dark:text-gray-300 font-mono text-xs font-medium">
-                                                                    ₹{unitRate.toLocaleString('en-IN', { minimumFractionDigits: 2 })} / {compRateObj?.unitCode || 'unit'}
-                                                                </td>
-                                                                <td className="px-4 py-2 text-right font-mono font-bold text-gray-900 dark:text-white text-xs">
-                                                                    ₹{extCost.toLocaleString('en-IN', { minimumFractionDigits: 2 })}
-                                                                </td>
-                                                                {canWrite && (
-                                                                    <td className="px-4 py-2 text-center">
-                                                                        <div className="flex items-center justify-center gap-1">
-                                                                            <button
-                                                                                type="button"
-                                                                                onClick={() => handleDuplicateRow(idx)}
-                                                                                className="p-1 text-gray-400 hover:text-purple-600 hover:bg-purple-50 dark:hover:bg-purple-900/30 rounded-md transition-colors"
-                                                                                title="Duplicate row"
-                                                                            >
-                                                                                <Copy size={13} />
-                                                                            </button>
-                                                                            <button
-                                                                                type="button"
-                                                                                onClick={() => handleRemoveRow(idx)}
-                                                                                className="p-1 text-gray-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/30 rounded-md transition-colors"
-                                                                                title="Remove row"
-                                                                            >
-                                                                                <Trash2 size={13} />
-                                                                            </button>
-                                                                        </div>
-                                                                    </td>
-                                                                )}
-                                                            </tr>
-                                                        );
-                                                    })}
-                                                </tbody>
-                                            </table>
-                                        </div>
+                            {/* Live Estimated Rate Summary Card */}
+                            <div className="p-4 bg-purple-50/40 dark:bg-purple-950/20 border border-purple-200 dark:border-purple-500/20 rounded-xl flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
+                                <div>
+                                    <div className="flex items-center gap-2">
+                                        <h4 className="text-xs font-bold text-purple-900 dark:text-purple-300 uppercase tracking-wider">Live Estimated Unit Rate</h4>
+                                        <span className="px-2 py-0.5 rounded text-[9px] font-bold bg-purple-100 dark:bg-purple-900/40 text-purple-700 dark:text-purple-300 border border-purple-200 dark:border-purple-500/30">
+                                            Computed
+                                        </span>
                                     </div>
-                                )}
+                                    <p className="text-[11px] text-gray-500 dark:text-gray-400 mt-0.5">
+                                        Sum of sub-component quantities × resolved component rates.
+                                    </p>
+                                    <div className="flex items-center gap-3 mt-1 text-[10px] font-mono text-gray-600 dark:text-gray-300">
+                                        <span>Materials: ₹{recipeMetrics.materialCost.toLocaleString('en-IN', { minimumFractionDigits: 2 })}</span>
+                                        <span>•</span>
+                                        <span>Labour: ₹{recipeMetrics.labourCost.toLocaleString('en-IN', { minimumFractionDigits: 2 })}</span>
+                                    </div>
+                                </div>
 
-                                {/* Live Estimated Rate Summary Card */}
-                                <div className="p-4 bg-purple-50/40 dark:bg-purple-950/20 border border-purple-200 dark:border-purple-500/20 rounded-xl flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
-                                    <div>
-                                        <div className="flex items-center gap-2">
-                                            <h4 className="text-xs font-bold text-purple-900 dark:text-purple-300 uppercase tracking-wider">Live Estimated Unit Rate</h4>
-                                            <span className="px-2 py-0.5 rounded text-[9px] font-bold bg-purple-100 dark:bg-purple-900/40 text-purple-700 dark:text-purple-300 border border-purple-200 dark:border-purple-500/30">
-                                                Computed
-                                            </span>
-                                        </div>
-                                        <p className="text-[11px] text-gray-500 dark:text-gray-400 mt-0.5">
-                                            Sum of sub-component quantities × resolved component rates.
-                                        </p>
-                                        <div className="flex items-center gap-3 mt-1 text-[10px] font-mono text-gray-600 dark:text-gray-300">
-                                            <span>Materials: ₹{recipeMetrics.materialCost.toLocaleString('en-IN', { minimumFractionDigits: 2 })}</span>
-                                            <span>•</span>
-                                            <span>Labour: ₹{recipeMetrics.labourCost.toLocaleString('en-IN', { minimumFractionDigits: 2 })}</span>
-                                        </div>
-                                    </div>
-
-                                    <div className="text-left sm:text-right">
-                                        <p className="text-xl font-mono font-black text-purple-900 dark:text-purple-200">
-                                            ₹{recipeMetrics.total.toLocaleString('en-IN', { minimumFractionDigits: 2 })}
-                                            <span className="text-xs font-bold text-gray-500 dark:text-gray-400 ml-1">
-                                                / {selectedItem.base_unit_code}
-                                            </span>
-                                        </p>
-                                        <p className="text-[10px] text-gray-400 mt-0.5">
-                                            Effective as of {effectiveFrom}
-                                        </p>
-                                    </div>
+                                <div className="text-left sm:text-right">
+                                    <p className="text-xl font-mono font-black text-purple-900 dark:text-purple-200">
+                                        ₹{recipeMetrics.total.toLocaleString('en-IN', { minimumFractionDigits: 2 })}
+                                        <span className="text-xs font-bold text-gray-500 dark:text-gray-400 ml-1">
+                                            / {selectedItem.base_unit_code}
+                                        </span>
+                                    </p>
+                                    <p className="text-[10px] text-gray-400 mt-0.5">
+                                        Effective as of {effectiveFrom}
+                                    </p>
                                 </div>
                             </div>
 
-                            {/* AMAZON PARCEL-TRACKING VERSION HISTORY TIMELINE */}
+                            {/* VERSION HISTORY TIMELINE */}
                             <div className="pt-4 border-t border-gray-200 dark:border-white/10 space-y-4">
                                 <div className="flex items-center justify-between flex-wrap gap-2">
                                     <div>

@@ -25,60 +25,61 @@ async function hasIndex(tableName, indexName) {
  * deleted by this initializer.
  */
 export async function initializeResourceSchema() {
-    if (!(await db.schema.hasTable('res_compositions'))) return;
+    if (await db.schema.hasTable('res_compositions')) {
+        const hasCreatedAt = await db.schema.hasColumn('res_compositions', 'created_at');
+        const hasEffectiveFrom = await db.schema.hasColumn('res_compositions', 'effective_from');
+        const hasEffectiveTo = await db.schema.hasColumn('res_compositions', 'effective_to');
+        const hasIsActive = await db.schema.hasColumn('res_compositions', 'is_active');
 
-    const hasCreatedAt = await db.schema.hasColumn('res_compositions', 'created_at');
-    const hasEffectiveFrom = await db.schema.hasColumn('res_compositions', 'effective_from');
-    const hasEffectiveTo = await db.schema.hasColumn('res_compositions', 'effective_to');
-    const hasIsActive = await db.schema.hasColumn('res_compositions', 'is_active');
-
-    if (!hasEffectiveFrom) {
-        await db.schema.alterTable('res_compositions', table => table.date('effective_from').nullable());
-    }
-    if (!hasEffectiveTo) {
-        await db.schema.alterTable('res_compositions', table => table.date('effective_to').nullable());
-    }
-    if (!hasIsActive) {
-        await db.schema.alterTable('res_compositions', table => table.boolean('is_active').notNullable().defaultTo(1));
-    } else {
-        await db('res_compositions').whereNull('is_active').update({ is_active: 1 });
-        await db.schema.alterTable('res_compositions', table => {
-            table.boolean('is_active').notNullable().alter();
-        });
-    }
-
-    const nullEffectiveFrom = await db('res_compositions').whereNull('effective_from').count('id as count').first();
-    if (Number(nullEffectiveFrom?.count || 0) > 0) {
-        if (hasCreatedAt) {
-            await db('res_compositions')
-                .whereNull('effective_from')
-                .update({ effective_from: db.raw('DATE(created_at)') });
+        if (!hasEffectiveFrom) {
+            await db.schema.alterTable('res_compositions', table => table.date('effective_from').nullable());
+        }
+        if (!hasEffectiveTo) {
+            await db.schema.alterTable('res_compositions', table => table.date('effective_to').nullable());
+        }
+        if (!hasIsActive) {
+            await db.schema.alterTable('res_compositions', table => table.boolean('is_active').notNullable().defaultTo(1));
+        } else {
+            await db('res_compositions').whereNull('is_active').update({ is_active: 1 });
+            await db.schema.alterTable('res_compositions', table => {
+                table.boolean('is_active').notNullable().alter();
+            });
         }
 
-        const stillNull = await db('res_compositions').whereNull('effective_from').count('id as count').first();
-        if (Number(stillNull?.count || 0) > 0) {
-            await db('res_compositions')
-                .whereNull('effective_from')
-                .update({ effective_from: db.raw('CURRENT_DATE') });
-            console.warn('[Resource Schema] Backfilled composition effective_from using CURRENT_DATE for legacy rows without created_at.');
+        const nullEffectiveFrom = await db('res_compositions').whereNull('effective_from').count('id as count').first();
+        if (Number(nullEffectiveFrom?.count || 0) > 0) {
+            if (hasCreatedAt) {
+                await db('res_compositions')
+                    .whereNull('effective_from')
+                    .update({ effective_from: db.raw('DATE(created_at)') });
+            }
+
+            const stillNull = await db('res_compositions').whereNull('effective_from').count('id as count').first();
+            if (Number(stillNull?.count || 0) > 0) {
+                await db('res_compositions')
+                    .whereNull('effective_from')
+                    .update({ effective_from: db.raw('CURRENT_DATE') });
+                console.warn('[Resource Schema] Backfilled composition effective_from using CURRENT_DATE for legacy rows without created_at.');
+            }
+        }
+
+        // Make the version start mandatory after all legacy rows are backfilled.
+        await db.schema.alterTable('res_compositions', table => {
+            table.date('effective_from').notNullable().alter();
+        });
+
+        if (!(await hasIndex('res_compositions', 'idx_res_compositions_parent_effective'))) {
+            await db.schema.alterTable('res_compositions', table => {
+                table.index(['parent_resource_id', 'effective_from', 'effective_to'], 'idx_res_compositions_parent_effective');
+            });
+        }
+        if (!(await hasIndex('res_compositions', 'idx_res_compositions_component'))) {
+            await db.schema.alterTable('res_compositions', table => {
+                table.index(['component_resource_id'], 'idx_res_compositions_component');
+            });
         }
     }
 
-    // Make the version start mandatory after all legacy rows are backfilled.
-    await db.schema.alterTable('res_compositions', table => {
-        table.date('effective_from').notNullable().alter();
-    });
-
-    if (!(await hasIndex('res_compositions', 'idx_res_compositions_parent_effective'))) {
-        await db.schema.alterTable('res_compositions', table => {
-            table.index(['parent_resource_id', 'effective_from', 'effective_to'], 'idx_res_compositions_parent_effective');
-        });
-    }
-    if (!(await hasIndex('res_compositions', 'idx_res_compositions_component'))) {
-        await db.schema.alterTable('res_compositions', table => {
-            table.index(['component_resource_id'], 'idx_res_compositions_component');
-        });
-    }
 }
 
 const toIsoDate = (value) => {
@@ -116,13 +117,15 @@ function toDateOnly(value, fallback = new Date()) {
 /**
  * Find the manual rate row effective on a particular date.
  * res_rates is organization-neutral in the current schema, so ownership is
- * enforced by joining through res_resources.
+ * enforced by joining through res_resources. This service only reads master
+ * rows; project rows are owned by projectResourceService.
  */
 async function findEffectiveManualRate(orgId, resourceId, asOfDate, dbClient = db) {
     return dbClient('res_rates as rr')
         .join('res_resources as r', 'rr.resource_id', 'r.id')
         .where('rr.resource_id', resourceId)
         .andWhere('r.org_id', orgId)
+        .whereNull('rr.project_id')
         .whereNotNull('rr.rate')
         .andWhere('rr.effective_from', '<=', asOfDate)
         .andWhere(function () {
@@ -205,6 +208,7 @@ async function resolveRateInternal(orgId, resourceId, asOfDate, dbClient, path =
     const compositions = await dbClient('res_compositions as c')
         .join('res_resources as component', 'c.component_resource_id', 'component.id')
         .where('c.parent_resource_id', resource.id)
+        .whereNull('c.project_id')
         .andWhere('c.effective_from', '<=', asOfDate)
         .andWhere(function () {
             this.whereNull('c.effective_to').orWhere('c.effective_to', '>=', asOfDate);
@@ -325,17 +329,35 @@ async function _writeManualRateVersion(orgId, resource, { rate, unit_code, effec
 
     const effectiveFrom = toDateOnly(effective_from);
 
+    const latestRate = await dbClient('res_rates')
+        .where({ resource_id: resource.id })
+        .whereNull('project_id')
+        .max('effective_from as latest_effective_from')
+        .first();
+    if (latestRate?.latest_effective_from) {
+        const latestDate = toDateOnly(latestRate.latest_effective_from);
+        if (effectiveFrom <= latestDate) {
+            throw new AppError(
+                `New rate effective_from ${effectiveFrom} must be later than the latest rate ${latestDate}`,
+                400
+            );
+        }
+    }
+
     // The active flag tracks the latest edit, while effective dates still
     // determine which historical row applies to a requested date.
-    const activeRate = await dbClient('res_rates')
+    const activeRateQuery = dbClient('res_rates')
         .where({ resource_id: resource.id, is_active: 1 })
+        .whereNull('project_id');
+
+    const activeRate = await activeRateQuery
         .orderBy('id', 'desc')
         .forUpdate()
         .first('id', 'effective_from', 'effective_to');
 
     if (activeRate) {
         const activeFrom = toDateOnly(activeRate.effective_from);
-        if (effectiveFrom < activeFrom) {
+            if (effectiveFrom < activeFrom) {
             throw new AppError(
                 `New rate effective_from ${effectiveFrom} cannot be earlier than the active rate ${activeFrom}`,
                 400
@@ -374,15 +396,18 @@ export async function addRate(orgId, resourceId, rateData) {
  */
 export async function getRateHistory(orgId, resourceId) {
     await ensureResourceExists(orgId, resourceId);
-    const rows = await db('res_rates as rr')
+    const query = db('res_rates as rr')
         .join('res_resources as r', 'rr.resource_id', 'r.id')
         .where('rr.resource_id', resourceId)
         .andWhere('r.org_id', orgId)
+        .whereNull('rr.project_id')
         .select(
             'rr.id', 'rr.resource_id', 'rr.rate', 'rr.unit_code',
             'rr.effective_from', 'rr.effective_to', 'rr.is_active',
             'rr.remarks', 'rr.created_at', 'rr.updated_at'
-        )
+        );
+
+    const rows = await query
         .orderBy('rr.effective_from', 'desc')
         .orderBy('rr.id', 'desc');
 
@@ -444,6 +469,7 @@ export async function getResources(orgId, { type, search, limit = 100, offset = 
         const compositions = await db('res_compositions as c')
             .join('res_resources as r2', 'c.component_resource_id', 'r2.id')
             .whereIn('c.parent_resource_id', resourceIds)
+            .whereNull('c.project_id')
             .andWhere('r2.org_id', orgId)
             .andWhere('c.effective_from', '<=', asOfDate)
             .andWhere(function () {
@@ -527,6 +553,7 @@ export async function getResourceById(orgId, id, asOfDate) {
         const compositions = await db('res_compositions as c')
             .join('res_resources as r2', 'c.component_resource_id', 'r2.id')
             .where('c.parent_resource_id', id)
+            .whereNull('c.project_id')
             .andWhere('r2.org_id', orgId)
             .andWhere('c.effective_from', '<=', compositionDate)
             .andWhere(function () {
@@ -818,6 +845,7 @@ async function _replaceCompositions(orgId, parentResourceId, compositions, dbCli
     // after the latest recorded version.
     const latestVersion = await dbClient('res_compositions')
         .where('parent_resource_id', parentResourceId)
+        .whereNull('project_id')
         .max('effective_from as latest_effective_from')
         .first();
     if (latestVersion?.latest_effective_from) {
@@ -877,6 +905,7 @@ async function _replaceCompositions(orgId, parentResourceId, compositions, dbCli
     // than falling back to an older version.
     await dbClient('res_compositions')
         .where('parent_resource_id', parentResourceId)
+        .whereNull('project_id')
         .andWhere('effective_from', '<', effectiveFrom)
         .andWhere(function () {
             this.whereNull('effective_to').orWhere('effective_to', '>=', effectiveFrom);
@@ -892,6 +921,7 @@ async function _replaceCompositions(orgId, parentResourceId, compositions, dbCli
             component_resource_id: c.component_resource_id,
             quantity: c.quantity,
             unit_code: c.unit_code,
+            project_id: null,
             effective_from: effectiveFrom,
             effective_to: null,
             is_active: 1
@@ -926,6 +956,7 @@ export async function getCompositionHistory(orgId, resourceId) {
     const rows = await db('res_compositions as c')
         .join('res_resources as component', 'c.component_resource_id', 'component.id')
         .where('c.parent_resource_id', resourceId)
+        .whereNull('c.project_id')
         .andWhere('component.org_id', orgId)
         .select(
             'c.id',
@@ -1250,12 +1281,14 @@ export async function clearManualRate(orgId, resourceId, effectiveFrom) {
     if (resource.type !== 'item') {
         throw new AppError('Only items can revert to a computed rate; materials and labour require a manual rate', 400);
     }
-
     const clearFrom = toDateOnly(effectiveFrom);
 
     return db.transaction(async (trx) => {
-        const activeRate = await trx('res_rates')
+        const activeRateQuery = trx('res_rates')
             .where({ resource_id: resourceId, is_active: 1 })
+            .whereNull('project_id');
+
+        const activeRate = await activeRateQuery
             .whereNotNull('rate')
             .orderBy('id', 'desc')
             .forUpdate()
@@ -1272,7 +1305,9 @@ export async function clearManualRate(orgId, resourceId, effectiveFrom) {
 
         await trx('res_rates').where({ id: activeRate.id }).update({
             is_active: 0,
-            effective_to: clearFrom === activeFrom ? clearFrom : subtractOneDay(clearFrom)
+            // A clear marker is ignored by manual-rate lookup, so the old
+            // manual row must end before the clear date even on same-day clears.
+            effective_to: subtractOneDay(clearFrom)
         });
 
         // rate stays NULL — this row just marks "computed from here."
@@ -1290,7 +1325,6 @@ export async function clearManualRate(orgId, resourceId, effectiveFrom) {
         return true;
     });
 }
-
 
 export default {
     getResources,

@@ -1,6 +1,13 @@
 import catchAsync from '../../utils/catchAsync.js';
 import resourceService from './resourceService.js';
 import AppError from '../../utils/AppError.js';
+import projectResourceService from '../projects/resources/projectResourceService.js';
+
+function parseProjectId(value) {
+    const projectId = parseInt(value, 10);
+    if (!value || Number.isNaN(projectId)) throw new AppError('Invalid project_id', 400);
+    return projectId;
+}
 
 // ─── Resources CRUD ───────────────────────────────────────────────────────────
 
@@ -28,11 +35,14 @@ export const getResolvedRate = catchAsync(async (req, res) => {
     const { id } = req.params;
     if (!id || isNaN(parseInt(id))) throw new AppError('Invalid Resource ID', 400);
 
-    const rate = await resourceService.getResolvedRate(
-        req.user.org_id,
-        parseInt(id),
-        req.query.date
-    );
+    const rate = req.query.project_id
+        ? await projectResourceService.getResolvedRate(
+            req.user.org_id,
+            parseProjectId(req.query.project_id),
+            parseInt(id),
+            req.query.date
+        )
+        : await resourceService.getResolvedRate(req.user.org_id, parseInt(id), req.query.date);
     res.json({ success: true, rate });
 });
 
@@ -152,14 +162,30 @@ export const setCompositions = catchAsync(async (req, res) => {
     if (!id || isNaN(parseInt(id))) throw new AppError('Invalid Resource ID', 400);
     const { compositions, effective_from } = req.body;
     if (!Array.isArray(compositions)) throw new AppError('compositions must be an array', 400);
-    await resourceService.setCompositions(req.user.org_id, id, compositions, effective_from);
+    if (req.body.project_id) {
+        await projectResourceService.setCompositions(
+            req.user.org_id,
+            parseProjectId(req.body.project_id),
+            parseInt(id),
+            compositions,
+            effective_from
+        );
+    } else {
+        await resourceService.setCompositions(req.user.org_id, id, compositions, effective_from);
+    }
     res.json({ success: true, message: 'Compositions updated' });
 });
 
 export const getCompositionHistory = catchAsync(async (req, res) => {
     const { id } = req.params;
     if (!id || isNaN(parseInt(id))) throw new AppError('Invalid Resource ID', 400);
-    const compositions = await resourceService.getCompositionHistory(req.user.org_id, parseInt(id));
+    const compositions = req.query.project_id
+        ? await projectResourceService.getCompositionHistory(
+            req.user.org_id,
+            parseProjectId(req.query.project_id),
+            parseInt(id)
+        )
+        : await resourceService.getCompositionHistory(req.user.org_id, parseInt(id));
     res.json({ success: true, compositions });
 });
 
@@ -185,21 +211,26 @@ export const addRate = catchAsync(async (req, res) => {
     const { id } = req.params;
     if (!id || isNaN(parseInt(id))) throw new AppError('Invalid Resource ID', 400);
 
-    const { rate, unit_id, unit_code, effective_from, remarks } = req.body;
-    const rateId = await resourceService.addRate(req.user.org_id, parseInt(id), {
+    const { rate, unit_id, unit_code, effective_from, remarks, project_id } = req.body;
+    const rateData = {
         rate,
         unit_code: unit_code || unit_id,
         effective_from,
         remarks
-    });
+    };
+    const rateId = project_id
+        ? await projectResourceService.addRate(req.user.org_id, parseProjectId(project_id), parseInt(id), rateData)
+        : await resourceService.addRate(req.user.org_id, parseInt(id), rateData);
 
-    res.status(201).json({ success: true, message: 'Manual rate added', id: rateId });
+    res.status(201).json({ success: true, message: project_id ? 'Project rate added' : 'Manual rate added', id: rateId });
 });
 
 export const getRateHistory = catchAsync(async (req, res) => {
     const { id } = req.params;
     if (!id || isNaN(parseInt(id))) throw new AppError('Invalid Resource ID', 400);
-    const rates = await resourceService.getRateHistory(req.user.org_id, parseInt(id));
+    const rates = req.query.project_id
+        ? await projectResourceService.getRateHistory(req.user.org_id, parseProjectId(req.query.project_id), parseInt(id))
+        : await resourceService.getRateHistory(req.user.org_id, parseInt(id));
     res.json({ success: true, rates });
 });
 
@@ -235,6 +266,17 @@ export const clearManualRate = catchAsync(async (req, res) => {
     res.json({ success: true, message: 'Manual rate cleared' });
 });
 
+export const clearProjectRate = catchAsync(async (req, res) => {
+    const { id } = req.params;
+    if (!id || isNaN(parseInt(id))) throw new AppError('Invalid Resource ID', 400);
+    const projectId = parseProjectId(req.body.project_id || req.query.project_id);
+    const { effective_from } = req.body;
+    if (!effective_from) throw new AppError('effective_from date is required', 400);
+
+    await projectResourceService.clearRate(req.user.org_id, projectId, parseInt(id), effective_from);
+    res.json({ success: true, message: 'Project rate reverted to master rate' });
+});
+
 
 
 export default {
@@ -251,5 +293,6 @@ export default {
     getRateHistory,
     removeConversion,
     bulkUpdateResources,
-    clearManualRate
+    clearManualRate,
+    clearProjectRate
 };

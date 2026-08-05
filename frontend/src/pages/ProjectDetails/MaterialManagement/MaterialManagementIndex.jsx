@@ -1,6 +1,8 @@
 import React, { useEffect } from 'react';
-import { Layers, Package, BarChart2, RefreshCcw, Store, Wrench, ChevronRight } from 'lucide-react';
+import { Package, ChevronRight } from 'lucide-react';
 import { motion } from 'framer-motion';
+import { useSearchParams } from 'react-router-dom';
+import ProjectResourceList from './ProjectResourceList';
 
 // ─── GeneralDocuments-style compact vertical card ──────────────────────────────
 const GDCard = ({ name, desc, icon: Icon, type = 'Single Instance', onClick }) => (
@@ -45,46 +47,43 @@ const GDCard = ({ name, desc, icon: Icon, type = 'Single Instance', onClick }) =
     </motion.div>
 );
 
-const MaterialManagementIndex = ({ setExtraBreadcrumbs }) => {
-    useEffect(() => { setExtraBreadcrumbs([{ label: 'Material Management' }]); }, [setExtraBreadcrumbs]);
+const MaterialManagementIndex = ({ setExtraBreadcrumbs, canWrite }) => {
+    const [searchParams, setSearchParams] = useSearchParams();
+    const currentView = searchParams.get('view') || 'grid';
+
+    const setCurrentView = React.useCallback((view) => {
+        const nextParams = new URLSearchParams(searchParams);
+        if (view === 'grid') nextParams.delete('view');
+        else nextParams.set('view', view);
+        setSearchParams(nextParams);
+    }, [searchParams, setSearchParams]);
+
+    const handleBack = React.useCallback(() => setCurrentView('grid'), [setCurrentView]);
+
+    useEffect(() => {
+        if (currentView === 'grid') {
+            setExtraBreadcrumbs([{ label: 'Material Management' }]);
+        }
+    }, [currentView, setExtraBreadcrumbs]);
+
+    if (currentView === 'project-resources') {
+        return (
+            <ProjectResourceList
+                onBack={handleBack}
+                setExtraBreadcrumbs={setExtraBreadcrumbs}
+                canWrite={canWrite}
+            />
+        );
+    }
 
     const docs = [
-        { 
-            name: 'Steel', 
-            desc: 'Steel reinforcement procurement, delivery records, and quantity reconciliation.',
-            icon: Layers, 
-            type: 'Single Instance' 
-        },
-        { 
-            name: 'Cement', 
-            desc: 'Cement supply registers, consumption logs, and quality test certificates.',
-            icon: Package, 
-            type: 'Single Instance' 
-        },
-        { 
-            name: 'Bulk Materials', 
-            desc: 'Sand, aggregate, and other bulk material procurement and usage tracking.',
-            icon: BarChart2, 
-            type: 'Single Instance' 
-        },
-        { 
-            name: 'Reconciliation (1st of every month)', 
-            desc: 'Monthly material reconciliation statements balancing received vs. consumed quantities.',
-            icon: RefreshCcw, 
-            type: 'Episodic' 
-        },
-        { 
-            name: 'Store / Material Management', 
-            desc: 'Site store records, material issuance registers, and inventory management.',
-            icon: Store, 
-            type: 'Single Instance' 
-        },
-        { 
-            name: 'Reinf Steel Rolling Margin', 
-            desc: 'Rolling margin reports for reinforcement steel to track wastage and efficiency.',
-            icon: Wrench, 
-            type: 'Episodic' 
-        },
+        {
+            name: 'Project Resources & Rates',
+            desc: 'Import materials, labour, and items, then manage project-specific rates with master fallback.',
+            icon: Package,
+            type: 'Single Instance',
+            view: 'project-resources'
+        }
     ];
 
     return (
@@ -93,7 +92,14 @@ const MaterialManagementIndex = ({ setExtraBreadcrumbs }) => {
                 <div className="w-full space-y-6">
                     <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
                         {docs.map((d, i) => (
-                            <GDCard key={i} name={d.name} desc={d.desc} icon={d.icon} type={d.type} />
+                            <GDCard
+                                key={i}
+                                name={d.name}
+                                desc={d.desc}
+                                icon={d.icon}
+                                type={d.type}
+                                onClick={d.view ? () => setCurrentView(d.view) : undefined}
+                            />
                         ))}
                     </div>
                 </div>

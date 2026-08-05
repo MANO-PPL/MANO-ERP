@@ -1,10 +1,11 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import {
     Search, Calendar, Save, RotateCcw, AlertCircle,
-    RefreshCw, Plus
+    RefreshCw, Plus, Calculator, History
 } from 'lucide-react';
 import { motion } from 'framer-motion';
 import { resourceApi } from '../../services/resourceApi';
+import { projectApi } from '../../services/projectApi';
 import { UNIT_GROUPS } from './resourceConstants';
 import { useAuth } from '../../context/AuthContext';
 import CustomDatePicker from '../../components/CustomDatePicker';
@@ -31,6 +32,8 @@ const ResourceRatesTab = ({
     const [selectedResourceId, setSelectedResourceId] = useState(initialResourceId ? String(initialResourceId) : '');
     const [searchQuery, setSearchQuery] = useState('');
     const [asOfDate, setAsOfDate] = useState(dateOnly());
+    const [projects, setProjects] = useState([]);
+    const [selectedProjectId, setSelectedProjectId] = useState('');
 
     const [resolvedRateInfo, setResolvedRateInfo] = useState(null);
     const [rateHistory, setRateHistory] = useState([]);
@@ -43,6 +46,12 @@ const ResourceRatesTab = ({
     const [isSavingRate, setIsSavingRate] = useState(false);
     const [isReverting, setIsReverting] = useState(false);
     const [errorMsg, setErrorMsg] = useState('');
+
+    useEffect(() => {
+        projectApi.listProjects()
+            .then(data => setProjects(data.projects || []))
+            .catch(err => console.error('Failed to load projects for rate scope', err));
+    }, []);
 
     useEffect(() => {
         if (initialResourceId && resources.some(r => String(r.id) === String(initialResourceId))) {
@@ -68,10 +77,17 @@ const ResourceRatesTab = ({
         setIsLoadingDetails(true);
         setErrorMsg('');
         try {
-            const [resolvedData, historyData] = await Promise.all([
-                resourceApi.getResolvedRate(selectedResourceId, asOfDate),
-                resourceApi.getRateHistory(selectedResourceId)
-            ]);
+            const [resolvedData, historyData] = await Promise.all(
+                selectedProjectId
+                    ? [
+                        projectApi.getResolvedResourceRate(selectedProjectId, selectedResourceId, asOfDate),
+                        projectApi.getResourceRateHistory(selectedProjectId, selectedResourceId)
+                    ]
+                    : [
+                        resourceApi.getResolvedRate(selectedResourceId, asOfDate),
+                        resourceApi.getRateHistory(selectedResourceId)
+                    ]
+            );
 
             setResolvedRateInfo(resolvedData.rate);
             setRateHistory(historyData.rates || []);
@@ -87,7 +103,7 @@ const ResourceRatesTab = ({
         if (selectedResourceId) {
             fetchRateData();
         }
-    }, [selectedResourceId, asOfDate]);
+    }, [selectedResourceId, asOfDate, selectedProjectId]);
 
     const handleAddManualRate = async (e) => {
         e.preventDefault();
@@ -96,12 +112,17 @@ const ResourceRatesTab = ({
         setErrorMsg('');
 
         try {
-            await resourceApi.addRate(selectedResourceId, {
+            const rateData = {
                 rate: parseFloat(manualRate),
                 unit_code: manualUnitCode || selectedResource.base_unit_code,
                 effective_from: effectiveFrom,
                 remarks: remarks || undefined
-            });
+            };
+            if (selectedProjectId) {
+                await projectApi.addResourceRate(selectedProjectId, selectedResourceId, rateData);
+            } else {
+                await resourceApi.addRate(selectedResourceId, rateData);
+            }
 
             if (showToast) showToast('success', 'Manual Rate Added', 'New rate version saved.');
             setManualRate('');
@@ -131,6 +152,24 @@ const ResourceRatesTab = ({
         } catch (err) {
             console.error('Failed to clear manual rate', err);
             const msg = err.response?.data?.message || err.message || 'Failed to revert rate';
+            setErrorMsg(msg);
+            if (showToast) showToast('error', 'Revert Failed', msg);
+        } finally {
+            setIsReverting(false);
+        }
+    };
+
+    const handleRevertToMaster = async () => {
+        if (!selectedResourceId || !selectedProjectId) return;
+        setIsReverting(true);
+        setErrorMsg('');
+        try {
+            await projectApi.clearResourceRate(selectedProjectId, selectedResourceId, effectiveFrom);
+            if (showToast) showToast('success', 'Reverted to Master', 'The project now uses the master rate or recipe calculation.');
+            fetchRateData();
+            if (onRefreshResources) onRefreshResources();
+        } catch (err) {
+            const msg = err.response?.data?.message || err.message || 'Failed to revert project rate';
             setErrorMsg(msg);
             if (showToast) showToast('error', 'Revert Failed', msg);
         } finally {
@@ -246,13 +285,31 @@ const ResourceRatesTab = ({
                                 </p>
                             </div>
 
-                            <div className="flex items-center gap-2 bg-white dark:bg-[#0d1117] px-2.5 py-1.5 rounded-lg border border-gray-200 dark:border-white/10 ml-auto shrink-0">
-                                <span className="text-[10px] font-bold text-gray-500 dark:text-gray-400 uppercase tracking-wider whitespace-nowrap">Target Date:</span>
-                                <CustomDatePicker
-                                    value={asOfDate}
-                                    onChange={e => setAsOfDate(e.target.value)}
-                                    className="w-[125px] border-none bg-transparent shadow-none"
-                                />
+                            {/* Query scope and target date */}
+                            <div className="flex flex-wrap items-center justify-end gap-2">
+                                <div className="flex items-center gap-2 bg-white dark:bg-[#0d1117] border border-gray-200 dark:border-white/10 rounded-xl px-3 py-1.5">
+                                    <span className="text-[10px] font-bold text-gray-400 uppercase">Scope:</span>
+                                    <select
+                                        value={selectedProjectId}
+                                        onChange={e => setSelectedProjectId(e.target.value)}
+                                        className="bg-transparent text-xs font-semibold outline-none max-w-[180px]"
+                                    >
+                                        <option value="">Master / Organization</option>
+                                        {projects.map(project => (
+                                            <option key={project.id} value={project.id}>{project.name}</option>
+                                        ))}
+                                    </select>
+                                </div>
+                                <div className="flex items-center gap-2 bg-white dark:bg-[#0d1117] border border-gray-200 dark:border-white/10 rounded-xl px-3 py-1.5">
+                                    <Calendar size={14} className="text-emerald-500" />
+                                    <span className="text-[10px] font-bold text-gray-400 uppercase">Target Date:</span>
+                                    <input
+                                        type="date"
+                                        value={asOfDate}
+                                        onChange={e => setAsOfDate(e.target.value)}
+                                        className="bg-transparent text-xs font-semibold outline-none"
+                                    />
+                                </div>
                             </div>
                         </div>
 
@@ -263,51 +320,73 @@ const ResourceRatesTab = ({
                             </div>
                         )}
 
-                        <div className="flex-1 overflow-y-auto custom-scrollbar p-5 space-y-6">
-                            {/* Live Resolved Rate Hero Card */}
-                            {isLoadingDetails ? (
-                                <div className="p-8 w-full border border-emerald-200/50 dark:border-emerald-500/20 rounded-xl bg-emerald-50/20 dark:bg-emerald-950/10 flex items-center justify-center text-center">
-                                    <LogoLoader text="Resolving Effective Rate..." size="md" fullPage={false} />
-                                </div>
-                            ) : (
-                                <div className="p-4 bg-emerald-50/40 dark:bg-emerald-950/20 border border-emerald-200 dark:border-emerald-500/20 rounded-xl flex flex-col md:flex-row items-start md:items-center justify-between gap-3">
-                                    <div>
-                                        <div className="flex items-center gap-2">
-                                            <h3 className="text-xs font-bold text-gray-500 uppercase tracking-wider">Effective Resolved Rate</h3>
-                                            {resolvedRateInfo && (
-                                                <span className={`text-[10px] font-bold px-2 py-0.5 rounded ${resolvedRateInfo.source === 'manual'
-                                                    ? 'bg-blue-100 dark:bg-blue-950/40 text-blue-700 dark:text-blue-300 border border-blue-200 dark:border-blue-500/30'
-                                                    : 'bg-purple-100 dark:bg-purple-950/40 text-purple-700 dark:text-purple-300 border border-purple-200 dark:border-purple-500/30'
-                                                    }`}>
-                                                    {resolvedRateInfo.source === 'manual' ? 'Manual Rate Override' : 'Computed from Recipe'}
-                                                </span>
-                                            )}
-                                        </div>
-                                        {resolvedRateInfo ? (
-                                            <p className="text-2xl font-mono font-black text-gray-900 dark:text-white mt-1">
-                                                ₹{Number(resolvedRateInfo.rate).toLocaleString('en-IN', { minimumFractionDigits: 2 })}
-                                                <span className="text-xs font-semibold text-gray-500 dark:text-gray-400 ml-1">
-                                                    / {resolvedRateInfo.unitCode}
-                                                </span>
-                                            </p>
-                                        ) : (
-                                            <p className="text-xs text-gray-400 italic mt-1">No rate configured for this date.</p>
-                                        )}
-                                    </div>
-
-                                    {selectedResource.type === 'item' && activeManualRateRow && canWrite && (
-                                        <button
-                                            type="button"
-                                            onClick={handleRevertToComputed}
-                                            disabled={isReverting}
-                                            className="flex items-center gap-1.5 px-3 py-1.5 bg-purple-50 dark:bg-purple-950/40 text-purple-700 dark:text-purple-300 border border-purple-200 dark:border-purple-500/30 rounded-lg text-xs font-semibold hover:bg-purple-100 transition-colors cursor-pointer"
-                                        >
-                                            {isReverting ? <RefreshCw size={13} className="animate-spin" /> : <RotateCcw size={13} />}
-                                            <span>Revert to Computed Recipe Rate</span>
-                                        </button>
-                                    )}
+                        <div className="flex-1 overflow-y-auto custom-scrollbar p-6 space-y-6">
+                            {selectedProjectId && (
+                                <div className="p-4 border border-blue-200 dark:border-blue-500/30 rounded-2xl bg-blue-50/50 dark:bg-blue-950/20">
+                                    <p className="text-xs font-black uppercase tracking-wider text-blue-700 dark:text-blue-300">Project Override</p>
+                                    <p className="text-xs text-blue-700/80 dark:text-blue-300/80 mt-1">
+                                        Project rates apply to materials, labour, and items without allocation or import.
+                                    </p>
                                 </div>
                             )}
+
+                            {/* Live Rate Summary Card */}
+                            <div className="p-5 bg-emerald-50/50 dark:bg-emerald-950/20 border border-emerald-200 dark:border-emerald-500/30 rounded-2xl flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
+                                <div className="flex items-center gap-3">
+                                    <div className="w-12 h-12 rounded-xl bg-emerald-600 text-white flex items-center justify-center shadow-md shrink-0">
+                                        <Calculator size={24} />
+                                    </div>
+                                </div>
+                                <div>
+                                    <div className="flex items-center gap-2">
+                                        <h3 className="text-xs font-bold text-gray-500 uppercase tracking-wider">Effective Resolved Rate</h3>
+                                        {resolvedRateInfo && (
+                                            <span className={`text-[10px] font-bold px-2 py-0.5 rounded ${resolvedRateInfo.source === 'manual'
+                                                ? 'bg-blue-100 dark:bg-blue-950/40 text-blue-700 dark:text-blue-300 border border-blue-200 dark:border-blue-500/30'
+                                                : 'bg-purple-100 dark:bg-purple-950/40 text-purple-700 dark:text-purple-300 border border-purple-200 dark:border-purple-500/30'
+                                                }`}>
+                                                {resolvedRateInfo.source === 'manual' ? 'Manual Rate Override' : 'Computed from Recipe'}
+                                            </span>
+                                        )}
+                                    </div>
+                                    {isLoadingDetails ? (
+                                        <div className="p-8 w-full border border-emerald-200/50 dark:border-emerald-500/20 rounded-xl bg-emerald-50/20 dark:bg-emerald-950/10 flex items-center justify-center text-center">
+                                            <LogoLoader text="Resolving Effective Rate..." size="md" fullPage={false} />
+                                        </div>
+                                    ) : (resolvedRateInfo ? (
+                                        <p className="text-2xl font-mono font-black text-gray-900 dark:text-white mt-1">
+                                            ₹{Number(resolvedRateInfo.rate).toLocaleString('en-IN', { minimumFractionDigits: 2 })}
+                                            <span className="text-xs font-semibold text-gray-500 dark:text-gray-400 ml-1">
+                                                / {resolvedRateInfo.unitCode}
+                                            </span>
+                                        </p>
+                                    ) : (
+                                        <p className="text-xs text-gray-400 italic mt-1">No rate configured for this date.</p>
+                                    ))}
+                                </div>
+
+                                {selectedProjectId && activeManualRateRow && canWrite ? (
+                                    <button
+                                        type="button"
+                                        onClick={handleRevertToMaster}
+                                        disabled={isReverting}
+                                        className="flex items-center gap-1.5 px-3.5 py-2 bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300 border border-blue-200 dark:border-blue-500/30 rounded-xl text-xs font-bold hover:bg-blue-200 transition-all cursor-pointer"
+                                    >
+                                        {isReverting ? <RefreshCw size={14} className="animate-spin" /> : <RotateCcw size={14} />}
+                                        <span>Revert to Master Rate</span>
+                                    </button>
+                                ) : selectedResource.type === 'item' && activeManualRateRow && canWrite && (
+                                    <button
+                                        type="button"
+                                        onClick={handleRevertToComputed}
+                                        disabled={isReverting}
+                                        className="flex items-center gap-1.5 px-3.5 py-2 bg-purple-100 dark:bg-purple-900/30 text-purple-700 dark:text-purple-300 border border-purple-200 dark:border-purple-500/30 rounded-xl text-xs font-bold hover:bg-purple-200 transition-all cursor-pointer"
+                                    >
+                                        {isReverting ? <RefreshCw size={14} className="animate-spin" /> : <RotateCcw size={14} />}
+                                        <span>Revert to Computed Recipe Rate</span>
+                                    </button>
+                                )}
+                            </div>
 
                             {/* Detailed Composition Breakdown if Computed */}
                             {resolvedRateInfo && resolvedRateInfo.source === 'computed' && resolvedRateInfo.breakdown && (
@@ -337,9 +416,9 @@ const ResourceRatesTab = ({
 
                             {/* Set New Rate Form */}
                             {canWrite && (
-                                <div className="p-4 border border-gray-200 dark:border-white/10 rounded-xl bg-white dark:bg-[#0d1117] space-y-3">
-                                    <h4 className="text-xs font-bold uppercase tracking-wider text-gray-500 dark:text-gray-400">
-                                        Set New Manual Rate Version
+                                <div className="p-5 border border-gray-200 dark:border-white/10 rounded-2xl bg-white dark:bg-[#0d1117] space-y-4">
+                                    <h4 className="text-xs font-black uppercase tracking-wider text-gray-400 flex items-center gap-1.5">
+                                        <Plus size={14} className="text-emerald-500" /> Set New {selectedProjectId ? 'Project' : 'Master'} Rate Version
                                     </h4>
 
                                     <form onSubmit={handleAddManualRate} className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-3 items-end">
@@ -396,10 +475,10 @@ const ResourceRatesTab = ({
                                 </div>
                             )}
 
-                            {/* Rate Version History */}
-                            <div className="space-y-4">
-                                <h4 className="text-xs font-bold uppercase tracking-wider text-gray-500 dark:text-gray-400">
-                                    Rate Version History ({rateHistory.length})
+                            {/* Rate History Table */}
+                            <div className="space-y-3">
+                                <h4 className="text-xs font-black uppercase tracking-wider text-gray-400 flex items-center gap-1.5">
+                                    <History size={14} /> {selectedProjectId ? 'Project' : 'Master'} Rate Version History ({rateHistory.length})
                                 </h4>
 
                                 {rateHistory.length === 0 ? (

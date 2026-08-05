@@ -29,6 +29,7 @@ router.post('/:id/rates', resourceController.addRate);
 router.get('/:id/rates', resourceController.getRateHistory);
 router.get('/:id/rate', resourceController.getResolvedRate);
 router.post('/:id/clear-rate', resourceController.clearManualRate);
+router.post('/:id/clear-project-rate', resourceController.clearProjectRate);
 
 
 export default router;
