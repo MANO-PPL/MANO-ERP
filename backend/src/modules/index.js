@@ -13,6 +13,7 @@ import instanceRoutes from './documents/instanceRoutes.js';
 import cycleRoutes from './documents/cycleRoutes.js';
 import aiRoutes from './ai/aiRoutes.js';
 import drawingsTestRoutes from './projects/drawings/testDrawings.js';
+import ledgerRoutes from './ledger/ledgerRoutes.js';
 
 const router = express.Router();
 
@@ -29,5 +30,6 @@ router.use('/v1/instances', instanceRoutes);
 router.use('/v1/cycles', cycleRoutes);
 router.use('/ai', aiRoutes);
 router.use('/drawings-test', drawingsTestRoutes);
+router.use('/ledger', ledgerRoutes);
 
 export default router;

@@ -23,6 +23,7 @@ import Billing from './Billing/BillingIndex';
 import MaterialManagement from './MaterialManagement/MaterialManagementIndex';
 import Approvals from './Approvals/Approvals';
 import ProjectSettings from './Settings/ProjectSettings';
+import Transactions from './Transactions/TransactionsIndex';
 
 const ProjectDetails = () => {
     const { id } = useParams();
@@ -104,7 +105,7 @@ const ProjectDetails = () => {
 
     const allTabs = [
         'Dashboard', 'Tasks', 'WIP', 'Reports', 'General Documents', 'Drawings', 
-        'Planning', 'Phases', 'Contracts', 'Quality', 'Safety', 'Billing', 'Material Management', 'Approvals', 'Settings'
+        'Planning', 'Phases', 'Contracts', 'Quality', 'Safety', 'Billing', 'Material Management', 'Transactions', 'Approvals', 'Settings'
     ];
 
     const allowedTabs = allTabs.filter(tab => {
@@ -161,6 +162,8 @@ const ProjectDetails = () => {
                 return <Billing {...props} />;
             case 'Material Management':
                 return <MaterialManagement {...props} />;
+            case 'Transactions':
+                return <Transactions {...props} />;
             case 'Approvals':
                 return <Approvals {...props} />;
             case 'Settings':
