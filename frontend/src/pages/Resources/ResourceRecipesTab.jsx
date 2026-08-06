@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import {
     Plus, Trash2, Save, RefreshCw, AlertCircle, ArrowRight,
     Search, Calendar, RotateCcw, Copy, WandSparkles
@@ -39,10 +39,10 @@ const ResourceRecipesTab = ({
 
     const [recipeRows, setRecipeRows] = useState([]);
     const [compositionHistory, setCompositionHistory] = useState([]);
-    const [isLoadingHistory, setIsLoadingHistory] = useState(false);
     const [componentRates, setComponentRates] = useState({});
     const [isSaving, setIsSaving] = useState(false);
     const [errorMsg, setErrorMsg] = useState('');
+    const loadRequestRef = useRef(0);
 
     const [confirmModal, setConfirmModal] = useState({
         isOpen: false,
@@ -117,22 +117,39 @@ const ResourceRecipesTab = ({
         }
     }, [initialResourceId, itemsList]);
 
+    const getCompositionHistory = () => selectedProjectId
+        ? projectApi.getProjectCompositionHistory(selectedProjectId, selectedItemId)
+        : resourceApi.getCompositionHistory(selectedItemId);
+
+    const getComponentRates = () => {
+        const componentIds = rawComponents.map(component => component.id);
+        return selectedProjectId
+            ? projectApi.getResolvedResourceRates(selectedProjectId, componentIds, effectiveFrom)
+            : resourceApi.getResolvedRates(componentIds, effectiveFrom);
+    };
+
     const fetchItemRecipe = async () => {
         if (!selectedItemId) return;
+        const requestId = ++loadRequestRef.current;
         setIsLoadingDetail(true);
         setErrorMsg('');
         try {
-            const detailRes = await resourceApi.getResourceById(selectedItemId, effectiveFrom);
-            const itemData = detailRes.resource;
-            setSelectedItemDetail(itemData);
+            const [detailRes, historyResult, ratesResult] = await Promise.all([
+                resourceApi.getResourceById(selectedItemId, effectiveFrom),
+                getCompositionHistory(),
+                getComponentRates()
+            ]);
 
-            let compositionsForDate = itemData.compositions || [];
-            if (selectedProjectId) {
-                const historyResult = await projectApi.getProjectCompositionHistory(selectedProjectId, selectedItemId);
-                const projectHistory = historyResult.compositions || [];
-                setCompositionHistory(projectHistory);
-                compositionsForDate = rowsEffectiveOn(projectHistory, effectiveFrom);
-            }
+            if (requestId !== loadRequestRef.current) return;
+
+            const itemData = detailRes.resource;
+            const history = historyResult.compositions || [];
+            setSelectedItemDetail(itemData);
+            setCompositionHistory(history);
+
+            const compositionsForDate = selectedProjectId
+                ? rowsEffectiveOn(history, effectiveFrom)
+                : (itemData.compositions || rowsEffectiveOn(history, effectiveFrom));
 
             // Populate recipe rows from the selected scope.
             if (compositionsForDate.length > 0) {
@@ -146,27 +163,24 @@ const ResourceRecipesTab = ({
                 setRecipeRows([]);
             }
 
-            const ratePromises = rawComponents.map(async (comp) => {
-                try {
-                    const rateRes = selectedProjectId
-                        ? await projectApi.getResolvedResourceRate(selectedProjectId, comp.id, effectiveFrom)
-                        : await resourceApi.getResolvedRate(comp.id, effectiveFrom);
-                    return { id: String(comp.id), rate: rateRes.rate?.rate ?? 0, unitCode: rateRes.rate?.unitCode || comp.base_unit_code };
-                } catch {
-                    return { id: String(comp.id), rate: 0, unitCode: comp.base_unit_code };
-                }
-            });
-
-            const resolvedRatesList = await Promise.all(ratePromises);
-            const ratesMap = {};
-            resolvedRatesList.forEach(r => { ratesMap[r.id] = r; });
+            const resolvedRates = ratesResult.rates || [];
+            const ratesById = new Map(resolvedRates.map(rate => [String(rate.resourceId), rate]));
+            const ratesMap = Object.fromEntries(rawComponents.map(component => {
+                const rate = ratesById.get(String(component.id));
+                return [String(component.id), {
+                    rate: rate?.rate ?? 0,
+                    unitCode: rate?.unitCode || component.base_unit_code
+                }];
+            }));
             setComponentRates(ratesMap);
 
         } catch (err) {
-            console.error('Failed to load item recipe', err);
-            setErrorMsg(err.response?.data?.message || 'Failed to load item recipe');
+            if (requestId === loadRequestRef.current) {
+                console.error('Failed to load item recipe', err);
+                setErrorMsg(err.response?.data?.message || 'Failed to load item recipe');
+            }
         } finally {
-            setIsLoadingDetail(false);
+            if (requestId === loadRequestRef.current) setIsLoadingDetail(false);
         }
     };
 
@@ -174,33 +188,7 @@ const ResourceRecipesTab = ({
         if (selectedItemId) {
             fetchItemRecipe();
         }
-    }, [selectedItemId, effectiveFrom, selectedProjectId]);
-
-    useEffect(() => {
-        let cancelled = false;
-        const loadHistory = async () => {
-            if (!selectedItemId) {
-                setCompositionHistory([]);
-                return;
-            }
-
-            setIsLoadingHistory(true);
-            try {
-                const result = selectedProjectId
-                    ? await projectApi.getProjectCompositionHistory(selectedProjectId, selectedItemId)
-                    : await resourceApi.getCompositionHistory(selectedItemId);
-                if (!cancelled) setCompositionHistory(result.compositions || []);
-            } catch (err) {
-                if (!cancelled) setCompositionHistory([]);
-                console.warn('Failed to load composition history', err);
-            } finally {
-                if (!cancelled) setIsLoadingHistory(false);
-            }
-        };
-
-        loadHistory();
-        return () => { cancelled = true; };
-    }, [selectedItemId, selectedProjectId]);
+    }, [selectedItemId, effectiveFrom, selectedProjectId, rawComponents]);
 
     const handleImportItem = async () => {
         if (!selectedProjectId || !selectedItemId) return;
@@ -208,8 +196,6 @@ const ResourceRecipesTab = ({
         setErrorMsg('');
         try {
             await projectApi.importResource(selectedProjectId, selectedItemId, effectiveFrom);
-            const result = await projectApi.getProjectCompositionHistory(selectedProjectId, selectedItemId);
-            setCompositionHistory(result.compositions || []);
             await fetchItemRecipe();
             if (showToast) showToast('success', 'Item Imported', 'Master composition copied into the project.');
             if (onRefreshResources) onRefreshResources();
@@ -350,15 +336,7 @@ const ResourceRecipesTab = ({
                 await resourceApi.setCompositions(selectedItemId, formattedCompositions, effectiveFrom);
             }
             if (showToast) showToast('success', 'Recipe Saved', 'Item composition saved with effective date.');
-            await Promise.all([
-                fetchItemRecipe(),
-                (async () => {
-                    const result = selectedProjectId
-                        ? await projectApi.getProjectCompositionHistory(selectedProjectId, selectedItemId)
-                        : await resourceApi.getCompositionHistory(selectedItemId);
-                    setCompositionHistory(result.compositions || []);
-                })()
-            ]);
+            await fetchItemRecipe();
             if (onRefreshResources) onRefreshResources();
         } catch (err) {
             console.error('Failed to save recipe', err);
@@ -729,7 +707,7 @@ const ResourceRecipesTab = ({
                                     )}
                                 </div>
 
-                                {isLoadingHistory ? (
+                                {isLoadingDetail ? (
                                     <div className="py-12 border border-gray-200 dark:border-white/10 rounded-xl bg-gray-50/50 dark:bg-[#161b22]/30">
                                         <LogoLoader text="Loading Version Timeline..." size="sm" fullPage={false} />
                                     </div>

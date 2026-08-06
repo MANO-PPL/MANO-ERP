@@ -8,10 +8,30 @@ function parseId(value, label) {
     return id;
 }
 
+function parseIds(value) {
+    const rawIds = Array.isArray(value) ? value : String(value || '').split(',');
+    const ids = [...new Set(rawIds.map(value => parseInt(value, 10)))];
+    if (ids.length === 0 || ids.some(id => Number.isNaN(id))) {
+        throw new AppError('ids must contain one or more valid resource IDs', 400);
+    }
+    return ids;
+}
+
 export const listProjectResources = catchAsync(async (req, res) => {
     const projectId = parseId(req.params.id, 'Project ID');
     const resources = await projectResourceService.listProjectResources(req.user.org_id, projectId);
     res.json({ success: true, resources });
+});
+
+export const getResolvedRates = catchAsync(async (req, res) => {
+    const projectId = parseId(req.params.id, 'Project ID');
+    const rates = await projectResourceService.getResolvedRates(
+        req.user.org_id,
+        projectId,
+        parseIds(req.query.ids),
+        req.query.date
+    );
+    res.json({ success: true, rates });
 });
 
 export const getResolvedRate = catchAsync(async (req, res) => {
@@ -100,6 +120,7 @@ export const getCompositionHistory = catchAsync(async (req, res) => {
 
 export default {
     listProjectResources,
+    getResolvedRates,
     removeProjectResource,
     getResolvedRate,
     addRate,

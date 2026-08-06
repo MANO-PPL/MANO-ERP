@@ -33,6 +33,7 @@ const ProjectResourceList = ({ onBack, setExtraBreadcrumbs, canWrite }) => {
     const [allResources, setAllResources] = useState([]);
     const [resolvedRates, setResolvedRates] = useState({});
     const [loading, setLoading] = useState(true);
+    const [ratesLoading, setRatesLoading] = useState(true);
     const [error, setError] = useState('');
     const [isAdding, setIsAdding] = useState(false);
     const [searchTerm, setSearchTerm] = useState('');
@@ -56,7 +57,12 @@ const ProjectResourceList = ({ onBack, setExtraBreadcrumbs, canWrite }) => {
     const loadResolvedRates = async (projectResources, masterResources) => {
         const importedIds = new Set(projectResources.map(resource => String(resource.resource_id)));
         const masterById = new Map(masterResources.map(resource => [String(resource.id), resource]));
-        const entries = await Promise.all(masterResources.map(async resource => {
+        const importedResourceIds = projectResources.map(resource => resource.resource_id);
+        const rateResponse = await projectApi.getResolvedResourceRates(projectId, importedResourceIds, dateOnly());
+        const resolvedById = new Map((rateResponse.rates || [])
+            .map(rate => [String(rate.resourceId), rate]));
+
+        const entries = masterResources.map(resource => {
             if (!importedIds.has(String(resource.id))) {
                 // Unimported items must not inherit a computed master recipe;
                 // only an explicit master manual rate is allowed to fall back.
@@ -71,44 +77,42 @@ const ProjectResourceList = ({ onBack, setExtraBreadcrumbs, canWrite }) => {
                 }];
             }
 
-            try {
-                const response = await projectApi.getResolvedResourceRate(projectId, resource.id, dateOnly());
-                return [String(resource.id), {
-                    ...response.rate,
-                }];
-            } catch {
-                return [String(resource.id), {
-                    rate: null,
-                    unitCode: resource.base_unit_code,
-                    source: null,
-                    rateScope: null
-                }];
-            }
-        }));
+            const resolved = resolvedById.get(String(resource.id));
+            return [String(resource.id), resolved || {
+                rate: null,
+                unitCode: resource.base_unit_code,
+                source: null,
+                rateScope: null
+            }];
+        });
 
         // Preserve imported rows whose master resource was removed or filtered
         // out, so the project view never silently loses project data.
-        const missingImportedResources = projectResources.filter(resource => !masterById.has(String(resource.resource_id)));
-        const missingEntries = await Promise.all(missingImportedResources.map(async resource => {
-            try {
-                const response = await projectApi.getResolvedResourceRate(projectId, resource.resource_id, dateOnly());
-                return [String(resource.resource_id), { ...response.rate }];
-            } catch {
-                return [String(resource.resource_id), { rate: null, unitCode: resource.base_unit_code, source: null, rateScope: null }];
-            }
-        }));
+        projectResources
+            .filter(resource => !masterById.has(String(resource.resource_id)))
+            .forEach(resource => {
+                entries.push([
+                    String(resource.resource_id),
+                    resolvedById.get(String(resource.resource_id)) || {
+                        rate: null,
+                        unitCode: resource.base_unit_code,
+                        source: null,
+                        rateScope: null
+                    }
+                ]);
+            });
 
-        entries.push(...missingEntries);
         setResolvedRates(Object.fromEntries(entries));
     };
 
     const fetchResources = async (silent = false) => {
         try {
             if (!silent) setLoading(true);
+            setRatesLoading(true);
             setError('');
             const [projectResponse, masterResponse] = await Promise.all([
                 projectApi.listProjectResources(projectId),
-                resourceApi.getResources({ limit: 5000 })
+                resourceApi.getResources({ type: 'item', limit: 5000, include_details: false })
             ]);
             const projectResources = projectResponse.resources || [];
             const masterResources = masterResponse.resources || [];
@@ -129,12 +133,25 @@ const ProjectResourceList = ({ onBack, setExtraBreadcrumbs, canWrite }) => {
             ];
             setAllResources(masterResources);
             setResources(mergedResources);
-            await loadResolvedRates(projectResources, masterResources);
+
+            // Render the catalog immediately; rate resolution is an independent
+            // enrichment step and should not block the initial table.
+            setLoading(false);
+            try {
+                await loadResolvedRates(projectResources, masterResources);
+            } catch (rateError) {
+                console.error('Failed to load project resource rates', rateError);
+                setResolvedRates({});
+                setError(rateError.response?.data?.message || 'Failed to load project resource rates');
+            } finally {
+                setRatesLoading(false);
+            }
         } catch (err) {
             console.error('Failed to load project resources', err);
             setError(err.response?.data?.message || 'Failed to load project resources');
         } finally {
             setLoading(false);
+            setRatesLoading(false);
         }
     };
 
@@ -422,8 +439,8 @@ const ProjectResourceList = ({ onBack, setExtraBreadcrumbs, canWrite }) => {
                                             </td>
                                             <td className="px-4 py-4 text-gray-500 dark:text-gray-400">{resource.base_unit_code}</td>
                                             <td className="px-4 py-4 font-mono font-bold text-gray-900 dark:text-white">
-                                                {rate?.rate === null || rate?.rate === undefined ? '—' : `₹${Number(rate.rate).toLocaleString('en-IN', { minimumFractionDigits: 2 })}`}
-                                                {rate?.unitCode && <span className="text-[10px] font-normal text-gray-400 ml-1">/ {rate.unitCode}</span>}
+                                                {ratesLoading ? 'Loading…' : rate?.rate === null || rate?.rate === undefined ? '—' : `₹${Number(rate.rate).toLocaleString('en-IN', { minimumFractionDigits: 2 })}`}
+                                                {!ratesLoading && rate?.unitCode && <span className="text-[10px] font-normal text-gray-400 ml-1">/ {rate.unitCode}</span>}
                                             </td>
                                             <td className="px-4 py-4">
                                                 {rate?.rateScope === 'project' ? (

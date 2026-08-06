@@ -39,6 +39,7 @@ const SectionHeader = ({ title, badge }) => (
 
 const ResourceDetail = ({
     resourceId,
+    resources = [],
     onClose,
     onUpdate,
     onNavigateTab,
@@ -110,16 +111,15 @@ const ResourceDetail = ({
         if (isRefresh) setIsRefreshing(true);
         else setIsLoading(true);
         try {
-            const [data, rateData, listData, historyData] = await Promise.all([
+            const [data, rateData, historyData] = await Promise.all([
                 resourceApi.getResourceById(resourceId),
                 resourceApi.getResolvedRate(resourceId).catch(() => null),
-                resourceApi.getResources().catch(() => ({ resources: [] })),
                 resourceApi.getCompositionHistory(resourceId).catch(() => ({ compositions: [] }))
             ]);
             
             const resObj = data.resource;
             setResource(resObj);
-            setAllResourcesList(listData.resources || []);
+            setAllResourcesList(resources);
             const historyRows = historyData.compositions || [];
             setCompositionHistory(historyRows);
             const latestCompositionDate = historyRows
@@ -160,6 +160,10 @@ const ResourceDetail = ({
     useEffect(() => {
         if (resourceId) fetchDetail();
     }, [resourceId]);
+
+    useEffect(() => {
+        setAllResourcesList(resources);
+    }, [resources]);
 
     const updateFormField = (field, value) => {
         setFormData(prev => ({ ...prev, [field]: value }));

@@ -130,7 +130,7 @@ const ResourceRate = () => {
     const loadResources = async (keepSelection = true) => {
         setIsLoading(true);
         try {
-            const result = await resourceApi.getResources({ limit: 500 });
+            const result = await resourceApi.getResources({ limit: 500, include_details: false, include_rates: false });
             const nextResources = result.resources || [];
             setResources(nextResources);
 

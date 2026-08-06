@@ -3517,6 +3517,7 @@ const ResourceList = () => {
                             >
                                 <ResourceDetail
                                     resourceId={viewingResource}
+                                    resources={resources}
                                     onClose={() => setViewingResource(null)}
                                     onUpdate={fetchData}
                                     canWrite={canWrite}
@@ -3608,6 +3609,7 @@ const ResourceList = () => {
                 {viewingResource && (
                     <ResourceDetail
                         resourceId={viewingResource}
+                        resources={resources}
                         onClose={() => setViewingResource(null)}
                         onUpdate={() => fetchData(true)}
                         onNavigateTab={(tab, id) => setActiveTab(tab, id)}

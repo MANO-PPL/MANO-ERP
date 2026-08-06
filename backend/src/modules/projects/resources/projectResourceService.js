@@ -138,6 +138,11 @@ export async function initializeProjectResourceSchema() {
                 table.index(['project_id', 'resource_id', 'effective_from', 'effective_to'], 'idx_res_rates_project_effective');
             });
         }
+        if (!(await hasIndex('res_rates', 'idx_res_rates_resource_effective'))) {
+            await db.schema.alterTable('res_rates', table => {
+                table.index(['resource_id', 'project_id', 'effective_from', 'effective_to'], 'idx_res_rates_resource_effective');
+            });
+        }
     }
 
     if (hasCompositions) {
@@ -347,7 +352,216 @@ async function resolveProjectRateInternal(orgId, projectId, resourceId, asOfDate
 
 export async function getResolvedRate(orgId, projectId, resourceId, asOfDate) {
     await ensureProjectExists(orgId, projectId);
-    return resolveProjectRateInternal(orgId, projectId, resourceId, toDateOnly(asOfDate));
+    const [resolvedRate] = await resolveProjectRatesBatch(
+        orgId,
+        projectId,
+        [resourceId],
+        asOfDate,
+        true
+    );
+    return resolvedRate;
+}
+
+/**
+ * Resolve several project resources for one date in a single API call.
+ * Individual missing rates remain nullable so one unpriced resource does not
+ * prevent the rest of the project resource list from rendering.
+ */
+async function resolveProjectRatesBatch(orgId, projectId, resourceIds, asOfDate, throwErrors = false) {
+    const effectiveDate = toDateOnly(asOfDate);
+    const uniqueIds = [...new Set(resourceIds.map(Number))];
+
+    if (uniqueIds.length === 0) return [];
+
+    // Load the project graph and all candidate rates in batches. The previous
+    // implementation resolved every item independently, repeating the same
+    // resource, project-rate, master-rate, and composition queries for shared
+    // components.
+    const projectCompositions = await db('res_compositions as c')
+        .join('res_resources as component', 'c.component_resource_id', 'component.id')
+        .where('c.project_id', projectId)
+        .andWhere('c.effective_from', '<=', effectiveDate)
+        .andWhere(function () {
+            this.whereNull('c.effective_to').orWhere('c.effective_to', '>=', effectiveDate);
+        })
+        .andWhere('component.org_id', orgId)
+        .select(
+            'c.parent_resource_id',
+            'c.component_resource_id',
+            'c.quantity',
+            'c.unit_code',
+            'c.effective_from',
+            'c.effective_to',
+            'component.name as component_name'
+        );
+
+    const allResourceIds = [...new Set([
+        ...uniqueIds,
+        ...projectCompositions.map(row => Number(row.parent_resource_id)),
+        ...projectCompositions.map(row => Number(row.component_resource_id))
+    ])];
+
+    const [resources, projectRates, masterRates] = await Promise.all([
+        db('res_resources')
+            .where('org_id', orgId)
+            .whereIn('id', allResourceIds)
+            .select('id', 'name', 'type', 'base_unit_code'),
+        db('res_rates as rr')
+            .where('rr.project_id', projectId)
+            .whereIn('rr.resource_id', allResourceIds)
+            .whereNotNull('rr.rate')
+            .andWhere('rr.effective_from', '<=', effectiveDate)
+            .andWhere(function () {
+                this.whereNull('rr.effective_to').orWhere('rr.effective_to', '>=', effectiveDate);
+            })
+            .select('rr.id', 'rr.resource_id', 'rr.project_id', 'rr.rate', 'rr.unit_code', 'rr.effective_from', 'rr.effective_to', 'rr.is_active', 'rr.remarks')
+            .orderBy('rr.effective_from', 'desc')
+            .orderBy('rr.id', 'desc'),
+        db('res_rates as rr')
+            .whereNull('rr.project_id')
+            .whereIn('rr.resource_id', allResourceIds)
+            .whereNotNull('rr.rate')
+            .andWhere('rr.effective_from', '<=', effectiveDate)
+            .andWhere(function () {
+                this.whereNull('rr.effective_to').orWhere('rr.effective_to', '>=', effectiveDate);
+            })
+            .select('rr.id', 'rr.resource_id', 'rr.project_id', 'rr.rate', 'rr.unit_code', 'rr.effective_from', 'rr.effective_to', 'rr.is_active', 'rr.remarks')
+            .orderBy('rr.effective_from', 'desc')
+            .orderBy('rr.id', 'desc')
+    ]);
+
+    const resourceById = new Map(resources.map(resource => [Number(resource.id), resource]));
+    const projectRateByResource = new Map();
+    projectRates.forEach(rate => {
+        const resourceId = Number(rate.resource_id);
+        if (!projectRateByResource.has(resourceId)) projectRateByResource.set(resourceId, rate);
+    });
+    const masterRateByResource = new Map();
+    masterRates.forEach(rate => {
+        const resourceId = Number(rate.resource_id);
+        if (!masterRateByResource.has(resourceId)) masterRateByResource.set(resourceId, rate);
+    });
+    const compositionsByParent = new Map();
+    projectCompositions.forEach(composition => {
+        const parentId = Number(composition.parent_resource_id);
+        if (!compositionsByParent.has(parentId)) compositionsByParent.set(parentId, []);
+        compositionsByParent.get(parentId).push(composition);
+    });
+
+    const resolvedCache = new Map();
+    const resolveFromBatch = (resourceId, path = new Set()) => {
+        const numericResourceId = Number(resourceId);
+        const resource = resourceById.get(numericResourceId);
+        if (!resource) throw new AppError('Resource not found in your organization', 404);
+
+        if (path.has(numericResourceId)) {
+            const chain = [...path, numericResourceId].join(' -> ');
+            throw new AppError(`Circular composition detected while resolving rate: ${chain}`, 400);
+        }
+
+        if (resolvedCache.has(numericResourceId)) return resolvedCache.get(numericResourceId);
+
+        const manualRate = projectRateByResource.get(numericResourceId) || masterRateByResource.get(numericResourceId);
+        if (manualRate) {
+            const storedRate = Number(manualRate.rate);
+            if (!Number.isFinite(storedRate)) throw new AppError(`Manual rate for resource "${resource.name}" is invalid`, 500);
+
+            const rateUnit = getUnit(manualRate.unit_code);
+            const resourceUnit = getUnit(resource.base_unit_code);
+            if (rateUnit.type !== resourceUnit.type) {
+                throw new AppError(`Manual rate unit "${manualRate.unit_code}" is incompatible with resource base unit "${resource.base_unit_code}"`, 400);
+            }
+
+            const resolved = {
+                resourceId: resource.id,
+                resourceName: resource.name,
+                rate: storedRate,
+                unitCode: manualRate.unit_code,
+                source: 'manual',
+                rateScope: Number(manualRate.project_id) === Number(projectId) ? 'project' : 'master',
+                rateId: manualRate.id,
+                projectId: manualRate.project_id,
+                effectiveFrom: toIsoDate(manualRate.effective_from),
+                effectiveTo: toIsoDate(manualRate.effective_to),
+                isActive: Number(manualRate.is_active) === 1,
+                remarks: manualRate.remarks || null
+            };
+            resolvedCache.set(numericResourceId, resolved);
+            return resolved;
+        }
+
+        if (resource.type !== 'item') {
+            throw new AppError(`No effective manual rate is configured for resource "${resource.name}"`, 404);
+        }
+
+        const compositions = compositionsByParent.get(numericResourceId) || [];
+        if (compositions.length === 0) {
+            throw new AppError(`Item "${resource.name}" has not been imported into this project and has no project composition`, 400);
+        }
+
+        const nextPath = new Set(path);
+        nextPath.add(numericResourceId);
+        let total = 0;
+        const breakdown = [];
+
+        for (const composition of compositions) {
+            const quantity = Number(composition.quantity);
+            if (!Number.isFinite(quantity) || quantity < 0) {
+                throw new AppError(`Invalid composition quantity for component "${composition.component_name}"`, 400);
+            }
+
+            const componentRate = resolveFromBatch(composition.component_resource_id, nextPath);
+            let quantityInRateUnit;
+            try {
+                quantityInRateUnit = convert(composition.unit_code, componentRate.unitCode, quantity);
+            } catch (err) {
+                throw new AppError(`Cannot convert composition quantity for component "${composition.component_name}": ${err.message}`, 400);
+            }
+
+            const componentCost = quantityInRateUnit * componentRate.rate;
+            total += componentCost;
+            breakdown.push({
+                resourceId: componentRate.resourceId,
+                resourceName: componentRate.resourceName,
+                quantity,
+                quantityUnitCode: composition.unit_code,
+                rate: componentRate.rate,
+                rateUnitCode: componentRate.unitCode,
+                cost: componentCost,
+                source: componentRate.source,
+                rateScope: componentRate.rateScope
+            });
+        }
+
+        const resolved = {
+            resourceId: resource.id,
+            resourceName: resource.name,
+            rate: total,
+            unitCode: resource.base_unit_code,
+            source: 'computed',
+            rateScope: 'project',
+            asOfDate: effectiveDate,
+            effectiveFrom: toIsoDate(compositions[0].effective_from),
+            effectiveTo: toIsoDate(compositions[0].effective_to),
+            breakdown
+        };
+        resolvedCache.set(numericResourceId, resolved);
+        return resolved;
+    };
+
+    return uniqueIds.map(resourceId => {
+        try {
+            return { resourceId, ...resolveFromBatch(resourceId) };
+        } catch (error) {
+            if (throwErrors) throw error;
+            return { resourceId, rate: null, source: null, unitCode: null };
+        }
+    });
+}
+
+export async function getResolvedRates(orgId, projectId, resourceIds, asOfDate) {
+    await ensureProjectExists(orgId, projectId);
+    return resolveProjectRatesBatch(orgId, projectId, resourceIds, asOfDate);
 }
 
 async function writeProjectRate(orgId, projectId, resource, { rate, unit_code, effective_from, remarks }) {
@@ -440,19 +654,16 @@ export async function getRateHistory(orgId, projectId, resourceId) {
 export async function listProjectResources(orgId, projectId) {
     await ensureProjectExists(orgId, projectId);
 
-    const [rateRows, compositionRows] = await Promise.all([
-        db('res_rates').where({ project_id: projectId }).distinct('resource_id'),
-        db('res_compositions').where({ project_id: projectId }).distinct('parent_resource_id')
-    ]);
-    const resourceIds = [...new Set([
-        ...rateRows.map(row => Number(row.resource_id)),
-        ...compositionRows.map(row => Number(row.parent_resource_id))
-    ])];
-    if (resourceIds.length === 0) return [];
-
     return db('res_resources')
         .where('org_id', orgId)
-        .whereIn('id', resourceIds)
+        .where(function () {
+            this.whereIn('id', db('res_rates')
+                .where('project_id', projectId)
+                .select('resource_id'))
+                .orWhereIn('id', db('res_compositions')
+                    .where('project_id', projectId)
+                    .select('parent_resource_id'));
+        })
         .select('id as resource_id', 'name', 'code', 'type', 'base_unit_code')
         .orderBy('name');
 }
@@ -720,6 +931,7 @@ export async function getCompositionHistory(orgId, projectId, resourceId) {
 export default {
     initializeProjectResourceSchema,
     getResolvedRate,
+    getResolvedRates,
     addRate,
     getRateHistory,
     listProjectResources,

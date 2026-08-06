@@ -1,104 +1,73 @@
 import api from './api';
 
+const unwrap = (request) => request.then(({ data }) => data);
+
 export const resourceApi = {
     // ─── List with optional filters ────────────────────────────────────────────
-    getResources: async (params = {}) => {
-        const response = await api.get('/resources', { params });
-        return response.data;
+    getResources: (params = {}) => unwrap(api.get('/resources', { params })),
+
+    // Resolve multiple resource rates for one date in a single API request.
+    getResolvedRates: (resourceIds, date) => {
+        const ids = [...new Set((resourceIds || []).map(Number).filter(Number.isInteger))];
+        if (ids.length === 0) return Promise.resolve({ rates: [] });
+        return unwrap(api.get('/resources/rates', {
+            params: { ids: ids.join(','), ...(date ? { date } : {}) }
+        }));
     },
 
     // ─── Get single resource with conversions & compositions ──────────────────
-    getResourceById: async (id, date) => {
-        const response = await api.get(`/resources/${id}`, {
-            params: date ? { date } : undefined
-        });
-        return response.data;
-    },
+    getResourceById: (id, date) => unwrap(api.get(`/resources/${id}`, {
+        params: date ? { date } : undefined
+    })),
 
     // Resolve the effective manual or computed rate for a resource.
-    getResolvedRate: async (id, date) => {
-        const response = await api.get(`/resources/${id}/rate`, {
-            params: date ? { date } : undefined
-        });
-        return response.data;
-    },
+    getResolvedRate: (id, date) => unwrap(api.get(`/resources/${id}/rate`, {
+        params: date ? { date } : undefined
+    })),
 
     // ─── Create single resource ────────────────────────────────────────────────
     // Payload: { name, code?, type, base_unit_code, description?, remarks?,
     //            conversions?: [{name, quantity, unit_code}],
     //            compositions?: [{component_resource_id, quantity, unit_code}] }
-    createResource: async (data) => {
-        const response = await api.post('/resources', data);
-        return response.data;
-    },
+    createResource: (data) => unwrap(api.post('/resources', data)),
 
     // ─── Bulk create resources ─────────────────────────────────────────────────
     // payload: Array of resource objects (same shape as single create)
-    bulkCreateResources: async (data) => {
-        const response = await api.post('/resources', data);
-        return response.data;
-    },
+    bulkCreateResources: (data) => unwrap(api.post('/resources', data)),
 
     // ─── Bulk update resources ─────────────────────────────────────────────────
     // payload: Array of resource objects with id
-    bulkUpdateResources: async (data) => {
-        const response = await api.put('/resources', data);
-        return response.data;
-    },
+    bulkUpdateResources: (data) => unwrap(api.put('/resources', data)),
 
     // ─── Update resource (conversions & compositions included if provided) ─────
-    updateResource: async (id, data) => {
-        const response = await api.put(`/resources/${id}`, data);
-        return response.data;
-    },
+    updateResource: (id, data) => unwrap(api.put(`/resources/${id}`, data)),
 
     // ─── Delete resource ──────────────────────────────────────────────────────
-    deleteResource: async (id) => {
-        const response = await api.delete(`/resources/${id}`);
-        return response.data;
-    },
+    deleteResource: (id) => unwrap(api.delete(`/resources/${id}`)),
 
     // ─── Create/replace one effective-dated composition version ───────────────
     // compositions: [{component_resource_id, quantity, unit_code}]
-    setCompositions: async (id, compositions, effective_from) => {
-        const response = await api.put(`/resources/${id}/compositions`, {
-            compositions,
-            ...(effective_from ? { effective_from } : {})
-        });
-        return response.data;
-    },
+    setCompositions: (id, compositions, effective_from) => unwrap(api.put(`/resources/${id}/compositions`, {
+        compositions,
+        ...(effective_from ? { effective_from } : {})
+    })),
 
-    getCompositionHistory: async (id) => {
-        const response = await api.get(`/resources/${id}/compositions`);
-        return response.data;
-    },
+    getCompositionHistory: (id) => unwrap(api.get(`/resources/${id}/compositions`)),
 
     // ─── Add a single conversion to a resource ────────────────────────────────
     // data: { name, quantity, unit_code }
-    addConversion: async (id, data) => {
-        const response = await api.post(`/resources/${id}/conversions`, data);
-        return response.data;
-    },
+    addConversion: (id, data) => unwrap(api.post(`/resources/${id}/conversions`, data)),
 
     // Adding a row creates a manual rate.
-    addRate: async (id, data) => {
-        const response = await api.post(`/resources/${id}/rates`, data);
-        return response.data;
-    },
+    addRate: (id, data) => unwrap(api.post(`/resources/${id}/rates`, data)),
 
     // Read all manual rate versions, newest first.
-    getRateHistory: async (id) => {
-        const response = await api.get(`/resources/${id}/rates`);
-        return response.data;
-    },
+    getRateHistory: (id) => unwrap(api.get(`/resources/${id}/rates`)),
 
     // ─── Remove a specific conversion by its ID ──────────────────────────────
-    removeConversion: async (id, convId) => {
-        const response = await api.delete(`/resources/${id}/conversions/${convId}`);
-        return response.data;
-    },
+    removeConversion: (id, convId) => unwrap(api.delete(`/resources/${id}/conversions/${convId}`)),
 
-    clearManualRate: (resourceId, effectiveFrom) =>
-    api.post(`/resources/${resourceId}/clear-rate`, { effective_from: effectiveFrom })
-        .then(res => res.data),
+    clearManualRate: (resourceId, effectiveFrom) => unwrap(
+        api.post(`/resources/${resourceId}/clear-rate`, { effective_from: effectiveFrom })
+    ),
 };

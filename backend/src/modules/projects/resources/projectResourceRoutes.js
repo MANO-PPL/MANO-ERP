@@ -6,6 +6,7 @@ const router = express.Router({ mergeParams: true });
 
 router.use(requireProjectPermission('Material Management'));
 router.get('/', projectResourceController.listProjectResources);
+router.get('/rates', projectResourceController.getResolvedRates);
 router.delete('/:resourceId', projectResourceController.removeProjectResource);
 
 // Project-scoped pricing stays inside the project module.

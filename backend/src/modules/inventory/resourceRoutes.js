@@ -9,6 +9,7 @@ router.use(requireSystemPermission('materials'));
 
 // Basic CRUD
 router.get('/', resourceController.listResources);
+router.get('/rates', resourceController.getResolvedRates);
 router.get('/:id', resourceController.getResource);
 
 router.post('/', resourceController.createResource);

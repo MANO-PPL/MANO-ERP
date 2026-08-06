@@ -9,17 +9,37 @@ function parseProjectId(value) {
     return projectId;
 }
 
+function parseResourceIds(value) {
+    const rawIds = Array.isArray(value) ? value : String(value || '').split(',');
+    const ids = [...new Set(rawIds.map(value => parseInt(value, 10)))];
+    if (ids.length === 0 || ids.some(id => Number.isNaN(id))) {
+        throw new AppError('ids must contain one or more valid resource IDs', 400);
+    }
+    return ids;
+}
+
 // ─── Resources CRUD ───────────────────────────────────────────────────────────
 
 export const listResources = catchAsync(async (req, res) => {
-    const { type, search, limit, offset } = req.query;
+    const { type, search, limit, offset, include_details, include_rates } = req.query;
     const resources = await resourceService.getResources(req.user.org_id, {
         type,
         search,
         limit: limit ? parseInt(limit) : 100,
-        offset: offset ? parseInt(offset) : 0
+        offset: offset ? parseInt(offset) : 0,
+        includeDetails: include_details !== 'false',
+        includeRates: include_rates !== 'false'
     });
     res.json({ success: true, resources });
+});
+
+export const getResolvedRates = catchAsync(async (req, res) => {
+    const rates = await resourceService.getResolvedRates(
+        req.user.org_id,
+        parseResourceIds(req.query.ids),
+        req.query.date
+    );
+    res.json({ success: true, rates });
 });
 
 export const getResource = catchAsync(async (req, res) => {
@@ -281,6 +301,7 @@ export const clearProjectRate = catchAsync(async (req, res) => {
 
 export default {
     listResources,
+    getResolvedRates,
     getResource,
     getResolvedRate,
     createResource,

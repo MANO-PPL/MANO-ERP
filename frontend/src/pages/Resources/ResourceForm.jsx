@@ -90,7 +90,7 @@ const ResourceForm = ({ resource, onClose, onSave }) => {
 
         const fetchMaterials = async () => {
             try {
-                const res = await resourceApi.getResources();
+                const res = await resourceApi.getResources({ include_details: false, include_rates: false });
                 const components = (res.resources || []).filter(r => r.type === 'material' || r.type === 'labour');
                 setAllResources(components);
             } catch (err) {

@@ -1,103 +1,64 @@
 import api from './api';
 
+const unwrap = (request) => request.then(({ data }) => data);
+
 export const projectApi = {
-    listProjects: async () => {
-        const response = await api.get('/projects');
-        return response.data;
-    },
+    listProjects: () => unwrap(api.get('/projects')),
 
-    getProject: async (id) => {
-        const response = await api.get(`/projects/${id}`);
-        return response.data;
-    },
+    getProject: (id) => unwrap(api.get(`/projects/${id}`)),
 
-    createProject: async (projectData) => {
-        const response = await api.post('/projects', projectData);
-        return response.data;
-    },
+    createProject: (projectData) => unwrap(api.post('/projects', projectData)),
 
-    updateProject: async (id, projectData) => {
-        const response = await api.put(`/projects/${id}`, projectData);
-        return response.data;
-    },
+    updateProject: (id, projectData) => unwrap(api.put(`/projects/${id}`, projectData)),
 
-    getProjectMembers: async (id) => {
-        const response = await api.get(`/projects/${id}/members`);
-        return response.data;
-    },
+    getProjectMembers: (id) => unwrap(api.get(`/projects/${id}/members`)),
 
-    assignProjectMember: async (id, memberData) => {
-        const response = await api.post(`/projects/${id}/members`, memberData);
-        return response.data;
-    },
+    assignProjectMember: (id, memberData) => unwrap(api.post(`/projects/${id}/members`, memberData)),
 
-    removeProjectMember: async (id, userId) => {
-        const response = await api.delete(`/projects/${id}/members/${userId}`);
-        return response.data;
-    },
+    removeProjectMember: (id, userId) => unwrap(api.delete(`/projects/${id}/members/${userId}`)),
 
     uploadProjectLogo: async (id, file) => {
         const formData = new FormData();
         formData.append('logo', file);
-        const response = await api.post(`/projects/${id}/logo`, formData, {
+        return unwrap(api.post(`/projects/${id}/logo`, formData, {
             headers: {
                 'Content-Type': 'multipart/form-data'
             }
-        });
-        return response.data;
+        }));
     },
 
-    listProjectResources: async (projectId) => {
-        const response = await api.get(`/projects/${projectId}/resources`);
-        return response.data;
+    listProjectResources: (projectId) => unwrap(api.get(`/projects/${projectId}/resources`)),
+
+    getResolvedResourceRates: (projectId, resourceIds, date) => {
+        const ids = [...new Set((resourceIds || []).map(Number).filter(Number.isInteger))];
+        if (ids.length === 0) return Promise.resolve({ rates: [] });
+        return unwrap(api.get(`/projects/${projectId}/resources/rates`, {
+            params: { ids: ids.join(','), ...(date ? { date } : {}) }
+        }));
     },
 
-    removeProjectResource: async (projectId, resourceId) => {
-        const response = await api.delete(`/projects/${projectId}/resources/${resourceId}`);
-        return response.data;
-    },
+    removeProjectResource: (projectId, resourceId) => unwrap(api.delete(`/projects/${projectId}/resources/${resourceId}`)),
 
-    importResource: async (projectId, resourceId, effectiveFrom) => {
-        const response = await api.post(`/projects/${projectId}/resources/${resourceId}/import`, {
+    importResource: (projectId, resourceId, effectiveFrom) => unwrap(api.post(`/projects/${projectId}/resources/${resourceId}/import`, {
             effective_from: effectiveFrom
-        });
-        return response.data;
-    },
+        })),
 
-    getResolvedResourceRate: async (projectId, resourceId, date) => {
-        const response = await api.get(`/projects/${projectId}/resources/${resourceId}/rate`, {
+    getResolvedResourceRate: (projectId, resourceId, date) => unwrap(api.get(`/projects/${projectId}/resources/${resourceId}/rate`, {
             params: date ? { date } : undefined
-        });
-        return response.data;
-    },
+        })),
 
-    addResourceRate: async (projectId, resourceId, data) => {
-        const response = await api.post(`/projects/${projectId}/resources/${resourceId}/rates`, data);
-        return response.data;
-    },
+    addResourceRate: (projectId, resourceId, data) => unwrap(api.post(`/projects/${projectId}/resources/${resourceId}/rates`, data)),
 
-    getResourceRateHistory: async (projectId, resourceId) => {
-        const response = await api.get(`/projects/${projectId}/resources/${resourceId}/rates`);
-        return response.data;
-    },
+    getResourceRateHistory: (projectId, resourceId) => unwrap(api.get(`/projects/${projectId}/resources/${resourceId}/rates`)),
 
-    clearResourceRate: async (projectId, resourceId, effectiveFrom) => {
-        const response = await api.post(`/projects/${projectId}/resources/${resourceId}/clear-rate`, {
+    clearResourceRate: (projectId, resourceId, effectiveFrom) => unwrap(api.post(`/projects/${projectId}/resources/${resourceId}/clear-rate`, {
             effective_from: effectiveFrom
-        });
-        return response.data;
-    },
+        })),
 
-    setProjectCompositions: async (projectId, resourceId, compositions, effectiveFrom) => {
-        const response = await api.put(`/projects/${projectId}/resources/${resourceId}/compositions`, {
+    setProjectCompositions: (projectId, resourceId, compositions, effectiveFrom) => unwrap(api.put(`/projects/${projectId}/resources/${resourceId}/compositions`, {
             compositions,
             effective_from: effectiveFrom
-        });
-        return response.data;
-    },
+        })),
 
-    getProjectCompositionHistory: async (projectId, resourceId) => {
-        const response = await api.get(`/projects/${projectId}/resources/${resourceId}/compositions`);
-        return response.data;
-    }
+    getProjectCompositionHistory: (projectId, resourceId) => unwrap(api.get(`/projects/${projectId}/resources/${resourceId}/compositions`))
 };

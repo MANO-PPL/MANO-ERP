@@ -261,7 +261,7 @@ const ResourceConversions = ({ canWrite }) => {
         setFetchError('');
         try {
             const [rData, uData] = await Promise.all([
-                resourceApi.getResources(),
+                resourceApi.getResources({ include_details: false, include_rates: false }),
                 unitApi.getUnits(),
             ]);
             setResources(rData.resources || []);
