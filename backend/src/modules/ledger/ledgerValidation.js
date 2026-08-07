@@ -23,8 +23,8 @@ export const ROLES = {
  *
  * Rules:
  * 1. Minimum 2 lines.
- * 2. Every line must have party_id (INT, pdoc_vendors.pv_id), resource_id, and valid signed_qty.
- * 3. SUM(signed_qty) grouped per resource_id must be zero (double-entry integrity).
+ * 2. Every line must have party_id (INT, pdoc_vendors.pv_id), project_resource_id, and valid signed_qty.
+ * 3. SUM(signed_qty) grouped per project_resource_id must be zero (double-entry integrity).
  * 4. Type-specific rules for SUPPLY_ASSIGN and TRANSFER_PARTY.
  */
 export function validateTransaction(header, lines) {
@@ -40,8 +40,8 @@ export function validateTransaction(header, lines) {
         throw new AppError('Transaction must have at least two lines', 400);
     }
 
-    // Per-resource balance check & individual line validation
-    const resourceSums = {};
+    // Per-project-resource balance check & individual line validation
+    const projectResourceSums = {};
 
     for (let i = 0; i < lines.length; i++) {
         const line = lines[i];
@@ -51,8 +51,8 @@ export function validateTransaction(header, lines) {
             throw new AppError(`Line at index ${i} has invalid party_id "${line.party_id}". Must be a positive integer (pdoc_vendors.pv_id)`, 400);
         }
 
-        if (!line.resource_id) {
-            throw new AppError(`Line at index ${i} is missing resource_id`, 400);
+        if (!line.project_resource_id) {
+            throw new AppError(`Line at index ${i} is missing project_resource_id`, 400);
         }
 
         const signedQty = Number(line.signed_qty);
@@ -60,14 +60,14 @@ export function validateTransaction(header, lines) {
             throw new AppError(`Line at index ${i} has invalid signed_qty`, 400);
         }
 
-        const resId = String(line.resource_id);
-        resourceSums[resId] = (resourceSums[resId] || 0) + signedQty;
+        const projectResourceId = String(line.project_resource_id);
+        projectResourceSums[projectResourceId] = (projectResourceSums[projectResourceId] || 0) + signedQty;
     }
 
     // Verify zero-sum per resource (double-entry integrity)
-    for (const [resId, sum] of Object.entries(resourceSums)) {
+    for (const [projectResourceId, sum] of Object.entries(projectResourceSums)) {
         if (Math.abs(sum) > 1e-6) {
-            throw new AppError(`Zero-sum validation failed for resource '${resId}': SUM(signed_qty) = ${sum}, must be 0`, 400);
+            throw new AppError(`Zero-sum validation failed for project resource '${projectResourceId}': SUM(signed_qty) = ${sum}, must be 0`, 400);
         }
     }
 

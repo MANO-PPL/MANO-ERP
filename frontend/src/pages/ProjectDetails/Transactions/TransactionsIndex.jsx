@@ -21,7 +21,7 @@ import {
 } from 'lucide-react';
 import { toast } from 'react-toastify';
 import { ledgerApi } from '../../../services/ledgerApi';
-import { resourceApi } from '../../../services/resourceApi';
+import { projectApi } from '../../../services/projectApi';
 import { unitApi } from '../../../services/unitApi';
 
 // Safe date formatter
@@ -50,8 +50,8 @@ const TransactionsIndex = ({ project, canWrite, isAdmin }) => {
     const [searchTerm, setSearchTerm] = useState('');
     const [expandedTxn, setExpandedTxn] = useState(null);
 
-    // Master Libraries
-    const [masterResources, setMasterResources] = useState([]);
+    // Project-scoped resource library
+    const [projectResources, setProjectResources] = useState([]);
     const [masterUnits, setMasterUnits] = useState([]);
     // Project Vendors: [{pv_id, project_id, crm_contact_id, name, type, category, mobile, email}]
     const [projectVendors, setProjectVendors] = useState([]);
@@ -67,8 +67,8 @@ const TransactionsIndex = ({ project, canWrite, isAdmin }) => {
 
     // Dynamic Multi-Party & Multi-Item Double Entry Lines
     const [lines, setLines] = useState([
-        { partyId: '', resourceId: '', direction: 'OUT', qty: '', uomId: '', role: 'OWNER' },
-        { partyId: '', resourceId: '', direction: 'IN',  qty: '', uomId: '', role: 'OWNER' }
+        { partyId: '', projectResourceId: '', direction: 'OUT', qty: '', uomId: '', role: 'OWNER' },
+        { partyId: '', projectResourceId: '', direction: 'IN',  qty: '', uomId: '', role: 'OWNER' }
     ]);
 
     // Party Hub
@@ -81,13 +81,19 @@ const TransactionsIndex = ({ project, canWrite, isAdmin }) => {
 
     const loadMasterLibraries = async () => {
         try {
-            const [resData, unitData] = await Promise.all([
-                resourceApi.getResources().catch(() => []),
+            const [projectResourceData, unitData] = await Promise.all([
+                projectApi.listProjectResources(projectId).catch(() => ({ resources: [] })),
                 unitApi.getUnits().catch(() => [])
             ]);
-            const resArr  = Array.isArray(resData?.data) ? resData.data : (Array.isArray(resData?.resources) ? resData.resources : (Array.isArray(resData) ? resData : []));
+            const projectResourceArr = Array.isArray(projectResourceData?.resources)
+                ? projectResourceData.resources
+                : (Array.isArray(projectResourceData) ? projectResourceData : []);
+            const resArr = projectResourceArr.map(resource => ({
+                ...resource,
+                project_resource_id: resource.project_resource_id ?? resource.resource_id ?? resource.id
+            }));
             const unitArr = Array.isArray(unitData?.data) ? unitData.data : (Array.isArray(unitData?.units) ? unitData.units : (Array.isArray(unitData) ? unitData : []));
-            setMasterResources(resArr);
+            setProjectResources(resArr);
             setMasterUnits(unitArr);
         } catch (e) {
             console.warn('Failed to load master libraries:', e);
@@ -130,13 +136,13 @@ const TransactionsIndex = ({ project, canWrite, isAdmin }) => {
         }
     };
 
-    // Rebuilds live stock map: { "pvId_resId": netQty }
+    // Rebuilds live stock map: { "pvId_projectResourceId": netQty }
     const rebuildStockMap = (txnsList) => {
         const map = {};
         txnsList.forEach(t => {
             if (t.status !== 'CONFIRMED') return;
             (t.lines || []).forEach(l => {
-                const key = `${l.party_id}_${l.resource_id}`;
+                const key = `${l.party_id}_${l.project_resource_id}`;
                 map[key] = (map[key] || 0) + Number(l.signed_qty || 0);
             });
         });
@@ -177,12 +183,12 @@ const TransactionsIndex = ({ project, canWrite, isAdmin }) => {
     const handleOpenModal = () => {
         const v1 = projectVendors.length > 0 ? String(projectVendors[0].pv_id) : '';
         const v2 = projectVendors.length > 1 ? String(projectVendors[1].pv_id) : v1;
-        const r1 = masterResources.length > 0 ? String(masterResources[0].id) : '';
-        const u1 = masterUnits.length > 0 ? String(masterUnits[0].id) : '';
+        const r1 = projectResources.length > 0 ? String(projectResources[0].project_resource_id) : '';
+        const u1 = getDefaultUnitId(r1);
 
         setLines([
-            { partyId: v1, resourceId: r1, direction: 'OUT', qty: '100', uomId: u1, role: 'OWNER' },
-            { partyId: v2, resourceId: r1, direction: 'IN',  qty: '100', uomId: u1, role: 'OWNER' }
+            { partyId: v1, projectResourceId: r1, direction: 'OUT', qty: '100', uomId: u1, role: 'OWNER' },
+            { partyId: v2, projectResourceId: r1, direction: 'IN',  qty: '100', uomId: u1, role: 'OWNER' }
         ]);
         setTxnRemarks('');
         setShowModal(true);
@@ -203,35 +209,42 @@ const TransactionsIndex = ({ project, canWrite, isAdmin }) => {
     };
 
     // Resolve resource object from ID
-    const getResourceObj = (resId) => {
-        if (!resId && resId !== 0) return null;
-        return masterResources.find(r => String(r.id) === String(resId)) || null;
+    const getResourceObj = (projectResourceId) => {
+        if (!projectResourceId && projectResourceId !== 0) return null;
+        return projectResources.find(r => String(r.project_resource_id) === String(projectResourceId)) || null;
     };
 
     // Resolve resource label from master library
-    const getResourceLabel = (resId) => {
-        const r = getResourceObj(resId);
-        return r ? `${r.name}${r.code ? ` (${r.code})` : ''}` : `Resource #${resId}`;
+    const getResourceLabel = (projectResourceId) => {
+        const r = getResourceObj(projectResourceId);
+        return r ? `${r.name}${r.code ? ` (${r.code})` : ''}` : `Project Resource #${projectResourceId}`;
     };
 
     // Derived Units/UOMs for a selected resource
-    const getDerivedUnitsForResource = (resId) => {
-        const resource = getResourceObj(resId);
+    const getDerivedUnitsForResource = (projectResourceId) => {
+        const resource = getResourceObj(projectResourceId);
         if (!resource) return masterUnits;
 
         const baseCode = (resource.base_unit_code || '').toLowerCase();
         if (!baseCode) return masterUnits;
 
-        const matches = masterUnits.filter(u => 
-            String(u.code || '').toLowerCase() === baseCode || 
-            String(u.name || '').toLowerCase().includes(baseCode)
-        );
+        const matches = masterUnits.filter(u => {
+            const unitValues = [u.id, u.code, u.symbol, u.name]
+                .filter(Boolean)
+                .map(value => String(value).toLowerCase());
+            return unitValues.includes(baseCode);
+        });
 
         return matches.length > 0 ? matches : masterUnits;
     };
 
+    const getDefaultUnitId = (projectResourceId) => {
+        const units = getDerivedUnitsForResource(projectResourceId);
+        return units.length > 0 ? String(units[0].id) : '';
+    };
+
     // Stock sufficiency checker for a given party and resource
-    const getStockAvailability = (pvId, resId) => {
+    const getStockAvailability = (pvId, projectResourceId) => {
         const vendor = getVendorObj(pvId);
         const category = (vendor?.category || '').toLowerCase();
         const isSupplier = category.includes('supplier');
@@ -240,7 +253,7 @@ const TransactionsIndex = ({ project, canWrite, isAdmin }) => {
             return { isSupplier: true, available: Infinity, label: 'Unlimited (Supplier)' };
         }
 
-        const available = stockMap[`${pvId}_${resId}`] || 0;
+        const available = stockMap[`${pvId}_${projectResourceId}`] || 0;
         return { isSupplier: false, available, label: `${available.toFixed(2)} Available` };
     };
 
@@ -251,10 +264,19 @@ const TransactionsIndex = ({ project, canWrite, isAdmin }) => {
             const updated = [...prev];
             const cur = { ...updated[index], [field]: value };
 
-            if (field === 'resourceId') {
-                const derivedUnits = getDerivedUnitsForResource(value);
-                if (derivedUnits.length > 0) {
-                    cur.uomId = String(derivedUnits[0].id);
+            if (field === 'projectResourceId') {
+                cur.uomId = getDefaultUnitId(value);
+            }
+
+            // Keep the initial double-entry pair usable when one direction is
+            // changed manually instead of leaving an unbalanced +/+ or -/- pair.
+            if (field === 'direction' && index < 2 && updated.length >= 2) {
+                const pairedIndex = index === 0 ? 1 : 0;
+                if (updated[pairedIndex]?.direction === value) {
+                    updated[pairedIndex] = {
+                        ...updated[pairedIndex],
+                        direction: value === 'OUT' ? 'IN' : 'OUT'
+                    };
                 }
             }
 
@@ -265,11 +287,11 @@ const TransactionsIndex = ({ project, canWrite, isAdmin }) => {
 
     const handleAddLine = () => {
         const v1 = projectVendors.length > 0 ? String(projectVendors[0].pv_id) : '';
-        const r1 = masterResources.length > 0 ? String(masterResources[0].id) : '';
-        const u1 = masterUnits.length > 0 ? String(masterUnits[0].id) : '';
+        const r1 = projectResources.length > 0 ? String(projectResources[0].project_resource_id) : '';
+        const u1 = getDefaultUnitId(r1);
         setLines(prev => [
             ...prev,
-            { partyId: v1, resourceId: r1, direction: 'IN', qty: '', uomId: u1, role: 'OWNER' }
+            { partyId: v1, projectResourceId: r1, direction: 'IN', qty: '', uomId: u1, role: 'OWNER' }
         ]);
     };
 
@@ -286,11 +308,11 @@ const TransactionsIndex = ({ project, canWrite, isAdmin }) => {
     const computeResourceTallies = () => {
         const tallies = {};
         lines.forEach(l => {
-            if (!l.resourceId) return;
-            const resId = String(l.resourceId);
+            if (!l.projectResourceId) return;
+            const projectResourceId = String(l.projectResourceId);
             const val   = Number(l.qty) || 0;
             const signed = l.direction === 'OUT' ? -Math.abs(val) : Math.abs(val);
-            tallies[resId] = (tallies[resId] || 0) + signed;
+            tallies[projectResourceId] = (tallies[projectResourceId] || 0) + signed;
         });
         return tallies;
     };
@@ -299,15 +321,15 @@ const TransactionsIndex = ({ project, canWrite, isAdmin }) => {
     const checkStockDeficits = () => {
         const deficits = [];
         lines.forEach((l, idx) => {
-            if (l.direction !== 'OUT' || !l.partyId || !l.resourceId || !l.qty) return;
-            const stockInfo = getStockAvailability(l.partyId, l.resourceId);
+            if (l.direction !== 'OUT' || !l.partyId || !l.projectResourceId || !l.qty) return;
+            const stockInfo = getStockAvailability(l.partyId, l.projectResourceId);
             if (!stockInfo.isSupplier) {
                 const requested = Math.abs(Number(l.qty) || 0);
                 if (requested > stockInfo.available) {
                     deficits.push({
                         lineIndex: idx,
                         partyName: getPartyName(l.partyId),
-                        resName:   getResourceLabel(l.resourceId),
+                        resName:   getResourceLabel(l.projectResourceId),
                         available: stockInfo.available,
                         requested
                     });
@@ -323,7 +345,7 @@ const TransactionsIndex = ({ project, canWrite, isAdmin }) => {
     const hasStockDeficit = stockDeficits.length > 0;
 
     const isFormValid = lines.length >= 2 && 
-        lines.every(l => l.partyId && l.resourceId && Number(l.qty) > 0) && 
+        lines.every(l => l.partyId && l.projectResourceId && Number(l.qty) > 0) &&
         !hasUnbalancedResources && 
         !hasStockDeficit;
 
@@ -342,13 +364,15 @@ const TransactionsIndex = ({ project, canWrite, isAdmin }) => {
 
         setSubmitting(true);
         try {
-            const linesForPayload = lines.map(l => ({
-                party_id:    Number(l.partyId),
-                resource_id: Number(l.resourceId),
-                signed_qty:  l.direction === 'OUT' ? -Math.abs(Number(l.qty)) : Math.abs(Number(l.qty)),
-                uom_id:      l.uomId ? Number(l.uomId) : null,
-                role:        l.role || 'OWNER'
-            }));
+            const linesForPayload = lines.map(l => {
+                const parsedUomId = Number(l.uomId);
+                return {
+                    party_id:    Number(l.partyId),
+                    project_resource_id: Number(l.projectResourceId),
+                    signed_qty:  l.direction === 'OUT' ? -Math.abs(Number(l.qty)) : Math.abs(Number(l.qty)),
+                    uom_id:      Number.isInteger(parsedUomId) ? parsedUomId : null,
+                    role:        l.role || 'OWNER'
+                };});
 
             const payload = {
                 org_id:     orgId,
@@ -390,7 +414,7 @@ const TransactionsIndex = ({ project, canWrite, isAdmin }) => {
             t.remarks?.toLowerCase().includes(s) ||
             t.lines?.some(l =>
                 getPartyName(l.party_id).toLowerCase().includes(s) ||
-                getResourceLabel(l.resource_id).toLowerCase().includes(s)
+                getResourceLabel(l.project_resource_id).toLowerCase().includes(s)
             )
         );
     });
@@ -550,7 +574,7 @@ const TransactionsIndex = ({ project, canWrite, isAdmin }) => {
                                         const fromLine = txn.lines?.find(l => Number(l.signed_qty) < 0);
                                         const toLine   = txn.lines?.find(l => Number(l.signed_qty) > 0);
                                         const qtyVal   = Math.abs(Number(fromLine?.signed_qty || toLine?.signed_qty || 0));
-                                        const resLabel = getResourceLabel(fromLine?.resource_id || toLine?.resource_id);
+                                        const resLabel = getResourceLabel(fromLine?.project_resource_id || toLine?.project_resource_id);
 
                                         return (
                                             <React.Fragment key={txn.id}>
@@ -617,7 +641,7 @@ const TransactionsIndex = ({ project, canWrite, isAdmin }) => {
                                                                                     {getPartyName(l.party_id)}
                                                                                     <span className="ml-1 text-gray-400 font-normal font-mono text-[10px]">(pv#{l.party_id})</span>
                                                                                 </td>
-                                                                                <td className="p-2 text-gray-700 dark:text-gray-300">{getResourceLabel(l.resource_id)}</td>
+                                                                                <td className="p-2 text-gray-700 dark:text-gray-300">{getResourceLabel(l.project_resource_id)}</td>
                                                                                 <td className="p-2 text-gray-500 font-mono">{l.role || '-'}</td>
                                                                                 <td className={`p-2 text-right font-bold ${Number(l.signed_qty || 0) < 0 ? 'text-red-600 dark:text-red-400' : 'text-emerald-600 dark:text-emerald-400'}`}>
                                                                                     {Number(l.signed_qty || 0) > 0 ? `+${l.signed_qty}` : (l.signed_qty ?? 0)}
@@ -699,7 +723,7 @@ const TransactionsIndex = ({ project, canWrite, isAdmin }) => {
                                                 </div>
                                                 <div>
                                                     <div className="text-xs font-bold text-gray-900 dark:text-white">
-                                                        {getResourceLabel(pos?.resource_id)}
+                                                        {getResourceLabel(pos?.project_resource_id)}
                                                     </div>
                                                     <div className="text-[10px] font-medium text-gray-400 dark:text-gray-400">
                                                         Net Inventory Balance
@@ -752,7 +776,7 @@ const TransactionsIndex = ({ project, canWrite, isAdmin }) => {
                                                     <td className="p-3 text-gray-500">{formatDate(line?.txn_date)}</td>
                                                     <td className="p-3 font-semibold">{line?.txn_type || '-'}</td>
                                                     <td className="p-3 font-mono text-blue-600 dark:text-blue-400">#{line?.transaction_id || '-'}</td>
-                                                    <td className="p-3 font-medium">{getResourceLabel(line?.resource_id)}</td>
+                                                    <td className="p-3 font-medium">{getResourceLabel(line?.project_resource_id)}</td>
                                                     <td className={`p-3 text-right font-bold ${signedQty < 0 ? 'text-rose-600 dark:text-rose-400' : 'text-emerald-600 dark:text-emerald-400'}`}>
                                                         {signedQty > 0 ? `+${signedQty}` : signedQty}
                                                     </td>
@@ -837,10 +861,10 @@ const TransactionsIndex = ({ project, canWrite, isAdmin }) => {
 
                                 <div className="space-y-3">
                                     {lines.map((line, idx) => {
-                                        const derivedUnits = getDerivedUnitsForResource(line.resourceId);
-                                        const stockInfo    = getStockAvailability(line.partyId, line.resourceId);
+                                        const derivedUnits = getDerivedUnitsForResource(line.projectResourceId);
+                                        const stockInfo    = getStockAvailability(line.partyId, line.projectResourceId);
                                         const requestedVal = Math.abs(Number(line.qty) || 0);
-                                        const isOutflowExceeded = line.direction === 'OUT' && !stockInfo.isSupplier && line.partyId && line.resourceId && requestedVal > stockInfo.available;
+                                        const isOutflowExceeded = line.direction === 'OUT' && !stockInfo.isSupplier && line.partyId && line.projectResourceId && requestedVal > stockInfo.available;
 
                                         return (
                                             <div key={idx} className={`p-3.5 rounded-xl border transition grid grid-cols-1 sm:grid-cols-12 gap-3 items-center ${
@@ -869,7 +893,7 @@ const TransactionsIndex = ({ project, canWrite, isAdmin }) => {
                                                 <div className="sm:col-span-3">
                                                     <div className="flex items-center justify-between mb-1">
                                                         <label className="block text-[10px] font-semibold text-gray-500">Party / Vendor</label>
-                                                        {line.direction === 'OUT' && line.partyId && line.resourceId && (
+                                                        {line.direction === 'OUT' && line.partyId && line.projectResourceId && (
                                                             <span className={`text-[9px] font-bold font-mono ${
                                                                 stockInfo.isSupplier
                                                                     ? 'text-indigo-600 dark:text-indigo-400'
@@ -898,14 +922,14 @@ const TransactionsIndex = ({ project, canWrite, isAdmin }) => {
                                                 <div className="sm:col-span-3">
                                                     <label className="block text-[10px] font-semibold text-gray-500 mb-1">Material / Item</label>
                                                     <select
-                                                        value={line.resourceId}
-                                                        onChange={(e) => handleLineChange(idx, 'resourceId', e.target.value)}
+                                                        value={line.projectResourceId}
+                                                        onChange={(e) => handleLineChange(idx, 'projectResourceId', e.target.value)}
                                                         required
                                                         className="w-full text-xs bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-700 rounded-lg p-2 font-medium cursor-pointer"
                                                     >
                                                         <option value="">— Select Material —</option>
-                                                        {masterResources.map(r => (
-                                                            <option key={r.id} value={r.id}>
+                                                        {projectResources.map(r => (
+                                                            <option key={r.project_resource_id} value={r.project_resource_id}>
                                                                 {r.name} ({r.base_unit_code || r.type || 'RES'})
                                                             </option>
                                                         ))}
@@ -941,7 +965,7 @@ const TransactionsIndex = ({ project, canWrite, isAdmin }) => {
                                                     >
                                                         {derivedUnits.map(u => (
                                                             <option key={u.id} value={u.id}>
-                                                                {u.code}
+                                                                {u.code || u.symbol || u.id}
                                                             </option>
                                                         ))}
                                                     </select>

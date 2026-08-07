@@ -654,6 +654,34 @@ export async function getRateHistory(orgId, projectId, resourceId) {
 export async function listProjectResources(orgId, projectId) {
     await ensureProjectExists(orgId, projectId);
 
+    // proj_resources is the project membership source of truth. The fallback
+    // keeps older installations working until that table is available.
+    if (await db.schema.hasTable('proj_resources')) {
+        return db('res_resources as r')
+            .where('r.org_id', orgId)
+            .where(function () {
+                this.whereIn('r.id', db('proj_resources')
+                    .where({ org_id: orgId, project_id: projectId, is_deleted: 0 })
+                    .select('resource_id'))
+                    .orWhereIn('r.id', db('res_rates')
+                        .where('project_id', projectId)
+                        .select('resource_id'))
+                    .orWhereIn('r.id', db('res_compositions')
+                        .where('project_id', projectId)
+                        .select('parent_resource_id'));
+            })
+            .select(
+                'r.id as project_resource_id',
+                'r.id as resource_id',
+                'r.name',
+                'r.code',
+                'r.type',
+                'r.base_unit_code'
+            )
+            .distinct()
+            .orderBy('r.name');
+    }
+
     return db('res_resources')
         .where('org_id', orgId)
         .where(function () {
@@ -664,7 +692,7 @@ export async function listProjectResources(orgId, projectId) {
                     .where('project_id', projectId)
                     .select('parent_resource_id'));
         })
-        .select('id as resource_id', 'name', 'code', 'type', 'base_unit_code')
+        .select('id as project_resource_id', 'id as resource_id', 'name', 'code', 'type', 'base_unit_code')
         .orderBy('name');
 }
 
@@ -677,7 +705,14 @@ export async function removeProjectResource(orgId, projectId, resourceId) {
         db('res_compositions').where({ project_id: projectId, parent_resource_id: resourceId }).del()
     ]);
 
-    if (!deletedRateRows && !deletedCompositionRows) {
+    let deletedMembershipRows = 0;
+    if (await db.schema.hasTable('proj_resources')) {
+        deletedMembershipRows = await db('proj_resources')
+            .where({ project_id: projectId, resource_id: resourceId })
+            .update({ is_deleted: 1 });
+    }
+
+    if (!deletedRateRows && !deletedCompositionRows && !deletedMembershipRows) {
         throw new AppError('Resource is not imported into this project', 404);
     }
     return true;
@@ -776,6 +811,27 @@ async function validateCompositionRows(orgId, compositions, dbClient = db) {
     }
 }
 
+async function activateProjectResourceMembership(orgId, projectId, resourceId, dbClient = db) {
+    if (!(await dbClient.schema.hasTable('proj_resources'))) return;
+
+    const existing = await dbClient('proj_resources')
+        .where({ project_id: projectId, resource_id: resourceId })
+        .first('project_id');
+
+    if (existing) {
+        await dbClient('proj_resources')
+            .where({ project_id: projectId, resource_id: resourceId })
+            .update({ org_id: orgId, is_deleted: 0 });
+    } else {
+        await dbClient('proj_resources').insert({
+            org_id: orgId,
+            project_id: projectId,
+            resource_id: resourceId,
+            is_deleted: 0
+        });
+    }
+}
+
 async function replaceProjectCompositions(orgId, projectId, parentResourceId, compositions, dbClient = db, requestedEffectiveFrom) {
     const effectiveFrom = toDateOnly(
         compositions.find(row => row.effective_from)?.effective_from || requestedEffectiveFrom
@@ -864,6 +920,7 @@ export async function importResourceToProject(orgId, projectId, resourceId, effe
                 effective_to: null,
                 is_active: 1
             })));
+            await activateProjectResourceMembership(orgId, projectId, resourceId, trx);
             return true;
         }
 
@@ -889,6 +946,7 @@ export async function importResourceToProject(orgId, projectId, resourceId, effe
             is_active: 1,
             remarks: masterRate.remarks || 'Imported from master rate'
         });
+        await activateProjectResourceMembership(orgId, projectId, resourceId, trx);
         return true;
     });
 }

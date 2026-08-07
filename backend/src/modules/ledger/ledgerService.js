@@ -9,6 +9,57 @@ function parseIntOrNull(val) {
 }
 
 /**
+ * A project resource is identified by resource_id inside proj_resources and is
+ * scoped by the transaction header's project_id. Keep this check here because
+ * proj_resources has a composite (project_id, resource_id) primary key, while
+ * transaction lines store the resource component as project_resource_id.
+ */
+async function verifyProjectResourceMembership(trx, projectId, orgId, lines) {
+    if (lines.length === 0) return;
+    if (!projectId) {
+        throw new AppError('project_id is required when transaction lines use project resources', 400);
+    }
+
+    const projectResourceIds = [...new Set(lines.map(line => line.project_resource_id))];
+    const query = trx('proj_resources')
+        .where({ project_id: projectId, is_deleted: 0 })
+        .whereIn('resource_id', projectResourceIds);
+
+    if (orgId !== null && orgId !== undefined) {
+        query.andWhere('org_id', orgId);
+    }
+
+    const memberships = await query.select('resource_id');
+    const validIds = new Set(memberships.map(row => String(row.resource_id)));
+
+    // Legacy project imports were stored only in res_rates/res_compositions.
+    // Accept those rows while installations migrate membership data into
+    // proj_resources; new imports are written to both representations.
+    const missingCandidates = projectResourceIds.filter(id => !validIds.has(String(id)));
+    if (missingCandidates.length > 0) {
+        const legacyRows = await trx('res_resources as r')
+            .where('r.org_id', orgId)
+            .whereIn('r.id', missingCandidates)
+            .where(function () {
+                this.whereIn('r.id', trx('res_rates')
+                    .where('project_id', projectId)
+                    .select('resource_id'))
+                    .orWhereIn('r.id', trx('res_compositions')
+                        .where('project_id', projectId)
+                        .select('parent_resource_id'));
+            })
+            .select('r.id as resource_id');
+        legacyRows.forEach(row => validIds.add(String(row.resource_id)));
+    }
+
+    const missingId = projectResourceIds.find(id => !validIds.has(String(id)));
+
+    if (missingId !== undefined) {
+        throw new AppError(`Project resource '${missingId}' is not imported into project '${projectId}'`, 400);
+    }
+}
+
+/**
  * Verifies that non-Supplier parties have sufficient stock before transferring out resources.
  * Suppliers have unlimited allocation capacity. Contractors & others cannot transfer out more than their current net balance.
  */
@@ -39,12 +90,12 @@ async function verifyPartyStockSufficiency(trx, projectId, orgId, linesToValidat
             continue;
         }
 
-        // For Contractors & non-suppliers, query current net confirmed stock position for this resource
+        // For Contractors & non-suppliers, query current net confirmed stock position for this project resource
         let posQuery = trx('txn_transaction_lines as l')
             .join('txn_transactions as t', 'l.transaction_id', 't.id')
             .where('t.status', TXN_STATUS.CONFIRMED)
             .where('l.party_id', line.party_id)
-            .where('l.resource_id', line.resource_id);
+            .where('l.project_resource_id', line.project_resource_id);
 
         if (projectId) posQuery = posQuery.where('t.project_id', projectId);
         if (orgId)     posQuery = posQuery.where('t.org_id', orgId);
@@ -92,11 +143,11 @@ export async function createTransaction(txnData, linesData) {
         }
 
         const signedQty = Number(line.signed_qty ?? line.signedQty ?? line.qty);
-        const resId     = line.resource_id ?? line.resourceId;
+        const projectResourceId = line.project_resource_id ?? line.projectResourceId;
 
         return {
             party_id:    partyId,
-            resource_id: parseIntOrNull(resId),
+            project_resource_id: parseIntOrNull(projectResourceId),
             signed_qty:  signedQty,
             uom_id:      parseIntOrNull(line.uom_id ?? line.uomId),
             role:        line.role || null,
@@ -109,6 +160,8 @@ export async function createTransaction(txnData, linesData) {
     }
 
     return await db.transaction(async (trx) => {
+        await verifyProjectResourceMembership(trx, header.project_id, header.org_id, linesToValidate);
+
         // Enforce stock availability for non-suppliers on confirmed transactions
         if (status === TXN_STATUS.CONFIRMED) {
             await verifyPartyStockSufficiency(trx, header.project_id, header.org_id, linesToValidate);
@@ -151,6 +204,7 @@ export async function confirmTransaction(transactionId) {
     validateTransaction(txn, lines);
 
     await db.transaction(async (trx) => {
+        await verifyProjectResourceMembership(trx, txn.project_id, txn.org_id, lines);
         await verifyPartyStockSufficiency(trx, txn.project_id, txn.org_id, lines);
 
         await trx('txn_transactions').where({ id: transactionId }).update({
@@ -230,13 +284,13 @@ export async function getTransactions(filters = {}) {
 }
 
 /**
- * Returns net inventory position per resource for a given party (pdoc_vendors.pv_id).
+ * Returns net inventory position per project resource for a given party (pdoc_vendors.pv_id).
  */
-export async function getPartyResourcePosition(pvId, rawResourceId = null, rawProjectId = null, rawOrgId = null) {
+export async function getPartyResourcePosition(pvId, rawProjectResourceId = null, rawProjectId = null, rawOrgId = null) {
     const partyId   = parseIntOrNull(pvId);
     const orgId     = parseIntOrNull(rawOrgId);
     const projectId = parseIntOrNull(rawProjectId);
-    const resourceId = parseIntOrNull(rawResourceId);
+    const projectResourceId = parseIntOrNull(rawProjectResourceId);
 
     if (!partyId) throw new AppError('party_id (pdoc_vendors.pv_id) is required and must be a positive integer', 400);
 
@@ -247,36 +301,36 @@ export async function getPartyResourcePosition(pvId, rawResourceId = null, rawPr
 
     if (orgId     !== null) query = query.where('t.org_id',     orgId);
     if (projectId !== null) query = query.where('t.project_id', projectId);
-    if (resourceId)         query = query.where('l.resource_id', resourceId);
+    if (projectResourceId)  query = query.where('l.project_resource_id', projectResourceId);
 
-    if (resourceId) {
+    if (projectResourceId) {
         const result = await query
-            .select('l.party_id', 'l.resource_id')
+            .select('l.party_id', 'l.project_resource_id')
             .sum('l.signed_qty as net_qty')
-            .groupBy('l.party_id', 'l.resource_id')
+            .groupBy('l.party_id', 'l.project_resource_id')
             .first();
 
         return {
             party_id:    partyId,
-            resource_id: resourceId,
+            project_resource_id: projectResourceId,
             net_qty:     result ? Number(result.net_qty) : 0,
         };
     } else {
         const results = await query
-            .select('l.party_id', 'l.resource_id')
+            .select('l.party_id', 'l.project_resource_id')
             .sum('l.signed_qty as net_qty')
-            .groupBy('l.party_id', 'l.resource_id');
+            .groupBy('l.party_id', 'l.project_resource_id');
 
         return results.map((r) => ({
             party_id:    r.party_id,
-            resource_id: r.resource_id,
+            project_resource_id: r.project_resource_id,
             net_qty:     Number(r.net_qty),
         }));
     }
 }
 
 /**
- * Returns party ledger (passbook) with running balance per resource.
+ * Returns party ledger (passbook) with running balance per project resource.
  * party_id is pdoc_vendors.pv_id (INT UNSIGNED).
  */
 export async function getPartyLedger(pvId, rawProjectId = null, rawOrgId = null) {
@@ -304,7 +358,7 @@ export async function getPartyLedger(pvId, rawProjectId = null, rawOrgId = null)
             't.txn_date',
             't.remarks',
             'l.party_id',
-            'l.resource_id',
+            'l.project_resource_id',
             'l.signed_qty',
             'l.uom_id',
             'l.role',
@@ -319,14 +373,14 @@ export async function getPartyLedger(pvId, rawProjectId = null, rawOrgId = null)
     const runningBalances = {};
 
     return lines.map((line) => {
-        const resId    = line.resource_id;
+        const projectResourceId = line.project_resource_id;
         const signedQty = Number(line.signed_qty);
-        runningBalances[resId] = (runningBalances[resId] || 0) + signedQty;
+        runningBalances[projectResourceId] = (runningBalances[projectResourceId] || 0) + signedQty;
 
         return {
             ...line,
             signed_qty:      signedQty,
-            running_balance: runningBalances[resId],
+            running_balance: runningBalances[projectResourceId],
         };
     });
 }
@@ -367,7 +421,7 @@ export async function getProjectVendors(rawProjectId) {
  * Assign supply from PMC/supplier (fromPartyId) to a contractor (toPartyId).
  * Both are pdoc_vendors.pv_id integers for this project.
  */
-export async function assignSupplyToContractor({ orgId, projectId, fromPartyId, toPartyId, resourceId, qty, uomId, remarks, createdBy, status = TXN_STATUS.CONFIRMED }) {
+export async function assignSupplyToContractor({ orgId, projectId, fromPartyId, toPartyId, projectResourceId, qty, uomId, remarks, createdBy, status = TXN_STATUS.CONFIRMED }) {
     const txnData = {
         org_id:     orgId,
         project_id: projectId,
@@ -381,14 +435,14 @@ export async function assignSupplyToContractor({ orgId, projectId, fromPartyId, 
     const lines = [
         {
             party_id:    fromPartyId,
-            resource_id: resourceId,
+            project_resource_id: projectResourceId,
             signed_qty:  -Math.abs(qty),
             uom_id:      uomId,
             role:        ROLES.OWNER,
         },
         {
             party_id:    toPartyId,
-            resource_id: resourceId,
+            project_resource_id: projectResourceId,
             signed_qty:  Math.abs(qty),
             uom_id:      uomId,
             role:        ROLES.OWNER,
@@ -401,7 +455,7 @@ export async function assignSupplyToContractor({ orgId, projectId, fromPartyId, 
 /**
  * Transfer resource custody between two contractors (both pdoc_vendors.pv_id).
  */
-export async function transferBetweenContractors({ orgId, projectId, fromPartyId, toPartyId, resourceId, qty, uomId, remarks, createdBy, status = TXN_STATUS.CONFIRMED }) {
+export async function transferBetweenContractors({ orgId, projectId, fromPartyId, toPartyId, projectResourceId, qty, uomId, remarks, createdBy, status = TXN_STATUS.CONFIRMED }) {
     const txnData = {
         org_id:     orgId,
         project_id: projectId,
@@ -415,14 +469,14 @@ export async function transferBetweenContractors({ orgId, projectId, fromPartyId
     const lines = [
         {
             party_id:    fromPartyId,
-            resource_id: resourceId,
+            project_resource_id: projectResourceId,
             signed_qty:  -Math.abs(qty),
             uom_id:      uomId,
             role:        ROLES.EXECUTOR,
         },
         {
             party_id:    toPartyId,
-            resource_id: resourceId,
+            project_resource_id: projectResourceId,
             signed_qty:  Math.abs(qty),
             uom_id:      uomId,
             role:        ROLES.EXECUTOR,

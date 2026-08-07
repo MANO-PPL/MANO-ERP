@@ -28,9 +28,9 @@ export const ledgerApi = {
     },
 
     // ─── Ledger Queries ───────────────────────────────────────────────────────
-    getPartyResourcePosition: async (partyId, resourceId, projectId, orgId) => {
+    getPartyResourcePosition: async (partyId, projectResourceId, projectId, orgId) => {
         const res = await api.get('/ledger/party-position', {
-            params: { party_id: partyId, resource_id: resourceId, project_id: projectId, org_id: orgId }
+            params: { party_id: partyId, project_resource_id: projectResourceId, project_id: projectId, org_id: orgId }
         });
         return res.data;
     },

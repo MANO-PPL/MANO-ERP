@@ -66,13 +66,13 @@ export async function listTransactions(req, res, next) {
 export async function getPartyResourcePosition(req, res, next) {
     try {
         const partyId    = req.query.party_id   || req.query.partyId;
-        const resourceId = req.query.resource_id || req.query.resourceId || null;
+        const projectResourceId = req.query.project_resource_id || req.query.projectResourceId || null;
         const projectId  = req.query.project_id  || req.query.projectId  || null;
         const orgId      = req.query.org_id      || req.query.orgId      || req.user?.orgId || null;
 
         if (!partyId) throw new AppError('Query parameter party_id is required', 400);
 
-        const result = await ledgerService.getPartyResourcePosition(partyId, resourceId, projectId, orgId);
+        const result = await ledgerService.getPartyResourcePosition(partyId, projectResourceId, projectId, orgId);
         res.status(200).json({ status: 'success', data: result });
     } catch (err) {
         next(err);
@@ -105,7 +105,8 @@ export async function getProjectVendors(req, res, next) {
 export async function assignSupply(req, res, next) {
     try {
         const orgId  = req.body.orgId || req.body.org_id || req.user?.orgId;
-        const result = await ledgerService.assignSupplyToContractor({ ...req.body, orgId });
+        const projectResourceId = req.body.project_resource_id || req.body.projectResourceId;
+        const result = await ledgerService.assignSupplyToContractor({ ...req.body, projectResourceId, orgId });
         res.status(201).json({ status: 'success', data: result });
     } catch (err) {
         next(err);
@@ -115,7 +116,8 @@ export async function assignSupply(req, res, next) {
 export async function transferContractor(req, res, next) {
     try {
         const orgId  = req.body.orgId || req.body.org_id || req.user?.orgId;
-        const result = await ledgerService.transferBetweenContractors({ ...req.body, orgId });
+        const projectResourceId = req.body.project_resource_id || req.body.projectResourceId;
+        const result = await ledgerService.transferBetweenContractors({ ...req.body, projectResourceId, orgId });
         res.status(201).json({ status: 'success', data: result });
     } catch (err) {
         next(err);
