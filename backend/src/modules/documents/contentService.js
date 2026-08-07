@@ -25,7 +25,10 @@ async function enrichVendorRows(rows) {
     const contacts = await db('crm_contacts as c')
         .leftJoin('crm_job_nature as jn', 'c.job_nature_id', 'jn.job_id')
         .whereIn('c.id', vendorIds)
-        .where('c.type', 'vendor')
+        .where(function () {
+            this.whereNull('c.category')
+                .orWhereRaw('LOWER(??) NOT IN (?, ?)', ['c.category', 'client', 'pmc']);
+        })
         .select('c.id', 'c.name', 'c.contact_person', 'c.mobile', 'c.email', 'jn.job_name as job_nature');
 
     const contactMap = {};

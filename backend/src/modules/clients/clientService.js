@@ -34,8 +34,8 @@ export async function getClients(orgId, query = {}) {
     const baseQuery = db('crm_contacts as c')
         .leftJoin('crm_job_nature as jn', 'c.job_nature_id', 'jn.job_id')
         .leftJoin('crm_sectors as s', 'c.sector_id', 's.sector_id')
-        .where('c.type', 'client')
-        .andWhere('c.org_id', orgId);
+        .andWhere('c.org_id', orgId)
+        .whereRaw('LOWER(??) = ?', ['c.category', 'client']);
 
     const applyFilters = (qb) => {
         if (query.company || query.name) {
@@ -150,7 +150,8 @@ export async function getClientById(orgId, id) {
     const client = await db('crm_contacts as c')
         .leftJoin('crm_job_nature as jn', 'c.job_nature_id', 'jn.job_id')
         .leftJoin('crm_sectors as s', 'c.sector_id', 's.sector_id')
-        .where({ 'c.id': id, 'c.type': 'client', 'c.org_id': orgId })
+        .where({ 'c.id': id, 'c.org_id': orgId })
+        .whereRaw('LOWER(??) = ?', ['c.category', 'client'])
         .select('c.*', 'jn.job_name', 's.sector_name')
         .first();
 
@@ -192,11 +193,10 @@ export async function createClient(orgId, data) {
 
     const insertData = {
         org_id: orgId,
-        type: 'client',
         name: data.name,
         sector_id: data.sector_id || null,
         job_nature_id: data.job_nature_id || null,
-        category: data.category || null,
+        category: 'client',
         contact_person: data.contact_person || null,
         designation: data.designation || null,
         telephone_no: data.telephone_no || data.contact_no || null,
@@ -226,7 +226,10 @@ export async function createClient(orgId, data) {
 }
 
 export async function updateClient(orgId, id, data) {
-    const client = await db('crm_contacts').where({ id, type: 'client', org_id: orgId }).first();
+    const client = await db('crm_contacts')
+        .where({ id, org_id: orgId })
+        .whereRaw('LOWER(??) = ?', ['category', 'client'])
+        .first();
     if (!client) {
         throw new AppError('Client not found', 404);
     }
@@ -238,7 +241,7 @@ export async function updateClient(orgId, id, data) {
     if (data.sector_id !== undefined) updateData.sector_id = data.sector_id;
     if (data.job_nature_id !== undefined) updateData.job_nature_id = data.job_nature_id;
     if (data.job_id !== undefined) updateData.job_nature_id = data.job_id;
-    if (data.category !== undefined) updateData.category = data.category;
+    updateData.category = 'client';
     if (data.contact_person !== undefined) updateData.contact_person = data.contact_person;
     if (data.designation !== undefined) updateData.designation = data.designation;
     if (data.telephone_no !== undefined) updateData.telephone_no = data.telephone_no;
@@ -274,7 +277,10 @@ export async function updateClient(orgId, id, data) {
 }
 
 export async function deleteClient(orgId, id) {
-    const client = await db('crm_contacts').where({ id, type: 'client', org_id: orgId }).first();
+    const client = await db('crm_contacts')
+        .where({ id, org_id: orgId })
+        .whereRaw('LOWER(??) = ?', ['category', 'client'])
+        .first();
     if (!client) {
         throw new AppError('Client not found', 404);
     }
@@ -292,7 +298,11 @@ export async function deleteClients(orgId, ids) {
         throw new AppError('No Client IDs provided', 400);
     }
     await db('crm_interactions').whereIn('contact_id', ids).andWhere('org_id', orgId).delete();
-    await db('crm_contacts').whereIn('id', ids).andWhere('type', 'client').andWhere('org_id', orgId).delete();
+    await db('crm_contacts')
+        .whereIn('id', ids)
+        .andWhere('org_id', orgId)
+        .whereRaw('LOWER(??) = ?', ['category', 'client'])
+        .delete();
     return true;
 }
 
@@ -367,7 +377,8 @@ export async function bulkValidateClients(orgId, clients) {
 
     if (inputEmails.size > 0 || inputPhones.size > 0) {
         const existingClients = await db('crm_contacts')
-            .where({ type: 'client', org_id: orgId })
+            .where({ org_id: orgId })
+            .whereRaw('LOWER(??) = ?', ['category', 'client'])
             .where(function () {
                 if (inputEmails.size > 0) this.whereIn('email', Array.from(inputEmails));
                 if (inputPhones.size > 0) this.orWhereIn('mobile', Array.from(inputPhones));
@@ -445,8 +456,8 @@ export async function batchSaveClients(orgId, payload = {}) {
         if (deleted && deleted.length > 0) {
             await trx('crm_contacts')
                 .whereIn('id', deleted)
-                .andWhere('type', 'client')
                 .andWhere('org_id', orgId)
+                .whereRaw('LOWER(??) = ?', ['category', 'client'])
                 .del();
         }
 
@@ -472,7 +483,8 @@ export async function batchSaveClients(orgId, payload = {}) {
 
             if (Object.keys(updateData).length > 0) {
                 await trx('crm_contacts')
-                    .where({ id: item.id, type: 'client', org_id: orgId })
+                    .where({ id: item.id, org_id: orgId })
+                    .whereRaw('LOWER(??) = ?', ['category', 'client'])
                     .update(updateData);
             }
         }
@@ -494,7 +506,7 @@ export async function batchSaveClients(orgId, payload = {}) {
 
             await trx('crm_contacts').insert({
                 org_id: orgId,
-                type: 'client',
+                category: 'client',
                 name: clientName,
                 job_nature_id: jobNatureId,
                 sector_id: sectorId,

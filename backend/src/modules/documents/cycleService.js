@@ -49,7 +49,10 @@ async function cloneContentToNewCycle(trx, instanceId, cycleId, latestApprovedVe
             const validVendors = vendorIds.length > 0
                 ? await trx('crm_contacts')
                     .whereIn('id', vendorIds)
-                    .where('type', 'vendor')
+                    .where(function () {
+                        this.whereNull('category')
+                            .orWhereRaw('LOWER(??) NOT IN (?, ?)', ['category', 'client', 'pmc']);
+                    })
                     .select('id')
                 : [];
             const validVendorIds = new Set(validVendors.map(vendor => vendor.id));

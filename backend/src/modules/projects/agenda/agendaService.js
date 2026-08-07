@@ -77,6 +77,10 @@ export async function fetchAgendaById(projectId, agendaId) {
         .leftJoin('pdoc_vendors as pv', 'pd.pv_id', 'pv.pv_id')
         .leftJoin('crm_contacts as c', 'pv.vendors_id', 'c.id')
         .where('pap.meeting_id', agendaId)
+        .where(function () {
+            this.whereNull('c.category')
+                .orWhereRaw('LOWER(??) NOT IN (?, ?)', ['c.category', 'client', 'pmc']);
+        })
         .select([
             'pap.id as pap_id',
             'pap.pd_id',

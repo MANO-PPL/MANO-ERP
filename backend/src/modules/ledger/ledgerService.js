@@ -73,6 +73,10 @@ async function verifyPartyStockSufficiency(trx, projectId, orgId, linesToValidat
     const vendorDetails = await trx('pdoc_vendors as pv')
         .join('crm_contacts as c', 'pv.vendors_id', 'c.id')
         .whereIn('pv.pv_id', partyIds)
+        .where(function () {
+            this.whereNull('c.category')
+                .orWhereRaw('LOWER(??) NOT IN (?, ?)', ['c.category', 'client', 'pmc']);
+        })
         .select('pv.pv_id', 'c.name', 'c.category');
 
     const vendorMap = {};
@@ -397,12 +401,15 @@ export async function getProjectVendors(rawProjectId) {
         .join('crm_contacts as c', 'pv.vendors_id', 'c.id')
         .whereNull('pv.deleted_at')
         .where('pv.project_id', projectId)
+        .where(function () {
+            this.whereNull('c.category')
+                .orWhereRaw('LOWER(??) NOT IN (?, ?)', ['c.category', 'client', 'pmc']);
+        })
         .select(
             'pv.pv_id',
             'pv.project_id',
             'pv.vendors_id as crm_contact_id',
             'c.name',
-            'c.type',
             'c.category',
             'c.mobile',
             'c.email',

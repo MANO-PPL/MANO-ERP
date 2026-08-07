@@ -34,11 +34,13 @@ export async function getProjectOrgChart(projectId) {
 
     // 2. Fetch Vendors (Project Vendors + Contacts Join)
     const vendors = await db('pdoc_vendors as pv')
-        .leftJoin('crm_contacts as c', function () {
-            this.on('pv.vendors_id', 'c.id').andOn('c.type', db.raw("'vendor'"));
-        })
+        .leftJoin('crm_contacts as c', 'pv.vendors_id', 'c.id')
         .leftJoin('crm_job_nature as jn', 'c.job_nature_id', 'jn.job_id')
         .where('pv.project_id', projectId)
+        .where(function () {
+            this.whereNull('c.category')
+                .orWhereRaw('LOWER(??) NOT IN (?, ?)', ['c.category', 'client', 'pmc']);
+        })
         .select([
             'pv.pv_id',
             'pv.vendors_id as vendor_id',
@@ -55,6 +57,10 @@ export async function getProjectOrgChart(projectId) {
         .leftJoin('crm_contacts as c', 'pv.vendors_id', 'c.id')
         .leftJoin('crm_job_nature as jn', 'c.job_nature_id', 'jn.job_id')
         .where('pd.project_id', projectId)
+        .where(function () {
+            this.whereNull('c.category')
+                .orWhereRaw('LOWER(??) NOT IN (?, ?)', ['c.category', 'client', 'pmc']);
+        })
         .select([
             'pd.pd_id',
             'pd.pv_id',

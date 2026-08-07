@@ -76,6 +76,10 @@ export async function fetchMoMById(projectId, momId) {
         .leftJoin('pdoc_vendors as pv', 'pd.pv_id', 'pv.pv_id')
         .leftJoin('crm_contacts as c', 'pv.vendors_id', 'c.id')
         .where('pmp.meeting_id', momId)
+        .where(function () {
+            this.whereNull('c.category')
+                .orWhereRaw('LOWER(??) NOT IN (?, ?)', ['c.category', 'client', 'pmc']);
+        })
         .select([
             'pmp.id as pmp_id',
             'pmp.pd_id',

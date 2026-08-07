@@ -53,7 +53,7 @@ const TransactionsIndex = ({ project, canWrite, isAdmin }) => {
     // Project-scoped resource library
     const [projectResources, setProjectResources] = useState([]);
     const [masterUnits, setMasterUnits] = useState([]);
-    // Project Vendors: [{pv_id, project_id, crm_contact_id, name, type, category, mobile, email}]
+    // Project Vendors: [{pv_id, project_id, crm_contact_id, name, category, mobile, email}]
     const [projectVendors, setProjectVendors] = useState([]);
 
     // Live Stock Map for Fast Frontend Lookups: { "pvId_resId": netQty }

@@ -9,6 +9,10 @@ export async function fetchProjectDirectory(projectId) {
         .leftJoin('crm_contacts as c', 'pv.vendors_id', 'c.id')
         .leftJoin('crm_job_nature as jn', 'c.job_nature_id', 'jn.job_id')
         .where('pd.project_id', projectId)
+        .where(function () {
+            this.whereNull('c.category')
+                .orWhereRaw('LOWER(??) NOT IN (?, ?)', ['c.category', 'client', 'pmc']);
+        })
         .select([
             'pd.pd_id',
             'pd.project_id',

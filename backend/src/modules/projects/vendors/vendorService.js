@@ -49,11 +49,13 @@ export async function getProjectVendors(projectId, fields) {
     const vendors = await db('pdoc_vendors as pv')
         // A project-vendor link without a live CRM vendor is not renderable.
         // Exclude orphaned links instead of returning rows full of nulls.
-        .join('crm_contacts as c', function () {
-            this.on('pv.vendors_id', 'c.id').andOn('c.type', db.raw("'vendor'"));
-        })
+        .join('crm_contacts as c', 'pv.vendors_id', 'c.id')
         .leftJoin('crm_job_nature as jn', 'c.job_nature_id', 'jn.job_id')
         .where('pv.project_id', projectId)
+        .where(function () {
+            this.whereNull('c.category')
+                .orWhereRaw('LOWER(??) NOT IN (?, ?)', ['c.category', 'client', 'pmc']);
+        })
         .select(selectedFields)
         .orderBy('c.name', 'asc');
 
@@ -64,9 +66,12 @@ export async function getProjectVendors(projectId, fields) {
    ADD VENDORS TO PROJECT (bulk)
 -------------------------------------------------------- */
 export async function addVendorsToProject(projectId, vendorIds) {
-    // Validate all vendors exist in contacts with type=vendor
+    // Validate all selected contacts are vendor-category contacts.
     const vendorRecords = await db('crm_contacts')
-        .where('type', 'vendor')
+        .where(function () {
+            this.whereNull('category')
+                .orWhereRaw('LOWER(??) NOT IN (?, ?)', ['category', 'client', 'pmc']);
+        })
         .whereIn('id', vendorIds);
 
     if (vendorRecords.length !== vendorIds.length) {

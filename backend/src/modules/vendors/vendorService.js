@@ -10,8 +10,11 @@ export async function getVendors(orgId, query = {}) {
 
     const baseQuery = db('crm_contacts as c')
         .leftJoin('crm_job_nature as jn', 'c.job_nature_id', 'jn.job_id')
-        .where('c.type', 'vendor')
-        .andWhere('c.org_id', orgId);
+        .andWhere('c.org_id', orgId)
+        .where(function () {
+            this.whereNull('c.category')
+                .orWhereRaw('LOWER(??) NOT IN (?, ?)', ['c.category', 'client', 'pmc']);
+        });
 
     // Apply filters to both count and data queries
     const applyFilters = (qb) => {
@@ -105,7 +108,11 @@ export async function getVendors(orgId, query = {}) {
 
 export async function getVendorById(orgId, id) {
     const vendor = await db('crm_contacts')
-        .where({ id, type: 'vendor', org_id: orgId })
+        .where({ id, org_id: orgId })
+        .where(function () {
+            this.whereNull('category')
+                .orWhereRaw('LOWER(??) NOT IN (?, ?)', ['category', 'client', 'pmc']);
+        })
         .first();
 
     if (!vendor) {
@@ -152,7 +159,6 @@ export async function createVendor(orgId, data) {
 
     const insertData = {
         org_id: orgId,
-        type: 'vendor',
         name: data.name,
         sector_id: data.sector_id || null,
         job_nature_id: data.job_nature_id || null,
@@ -182,7 +188,13 @@ export async function createVendor(orgId, data) {
 }
 
 export async function updateVendor(orgId, id, data) {
-    const vendor = await db('crm_contacts').where({ id, type: 'vendor', org_id: orgId }).first();
+    const vendor = await db('crm_contacts')
+        .where({ id, org_id: orgId })
+        .where(function () {
+            this.whereNull('category')
+                .orWhereRaw('LOWER(??) NOT IN (?, ?)', ['category', 'client', 'pmc']);
+        })
+        .first();
     if (!vendor) {
         throw new AppError('Vendor not found', 404);
     }
@@ -230,7 +242,14 @@ export async function deleteVendors(orgId, ids) {
     await db('crm_interactions').whereIn('contact_id', ids).andWhere('org_id', orgId).delete();
 
     // Delete contact
-    const deletedCount = await db('crm_contacts').whereIn('id', ids).where({ type: 'vendor', org_id: orgId }).delete();
+    const deletedCount = await db('crm_contacts')
+        .whereIn('id', ids)
+        .where({ org_id: orgId })
+        .where(function () {
+            this.whereNull('category')
+                .orWhereRaw('LOWER(??) NOT IN (?, ?)', ['category', 'client', 'pmc']);
+        })
+        .delete();
 
     if (deletedCount === 0) {
         throw new AppError('No valid vendors found to delete', 404);
@@ -306,12 +325,26 @@ export async function bulkValidateVendors(orgId, vendors) {
     });
 
     if (inputEmails.size > 0) {
-        const existingVendors = await db('crm_contacts').where({ type: 'vendor', org_id: orgId }).whereIn('email', Array.from(inputEmails)).select('email');
+        const existingVendors = await db('crm_contacts')
+            .where({ org_id: orgId })
+            .where(function () {
+                this.whereNull('category')
+                    .orWhereRaw('LOWER(??) NOT IN (?, ?)', ['category', 'client', 'pmc']);
+            })
+            .whereIn('email', Array.from(inputEmails))
+            .select('email');
         const existingEmailSet = new Set(existingVendors.map(v => v.email));
 
         let existingPhoneSet = new Set();
         if (inputPhones.size > 0) {
-            const existingPhones = await db('crm_contacts').where({ type: 'vendor', org_id: orgId }).whereIn('mobile', Array.from(inputPhones)).select('mobile');
+            const existingPhones = await db('crm_contacts')
+                .where({ org_id: orgId })
+                .where(function () {
+                    this.whereNull('category')
+                        .orWhereRaw('LOWER(??) NOT IN (?, ?)', ['category', 'client', 'pmc']);
+                })
+                .whereIn('mobile', Array.from(inputPhones))
+                .select('mobile');
             existingPhoneSet = new Set(existingPhones.map(v => v.mobile));
         }
 
