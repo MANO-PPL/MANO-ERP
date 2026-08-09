@@ -1,10 +1,95 @@
 import React, { useState, useEffect, useRef } from 'react';
 import {
-    ArrowRight, Plus, Search, X, ListChecks, FileText, Upload, Eye, Download, Trash2, Check
+    ArrowRight, Plus, Search, X, ListChecks, FileText, Upload, Eye, Download, Trash2, Check, AlertCircle, ShieldCheck
 } from 'lucide-react';
 import { toast } from 'react-toastify';
 import qualityApi from '../../../services/qualityApi';
 import CustomInput from '../../../components/CustomInput';
+
+const ConfirmationModal = ({ isOpen, onClose, onConfirm, title, message, confirmText = "Confirm", type = "danger", isProcessing = false }) => {
+    if (!isOpen) return null;
+    const isDanger = type === "danger";
+
+    return (
+        <div className="fixed inset-0 z-[5000] flex items-center justify-center p-4 bg-black/60 backdrop-blur-xs">
+            <div className="absolute inset-0" onClick={onClose} />
+            <div className="relative w-full max-w-md bg-white dark:bg-[#161b22] rounded-lg shadow-2xl z-[5001] overflow-hidden flex flex-col border border-gray-200 dark:border-white/10 text-left">
+                <div className="flex items-center justify-between p-4 border-b border-gray-200 dark:border-white/10 bg-gray-50/50 dark:bg-[#1f242d]/50">
+                    <div className="flex items-center gap-2">
+                        <div className={`p-1.5 rounded-full ${isDanger ? 'bg-red-100 dark:bg-red-950/50 text-red-600 dark:text-red-400' : 'bg-blue-100 dark:bg-blue-950/50 text-blue-600 dark:text-blue-400'}`}>
+                            {isDanger ? <AlertCircle size={18} /> : <ShieldCheck size={18} />}
+                        </div>
+                        <h3 className="text-sm font-bold text-gray-900 dark:text-white">{title}</h3>
+                    </div>
+                    <button onClick={onClose} className="p-1 text-gray-400 hover:text-gray-600 dark:hover:text-white rounded cursor-pointer">
+                        <X size={16} />
+                    </button>
+                </div>
+
+                <div className="p-5 space-y-2">
+                    <p className="text-xs text-gray-600 dark:text-gray-300 leading-relaxed">{message}</p>
+                </div>
+
+                <div className="p-4 border-t border-gray-200 dark:border-white/10 flex items-center justify-end gap-2 bg-gray-50/50 dark:bg-[#161b22]">
+                    <button
+                        onClick={onClose}
+                        disabled={isProcessing}
+                        className="px-3.5 py-1.5 bg-gray-100 dark:bg-white/10 hover:bg-gray-200 dark:hover:bg-white/20 text-gray-700 dark:text-gray-200 rounded text-xs font-semibold cursor-pointer transition-colors"
+                    >
+                        Cancel
+                    </button>
+                    <button
+                        onClick={onConfirm}
+                        disabled={isProcessing}
+                        className={`px-4 py-1.5 text-white rounded text-xs font-semibold cursor-pointer transition-colors shadow-xs inline-flex items-center gap-1.5 ${
+                            isDanger ? 'bg-red-600 hover:bg-red-700' : 'bg-blue-600 hover:bg-blue-700'
+                        }`}
+                    >
+                        {isProcessing && <div className="animate-spin rounded-full h-3 w-3 border-2 border-white border-t-transparent" />}
+                        <span>{confirmText}</span>
+                    </button>
+                </div>
+            </div>
+        </div>
+    );
+};
+
+const UploadProgressModal = ({ isOpen, fileName }) => {
+    if (!isOpen) return null;
+
+    return (
+        <div className="fixed inset-0 z-[6000] flex items-center justify-center p-4 bg-black/70 backdrop-blur-xs animate-in fade-in duration-200">
+            <div className="relative w-full max-w-sm bg-white dark:bg-[#161b22] rounded-xl shadow-2xl p-6 border border-gray-200 dark:border-white/10 text-center flex flex-col items-center space-y-4">
+                {/* Animated Upload Icon Container */}
+                <div className="relative flex items-center justify-center w-20 h-20">
+                    <div className="absolute inset-0 rounded-full bg-purple-500/20 dark:bg-purple-500/30 animate-ping opacity-75" />
+                    <div className="absolute inset-2 rounded-full bg-purple-500/30 dark:bg-purple-500/40 animate-pulse" />
+                    <div className="relative w-16 h-16 rounded-full bg-gradient-to-tr from-purple-600 to-indigo-600 text-white flex items-center justify-center shadow-lg">
+                        <Upload className="animate-bounce" size={28} />
+                    </div>
+                </div>
+
+                {/* Upload Title & Subtitle */}
+                <div className="space-y-1">
+                    <h3 className="text-base font-bold text-gray-900 dark:text-white">Uploading Checklist Document...</h3>
+                    <p className="text-xs text-gray-500 dark:text-gray-400 leading-relaxed truncate max-w-[260px]">
+                        {fileName ? `Uploading "${fileName}"...` : 'Processing attachment file...'}
+                    </p>
+                </div>
+
+                {/* Animated Progress Bar */}
+                <div className="w-full bg-gray-100 dark:bg-white/10 h-2 rounded-full overflow-hidden relative">
+                    <div className="h-full bg-gradient-to-r from-purple-500 via-indigo-500 to-blue-500 rounded-full animate-pulse w-full" />
+                </div>
+
+                <span className="text-[11px] font-semibold text-purple-600 dark:text-purple-400 flex items-center gap-1.5">
+                    <div className="w-2 h-2 rounded-full bg-purple-500 animate-ping" />
+                    Saving document to quality database...
+                </span>
+            </div>
+        </div>
+    );
+};
 
 const QualityChecklist = ({ onBack, canWrite, project }) => {
     const [docs, setDocs] = useState([]);
@@ -13,8 +98,12 @@ const QualityChecklist = ({ onBack, canWrite, project }) => {
     const [title, setTitle] = useState('');
     const [selectedFile, setSelectedFile] = useState(null);
     const [isSaving, setIsSaving] = useState(false);
+    const [isUploadingModal, setIsUploadingModal] = useState(false);
     const [searchQuery, setSearchQuery] = useState('');
     const fileInputRef = useRef(null);
+
+    // Custom Confirmation Modal state
+    const [confirmModal, setConfirmModal] = useState({ isOpen: false, title: '', message: '', confirmText: 'Confirm', onConfirm: null, isProcessing: false });
 
     const loadChecklists = async () => {
         setLoading(true);
@@ -42,12 +131,13 @@ const QualityChecklist = ({ onBack, canWrite, project }) => {
         if (file) {
             const ext = file.name.split('.').pop()?.toLowerCase();
             if (['heic', 'heif'].includes(ext)) {
-                toast.error('HEIC/HEIF files are not allowed. Please convert to JPG/PNG before uploading.');
+                toast.warning('HEIC/HEIF files are not allowed. Please convert to JPG/PNG before uploading.');
                 if (e.target) e.target.value = '';
                 setSelectedFile(null);
                 return;
             }
             setSelectedFile(file);
+            toast.info(`Selected file: "${file.name}"`);
             if (!title) {
                 const nameWithoutExt = file.name.substring(0, file.name.lastIndexOf('.')) || file.name;
                 setTitle(nameWithoutExt);
@@ -58,15 +148,18 @@ const QualityChecklist = ({ onBack, canWrite, project }) => {
     const handleUpload = async (e) => {
         e.preventDefault();
         if (!title.trim()) {
-            toast.error('Please enter a document title');
+            toast.warning('Please enter a document title');
             return;
         }
         if (!selectedFile) {
-            toast.error('Please select a file to upload');
+            toast.warning('Please select a file to upload');
             return;
         }
 
         setIsSaving(true);
+        setIsUploadingModal(true);
+        setDrawerOpen(false);
+
         try {
             const formData = new FormData();
             formData.append('title', title.trim());
@@ -74,31 +167,43 @@ const QualityChecklist = ({ onBack, canWrite, project }) => {
 
             const res = await qualityApi.uploadChecklist(project.id, formData);
             if (res.success) {
-                toast.success('Document uploaded successfully');
+                toast.success('Checklist document uploaded successfully');
                 setTitle('');
                 setSelectedFile(null);
                 if (fileInputRef.current) fileInputRef.current.value = '';
-                setDrawerOpen(false);
-                loadChecklists();
+                await loadChecklists();
             }
         } catch (err) {
             console.error(err);
             toast.error(err.response?.data?.message || 'Failed to upload document');
         } finally {
             setIsSaving(false);
+            setIsUploadingModal(false);
         }
     };
 
-    const handleDelete = async (docId) => {
-        if (window.confirm('Are you sure you want to delete this document?')) {
-            try {
-                await qualityApi.deleteChecklist(project.id, docId);
-                toast.success('Document deleted successfully');
-                loadChecklists();
-            } catch (err) {
-                console.error(err);
-                toast.error('Failed to delete document');
-            }
+    const promptDelete = (doc) => {
+        setConfirmModal({
+            isOpen: true,
+            title: 'Delete Quality Checklist',
+            message: `Are you sure you want to delete "${doc.title}"? This checklist will be permanently removed.`,
+            confirmText: 'Delete Checklist',
+            isProcessing: false,
+            onConfirm: () => executeDelete(doc.id)
+        });
+    };
+
+    const executeDelete = async (docId) => {
+        setConfirmModal(prev => ({ ...prev, isProcessing: true }));
+        try {
+            await qualityApi.deleteChecklist(project.id, docId);
+            toast.success('Quality checklist deleted successfully');
+            setConfirmModal({ isOpen: false, title: '', message: '', confirmText: 'Confirm', onConfirm: null, isProcessing: false });
+            loadChecklists();
+        } catch (err) {
+            console.error(err);
+            toast.error('Failed to delete document');
+            setConfirmModal(prev => ({ ...prev, isProcessing: false }));
         }
     };
 
@@ -118,15 +223,18 @@ const QualityChecklist = ({ onBack, canWrite, project }) => {
         }
 
         if (['pdf', 'jpg', 'jpeg', 'png', 'gif', 'webp'].includes(type)) {
+            toast.success(`Opening preview for "${doc.title}"`);
             window.open(url, '_blank');
         } else if (['docx', 'doc', 'xlsx', 'xls'].includes(type)) {
+            toast.info(`Opening viewer for "${doc.title}"`);
             const embedUrl = `https://view.officeapps.live.com/op/embed.aspx?src=${encodeURIComponent(url)}`;
             window.open(embedUrl, '_blank');
         } else if (['pptx', 'ppt'].includes(type)) {
+            toast.info(`Opening Google Viewer for "${doc.title}"`);
             const googleViewerUrl = `https://docs.google.com/viewer?url=${encodeURIComponent(url)}`;
             window.open(googleViewerUrl, '_blank');
         } else {
-            toast.info(`No preview available for .${type.toUpperCase()} files. Downloading instead.`);
+            toast.info(`Downloading file "${doc.title}"`);
             window.open(url, '_blank');
         }
     };
@@ -273,7 +381,7 @@ const QualityChecklist = ({ onBack, canWrite, project }) => {
                                                     </a>
                                                     {canWrite && (
                                                         <button
-                                                            onClick={() => handleDelete(doc.id)}
+                                                            onClick={() => promptDelete(doc)}
                                                             className="p-1 text-gray-400 hover:text-red-600 dark:hover:text-red-400 hover:bg-red-50 dark:hover:bg-red-950/40 rounded transition-colors cursor-pointer"
                                                             title="Delete File"
                                                         >
@@ -295,6 +403,24 @@ const QualityChecklist = ({ onBack, canWrite, project }) => {
                     </div>
                 )}
             </div>
+
+            {/* Confirmation Modal Popup */}
+            <ConfirmationModal
+                isOpen={confirmModal.isOpen}
+                onClose={() => setConfirmModal({ ...confirmModal, isOpen: false })}
+                onConfirm={confirmModal.onConfirm}
+                title={confirmModal.title}
+                message={confirmModal.message}
+                confirmText={confirmModal.confirmText || 'Confirm'}
+                type="danger"
+                isProcessing={confirmModal.isProcessing}
+            />
+
+            {/* Uploading Rendering Animation Modal */}
+            <UploadProgressModal
+                isOpen={isUploadingModal}
+                fileName={selectedFile?.name || title}
+            />
 
             {/* SIDEBAR POPUP (RIGHT DRAWER PANEL) */}
             {drawerOpen && (

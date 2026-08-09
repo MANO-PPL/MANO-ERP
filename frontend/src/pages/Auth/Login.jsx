@@ -20,7 +20,9 @@ export default function Login() {
     React.useEffect(() => {
         if (sessionStorage.getItem('logged_out')) {
             sessionStorage.removeItem('logged_out');
-            toast.info('You have been logged out successfully.');
+            toast.success('Logged out successfully! See you soon.', {
+                toastId: 'logout-success-toast'
+            });
         }
     }, []);
 
