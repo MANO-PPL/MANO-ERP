@@ -9,6 +9,7 @@ import { toast } from 'react-toastify';
 import { projectApi } from '../../services/projectApi';
 import CustomDatePicker from '../../components/CustomDatePicker';
 import CustomInput from '../../components/CustomInput';
+import LogoLoader from '../../components/LogoLoader';
 
 const Phases = ({ setExtraBreadcrumbs, canWrite }) => {
     const { id: projectId } = useParams();
@@ -310,12 +311,7 @@ const Phases = ({ setExtraBreadcrumbs, canWrite }) => {
     }, [phases, searchQuery, statusFilter]);
 
     if (loading) {
-        return (
-            <div className="flex-1 flex flex-col items-center justify-center p-8 bg-gray-50 dark:bg-transparent">
-                <div className="animate-spin rounded-full h-8 w-8 border-4 border-blue-600 border-t-transparent mb-3"></div>
-                <p className="text-xs font-medium text-gray-500 dark:text-gray-400">Loading project roadmap & Gantt chart...</p>
-            </div>
-        );
+        return <LogoLoader text="Loading project roadmap & Gantt chart..." size="md" fullPage={false} />;
     }
 
     return (

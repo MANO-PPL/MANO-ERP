@@ -1,55 +1,147 @@
 import React from 'react';
+import { motion } from 'framer-motion';
 
 const LogoLoader = ({ text = "Loading data...", size = "md", fullPage = true }) => {
     const sizeMap = {
-        sm: { logo: "w-7 h-7", ring: "w-14 h-14", font: "text-xs" },
-        md: { logo: "w-10 h-10", ring: "w-20 h-20", font: "text-xs" },
-        lg: { logo: "w-14 h-14", ring: "w-28 h-28", font: "text-sm" }
+        sm: {
+            box: "w-10 h-10 rounded-lg p-2",
+            ringOuter: "w-14 h-14 rounded-[1.2rem]",
+            ringBorder: "w-12 h-12 rounded-[0.8rem]",
+            title: "text-[10px] tracking-[0.25em]",
+            sub: "text-[8px]"
+        },
+        md: {
+            box: "w-12 h-12 rounded-xl p-2.5",
+            ringOuter: "w-20 h-20 rounded-[1.5rem]",
+            ringBorder: "w-16 h-16 rounded-[1rem]",
+            title: "text-xs tracking-[0.35em]",
+            sub: "text-[9px]"
+        },
+        lg: {
+            box: "w-14 h-14 rounded-2xl p-3",
+            ringOuter: "w-24 h-24 rounded-[1.8rem]",
+            ringBorder: "w-20 h-20 rounded-[1.2rem]",
+            title: "text-xs md:text-sm tracking-[0.35em]",
+            sub: "text-[9px] md:text-[10px]"
+        }
     };
 
     const s = sizeMap[size] || sizeMap.md;
 
-    const content = (
-        <div className="w-full flex flex-col items-center justify-center p-6 text-center space-y-3 select-none mx-auto my-auto">
-            <div className="relative flex items-center justify-center mx-auto">
-                {/* Outer spinning gradient ring */}
-                <div className={`${s.ring} rounded-full border-2 border-purple-500/20 border-t-purple-600 dark:border-t-purple-400 border-r-blue-500 animate-spin`} />
-                
-                {/* Inner reverse spinning ring */}
-                <div className={`${s.ring} absolute inset-0 rounded-full border-2 border-transparent border-b-indigo-500/60 border-l-purple-500/40 animate-[spin_1.5s_linear_infinite_reverse]`} />
-                
-                {/* MANO-ERP Logo in center with gentle pulsing */}
-                <div className="absolute inset-0 flex items-center justify-center">
-                    <img
-                        src="/mano-logo.svg"
-                        alt="MANO ERP Logo"
-                        className={`${s.logo} object-contain drop-shadow-md animate-pulse`}
-                    />
-                </div>
-            </div>
-
-            {text && (
-                <div className="space-y-0.5 text-center">
-                    <p className={`${s.font} font-bold tracking-tight text-gray-700 dark:text-gray-300`}>
-                        {text}
-                    </p>
-                </div>
-            )}
-        </div>
-    );
-
-    if (fullPage) {
-        return (
-            <div className="flex-1 w-full h-full min-h-[300px] flex items-center justify-center bg-white/60 dark:bg-[#0d1117]/60 backdrop-blur-xs mx-auto my-auto">
-                {content}
-            </div>
-        );
-    }
-
     return (
-        <div className="w-full flex items-center justify-center mx-auto">
-            {content}
-        </div>
+        <motion.div 
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className={
+                fullPage 
+                    ? "fixed inset-0 z-[9999] flex flex-col items-center justify-center bg-slate-50 dark:bg-[#010404] transition-colors duration-500 font-sans select-none"
+                    : "w-full h-full min-h-[250px] flex flex-col items-center justify-center bg-transparent transition-colors duration-500 font-sans select-none p-6 relative overflow-hidden"
+            }
+        >
+            {/* Background Ambient Blurs */}
+            <div className="absolute inset-0 pointer-events-none overflow-hidden">
+                <motion.div 
+                    animate={{ 
+                        scale: [1, 1.15, 1],
+                        opacity: [0.3, 0.45, 0.3]
+                    }}
+                    transition={{
+                        duration: 8,
+                        repeat: Infinity,
+                        ease: "easeInOut"
+                    }}
+                    className={
+                        fullPage 
+                            ? "absolute top-[-10%] left-[-10%] w-[60%] h-[60%] bg-indigo-600/5 dark:bg-indigo-600/10 blur-[120px] rounded-full"
+                            : "absolute top-[10%] left-[10%] w-[40%] h-[40%] bg-indigo-600/5 dark:bg-indigo-600/10 blur-[60px] rounded-full"
+                    }
+                />
+                <motion.div 
+                    animate={{ 
+                        scale: [1, 1.2, 1],
+                        opacity: [0.3, 0.4, 0.3]
+                    }}
+                    transition={{
+                        duration: 10,
+                        repeat: Infinity,
+                        ease: "easeInOut",
+                        delay: 2
+                    }}
+                    className={
+                        fullPage 
+                            ? "absolute bottom-[-10%] right-[-10%] w-[50%] h-[50%] bg-violet-600/5 dark:bg-violet-600/10 blur-[100px] rounded-full"
+                            : "absolute bottom-[10%] right-[10%] w-[35%] h-[35%] bg-violet-600/5 dark:bg-violet-600/10 blur-[50px] rounded-full"
+                    }
+                />
+            </div>
+
+            {/* Core Brand Icon & Status Container */}
+            <div className="relative z-10 flex flex-col items-center gap-4 text-center px-4 max-w-sm">
+                {/* Brand Icon Outer Container */}
+                <div className="relative flex items-center justify-center">
+                    {/* Pulsing Outer Gradient Ring */}
+                    <motion.div 
+                        animate={{ 
+                            scale: [1, 1.2, 1],
+                            opacity: [0.2, 0.4, 0.2]
+                        }}
+                        transition={{
+                            duration: 3,
+                            repeat: Infinity,
+                            ease: "easeInOut"
+                        }}
+                        className={`absolute ${s.ringOuter} bg-gradient-to-tr from-indigo-500 to-violet-500 opacity-20 dark:opacity-30 blur-md`}
+                    />
+                    
+                    {/* Rotating Spinner Border */}
+                    <motion.div 
+                        animate={{ rotate: 360 }}
+                        transition={{
+                            duration: 1.5,
+                            repeat: Infinity,
+                            ease: "linear"
+                        }}
+                        className={`absolute ${s.ringBorder} border-2 border-indigo-500/10 border-t-indigo-500 dark:border-indigo-400/10 dark:border-t-indigo-400`}
+                    />
+                    
+                    {/* Central Logo Box */}
+                    <motion.div 
+                        initial={{ scale: 0.8, y: 10 }}
+                        animate={{ scale: 1, y: 0 }}
+                        transition={{ type: "spring", stiffness: 100, damping: 15 }}
+                        className={`${s.box} bg-white dark:bg-[#0d1117] flex items-center justify-center border border-slate-200/80 dark:border-[#30363d] shadow-2xl relative overflow-hidden`}
+                    >
+                        <img src="/mano-logo.svg" alt="MANO" className="w-full h-full object-contain" />
+                    </motion.div>
+                </div>
+
+                {/* Loading Header & Message */}
+                <div className="space-y-1.5 mt-1">
+                    <motion.h2 
+                        initial={{ opacity: 0, y: 5 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        transition={{ delay: 0.2 }}
+                        className={`${s.title} font-black text-slate-800 dark:text-white uppercase`}
+                    >
+                        MANO <span className="text-indigo-600 dark:text-indigo-400 font-medium">ERP PLATFORM</span>
+                    </motion.h2>
+                    {text && (
+                        <motion.p 
+                            animate={{ opacity: [0.4, 1, 0.4] }}
+                            transition={{
+                                duration: 2,
+                                repeat: Infinity,
+                                ease: "easeInOut"
+                            }}
+                            className={`${s.sub} text-slate-400 dark:text-slate-500 font-bold tracking-widest uppercase`}
+                        >
+                            {text}
+                        </motion.p>
+                    )}
+                </div>
+            </div>
+        </motion.div>
     );
 };
 
