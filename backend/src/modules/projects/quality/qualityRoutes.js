@@ -7,9 +7,9 @@ const upload = multer({ storage: multer.memoryStorage() });
 
 // Observations CRUD
 router.get('/', qualityController.listObservations);
-router.post('/', upload.single('photo'), qualityController.createObservation);
-router.put('/:obsId', upload.single('photo'), qualityController.updateObservation);
-router.post('/:obsId/fix', upload.single('photo'), qualityController.submitFix);
+router.post('/', upload.any(), qualityController.createObservation);
+router.put('/:obsId', upload.any(), qualityController.updateObservation);
+router.post('/:obsId/fix', upload.any(), qualityController.submitFix);
 router.post('/:obsId/approve', qualityController.approveFix);
 router.delete('/:obsId', qualityController.deleteObservation);
 

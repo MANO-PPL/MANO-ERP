@@ -29,15 +29,37 @@ export const listObservations = catchAsync(async (req, res) => {
     });
 });
 
+const parseLabels = (body) => {
+    if (!body) return [];
+    if (body.labels) {
+        if (Array.isArray(body.labels)) return body.labels;
+        try {
+            const parsed = JSON.parse(body.labels);
+            if (Array.isArray(parsed)) return parsed;
+        } catch (e) {
+            return [body.labels];
+        }
+    }
+    const extracted = [];
+    Object.keys(body).forEach(key => {
+        if (key.startsWith('label_') || key.startsWith('photo_label_')) {
+            extracted.push(body[key]);
+        }
+    });
+    return extracted;
+};
+
 export const createObservation = catchAsync(async (req, res) => {
     const projectId = getProjectId(req);
     const { location, note } = req.body;
-    const file = req.file; // From multer single upload
+    const files = req.files || (req.file ? [req.file] : []);
+    const labels = parseLabels(req.body);
 
     const result = await qualityService.createObservation(projectId, {
         location,
         note,
-        file,
+        files,
+        labels,
         userId: req.user.id
     });
 
@@ -51,14 +73,16 @@ export const createObservation = catchAsync(async (req, res) => {
 export const updateObservation = catchAsync(async (req, res) => {
     const projectId = getProjectId(req);
     const obsId = getObsId(req);
-    const { location, note, clearPhoto } = req.body;
-    const file = req.file;
+    const { location, note, clearPhotos, clearPhoto } = req.body;
+    const files = req.files || (req.file ? [req.file] : []);
+    const labels = parseLabels(req.body);
 
     const result = await qualityService.updateObservation(projectId, obsId, {
         location,
         note,
-        file,
-        clearPhoto
+        files,
+        labels,
+        clearPhotos: clearPhotos || clearPhoto
     }, req.user.id);
 
     res.json({
@@ -72,11 +96,13 @@ export const submitFix = catchAsync(async (req, res) => {
     const projectId = getProjectId(req);
     const obsId = getObsId(req);
     const { note } = req.body;
-    const file = req.file;
+    const files = req.files || (req.file ? [req.file] : []);
+    const labels = parseLabels(req.body);
 
     const result = await qualityService.submitFix(projectId, obsId, {
         note,
-        file
+        files,
+        labels
     }, req.user.id);
 
     res.json({
