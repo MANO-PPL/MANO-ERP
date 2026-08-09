@@ -52,10 +52,25 @@ async function presignUrl(url) {
 // ─── Categories Services ──────────────────────────────────────────────────────
 
 export async function getCategories(projectId) {
-    return await db('proj_drawing_categories')
+    const categories = await db('proj_drawing_categories')
         .where('project_id', projectId)
         .orderBy('sort_order', 'asc')
         .orderBy('id', 'asc');
+
+    const counts = await db('proj_drawings')
+        .select('category_id')
+        .countDistinct('drawing_group_id as drawing_count')
+        .groupBy('category_id');
+
+    const countMap = {};
+    counts.forEach(c => {
+        countMap[c.category_id] = parseInt(c.drawing_count || 0);
+    });
+
+    return categories.map(cat => ({
+        ...cat,
+        drawing_count: countMap[cat.id] || 0
+    }));
 }
 
 export async function createCategory(projectId, { name, icon_key }) {
