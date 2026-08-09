@@ -21,7 +21,7 @@ const Dashboard = ({ project, setActiveTab, canWrite }) => {
     });
     const [teamMembers, setTeamMembers] = useState([]);
     const [staffCount, setStaffCount] = useState(0);
-    const [vendorCount, setVendorCount] = useState(0);
+    const [partyCount, setPartyCount] = useState(0);
     const [recentMoms, setRecentMoms] = useState([]);
 
     // Parse metadata
@@ -103,12 +103,12 @@ const Dashboard = ({ project, setActiveTab, canWrite }) => {
             }
 
             try {
-                // Fetch vendors
-                const vendorsRes = await generalDocsApi.getVendors(targetId);
-                const vendorsList = vendorsRes?.vendors || (Array.isArray(vendorsRes) ? vendorsRes : []);
-                setVendorCount(vendorsList.length);
+                // Fetch project parties
+                const partiesRes = await generalDocsApi.getParties(targetId);
+                const partiesList = partiesRes?.parties || (Array.isArray(partiesRes) ? partiesRes : []);
+                setPartyCount(partiesList.length);
             } catch (err) {
-                console.error("Failed to load dashboard vendors data", err);
+                console.error("Failed to load dashboard parties data", err);
             }
 
             try {
@@ -296,7 +296,7 @@ const Dashboard = ({ project, setActiveTab, canWrite }) => {
                     <div className="flex items-center gap-3 text-[11px] font-semibold text-gray-500 dark:text-gray-400">
                         <span>{staffCount} Staff Roles</span>
                         <span>•</span>
-                        <span>{vendorCount} Vendors</span>
+                        <span>{partyCount} Parties</span>
                     </div>
                 </div>
 

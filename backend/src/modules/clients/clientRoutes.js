@@ -25,3 +25,11 @@ router.delete('/:id', clientController.deleteClient);
 router.post('/:id/interactions', clientController.addInteraction);
 
 export default router;
+
+// Generic contacts API, reusing the existing CRM controller and service.
+// It is a separate router so /clients keeps its existing client-only behavior.
+export const contactRoutes = express.Router();
+contactRoutes.use(authenticateJWT);
+contactRoutes.use(requireSystemPermission('clients'));
+contactRoutes.post('/', clientController.createMasterContact);
+contactRoutes.patch('/:id/promote', clientController.promoteContact);

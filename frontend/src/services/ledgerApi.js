@@ -42,11 +42,11 @@ export const ledgerApi = {
         return res.data;
     },
 
-    // ─── Project Vendor Directory ─────────────────────────────────────────────
-    // Returns active vendors for a project (pdoc_vendors JOIN crm_contacts).
+    // ─── Project Party Directory ──────────────────────────────────────────────
+    // Returns active parties for a project (pdoc_parties JOIN crm_contacts).
     // pv_id from this response is used as party_id in transaction lines.
-    getProjectVendors: async (projectId) => {
-        const res = await api.get(`/ledger/project-vendors/${projectId}`);
+    getProjectParties: async (projectId) => {
+        const res = await api.get(`/ledger/project-parties/${projectId}`);
         return res.data;
     },
 

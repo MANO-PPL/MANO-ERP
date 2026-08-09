@@ -71,21 +71,18 @@ export async function fetchAgendaById(projectId, agendaId) {
 
     if (!agenda) throw new AppError('Agenda not found', 404);
 
-    // Get participants for this agenda (using contacts table instead of vendors)
+    // Get participants for this agenda through project parties and CRM contacts.
     const participants = await db('pdoc_meeting_participants as pap')
         .leftJoin('pdoc_directory as pd', 'pap.pd_id', 'pd.pd_id')
-        .leftJoin('pdoc_vendors as pv', 'pd.pv_id', 'pv.pv_id')
-        .leftJoin('crm_contacts as c', 'pv.vendors_id', 'c.id')
+        .leftJoin('pdoc_parties as pp', 'pd.pv_id', 'pp.pv_id')
+        .leftJoin('crm_contacts as c', 'pp.party_id', 'c.id')
         .where('pap.meeting_id', agendaId)
-        .where(function () {
-            this.whereNull('c.category')
-                .orWhereRaw('LOWER(??) NOT IN (?, ?)', ['c.category', 'client', 'pmc']);
-        })
         .select([
             'pap.id as pap_id',
             'pap.pd_id',
             'pd.responsibilities',
             'c.name as company_name',
+            'c.category as category',
             'pd.contact_person',
             'pd.designation'
         ]);

@@ -69,25 +69,22 @@ async function verifyPartyStockSufficiency(trx, projectId, orgId, linesToValidat
 
     const partyIds = Array.from(new Set(outflowLines.map(l => l.party_id)));
 
-    // Fetch vendor details (category) from pdoc_vendors JOIN crm_contacts
-    const vendorDetails = await trx('pdoc_vendors as pv')
-        .join('crm_contacts as c', 'pv.vendors_id', 'c.id')
-        .whereIn('pv.pv_id', partyIds)
-        .where(function () {
-            this.whereNull('c.category')
-                .orWhereRaw('LOWER(??) NOT IN (?, ?)', ['c.category', 'client', 'pmc']);
-        })
-        .select('pv.pv_id', 'c.name', 'c.category');
+    // Fetch party details (category) from pdoc_parties JOIN crm_contacts.
+    // pdoc_parties links the project-party row to the CRM contact through party_id.
+    const partyDetails = await trx('pdoc_parties as pp')
+        .join('crm_contacts as c', 'pp.party_id', 'c.id')
+        .whereIn('pp.pv_id', partyIds)
+        .select('pp.pv_id', 'c.name', 'c.category');
 
-    const vendorMap = {};
-    vendorDetails.forEach(v => {
-        vendorMap[v.pv_id] = v;
+    const partyMap = {};
+    partyDetails.forEach(party => {
+        partyMap[party.pv_id] = party;
     });
 
     for (const line of outflowLines) {
-        const vendor = vendorMap[line.party_id];
-        const category = (vendor?.category || '').toLowerCase();
-        const partyName = vendor?.name || `Party #${line.party_id}`;
+        const party = partyMap[line.party_id];
+        const category = (party?.category || '').toLowerCase();
+        const partyName = party?.name || `Party #${line.party_id}`;
 
         // Suppliers can issue unlimited supply — skip stock balance enforcement for Suppliers
         if (category.includes('supplier')) {
@@ -119,7 +116,7 @@ async function verifyPartyStockSufficiency(trx, projectId, orgId, linesToValidat
 
 /**
  * Creates a new transaction with lines using auto-increment integer IDs.
- * party_id is always INT UNSIGNED referencing pdoc_vendors.pv_id.
+ * party_id is always INT UNSIGNED referencing pdoc_parties.pv_id.
  * Executed atomically in a database transaction with stock balance enforcement.
  */
 export async function createTransaction(txnData, linesData) {
@@ -143,7 +140,7 @@ export async function createTransaction(txnData, linesData) {
         const rawPartyId = line.party_id ?? line.partyId;
         const partyId    = parseIntOrNull(rawPartyId);
         if (!partyId || partyId <= 0) {
-            throw new AppError(`Line at index ${i} has invalid party_id "${rawPartyId}". Must be a positive integer (pdoc_vendors.pv_id)`, 400);
+            throw new AppError(`Line at index ${i} has invalid party_id "${rawPartyId}". Must be a positive integer (pdoc_parties.pv_id)`, 400);
         }
 
         const signedQty = Number(line.signed_qty ?? line.signedQty ?? line.qty);
@@ -288,7 +285,7 @@ export async function getTransactions(filters = {}) {
 }
 
 /**
- * Returns net inventory position per project resource for a given party (pdoc_vendors.pv_id).
+ * Returns net inventory position per project resource for a given party (pdoc_parties.pv_id).
  */
 export async function getPartyResourcePosition(pvId, rawProjectResourceId = null, rawProjectId = null, rawOrgId = null) {
     const partyId   = parseIntOrNull(pvId);
@@ -296,7 +293,7 @@ export async function getPartyResourcePosition(pvId, rawProjectResourceId = null
     const projectId = parseIntOrNull(rawProjectId);
     const projectResourceId = parseIntOrNull(rawProjectResourceId);
 
-    if (!partyId) throw new AppError('party_id (pdoc_vendors.pv_id) is required and must be a positive integer', 400);
+    if (!partyId) throw new AppError('party_id (pdoc_parties.pv_id) is required and must be a positive integer', 400);
 
     let query = db('txn_transaction_lines as l')
         .join('txn_transactions as t', 'l.transaction_id', 't.id')
@@ -335,14 +332,14 @@ export async function getPartyResourcePosition(pvId, rawProjectResourceId = null
 
 /**
  * Returns party ledger (passbook) with running balance per project resource.
- * party_id is pdoc_vendors.pv_id (INT UNSIGNED).
+ * party_id is pdoc_parties.pv_id (INT UNSIGNED).
  */
 export async function getPartyLedger(pvId, rawProjectId = null, rawOrgId = null) {
     const partyId   = parseIntOrNull(pvId);
     const orgId     = parseIntOrNull(rawOrgId);
     const projectId = parseIntOrNull(rawProjectId);
 
-    if (!partyId) throw new AppError('party_id (pdoc_vendors.pv_id) is required and must be a positive integer', 400);
+    if (!partyId) throw new AppError('party_id (pdoc_parties.pv_id) is required and must be a positive integer', 400);
 
     let query = db('txn_transaction_lines as l')
         .join('txn_transactions as t', 'l.transaction_id', 't.id')
@@ -390,25 +387,21 @@ export async function getPartyLedger(pvId, rawProjectId = null, rawOrgId = null)
 }
 
 /**
- * Returns the active project vendor list for a project (pdoc_vendors JOIN crm_contacts).
+ * Returns the active project party list for a project (pdoc_parties JOIN crm_contacts).
  * This is the source of truth for valid party_id values in transaction lines.
  */
-export async function getProjectVendors(rawProjectId) {
+export async function getProjectParties(rawProjectId) {
     const projectId = parseIntOrNull(rawProjectId);
     if (!projectId) throw new AppError('project_id is required', 400);
 
-    const vendors = await db('pdoc_vendors as pv')
-        .join('crm_contacts as c', 'pv.vendors_id', 'c.id')
-        .whereNull('pv.deleted_at')
-        .where('pv.project_id', projectId)
-        .where(function () {
-            this.whereNull('c.category')
-                .orWhereRaw('LOWER(??) NOT IN (?, ?)', ['c.category', 'client', 'pmc']);
-        })
+    const parties = await db('pdoc_parties as pp')
+        .join('crm_contacts as c', 'pp.party_id', 'c.id')
+        .whereNull('pp.deleted_at')
+        .where('pp.project_id', projectId)
         .select(
-            'pv.pv_id',
-            'pv.project_id',
-            'pv.vendors_id as crm_contact_id',
+            'pp.pv_id',
+            'pp.project_id',
+            'pp.party_id as crm_contact_id',
             'c.name',
             'c.category',
             'c.mobile',
@@ -417,7 +410,7 @@ export async function getProjectVendors(rawProjectId) {
         .orderBy('c.category')
         .orderBy('c.name');
 
-    return vendors;
+    return parties;
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -426,7 +419,7 @@ export async function getProjectVendors(rawProjectId) {
 
 /**
  * Assign supply from PMC/supplier (fromPartyId) to a contractor (toPartyId).
- * Both are pdoc_vendors.pv_id integers for this project.
+ * Both are pdoc_parties.pv_id integers for this project.
  */
 export async function assignSupplyToContractor({ orgId, projectId, fromPartyId, toPartyId, projectResourceId, qty, uomId, remarks, createdBy, status = TXN_STATUS.CONFIRMED }) {
     const txnData = {
@@ -460,7 +453,7 @@ export async function assignSupplyToContractor({ orgId, projectId, fromPartyId, 
 }
 
 /**
- * Transfer resource custody between two contractors (both pdoc_vendors.pv_id).
+ * Transfer resource custody between two contractors (both pdoc_parties.pv_id).
  */
 export async function transferBetweenContractors({ orgId, projectId, fromPartyId, toPartyId, projectResourceId, qty, uomId, remarks, createdBy, status = TXN_STATUS.CONFIRMED }) {
     const txnData = {

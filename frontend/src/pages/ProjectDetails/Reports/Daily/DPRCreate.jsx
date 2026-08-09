@@ -122,23 +122,23 @@ const DPRCreate = ({ onBack, initialData = null, isReadOnly = false, project = n
 
     const metrics = calculateMetrics(reportDate);
 
-    // Fetch Project Vendors for Vendor Selection
-    const [projectVendors, setProjectVendors] = useState([]);
+    // Fetch Project Parties for agency selection
+    const [projectParties, setProjectParties] = useState([]);
 
     useEffect(() => {
         const pId = project?.id || project?.dbId;
         if (!pId) return;
-        const fetchVendors = async () => {
+        const fetchParties = async () => {
             try {
-                const res = await generalDocsApi.getVendors(pId);
-                if (res && res.vendors) {
-                    setProjectVendors(res.vendors);
+                const res = await generalDocsApi.getParties(pId);
+                if (res && res.parties) {
+                    setProjectParties(res.parties);
                 }
             } catch (err) {
-                console.error('Failed to fetch project vendors:', err);
+                console.error('Failed to fetch project parties:', err);
             }
         };
-        fetchVendors();
+        fetchParties();
     }, [project]);
 
     // 2. Weather & Dynamic Time Slots State (Single default timer)
@@ -310,8 +310,8 @@ const DPRCreate = ({ onBack, initialData = null, isReadOnly = false, project = n
     }, [selectedCell, isEditingCell, labourRows, isReadOnly]);
 
     const addLabourRow = () => {
-        if (projectVendors.length === 0) {
-            customToast.warning('No vendors in project vendor list. Please add vendors in Project Settings / Vendors first.', 'No Vendors Found');
+        if (projectParties.length === 0) {
+            customToast.warning('No parties are linked to this project. Add parties from General Documents / Project Parties first.', 'No Parties Found');
         }
         const newRow = { agency: '', remarks: '' };
         LABOUR_KEYS.forEach(k => { newRow[k] = 0; });
@@ -895,8 +895,8 @@ const DPRCreate = ({ onBack, initialData = null, isReadOnly = false, project = n
                                                         onChange={(e) => updateLabourRow(rIdx, 'agency', e.target.value)}
                                                         className="w-full bg-transparent border-none outline-none font-bold text-gray-900 dark:text-white focus:bg-blue-50/20 p-0.5 text-[11px] cursor-pointer"
                                                     >
-                                                        <option value="" className="bg-white dark:bg-[#161b22] text-gray-400">-- Select Vendor / Agency --</option>
-                                                        {row.agency && !systemAgencies.includes(row.agency) && !projectVendors.some(v => v.name === row.agency) && (
+                                                        <option value="" className="bg-white dark:bg-[#161b22] text-gray-400">-- Select Party / Agency --</option>
+                                                        {row.agency && !systemAgencies.includes(row.agency) && !projectParties.some(v => v.name === row.agency) && (
                                                             <option value={row.agency} className="bg-white dark:bg-[#161b22] text-gray-900 dark:text-white font-semibold">
                                                                 {row.agency}
                                                             </option>
@@ -906,9 +906,9 @@ const DPRCreate = ({ onBack, initialData = null, isReadOnly = false, project = n
                                                                 <option key={sys} value={sys} className="bg-white dark:bg-[#161b22] text-gray-900 dark:text-white font-medium">{sys}</option>
                                                             ))}
                                                         </optgroup>
-                                                        {projectVendors.length > 0 && (
-                                                            <optgroup label="Project Vendors" className="bg-white dark:bg-[#161b22] text-blue-600 dark:text-blue-400 font-bold">
-                                                                {projectVendors.map((pv) => (
+                                                        {projectParties.length > 0 && (
+                                                            <optgroup label="Project Parties" className="bg-white dark:bg-[#161b22] text-blue-600 dark:text-blue-400 font-bold">
+                                                                {projectParties.map((pv) => (
                                                                     <option key={pv.pv_id || pv.name} value={pv.name} className="bg-white dark:bg-[#161b22] text-gray-900 dark:text-white font-medium">
                                                                         {pv.name} {pv.job_nature ? `(${pv.job_nature})` : ''}
                                                                     </option>

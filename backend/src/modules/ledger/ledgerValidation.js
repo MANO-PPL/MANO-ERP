@@ -23,7 +23,7 @@ export const ROLES = {
  *
  * Rules:
  * 1. Minimum 2 lines.
- * 2. Every line must have party_id (INT, pdoc_vendors.pv_id), project_resource_id, and valid signed_qty.
+ * 2. Every line must have party_id (INT, pdoc_parties.pv_id), project_resource_id, and valid signed_qty.
  * 3. SUM(signed_qty) grouped per project_resource_id must be zero (double-entry integrity).
  * 4. Type-specific rules for SUPPLY_ASSIGN and TRANSFER_PARTY.
  */
@@ -48,7 +48,7 @@ export function validateTransaction(header, lines) {
 
         const partyId = Number(line.party_id);
         if (!partyId || isNaN(partyId) || partyId <= 0) {
-            throw new AppError(`Line at index ${i} has invalid party_id "${line.party_id}". Must be a positive integer (pdoc_vendors.pv_id)`, 400);
+            throw new AppError(`Line at index ${i} has invalid party_id "${line.party_id}". Must be a positive integer (pdoc_parties.pv_id)`, 400);
         }
 
         if (!line.project_resource_id) {

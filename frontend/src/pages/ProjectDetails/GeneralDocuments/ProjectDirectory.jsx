@@ -8,8 +8,8 @@ import WorkflowPanel from '../../../components/WorkflowPanel';
 import { workflowApi } from '../../../services/workflowApi';
 import { toast } from 'react-toastify';
 
-/* ---- Inline Vendor Dropdown for Project Vendors ---- */
-const VendorSelector = ({ value, onChange, projectVendors }) => {
+/* ---- Inline Party Dropdown for Project Parties ---- */
+const PartySelector = ({ value, onChange, projectParties }) => {
     const [open, setOpen] = useState(false);
     const [search, setSearch] = useState('');
     const [coords, setCoords] = useState({ top: 0, left: 0, width: 0 });
@@ -35,9 +35,10 @@ const VendorSelector = ({ value, onChange, projectVendors }) => {
         setOpen(!open);
     };
 
-    const filtered = projectVendors.filter(v =>
+    const filtered = projectParties.filter(v =>
         v.name?.toLowerCase().includes(search.toLowerCase()) ||
-        v.job_nature?.toLowerCase().includes(search.toLowerCase())
+        v.job_nature?.toLowerCase().includes(search.toLowerCase()) ||
+        v.category?.toLowerCase().includes(search.toLowerCase())
     );
 
     return (
@@ -47,7 +48,7 @@ const VendorSelector = ({ value, onChange, projectVendors }) => {
                 onClick={handleToggle}
                 className="flex items-center justify-between w-full px-2 py-1 bg-white dark:bg-[#161b22] border border-blue-500/50 focus:border-blue-500 rounded text-xs outline-none dark:text-white transition-all min-h-[26px] gap-2"
             >
-                <span className="truncate max-w-[140px] text-left">{value || <span className="text-gray-400">Select vendor…</span>}</span>
+                <span className="truncate max-w-[140px] text-left">{value || <span className="text-gray-400">Select party…</span>}</span>
                 <ChevronDown size={12} className={`shrink-0 text-gray-400 transition-transform ${open ? 'rotate-180' : ''}`} />
             </button>
 
@@ -69,7 +70,7 @@ const VendorSelector = ({ value, onChange, projectVendors }) => {
                             <input
                                 autoFocus
                                 type="text"
-                                placeholder="Search project vendors…"
+                                placeholder="Search project parties…"
                                 className="w-full pl-7 pr-3 py-1.5 bg-gray-50 dark:bg-[#0d1117] border border-gray-200 dark:border-white/10 rounded-lg text-xs outline-none focus:border-blue-500 transition-all dark:text-white"
                                 value={search}
                                 onChange={e => setSearch(e.target.value)}
@@ -85,10 +86,12 @@ const VendorSelector = ({ value, onChange, projectVendors }) => {
                                 className="w-full px-3 py-2.5 flex flex-col items-start hover:bg-blue-50 dark:hover:bg-blue-900/20 border-b border-gray-50 dark:border-white/5 text-left group transition-colors"
                             >
                                 <span className="text-xs font-semibold text-gray-900 dark:text-white group-hover:text-blue-600 transition-colors uppercase tracking-tight">{v.name}</span>
-                                {v.job_nature && <span className="text-[10px] text-gray-400 mt-0.5 font-medium">{v.job_nature}</span>}
+                                <span className="text-[10px] text-gray-400 mt-0.5 font-medium">
+                                    {[v.category || 'Uncategorized', v.job_nature].filter(Boolean).join(' · ')}
+                                </span>
                             </button>
                         )) : (
-                            <div className="px-3 py-6 text-center text-xs text-gray-400">No project vendors found</div>
+                            <div className="px-3 py-6 text-center text-xs text-gray-400">No project parties found</div>
                         )}
                     </div>
                 </motion.div>,
@@ -122,7 +125,7 @@ const ProjectDirectory = ({ onBack, setExtraBreadcrumbs, canWrite }) => {
     const [editData, setEditData] = useState(null);
     const [hoveredRow, setHoveredRow] = useState(null);
     const [isInfoOpen, setIsInfoOpen] = useState(false);
-    const [globalVendors, setGlobalVendors] = useState([]);
+    const [projectParties, setProjectParties] = useState([]);
 
     const isEditable = canWrite && (workflowState.notConfigured || (workflowState.mode === 'edit' && workflowState.cycleId));
 
@@ -198,32 +201,32 @@ const ProjectDirectory = ({ onBack, setExtraBreadcrumbs, canWrite }) => {
             if (workflowState.instanceId && !workflowState.notConfigured) {
                 await fetchDirectory(null, false);
             } else {
-                const vendorsList = await fetchProjectVendors();
-                await fetchDirectory(vendorsList);
+                const partiesList = await fetchProjectParties();
+                await fetchDirectory(partiesList);
             }
         };
         load();
     }, [projectId, workflowState.loading, workflowState.instanceId, workflowState.cycleId]);
 
-    const fetchProjectVendors = async () => {
+    const fetchProjectParties = async () => {
         try {
-            const data = await generalDocsApi.getVendors(projectId);
-            if (data && data.vendors) {
-                setGlobalVendors(data.vendors);
-                return data.vendors;
+            const data = await generalDocsApi.getParties(projectId);
+            if (data && data.parties) {
+                setProjectParties(data.parties);
+                return data.parties;
             }
         } catch (error) {
-            console.error('Failed to fetch project vendors:', error);
+            console.error('Failed to fetch project parties:', error);
         }
         return [];
     };
 
-    const fetchDirectory = async (vendorsList = globalVendors, silent = false) => {
-        let list = vendorsList;
+    const fetchDirectory = async (partiesList = projectParties, silent = false) => {
+        let list = partiesList;
         let isSilent = silent;
-        if (typeof vendorsList === 'boolean') {
-            isSilent = vendorsList;
-            list = globalVendors;
+        if (typeof partiesList === 'boolean') {
+            isSilent = partiesList;
+            list = projectParties;
         }
 
         try {
@@ -233,28 +236,28 @@ const ProjectDirectory = ({ onBack, setExtraBreadcrumbs, canWrite }) => {
             if (workflowState && workflowState.instanceId && !workflowState.notConfigured) {
                 try {
                     let rows = [];
-                    let cycleVendors = [];
+                    let cycleParties = [];
                     // Try getting draft content if there is an active cycle
                     if (workflowState.cycleId) {
                         try {
                             const res = await workflowApi.getDraftContent(workflowState.instanceId);
                             rows = res.content_tables?.pdoc_directory || [];
-                            cycleVendors = res.content_tables?.pdoc_vendors || [];
+                            cycleParties = res.content_tables?.pdoc_vendors || [];
                         } catch (err) {
                             // Fall back to approved if draft is not accessible
                             const res = await workflowApi.getApprovedContent(workflowState.instanceId);
                             rows = res.content?.pdoc_directory || [];
-                            cycleVendors = res.content?.pdoc_vendors || [];
+                            cycleParties = res.content?.pdoc_vendors || [];
                         }
                     } else {
                         const res = await workflowApi.getApprovedContent(workflowState.instanceId);
                         rows = res.content?.pdoc_directory || [];
-                        cycleVendors = res.content?.pdoc_vendors || [];
+                        cycleParties = res.content?.pdoc_vendors || [];
                     }
 
-                    if (cycleVendors.length > 0) {
-                        setGlobalVendors(cycleVendors);
-                        list = cycleVendors;
+                    if (cycleParties.length > 0) {
+                        setProjectParties(cycleParties);
+                        list = cycleParties;
                     }
 
                     if (rows.length === 0) {
@@ -264,6 +267,7 @@ const ProjectDirectory = ({ onBack, setExtraBreadcrumbs, canWrite }) => {
                                 id: c.pd_id,
                                 pv_id: c.pv_id,
                                 name: c.company_name,
+                                category: c.category,
                                 nature: c.job_nature,
                                 person: c.contact_person,
                                 designation: c.designation,
@@ -279,12 +283,13 @@ const ProjectDirectory = ({ onBack, setExtraBreadcrumbs, canWrite }) => {
                     }
 
                     const mappedContacts = rows.map(c => {
-                        const matchedVendor = (list || []).find(gv => gv.pv_id === c.pv_id);
+                        const matchedParty = (list || []).find(party => party.pv_id === c.pv_id);
                         return {
                             id: c.pd_id,
                             pv_id: c.pv_id,
-                            name: matchedVendor?.name || c.company_name || '-',
-                            nature: matchedVendor?.job_nature || c.job_nature || '-',
+                            name: matchedParty?.name || c.company_name || '-',
+                            category: matchedParty?.category || c.category || 'Uncategorized',
+                            nature: matchedParty?.job_nature || c.job_nature || '-',
                             person: c.contact_person,
                             designation: c.designation,
                             responsibilities: c.responsibilities,
@@ -307,6 +312,7 @@ const ProjectDirectory = ({ onBack, setExtraBreadcrumbs, canWrite }) => {
                     id: c.pd_id,
                     pv_id: c.pv_id,
                     name: c.company_name,
+                    category: c.category,
                     nature: c.job_nature,
                     person: c.contact_person,
                     designation: c.designation,
@@ -330,6 +336,7 @@ const ProjectDirectory = ({ onBack, setExtraBreadcrumbs, canWrite }) => {
             id: `new-${Date.now()}`,
             pv_id: null,
             name: '',
+            category: '',
             nature: '',
             person: '',
             designation: '',
@@ -344,13 +351,14 @@ const ProjectDirectory = ({ onBack, setExtraBreadcrumbs, canWrite }) => {
         setEditData(newRecord);
     };
 
-    // Called when user picks a vendor from the inline dropdown
-    const handleVendorSelect = (vendor) => {
+    // Called when user picks a party from the inline dropdown
+    const handlePartySelect = (party) => {
         setEditData(prev => ({
             ...prev,
-            pv_id: vendor.pv_id,
-            name: vendor.name || '',
-            nature: vendor.job_nature || ''
+            pv_id: party.pv_id,
+            name: party.name || '',
+            category: party.category || 'Uncategorized',
+            nature: party.job_nature || ''
         }));
     };
 
@@ -430,7 +438,7 @@ const ProjectDirectory = ({ onBack, setExtraBreadcrumbs, canWrite }) => {
                     </button>
                     <div>
                         <h1 className="text-2xl font-medium text-gray-900 dark:text-white">Project Directory</h1>
-                        <p className="text-sm text-gray-500 dark:text-gray-400">Manage all project-related contacts and vendors.</p>
+                        <p className="text-sm text-gray-500 dark:text-gray-400">Manage all project-related contacts and parties.</p>
                     </div>
                 </div>
                 <div className="flex items-center space-x-3">
@@ -470,6 +478,7 @@ const ProjectDirectory = ({ onBack, setExtraBreadcrumbs, canWrite }) => {
                                     <col className="w-[50px]" />
                                     <col className="w-[60px]" />
                                     <col className="w-[220px]" />
+                                    <col className="w-[120px]" />
                                     <col className="w-[180px]" />
                                     <col className="w-[180px]" />
                                     <col className="w-[160px]" />
@@ -484,6 +493,7 @@ const ProjectDirectory = ({ onBack, setExtraBreadcrumbs, canWrite }) => {
                                         <th className="px-3 py-3 text-center"></th>
                                         <th className="px-4 py-3 font-medium capitalize text-[10px] tracking-widest text-center">Sl No.</th>
                                         <th className="px-4 py-3 font-medium capitalize text-[10px] tracking-widest">Company Name</th>
+                                        <th className="px-4 py-3 font-medium capitalize text-[10px] tracking-widest">Category</th>
                                         <th className="px-4 py-3 font-medium capitalize text-[10px] tracking-widest">Job Nature</th>
                                         <th className="px-4 py-3 font-medium capitalize text-[10px] tracking-widest">Person Name</th>
                                         <th className="px-4 py-3 font-medium capitalize text-[10px] tracking-widest">Designation</th>
@@ -519,16 +529,23 @@ const ProjectDirectory = ({ onBack, setExtraBreadcrumbs, canWrite }) => {
                                                     {/* Company Name */}
                                                     <td className="px-4 py-4" onClick={() => isEditable && !isEditing && handleEdit(contact)}>
                                                         {isEditing ? (
-                                                            <VendorSelector
+                                                            <PartySelector
                                                                 value={editData.name}
-                                                                onChange={handleVendorSelect}
-                                                                projectVendors={globalVendors}
+                                                                onChange={handlePartySelect}
+                                                                projectParties={projectParties}
                                                             />
                                                         ) : (
                                                             <div className="text-gray-900 dark:text-gray-200 cursor-pointer font-medium py-1">
                                                                 {contact.name || '-'}
                                                             </div>
                                                         )}
+                                                    </td>
+
+                                                    {/* Party Category */}
+                                                    <td className="px-4 py-4" onClick={() => isEditable && !isEditing && handleEdit(contact)}>
+                                                        <span className="inline-flex px-2 py-1 rounded-full border border-blue-500/20 bg-blue-500/10 text-blue-600 dark:text-blue-300 text-[9px] font-semibold uppercase tracking-wide">
+                                                            {contact.category || 'Uncategorized'}
+                                                        </span>
                                                     </td>
 
                                                     {/* Job Nature */}

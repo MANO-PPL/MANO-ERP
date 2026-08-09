@@ -5,14 +5,14 @@ export async function getJobNatures(orgId) {
     return await db('crm_job_nature').where('org_id', orgId).select('*');
 }
 
-export async function findOrCreateJobNature(orgId, jobName) {
+export async function findOrCreateJobNature(orgId, jobName, connection = db) {
     if (!jobName || !jobName.trim()) return null;
     const trimmed = jobName.trim();
 
-    const existing = await db('crm_job_nature').where({ job_name: trimmed, org_id: orgId }).first();
+    const existing = await connection('crm_job_nature').where({ job_name: trimmed, org_id: orgId }).first();
     if (existing) return existing.job_id;
 
-    const [newId] = await db('crm_job_nature').insert({ job_name: trimmed, org_id: orgId });
+    const [newId] = await connection('crm_job_nature').insert({ job_name: trimmed, org_id: orgId });
     return newId;
 }
 

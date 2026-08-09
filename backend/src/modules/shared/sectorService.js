@@ -5,14 +5,14 @@ export async function getSectors(orgId) {
     return await db('crm_sectors').where('org_id', orgId).select('*');
 }
 
-export async function findOrCreateSector(orgId, sectorName) {
+export async function findOrCreateSector(orgId, sectorName, connection = db) {
     if (!sectorName || !sectorName.trim()) return null;
     const trimmed = sectorName.trim();
 
-    const existing = await db('crm_sectors').where({ sector_name: trimmed, org_id: orgId }).first();
+    const existing = await connection('crm_sectors').where({ sector_name: trimmed, org_id: orgId }).first();
     if (existing) return existing.sector_id;
 
-    const [newId] = await db('crm_sectors').insert({ sector_name: trimmed, org_id: orgId });
+    const [newId] = await connection('crm_sectors').insert({ sector_name: trimmed, org_id: orgId });
     return newId;
 }
 

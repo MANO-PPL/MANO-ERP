@@ -11,6 +11,13 @@ export async function initializeCrmSchema() {
     for (const t of tables) {
         const hasTable = await db.schema.hasTable(t);
         if (hasTable) {
+            if (t === 'crm_contacts' && !(await db.schema.hasColumn(t, 'scope'))) {
+                await db.schema.alterTable(t, (table) => {
+                    table.enu('scope', ['master', 'project']).notNullable().defaultTo('master');
+                });
+                console.log('Added crm_contacts.scope with master default');
+            }
+
             const hasOrgId = await db.schema.hasColumn(t, 'org_id');
             if (!hasOrgId) {
                 await db.schema.alterTable(t, (table) => {
@@ -524,6 +531,241 @@ export async function batchSaveClients(orgId, payload = {}) {
             deletedCount: deleted.length
         };
     });
+}
+
+// ---------------------------------------------------------------------------
+// Scope-aware contact operations. These extend the existing CRM service so
+// master/project contacts stay in the same module as the current client CRUD.
+// ---------------------------------------------------------------------------
+
+const CONTACT_CATEGORIES = ['Contractor', 'Consultants', 'Supplier', 'Client', 'PMC'];
+const CONTACT_FIELDS = [
+    'id', 'org_id', 'name', 'scope', 'sector_id', 'job_nature_id', 'category',
+    'contact_person', 'designation', 'telephone_no', 'mobile', 'email', 'address',
+    'location', 'website', 'gst_no', 'constitution', 'reference', 'responsibility',
+    'remarks', 'created_at', 'updated_at'
+];
+
+function positiveContactId(value, field) {
+    const id = Number(value);
+    if (!Number.isInteger(id) || id <= 0) {
+        throw new AppError(`${field} must be a positive integer`, 400);
+    }
+    return id;
+}
+
+function normalizeContactCategory(category) {
+    if (category === undefined || category === null || category === '') return null;
+    const normalized = CONTACT_CATEGORIES.find(
+        value => value.toLowerCase() === String(category).trim().toLowerCase()
+    );
+    if (!normalized) {
+        throw new AppError(`Invalid category. Expected one of: ${CONTACT_CATEGORIES.join(', ')}`, 400);
+    }
+    return normalized;
+}
+
+function buildScopedContact(orgId, data, scope) {
+    if (!data?.name || !String(data.name).trim()) {
+        throw new AppError('Contact name is required', 400);
+    }
+
+    return {
+        org_id: orgId,
+        name: String(data.name).trim(),
+        scope,
+        sector_id: data.sector_id || null,
+        job_nature_id: data.job_nature_id || data.job_id || null,
+        category: normalizeContactCategory(data.category),
+        contact_person: data.contact_person || null,
+        designation: data.designation || null,
+        telephone_no: data.telephone_no || data.contact_no || null,
+        mobile: data.mobile || null,
+        email: data.email || null,
+        address: data.address || null,
+        location: data.location || null,
+        website: data.website || data.web_site || null,
+        gst_no: data.gst_no || data.qst_no || null,
+        constitution: data.constitution || null,
+        reference: data.reference || null,
+        responsibility: data.responsibility || null,
+        remarks: data.remarks || data.self_remark || null
+    };
+}
+
+async function resolveContactReferences(orgId, data, connection = db) {
+    const resolved = { ...data };
+    if ((data.sector || data.sector_name) && !data.sector_id) {
+        resolved.sector_id = await findOrCreateSector(orgId, data.sector || data.sector_name, connection);
+    }
+    if ((data.job_nature || data.job_nature_name || data.job_name) && !data.job_nature_id && !data.job_id) {
+        resolved.job_nature_id = await findOrCreateJobNature(
+            orgId, data.job_nature || data.job_nature_name || data.job_name, connection
+        );
+    }
+    return resolved;
+}
+
+async function getScopedProject(connection, projectId, orgId) {
+    const project = await connection('proj_projects').where({ id: projectId, org_id: orgId }).first();
+    if (!project) throw new AppError('Project not found', 404);
+    return project;
+}
+
+async function getScopedContact(connection, contactId, orgId) {
+    const contact = await connection('crm_contacts').where({ id: contactId, org_id: orgId }).first();
+    if (!contact) throw new AppError('Contact not found', 404);
+    return contact;
+}
+
+function duplicateLinkError(contactId, projectId) {
+    return new AppError(`Contact ${contactId} is already linked to project ${projectId}`, 409);
+}
+
+function isDuplicateEntry(error) {
+    return error?.code === 'ER_DUP_ENTRY' || error?.errno === 1062;
+}
+
+export async function createMasterContact(orgId, data) {
+    const resolved = await resolveContactReferences(orgId, data);
+    const [contactId] = await db('crm_contacts').insert(buildScopedContact(orgId, resolved, 'master'));
+    return getScopedContact(db, contactId, orgId);
+}
+
+export async function createProjectContact(orgId, projectId, data) {
+    const projectIdValue = positiveContactId(projectId, 'project_id');
+    return db.transaction(async (trx) => {
+        await getScopedProject(trx, projectIdValue, orgId);
+        const resolved = await resolveContactReferences(orgId, data, trx);
+        const [contactId] = await trx('crm_contacts').insert(buildScopedContact(orgId, resolved, 'project'));
+        try {
+            const [projectPartyId] = await trx('pdoc_parties').insert({ project_id: projectIdValue, party_id: contactId });
+            const contact = await trx('crm_contacts')
+                .where({ id: contactId, org_id: orgId })
+                .select(CONTACT_FIELDS)
+                .first();
+            return { contact, project_party_id: projectPartyId };
+        } catch (error) {
+            if (isDuplicateEntry(error)) throw duplicateLinkError(contactId, projectIdValue);
+            throw error;
+        }
+    });
+}
+
+async function linkContactInTransaction(trx, orgId, projectId, contactId) {
+    await getScopedProject(trx, projectId, orgId);
+    const contact = await getScopedContact(trx, contactId, orgId);
+    const currentLink = await trx('pdoc_parties')
+        .where({ project_id: projectId, party_id: contactId })
+        .whereNull('deleted_at')
+        .first();
+    if (currentLink) throw duplicateLinkError(contactId, projectId);
+
+    if (contact.scope === 'project') {
+        const otherLink = await trx('pdoc_parties as pp')
+            .where('pp.party_id', contactId)
+            .whereNull('pp.deleted_at')
+            .whereNot('pp.project_id', projectId)
+            .first('pp.project_id');
+        if (otherLink) {
+            throw new AppError(
+                `Project-exclusive contact ${contactId} is already linked to project ${otherLink.project_id}`,
+                409
+            );
+        }
+    }
+
+    try {
+        const [projectPartyId] = await trx('pdoc_parties').insert({ project_id: projectId, party_id: contactId });
+        return { project_party_id: projectPartyId, contact_id: contactId };
+    } catch (error) {
+        if (isDuplicateEntry(error)) throw duplicateLinkError(contactId, projectId);
+        throw error;
+    }
+}
+
+export async function linkContactToProject(orgId, projectId, contactId) {
+    const projectIdValue = positiveContactId(projectId, 'project_id');
+    const contactIdValue = positiveContactId(contactId, 'contact_id');
+    return db.transaction(trx => linkContactInTransaction(trx, orgId, projectIdValue, contactIdValue));
+}
+
+export async function linkContactsToProject(orgId, projectId, contactIds) {
+    if (!Array.isArray(contactIds) || contactIds.length === 0) {
+        throw new AppError('contact_ids must be a non-empty array', 400);
+    }
+    const projectIdValue = positiveContactId(projectId, 'project_id');
+    const uniqueIds = [...new Set(contactIds.map(id => positiveContactId(id, 'contact_id')))];
+    return db.transaction(async (trx) => {
+        await getScopedProject(trx, projectIdValue, orgId);
+        const linked = [];
+        for (const contactId of uniqueIds) {
+            linked.push(await linkContactInTransaction(trx, orgId, projectIdValue, contactId));
+        }
+        return linked;
+    });
+}
+
+function applyContactSearch(queryBuilder, query = {}) {
+    if (!query.search) return queryBuilder;
+    const search = `%${String(query.search).trim()}%`;
+    return queryBuilder.where(function () {
+        this.where('c.name', 'like', search)
+            .orWhere('c.category', 'like', search)
+            .orWhere('c.contact_person', 'like', search)
+            .orWhere('c.mobile', 'like', search)
+            .orWhere('c.email', 'like', search)
+            .orWhere('jn.job_name', 'like', search);
+    });
+}
+
+async function eligibleContacts(orgId, projectId, query = {}, connection = db) {
+    await getScopedProject(connection, projectId, orgId);
+    let builder = connection('crm_contacts as c')
+        .leftJoin('crm_job_nature as jn', 'c.job_nature_id', 'jn.job_id')
+        .where('c.org_id', orgId)
+        .where(function () {
+            this.where('c.scope', 'master').orWhereExists(function () {
+                this.select(connection.raw('1'))
+                    .from('pdoc_parties as own_pp')
+                    .whereRaw('own_pp.party_id = c.id')
+                    .andWhere('own_pp.project_id', projectId)
+                    .whereNull('own_pp.deleted_at');
+            });
+        });
+    builder = applyContactSearch(builder, query);
+    return builder
+        .select(
+            ...CONTACT_FIELDS.map(field => `c.${field}`),
+            'jn.job_name',
+            connection.raw(`(
+                SELECT pp.pv_id FROM pdoc_parties pp
+                WHERE pp.party_id = c.id AND pp.project_id = ? AND pp.deleted_at IS NULL
+                LIMIT 1
+            ) as project_party_id`, [projectId])
+        )
+        .orderBy('c.name', 'asc')
+        .limit(Math.min(parseInt(query.limit, 10) || 5000, 5000));
+}
+
+export async function getAvailableContacts(orgId, projectId, query = {}) {
+    const rows = await eligibleContacts(orgId, positiveContactId(projectId, 'project_id'), query);
+    return { contacts: rows, count: rows.length };
+}
+
+export async function getAvailableContactCandidates(orgId, projectId, query = {}) {
+    const rows = await eligibleContacts(orgId, positiveContactId(projectId, 'project_id'), query);
+    const candidates = rows.filter(contact => !contact.project_party_id);
+    return { parties: candidates, count: candidates.length };
+}
+
+export async function promoteContactToMaster(orgId, contactId) {
+    const contactIdValue = positiveContactId(contactId, 'contact_id');
+    await getScopedContact(db, contactIdValue, orgId);
+    await db('crm_contacts')
+        .where({ id: contactIdValue, org_id: orgId })
+        .update({ scope: 'master', updated_at: db.fn.now() });
+    return getScopedContact(db, contactIdValue, orgId);
 }
 
 export default {
