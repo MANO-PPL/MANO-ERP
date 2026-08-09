@@ -91,11 +91,11 @@ export async function getPartyLedger(req, res, next) {
     }
 }
 
-export async function getProjectVendors(req, res, next) {
+export async function getProjectParties(req, res, next) {
     try {
         const projectId = req.params.projectId || req.query.project_id || req.query.projectId;
         if (!projectId) throw new AppError('project_id is required', 400);
-        const result = await ledgerService.getProjectVendors(projectId);
+        const result = await ledgerService.getProjectParties(projectId);
         res.status(200).json({ status: 'success', results: result.length, data: result });
     } catch (err) {
         next(err);

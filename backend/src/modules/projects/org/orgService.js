@@ -3,7 +3,7 @@ import AppError from '../../../utils/AppError.js';
 
 /**
  * Fetch data for the Project Organization Chart
- * Aggregates project info, vendors, and directory data.
+ * Aggregates project info, parties, and directory data.
  */
 export async function getProjectOrgChart(projectId) {
     if (!projectId) throw new AppError('projectId is required', 400);
@@ -32,18 +32,14 @@ export async function getProjectOrgChart(projectId) {
         }
     }
 
-    // 2. Fetch Vendors (Project Vendors + Contacts Join)
-    const vendors = await db('pdoc_vendors as pv')
-        .leftJoin('crm_contacts as c', 'pv.vendors_id', 'c.id')
+    // 2. Fetch Parties (Project Parties + Contacts Join)
+    const parties = await db('pdoc_parties as pp')
+        .leftJoin('crm_contacts as c', 'pp.party_id', 'c.id')
         .leftJoin('crm_job_nature as jn', 'c.job_nature_id', 'jn.job_id')
-        .where('pv.project_id', projectId)
-        .where(function () {
-            this.whereNull('c.category')
-                .orWhereRaw('LOWER(??) NOT IN (?, ?)', ['c.category', 'client', 'pmc']);
-        })
+        .where('pp.project_id', projectId)
         .select([
-            'pv.pv_id',
-            'pv.vendors_id as vendor_id',
+            'pp.pv_id',
+            'pp.party_id as party_id',
             'c.name as company_name',
             'jn.job_name as job_nature',
             'c.mobile',
@@ -53,18 +49,14 @@ export async function getProjectOrgChart(projectId) {
 
     // 3. Fetch Directory (Project Directory + Contacts Join)
     const directory = await db('pdoc_directory as pd')
-        .leftJoin('pdoc_vendors as pv', 'pd.pv_id', 'pv.pv_id')
-        .leftJoin('crm_contacts as c', 'pv.vendors_id', 'c.id')
+        .leftJoin('pdoc_parties as pp', 'pd.pv_id', 'pp.pv_id')
+        .leftJoin('crm_contacts as c', 'pp.party_id', 'c.id')
         .leftJoin('crm_job_nature as jn', 'c.job_nature_id', 'jn.job_id')
         .where('pd.project_id', projectId)
-        .where(function () {
-            this.whereNull('c.category')
-                .orWhereRaw('LOWER(??) NOT IN (?, ?)', ['c.category', 'client', 'pmc']);
-        })
         .select([
             'pd.pd_id',
             'pd.pv_id',
-            'pv.vendors_id as vendor_id',
+            'pp.party_id as party_id',
             'c.name as company_name',
             'jn.job_name as job_nature',
             'pd.contact_person',
@@ -80,7 +72,7 @@ export async function getProjectOrgChart(projectId) {
         client_name: clientName,
         project_name: project.project_name,
         project_location: project.project_location,
-        vendors,
+        parties,
         directory
     };
 }

@@ -14,9 +14,9 @@ router.post('/transactions/:id/cancel',  controller.cancelTransaction);
 router.get('/party-position',            controller.getPartyResourcePosition);
 router.get('/party-ledger/:party_id',    controller.getPartyLedger);
 
-// ─── Project Vendor Directory (pdoc_vendors JOIN crm_contacts) ────────────────
+// ─── Project Party Directory (pdoc_parties JOIN crm_contacts) ────────────────
 // Returns the valid party list for a given project — pv_id is used as party_id
-router.get('/project-vendors/:projectId', controller.getProjectVendors);
+router.get('/project-parties/:projectId', controller.getProjectParties);
 
 // ─── Action Integration Endpoints ────────────────────────────────────────────
 router.post('/assign-supply',            controller.assignSupply);

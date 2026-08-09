@@ -53,8 +53,8 @@ const TransactionsIndex = ({ project, canWrite, isAdmin }) => {
     // Project-scoped resource library
     const [projectResources, setProjectResources] = useState([]);
     const [masterUnits, setMasterUnits] = useState([]);
-    // Project Vendors: [{pv_id, project_id, crm_contact_id, name, category, mobile, email}]
-    const [projectVendors, setProjectVendors] = useState([]);
+    // Project Parties: [{pv_id, project_id, crm_contact_id, name, category, mobile, email}]
+    const [projectParties, setProjectParties] = useState([]);
 
     // Live Stock Map for Fast Frontend Lookups: { "pvId_resId": netQty }
     const [stockMap, setStockMap] = useState({});
@@ -100,17 +100,17 @@ const TransactionsIndex = ({ project, canWrite, isAdmin }) => {
         }
     };
 
-    const loadProjectVendors = async () => {
+    const loadProjectParties = async () => {
         if (!projectId) return;
         try {
-            const res = await ledgerApi.getProjectVendors(projectId);
-            const vendors = Array.isArray(res?.data) ? res.data : [];
-            setProjectVendors(vendors);
-            if (vendors.length >= 1 && !selectedPartyId) {
-                setSelectedPartyId(String(vendors[0].pv_id));
+            const res = await ledgerApi.getProjectParties(projectId);
+            const parties = Array.isArray(res?.data) ? res.data : [];
+            setProjectParties(parties);
+            if (parties.length >= 1 && !selectedPartyId) {
+                setSelectedPartyId(String(parties[0].pv_id));
             }
         } catch (e) {
-            console.warn('Failed to load project vendors:', e);
+            console.warn('Failed to load project parties:', e);
         }
     };
 
@@ -136,7 +136,7 @@ const TransactionsIndex = ({ project, canWrite, isAdmin }) => {
         }
     };
 
-    // Rebuilds live stock map: { "pvId_projectResourceId": netQty }
+    // Rebuilds live stock map: { "partyId_projectResourceId": netQty }
     const rebuildStockMap = (txnsList) => {
         const map = {};
         txnsList.forEach(t => {
@@ -170,7 +170,7 @@ const TransactionsIndex = ({ project, canWrite, isAdmin }) => {
     useEffect(() => {
         loadTransactions();
         loadMasterLibraries();
-        loadProjectVendors();
+        loadProjectParties();
     }, [projectId, typeFilter, statusFilter]);
 
     useEffect(() => {
@@ -181,8 +181,8 @@ const TransactionsIndex = ({ project, canWrite, isAdmin }) => {
 
     // Initialize modal default lines when opened
     const handleOpenModal = () => {
-        const v1 = projectVendors.length > 0 ? String(projectVendors[0].pv_id) : '';
-        const v2 = projectVendors.length > 1 ? String(projectVendors[1].pv_id) : v1;
+        const v1 = projectParties.length > 0 ? String(projectParties[0].pv_id) : '';
+        const v2 = projectParties.length > 1 ? String(projectParties[1].pv_id) : v1;
         const r1 = projectResources.length > 0 ? String(projectResources[0].project_resource_id) : '';
         const u1 = getDefaultUnitId(r1);
 
@@ -196,16 +196,16 @@ const TransactionsIndex = ({ project, canWrite, isAdmin }) => {
 
     // ─── Helpers ──────────────────────────────────────────────────────────────
 
-    // Resolve vendor object from pv_id
-    const getVendorObj = (pvId) => {
+    // Resolve party object from the project-party link ID.
+    const getPartyObj = (pvId) => {
         if (!pvId && pvId !== 0) return null;
-        return projectVendors.find(v => String(v.pv_id) === String(pvId)) || null;
+        return projectParties.find(party => String(party.pv_id) === String(pvId)) || null;
     };
 
-    // Resolve vendor name from pv_id
+    // Resolve party name from the project-party link ID.
     const getPartyName = (pvId) => {
-        const v = getVendorObj(pvId);
-        return v ? (v.name || `Vendor #${pvId}`) : `Party #${pvId}`;
+        const party = getPartyObj(pvId);
+        return party ? (party.name || `Party #${pvId}`) : `Party #${pvId}`;
     };
 
     // Resolve resource object from ID
@@ -245,8 +245,8 @@ const TransactionsIndex = ({ project, canWrite, isAdmin }) => {
 
     // Stock sufficiency checker for a given party and resource
     const getStockAvailability = (pvId, projectResourceId) => {
-        const vendor = getVendorObj(pvId);
-        const category = (vendor?.category || '').toLowerCase();
+        const party = getPartyObj(pvId);
+        const category = (party?.category || '').toLowerCase();
         const isSupplier = category.includes('supplier');
 
         if (isSupplier) {
@@ -286,7 +286,7 @@ const TransactionsIndex = ({ project, canWrite, isAdmin }) => {
     };
 
     const handleAddLine = () => {
-        const v1 = projectVendors.length > 0 ? String(projectVendors[0].pv_id) : '';
+        const v1 = projectParties.length > 0 ? String(projectParties[0].pv_id) : '';
         const r1 = projectResources.length > 0 ? String(projectResources[0].project_resource_id) : '';
         const u1 = getDefaultUnitId(r1);
         setLines(prev => [
@@ -432,13 +432,13 @@ const TransactionsIndex = ({ project, canWrite, isAdmin }) => {
                         Resource Transactions & Party Ledger
                     </h1>
                     <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
-                        Dynamic multi-party double entry with real-time contractor stock verification — sourced from <span className="font-mono text-blue-500">pdoc_vendors → crm_contacts</span>
+                        Dynamic multi-party double entry with real-time contractor stock verification — sourced from <span className="font-mono text-blue-500">pdoc_parties → crm_contacts</span>
                     </p>
                 </div>
                 <div className="flex items-center gap-3">
                     <button
                         type="button"
-                        onClick={() => { loadTransactions(); loadProjectVendors(); if (subTab === 'party-hub') loadPartyHubData(selectedPartyId); }}
+                        onClick={() => { loadTransactions(); loadProjectParties(); if (subTab === 'party-hub') loadPartyHubData(selectedPartyId); }}
                         className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700 transition cursor-pointer"
                     >
                         <RefreshCw className="w-3.5 h-3.5" />
@@ -448,8 +448,8 @@ const TransactionsIndex = ({ project, canWrite, isAdmin }) => {
                         <button
                             type="button"
                             onClick={handleOpenModal}
-                            disabled={projectVendors.length < 2}
-                            title={projectVendors.length < 2 ? 'Need at least 2 project vendors to create a transaction' : ''}
+                            disabled={projectParties.length < 2}
+                            title={projectParties.length < 2 ? 'Need at least 2 project parties to create a transaction' : ''}
                             className="flex items-center gap-2 px-4 py-2 text-xs font-semibold rounded-lg bg-blue-600 hover:bg-blue-700 text-white shadow-sm transition cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
                         >
                             <Plus className="w-4 h-4" />
@@ -459,10 +459,10 @@ const TransactionsIndex = ({ project, canWrite, isAdmin }) => {
                 </div>
             </div>
 
-            {/* Vendor count warning */}
-            {projectVendors.length === 0 && (
+            {/* Project party count warning */}
+            {projectParties.length === 0 && (
                 <div className="mb-4 px-4 py-3 bg-amber-50 dark:bg-amber-950/40 border border-amber-200 dark:border-amber-800 rounded-xl text-xs text-amber-800 dark:text-amber-300 font-medium">
-                    ⚠️ No active vendors found for this project. Add vendors in <strong>Project Settings → Vendors</strong> to enable transactions.
+                    ⚠️ No active parties found for this project. Add parties in <strong>Project Settings → Parties</strong> to enable transactions.
                 </div>
             )}
 
@@ -491,9 +491,9 @@ const TransactionsIndex = ({ project, canWrite, isAdmin }) => {
                 </div>
                 <div className="bg-white dark:bg-[#161b22] border border-gray-200 dark:border-gray-800 rounded-xl p-4 shadow-sm">
                     <div className="flex items-center justify-between text-gray-500 dark:text-gray-400 text-xs font-medium mb-1">
-                        <span>Project Vendors</span><UserCheck className="w-4 h-4 text-emerald-500" />
+                        <span>Project Parties</span><UserCheck className="w-4 h-4 text-emerald-500" />
                     </div>
-                    <div className="text-2xl font-bold text-emerald-600 dark:text-emerald-400">{projectVendors.length}</div>
+                    <div className="text-2xl font-bold text-emerald-600 dark:text-emerald-400">{projectParties.length}</div>
                     <div className="text-[11px] text-gray-500 dark:text-gray-400 mt-1">Active in this project</div>
                 </div>
             </div>
@@ -628,7 +628,7 @@ const TransactionsIndex = ({ project, canWrite, isAdmin }) => {
                                                                 <table className="w-full text-left text-[11px]">
                                                                     <thead className="bg-gray-100 dark:bg-gray-700/50 text-gray-600 dark:text-gray-300 font-semibold border-b border-gray-200 dark:border-gray-700">
                                                                         <tr>
-                                                                            <th className="p-2">Party / Vendor</th>
+                            <th className="p-2">Party</th>
                                                                             <th className="p-2">Material</th>
                                                                             <th className="p-2">Role</th>
                                                                             <th className="p-2 text-right">Signed Qty</th>
@@ -672,7 +672,7 @@ const TransactionsIndex = ({ project, canWrite, isAdmin }) => {
                             <Building2 className="w-5 h-5 text-blue-600 dark:text-blue-400" />
                             <div>
                                 <h2 className="text-sm font-bold text-gray-900 dark:text-white">Party Stock & Passbook</h2>
-                                <p className="text-xs text-gray-500">Select a project vendor to view stock and transaction history.</p>
+                                <p className="text-xs text-gray-500">Select a project party to view stock and transaction history.</p>
                             </div>
                         </div>
                         <div className="flex items-center gap-2">
@@ -681,8 +681,8 @@ const TransactionsIndex = ({ project, canWrite, isAdmin }) => {
                                 onChange={(e) => setSelectedPartyId(e.target.value)}
                                 className="text-xs font-bold bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-700 rounded-lg px-3 py-1.5 focus:outline-none cursor-pointer"
                             >
-                                <option value="">— Select Vendor —</option>
-                                {projectVendors.map(v => (
+                                <option value="">— Select Party —</option>
+                                {projectParties.map(v => (
                                     <option key={v.pv_id} value={v.pv_id}>
                                         {v.name} {v.category ? `(${v.category})` : ''}
                                     </option>
@@ -703,10 +703,10 @@ const TransactionsIndex = ({ project, canWrite, isAdmin }) => {
                     <div className="bg-white dark:bg-[#161b22] border border-gray-200 dark:border-gray-800 rounded-xl p-5 shadow-sm">
                         <h3 className="text-xs font-bold uppercase tracking-wider text-gray-500 mb-3 flex items-center gap-1.5">
                             <Package className="w-4 h-4 text-indigo-500" />
-                            Net Stock — {selectedPartyId ? getPartyName(selectedPartyId) : 'Select a vendor'}
+                            Net Stock — {selectedPartyId ? getPartyName(selectedPartyId) : 'Select a party'}
                         </h3>
                         {!selectedPartyId ? (
-                            <div className="p-4 text-xs text-gray-400 italic">Select a vendor above.</div>
+                            <div className="p-4 text-xs text-gray-400 italic">Select a party above.</div>
                         ) : partyLoading ? (
                             <div className="p-4 text-xs text-gray-500">Loading...</div>
                         ) : partyPositions.length === 0 ? (
@@ -748,7 +748,7 @@ const TransactionsIndex = ({ project, canWrite, isAdmin }) => {
                     <div className="bg-white dark:bg-[#161b22] border border-gray-200 dark:border-gray-800 rounded-xl p-5 shadow-sm overflow-hidden">
                         <h3 className="text-xs font-bold uppercase tracking-wider text-gray-500 mb-3 flex items-center gap-1.5">
                             <FileText className="w-4 h-4 text-blue-500" />
-                            Passbook — {selectedPartyId ? getPartyName(selectedPartyId) : 'Select a vendor'}
+                            Passbook — {selectedPartyId ? getPartyName(selectedPartyId) : 'Select a party'}
                         </h3>
                         <div className="overflow-x-auto">
                             <table className="w-full text-left text-xs border-collapse">
@@ -889,10 +889,10 @@ const TransactionsIndex = ({ project, canWrite, isAdmin }) => {
                                                     </select>
                                                 </div>
 
-                                                {/* Party / Vendor Select */}
+                                                {/* Party Select */}
                                                 <div className="sm:col-span-3">
                                                     <div className="flex items-center justify-between mb-1">
-                                                        <label className="block text-[10px] font-semibold text-gray-500">Party / Vendor</label>
+                                                        <label className="block text-[10px] font-semibold text-gray-500">Party</label>
                                                         {line.direction === 'OUT' && line.partyId && line.projectResourceId && (
                                                             <span className={`text-[9px] font-bold font-mono ${
                                                                 stockInfo.isSupplier
@@ -910,7 +910,7 @@ const TransactionsIndex = ({ project, canWrite, isAdmin }) => {
                                                         className="w-full text-xs bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-700 rounded-lg p-2 font-medium cursor-pointer"
                                                     >
                                                         <option value="">— Select Party —</option>
-                                                        {projectVendors.map(v => (
+                                                        {projectParties.map(v => (
                                                             <option key={v.pv_id} value={v.pv_id}>
                                                                 {v.name} {v.category ? `(${v.category})` : ''}
                                                             </option>

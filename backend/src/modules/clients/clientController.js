@@ -4,6 +4,14 @@ import AppError from '../../utils/AppError.js';
 import ExcelJS from 'exceljs';
 import { PassThrough } from 'stream';
 
+const parseContactId = (value, field) => {
+    const id = Number(value);
+    if (!Number.isInteger(id) || id <= 0) {
+        throw new AppError(`${field} must be a positive integer`, 400);
+    }
+    return id;
+};
+
 export const listClients = catchAsync(async (req, res) => {
     const { clients, total, page, limit } = await clientService.getClients(req.user.org_id, req.query);
     res.json({ success: true, clients, total, page, limit });
@@ -131,6 +139,29 @@ export const addInteraction = catchAsync(async (req, res) => {
     res.status(201).json({ success: true, message: 'Interaction logged successfully', id: newId });
 });
 
+export const createMasterContact = catchAsync(async (req, res) => {
+    const contact = await clientService.createMasterContact(req.user.org_id, req.body || {});
+    res.status(201).json({ success: true, contact });
+});
+
+export const createProjectContact = catchAsync(async (req, res) => {
+    const projectId = parseContactId(req.params.id, 'project_id');
+    const result = await clientService.createProjectContact(req.user.org_id, projectId, req.body || {});
+    res.status(201).json({ success: true, ...result });
+});
+
+export const listAvailableContacts = catchAsync(async (req, res) => {
+    const projectId = parseContactId(req.params.id, 'project_id');
+    const result = await clientService.getAvailableContacts(req.user.org_id, projectId, req.query);
+    res.json({ success: true, ...result });
+});
+
+export const promoteContact = catchAsync(async (req, res) => {
+    const contactId = parseContactId(req.params.id, 'contact_id');
+    const contact = await clientService.promoteContactToMaster(req.user.org_id, contactId);
+    res.json({ success: true, contact });
+});
+
 export default {
     listClients,
     getClient,
@@ -141,5 +172,9 @@ export default {
     bulkUpload,
     bulkValidate,
     bulkJson,
-    addInteraction
+    addInteraction,
+    createMasterContact,
+    createProjectContact,
+    listAvailableContacts,
+    promoteContact
 };

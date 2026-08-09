@@ -2,7 +2,7 @@ import express from 'express';
 import multer from 'multer';
 import projectController from './core/projectController.js';
 import directoryRoutes from './directory/directoryRoutes.js';
-import vendorRoutes from './vendors/vendorRoutes.js';
+import partyRoutes from './parties/partyRoutes.js';
 import staffRoutes from './staff/staffRoutes.js';
 import summaryRoutes from './summary/summaryRoutes.js';
 import agendaRoutes from './agenda/agendaRoutes.js';
@@ -13,6 +13,7 @@ import tasksRoutes from './tasks/tasksRoutes.js';
 import drawingsRoutes from './drawings/drawingsRoutes.js';
 import qualityRoutes from './quality/qualityRoutes.js';
 import projectResourceRoutes from './resources/projectResourceRoutes.js';
+import clientController from '../clients/clientController.js';
 import { authenticateJWT, restrictTo, requireProjectPermission, requireProjectAssignment } from '../../middleware/auth.js';
 
 const router = express.Router();
@@ -39,8 +40,12 @@ router.delete('/:id/members/:user_id', restrictTo('admin'), projectController.re
 // Project Directory (sub-resource under each project)
 router.use('/:id/directory', requireProjectPermission('directory'), directoryRoutes);
 
-// Project Vendors (sub-resource under each project)
-router.use('/:id/vendors', requireProjectPermission('vendors'), vendorRoutes);
+// Project Parties (backed by pdoc_parties)
+router.use('/:id/parties', requireProjectPermission('parties'), partyRoutes);
+
+// Scope-aware contacts: project-exclusive creation and project dropdown data.
+router.post('/:id/contacts', requireProjectPermission('parties'), clientController.createProjectContact);
+router.get('/:id/available-contacts', requireProjectPermission('parties'), clientController.listAvailableContacts);
 
 // Project Staff (sub-resource under each project)
 router.use('/:id/staff', requireProjectPermission('staff'), staffRoutes);

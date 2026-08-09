@@ -5,19 +5,16 @@ export async function fetchProjectDirectory(projectId) {
     if (!projectId) throw new AppError('projectId is required', 400);
 
     const directory = await db('pdoc_directory as pd')
-        .leftJoin('pdoc_vendors as pv', 'pd.pv_id', 'pv.pv_id')
-        .leftJoin('crm_contacts as c', 'pv.vendors_id', 'c.id')
+        .leftJoin('pdoc_parties as pp', 'pd.pv_id', 'pp.pv_id')
+        .leftJoin('crm_contacts as c', 'pp.party_id', 'c.id')
         .leftJoin('crm_job_nature as jn', 'c.job_nature_id', 'jn.job_id')
         .where('pd.project_id', projectId)
-        .where(function () {
-            this.whereNull('c.category')
-                .orWhereRaw('LOWER(??) NOT IN (?, ?)', ['c.category', 'client', 'pmc']);
-        })
         .select([
             'pd.pd_id',
             'pd.project_id',
-            'pv.vendors_id as vendor_id',
+            'pp.party_id as party_id',
             'c.name as company_name',
+            'c.category as category',
             'jn.job_name as job_nature',
             'pd.contact_person',
             'pd.designation',
@@ -40,11 +37,11 @@ export async function fetchDirectoryCount(projectId = null) {
 }
 
 export async function insertDirectoryItem(data) {
-    // Find pv_id from pdoc_vendors based on vendor_id
+    // Find pv_id from pdoc_parties based on the master party ID.
     let pv_id = data.pv_id || null;
-    if (!pv_id && (data.vendor_id || data.vendors_id)) {
-        const v = await db('pdoc_vendors')
-            .where({ project_id: data.project_id, vendors_id: data.vendor_id || data.vendors_id })
+    if (!pv_id && data.party_id) {
+        const v = await db('pdoc_parties')
+            .where({ project_id: data.project_id, party_id: data.party_id })
             .first();
         if (v) pv_id = v.pv_id;
     }
@@ -65,12 +62,12 @@ export async function insertDirectoryItem(data) {
 
 export async function updateDirectoryItem(projectId, id, data = {}) {
     const updateData = {};
-    if (data.vendor_id !== undefined || data.pv_id !== undefined) {
+    if (data.party_id !== undefined || data.pv_id !== undefined) {
         let pv_id = data.pv_id || null;
-        const vId = data.vendor_id || data.pv_id;
+        const vId = data.party_id || data.pv_id;
         if (vId) {
-            const v = await db('pdoc_vendors')
-                .where({ project_id: projectId, vendors_id: vId })
+            const v = await db('pdoc_parties')
+                .where({ project_id: projectId, party_id: vId })
                 .first();
             if (v) pv_id = v.pv_id;
         }

@@ -20,6 +20,7 @@ import { initializeQualitySchema } from './src/modules/projects/quality/qualityS
 import { initializeProjectSchema } from './src/modules/projects/core/projectService.js';
 import { initializeResourceSchema } from './src/modules/inventory/resourceService.js';
 import { initializeProjectResourceSchema } from './src/modules/projects/resources/projectResourceService.js';
+import { initializeProjectPartiesSchema } from './src/modules/projects/parties/partyService.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -53,6 +54,7 @@ server.listen(PORT, '0.0.0.0', async () => {
         await initializeProjectSchema();
         await initializeResourceSchema();
         await initializeProjectResourceSchema();
+        await initializeProjectPartiesSchema();
     } catch (schemaErr) {
         console.error('Schema initialization warning/error:', schemaErr.message || schemaErr);
     }

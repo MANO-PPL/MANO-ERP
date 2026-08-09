@@ -8,8 +8,8 @@ import WorkflowPanel from '../../../../components/WorkflowPanel';
 import { workflowApi } from '../../../../services/workflowApi';
 import { toast } from 'react-toastify';
 
-// --- Vendor Selector Dropdown ---
-const VendorSelector = ({ value, onChange, globalVendors }) => {
+// --- Party Selector Dropdown ---
+const PartySelector = ({ value, onChange, projectParties }) => {
     const [open, setOpen] = useState(false);
     const [search, setSearch] = useState('');
     const [coords, setCoords] = useState({ top: 0, left: 0, width: 0 });
@@ -29,10 +29,11 @@ const VendorSelector = ({ value, onChange, globalVendors }) => {
         setOpen(!open);
     };
 
-    const filtered = globalVendors.filter(v =>
+    const filtered = projectParties.filter(v =>
         v.company_name?.toLowerCase().includes(search.toLowerCase()) ||
         v.job_nature?.toLowerCase().includes(search.toLowerCase()) ||
-        v.contact_person?.toLowerCase().includes(search.toLowerCase())
+        v.contact_person?.toLowerCase().includes(search.toLowerCase()) ||
+        v.category?.toLowerCase().includes(search.toLowerCase())
     );
 
     return (
@@ -42,7 +43,7 @@ const VendorSelector = ({ value, onChange, globalVendors }) => {
                 onClick={handleToggle}
                 className="flex items-center justify-between w-full px-2 py-1 bg-transparent border border-blue-500/40 hover:border-blue-500 rounded text-xs outline-none dark:text-white transition-all min-h-[26px] gap-2"
             >
-                <span className="truncate text-left flex-1">{value || <span className="text-gray-400">Select vendor…</span>}</span>
+                <span className="truncate text-left flex-1">{value || <span className="text-gray-400">Select party…</span>}</span>
                 <ChevronDown size={12} className={`shrink-0 text-gray-400 transition-transform ${open ? 'rotate-180' : ''}`} />
             </button>
             
@@ -64,7 +65,7 @@ const VendorSelector = ({ value, onChange, globalVendors }) => {
                             <input
                                 autoFocus
                                 type="text"
-                                placeholder="Search vendors…"
+                                placeholder="Search parties…"
                                 className="w-full pl-7 pr-3 py-1.5 bg-gray-50 dark:bg-[#0d1117] border border-gray-200 dark:border-white/10 rounded-lg text-xs outline-none focus:border-blue-500 transition-all dark:text-white"
                                 value={search}
                                 onChange={e => setSearch(e.target.value)}
@@ -74,16 +75,18 @@ const VendorSelector = ({ value, onChange, globalVendors }) => {
                     <div className="overflow-y-auto custom-scrollbar flex-1">
                         {filtered.length > 0 ? filtered.map((v, idx) => (
                             <button
-                                key={v.id ?? v.vendor_id ?? v._id ?? v.company_name ?? idx}
+                                key={v.id ?? v.party_id ?? v._id ?? v.company_name ?? idx}
                                 type="button"
                                 onClick={() => { onChange(v); setOpen(false); setSearch(''); }}
                                 className="w-full px-3 py-2.5 flex flex-col items-start hover:bg-blue-50 dark:hover:bg-blue-900/20 border-b border-gray-50 dark:border-white/5 text-left group transition-colors"
                             >
                                 <span className="text-xs font-semibold text-gray-900 dark:text-white group-hover:text-blue-600 transition-colors uppercase tracking-tight">{v.company_name}</span>
-                                {v.contact_person && <span className="text-[10px] text-gray-400 mt-0.5 font-medium">{v.contact_person}{v.job_nature ? ` — ${v.job_nature}` : ''}</span>}
+                                <span className="text-[10px] text-gray-400 mt-0.5 font-medium">
+                                    {[v.category || 'Uncategorized', v.contact_person, v.job_nature].filter(Boolean).join(' — ')}
+                                </span>
                             </button>
                         )) : (
-                            <div className="px-3 py-6 text-center text-xs text-gray-400">No vendors found</div>
+                            <div className="px-3 py-6 text-center text-xs text-gray-400">No parties found</div>
                         )}
                     </div>
                 </motion.div>,
@@ -384,6 +387,7 @@ const AgendaDetail = ({ onBack, setExtraBreadcrumbs, agendaId: id, canWrite }) =
                         id: p.pap_id || p.id || Math.random(),
                         pd_id: p.pd_id,
                         organization: p.company_name || p.organization || '',
+                        category: p.category || '',
                         responsibility: p.responsibilities || p.responsibility || '',
                         representatives: p.contact_person || p.representatives || ''
                     }));
@@ -401,7 +405,7 @@ const AgendaDetail = ({ onBack, setExtraBreadcrumbs, agendaId: id, canWrite }) =
             }
         } else if (id === 'new') {
             setParticipants([
-                { id: Date.now() + 1, organization: '', responsibility: '', representatives: '' }
+                { id: Date.now() + 1, organization: '', category: '', responsibility: '', representatives: '' }
             ]);
             setPoints([
                 { id: Date.now() + 2, slNo: '1', description: '', remarks: '' }
@@ -424,12 +428,13 @@ const AgendaDetail = ({ onBack, setExtraBreadcrumbs, agendaId: id, canWrite }) =
         if (directoryContacts.length === 0) return;
         setParticipants(prev => prev.map(p => {
             if (!p.pd_id) return p;
-            if (p.organization && p.responsibility && p.representatives) return p; // already enriched
+            if (p.organization && p.category && p.responsibility && p.representatives) return p; // already enriched
             const dir = directoryContacts.find(d => d.pd_id === p.pd_id || d.id === p.pd_id);
             if (!dir) return p;
             return {
                 ...p,
                 organization: p.organization || dir.company_name || '',
+                category: p.category || dir.category || '',
                 responsibility: p.responsibility || dir.job_nature || '',
                 representatives: p.representatives || dir.contact_person || ''
             };
@@ -472,6 +477,7 @@ const AgendaDetail = ({ onBack, setExtraBreadcrumbs, agendaId: id, canWrite }) =
                                 id: p.id || p.pap_id || `wf-p-${i}`,
                                 pd_id: p.pd_id,
                                 organization: p.company_name || p.organization || dir?.company_name || '',
+                                category: p.category || dir?.category || '',
                                 responsibility: p.responsibilities || p.responsibility || dir?.job_nature || '',
                                 representatives: p.contact_person || p.representatives || dir?.contact_person || ''
                             };
@@ -506,6 +512,7 @@ const AgendaDetail = ({ onBack, setExtraBreadcrumbs, agendaId: id, canWrite }) =
                                 id: p.id || p.pap_id || `wf-p-${i}`,
                                 pd_id: p.pd_id,
                                 organization: p.company_name || p.organization || dir?.company_name || '',
+                                category: p.category || dir?.category || '',
                                 responsibility: p.responsibilities || p.responsibility || dir?.job_nature || '',
                                 representatives: p.contact_person || p.representatives || dir?.contact_person || ''
                             };
@@ -698,7 +705,7 @@ const AgendaDetail = ({ onBack, setExtraBreadcrumbs, agendaId: id, canWrite }) =
 
     // --- Participants Actions ---
     const addParticipant = () => {
-        setParticipants([...participants, { id: Date.now(), pd_id: null, organization: '', responsibility: '', representatives: '' }]);
+            setParticipants([...participants, { id: Date.now(), pd_id: null, organization: '', category: '', responsibility: '', representatives: '' }]);
     };
 
     const handleParticipantSelect = (pid, directoryEntry) => {
@@ -706,6 +713,7 @@ const AgendaDetail = ({ onBack, setExtraBreadcrumbs, agendaId: id, canWrite }) =
             ...p,
             pd_id: directoryEntry.pd_id,
             organization: directoryEntry.company_name || '',
+            category: directoryEntry.category || '',
             responsibility: directoryEntry.responsibilities || '',
             representatives: directoryEntry.contact_person || ''
         } : p));
@@ -941,14 +949,16 @@ const AgendaDetail = ({ onBack, setExtraBreadcrumbs, agendaId: id, canWrite }) =
                                 <div className="overflow-x-auto">
                                     <table className="w-full text-left text-sm whitespace-nowrap" style={{ tableLayout: 'fixed', width: '100%' }}>
                                         <colgroup>
-                                            <col style={{ width: '38%' }} />
-                                            <col style={{ width: '28%' }} />
-                                            <col style={{ width: '28%' }} />
+                                            <col style={{ width: '30%' }} />
+                                            <col style={{ width: '16%' }} />
+                                            <col style={{ width: '25%' }} />
+                                            <col style={{ width: '23%' }} />
                                             <col style={{ width: '6%' }} />
                                         </colgroup>
                                         <thead>
                                             <tr className="border-b border-gray-200 dark:border-white/10 text-gray-500 bg-gray-100 dark:bg-[#12161c]">
                                                 <th className="px-5 py-2.5 text-xs font-medium">Organization</th>
+                                                <th className="px-5 py-2.5 text-xs font-medium">Category</th>
                                                 <th className="px-5 py-2.5 text-xs font-medium">Responsibility</th>
                                                 <th className="px-5 py-2.5 text-xs font-medium">Representatives</th>
                                                 <th className="px-2 py-2.5 w-10"></th>
@@ -966,14 +976,19 @@ const AgendaDetail = ({ onBack, setExtraBreadcrumbs, agendaId: id, canWrite }) =
                                                     >
                                                         <td className="px-5 py-2">
                                                             {isEditable ? (
-                                                                <VendorSelector
+                                                                <PartySelector
                                                                     value={p.organization}
                                                                     onChange={(v) => handleParticipantSelect(p.id, v)}
-                                                                    globalVendors={directoryContacts}
+                                                                    projectParties={directoryContacts}
                                                                 />
                                                             ) : (
                                                                 <div className="font-medium text-gray-700 dark:text-gray-300 py-1">{p.organization || '-'}</div>
                                                             )}
+                                                        </td>
+                                                        <td className="px-5 py-2">
+                                                            <span className="inline-flex px-2 py-1 rounded-full border border-blue-500/20 bg-blue-500/10 text-blue-600 dark:text-blue-300 text-[9px] font-semibold uppercase tracking-wide">
+                                                                {p.category || 'Uncategorized'}
+                                                            </span>
                                                         </td>
                                                         <td className="px-5 py-2 text-gray-600 dark:text-gray-400">
                                                             {isEditable ? (

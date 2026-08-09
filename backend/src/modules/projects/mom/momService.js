@@ -73,18 +73,15 @@ export async function fetchMoMById(projectId, momId) {
     // Fetch participants correctly referencing contacts
     const participants = await db('pdoc_meeting_participants as pmp')
         .leftJoin('pdoc_directory as pd', 'pmp.pd_id', 'pd.pd_id')
-        .leftJoin('pdoc_vendors as pv', 'pd.pv_id', 'pv.pv_id')
-        .leftJoin('crm_contacts as c', 'pv.vendors_id', 'c.id')
+        .leftJoin('pdoc_parties as pp', 'pd.pv_id', 'pp.pv_id')
+        .leftJoin('crm_contacts as c', 'pp.party_id', 'c.id')
         .where('pmp.meeting_id', momId)
-        .where(function () {
-            this.whereNull('c.category')
-                .orWhereRaw('LOWER(??) NOT IN (?, ?)', ['c.category', 'client', 'pmc']);
-        })
         .select([
             'pmp.id as pmp_id',
             'pmp.pd_id',
             'pd.responsibilities',
             'c.name as organization',
+            'c.category as category',
             'pd.contact_person',
             'pd.designation'
         ]);

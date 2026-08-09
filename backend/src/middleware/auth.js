@@ -189,7 +189,7 @@ export const requireProjectPermission = (module) => {
             // Map General Documents sub-resources to the parent 'General Documents' page permission if not explicitly set
             const generalDocsMapping = {
                 'directory': 'General Documents',
-                'vendors': 'General Documents',
+                'parties': 'General Documents',
                 'staff': 'General Documents',
                 'summary': 'General Documents',
                 'agenda': 'General Documents',

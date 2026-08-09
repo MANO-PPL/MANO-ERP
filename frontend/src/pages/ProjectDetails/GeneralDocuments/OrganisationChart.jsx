@@ -182,8 +182,8 @@ const NodeCard = React.memo(({ node, onSelect, onEdit, onDelete, selectedNodeId,
                                 <Edit2 size={12} />
                             </button>
                         )}
-                        {(String(node.id).startsWith('dir-') || String(node.id).startsWith('vendor-')) && (
-                            <button onClick={(e) => { e.stopPropagation(); onDelete(node.id); }} className="p-1.5 bg-red-600 rounded-full text-white shadow-lg shadow-red-500/20 hover:bg-red-500 scale-75 hover:scale-100 transition-transform cursor-pointer" title={String(node.id).startsWith('vendor-') ? "Remove vendor from project" : "Delete contact"}>
+                        {(String(node.id).startsWith('dir-') || String(node.id).startsWith('party-')) && (
+                            <button onClick={(e) => { e.stopPropagation(); onDelete(node.id); }} className="p-1.5 bg-red-600 rounded-full text-white shadow-lg shadow-red-500/20 hover:bg-red-500 scale-75 hover:scale-100 transition-transform cursor-pointer" title={String(node.id).startsWith('party-') ? "Remove party from project" : "Delete contact"}>
                                 <Trash2 size={12} />
                             </button>
                         )}
@@ -235,10 +235,9 @@ const OrganisationChart = ({ onBack, setExtraBreadcrumbs, canWrite }) => {
     const [workflowState, setWorkflowState] = useState({ mode: 'read', cycleId: null, loading: true });
     const [auditTrail, setAuditTrail] = useState([]);
     
-    const [projectVendors, setProjectVendors] = useState([]);
-    const [globalVendors, setGlobalVendors] = useState([]);
-    const [isAddingVendor, setIsAddingVendor] = useState(false);
-    const [vendorSearchTerm, setVendorSearchTerm] = useState('');
+    const [availableParties, setAvailableParties] = useState([]);
+    const [isAddingParty, setIsAddingParty] = useState(false);
+    const [partySearchTerm, setPartySearchTerm] = useState('');
 
     const containerRef = useRef(null);
 
@@ -308,61 +307,50 @@ const OrganisationChart = ({ onBack, setExtraBreadcrumbs, canWrite }) => {
         ]);
     }, [onBack, setExtraBreadcrumbs, projectId]);
 
-    const fetchGlobalVendors = async () => {
+    const fetchAvailableParties = async () => {
         try {
-            const data = await generalDocsApi.getGlobalVendors({ limit: 5000 });
-            if (data && data.vendors) {
-                setGlobalVendors(data.vendors);
+            const data = await generalDocsApi.getAvailableParties(projectId, { limit: 5000 });
+            if (data && data.parties) {
+                setAvailableParties(data.parties);
             }
         } catch (error) {
-            console.error("Failed to fetch global vendors:", error);
+            console.error("Failed to fetch available parties:", error);
         }
     };
 
     useEffect(() => {
-        if (isAddingVendor && globalVendors.length === 0) {
-            fetchGlobalVendors();
+        if (isAddingParty && availableParties.length === 0) {
+            fetchAvailableParties();
         }
-    }, [isAddingVendor, globalVendors.length]);
+    }, [isAddingParty, availableParties.length]);
 
-    const handleAddVendor = async (vendorId) => {
+    const handleAddParty = async (partyId) => {
         try {
-            if (workflowState && workflowState.cycleId) {
-                const gv = globalVendors.find(v => v.id === vendorId);
-                await workflowApi.addVendorDraft(workflowState.cycleId, {
-                    vendors_id: vendorId,
-                    name: gv?.name,
-                    contact_person: gv?.contact_person,
-                    mobile: gv?.mobile,
-                    email: gv?.email,
-                    job_nature: gv?.job_nature
-                });
-            } else {
-                await generalDocsApi.addVendor(projectId, [vendorId]);
-            }
-            toast.success("Vendor added successfully");
+            await generalDocsApi.addParties(projectId, [partyId]);
+            toast.success("Party added successfully");
+            setAvailableParties([]);
             await fetchOrgChart();
-            setIsAddingVendor(false);
-            setVendorSearchTerm('');
+            setIsAddingParty(false);
+            setPartySearchTerm('');
         } catch (error) {
-            console.error("Failed to add vendor:", error);
-            toast.error("Failed to add vendor to project");
+            console.error("Failed to add party:", error);
+            toast.error("Failed to add party to project");
         }
     };
 
     const mapOrgApiToTree = useCallback((apiData) => {
         const { client_name, project_name, project_location } = apiData;
-        const vendors = apiData.vendors || apiData.pdoc_vendors || [];
+        const parties = apiData.parties || [];
         const directory = apiData.directory || apiData.pdoc_directory || [];
 
-        // Group directory by vendor tracking ID
-        const dirByVendor = {};
+        // Group directory by project-party link ID
+        const dirByParty = {};
         const standaloneDir = [];
         
         directory.forEach(d => {
             if (d.pv_id) {
-                if (!dirByVendor[d.pv_id]) dirByVendor[d.pv_id] = [];
-                dirByVendor[d.pv_id].push(d);
+                if (!dirByParty[d.pv_id]) dirByParty[d.pv_id] = [];
+                dirByParty[d.pv_id].push(d);
             } else {
                 standaloneDir.push(d);
             }
@@ -370,19 +358,19 @@ const OrganisationChart = ({ onBack, setExtraBreadcrumbs, canWrite }) => {
 
         const clientChildren = [];
 
-        vendors.forEach(v => {
-            const vendorNode = {
-                id: `vendor-${v.pv_id || v.vendor_id}`,
-                name: v.company_name || v.name || 'Unknown Vendor',
-                role: v.job_nature || v.trade || 'Contractor',
+        parties.forEach(party => {
+            const partyNode = {
+                id: `party-${party.pv_id || party.party_id}`,
+                name: party.company_name || party.name || 'Unknown Party',
+                role: party.job_nature || party.trade || party.category || 'Party',
                 type: 'company',
                 children: []
             };
             
             // Add its directory members underneath
-            const associatedDir = dirByVendor[v.pv_id] || [];
+            const associatedDir = dirByParty[party.pv_id] || [];
             associatedDir.forEach(d => {
-                vendorNode.children.push({
+                partyNode.children.push({
                     id: `dir-${d.pd_id}`,
                     name: d.contact_person || 'N/A',
                     role: d.designation || 'Staff',
@@ -394,7 +382,7 @@ const OrganisationChart = ({ onBack, setExtraBreadcrumbs, canWrite }) => {
                 });
             });
 
-            clientChildren.push(vendorNode);
+            clientChildren.push(partyNode);
         });
 
         // Standalone directories as their own
@@ -440,64 +428,8 @@ const OrganisationChart = ({ onBack, setExtraBreadcrumbs, canWrite }) => {
     const fetchOrgChart = useCallback(async () => {
         try {
             setLoadingChart(true);
-            // Check if workflow is active and has an instance
-            if (workflowState && workflowState.instanceId && !workflowState.notConfigured) {
-                try {
-                    let response = null;
-                    if (workflowState.cycleId) {
-                        try {
-                            const res = await workflowApi.getDraftContent(workflowState.instanceId);
-                            response = {
-                                success: true,
-                                project_name: '',
-                                project_location: '',
-                                client_name: '',
-                                vendors: res.content_tables?.pdoc_vendors || [],
-                                directory: res.content_tables?.pdoc_directory || []
-                            };
-                        } catch (err) {
-                            const res = await workflowApi.getApprovedContent(workflowState.instanceId);
-                            response = {
-                                success: true,
-                                project_name: '',
-                                project_location: '',
-                                client_name: '',
-                                vendors: res.content?.pdoc_vendors || [],
-                                directory: res.content?.pdoc_directory || []
-                            };
-                        }
-                    } else {
-                        const res = await workflowApi.getApprovedContent(workflowState.instanceId);
-                        response = {
-                            success: true,
-                            project_name: '',
-                            project_location: '',
-                            client_name: '',
-                            vendors: res.content?.pdoc_vendors || [],
-                            directory: res.content?.pdoc_directory || []
-                        };
-                    }
-
-                    // Fall back to base project details
-                    const baseDetails = await generalDocsApi.getOrgChart(projectId);
-                    response.project_name = baseDetails.project_name;
-                    response.project_location = baseDetails.project_location;
-                    response.client_name = baseDetails.client_name;
-
-                    setProjectVendors(response.vendors || []);
-                    const tree = mapOrgApiToTree(response);
-                    setData(tree);
-                    setSelectedNodeId('root');
-                    return;
-                } catch (err) {
-                    console.log("No approved/draft workflow content, falling back to base API", err);
-                }
-            }
-
-            // Fallback legacy behavior
             const response = await generalDocsApi.getOrgChart(projectId);
             if (response && response.success) {
-                setProjectVendors(response.vendors || []);
                 const tree = mapOrgApiToTree(response);
                 setData(tree);
                 setSelectedNodeId('root');
@@ -583,13 +515,9 @@ const OrganisationChart = ({ onBack, setExtraBreadcrumbs, canWrite }) => {
                 } else {
                     await generalDocsApi.deleteDirectoryItem(projectId, pdId);
                 }
-            } else if (idStr.startsWith('vendor-')) {
-                const pvId = idStr.replace('vendor-', '');
-                if (workflowState && workflowState.cycleId) {
-                    await workflowApi.deleteVendorDraft(workflowState.cycleId, pvId);
-                } else {
-                    await generalDocsApi.deleteVendor(projectId, pvId);
-                }
+            } else if (idStr.startsWith('party-')) {
+                const projectPartyId = idStr.replace('party-', '');
+                await generalDocsApi.deleteParty(projectId, projectPartyId);
             }
             setData(prev => findAndDelete(prev, id));
             if (selectedNodeId === id) setSelectedNodeId(null);
@@ -606,11 +534,11 @@ const OrganisationChart = ({ onBack, setExtraBreadcrumbs, canWrite }) => {
         // If type is staff, we can add a new directory item!
         if (type === 'staff') {
             try {
-                // Find parent vendor id if parent is a vendor
+                // Find parent project-party link if the parent is a party
                 const parentNode = findNode(data, selectedNodeId);
                 let pvId = null;
-                if (parentNode && String(parentNode.id).startsWith('vendor-')) {
-                    pvId = String(parentNode.id).replace('vendor-', '');
+                if (parentNode && String(parentNode.id).startsWith('party-')) {
+                    pvId = String(parentNode.id).replace('party-', '');
                 }
 
                 const payload = {
@@ -725,7 +653,7 @@ const OrganisationChart = ({ onBack, setExtraBreadcrumbs, canWrite }) => {
                     </button>
                     <div>
                         <h1 className="text-2xl font-medium text-gray-900 dark:text-white">Organisation Chart</h1>
-                        <p className="text-sm text-gray-500 dark:text-gray-400">Interactive structural view of client, vendors, and team roles.</p>
+                        <p className="text-sm text-gray-500 dark:text-gray-400">Interactive structural view of project parties and team roles.</p>
                     </div>
                 </div>
                 <div className="flex items-center space-x-3">
@@ -862,13 +790,13 @@ const OrganisationChart = ({ onBack, setExtraBreadcrumbs, canWrite }) => {
                                     {selectedNodeId === 'client' ? (
                                         <>
                                             <button
-                                                onClick={() => setIsAddingVendor(true)}
+                                                onClick={() => setIsAddingParty(true)}
                                                 className="group w-full flex items-center justify-between p-3.5 bg-white/5 border border-gray-200 dark:border-white/5 hover:border-white/20 hover:bg-gray-200 dark:hover:bg-white/10 shadow-sm rounded-md transition-all active:scale-95 cursor-pointer"
                                             >
                                                 <div className="flex items-center space-x-3">
                                                     <div className="w-3.5 h-3.5 rounded-full bg-blue-500 shadow-lg ring-2 ring-black/20 group-hover:scale-110 transition-transform" />
                                                     <div className="text-left">
-                                                        <div className="text-[11px] font-medium tracking-wide text-gray-700 dark:text-white/80 group-hover:text-blue-600 dark:group-hover:text-white">Add Project Vendor</div>
+                                                        <div className="text-[11px] font-medium tracking-wide text-gray-700 dark:text-white/80 group-hover:text-blue-600 dark:group-hover:text-white">Add Project Party</div>
                                                         <div className="text-[9px] text-gray-500 dark:text-white/40 font-light">Add a company from CRM</div>
                                                     </div>
                                                 </div>
@@ -883,13 +811,13 @@ const OrganisationChart = ({ onBack, setExtraBreadcrumbs, canWrite }) => {
                                                     <div className="w-3.5 h-3.5 rounded-full bg-emerald-500 shadow-lg ring-2 ring-black/20 group-hover:scale-110 transition-transform" />
                                                     <div className="text-left">
                                                         <div className="text-[11px] font-medium tracking-wide text-gray-700 dark:text-white/80 group-hover:text-emerald-600 dark:group-hover:text-white">Add Standalone Contact</div>
-                                                        <div className="text-[9px] text-gray-500 dark:text-white/40 font-light">Add contact without a vendor</div>
+                                                        <div className="text-[9px] text-gray-500 dark:text-white/40 font-light">Add an independent team contact</div>
                                                     </div>
                                                 </div>
                                                 <Plus size={14} className="text-gray-400 dark:text-white/20 group-hover:text-emerald-600 dark:group-hover:text-emerald-400" />
                                             </button>
                                         </>
-                                    ) : selectedNodeId && String(selectedNodeId).startsWith('vendor-') ? (
+                                    ) : selectedNodeId && String(selectedNodeId).startsWith('party-') ? (
                                         <button
                                             onClick={() => handleAddChild('staff')}
                                             className="group w-full flex items-center justify-between p-3.5 bg-white/5 border border-gray-200 dark:border-white/5 hover:border-white/20 hover:bg-gray-200 dark:hover:bg-white/10 shadow-sm rounded-md transition-all active:scale-95 cursor-pointer"
@@ -898,14 +826,14 @@ const OrganisationChart = ({ onBack, setExtraBreadcrumbs, canWrite }) => {
                                                 <div className="w-3.5 h-3.5 rounded-full bg-emerald-500 shadow-lg ring-2 ring-black/20 group-hover:scale-110 transition-transform" />
                                                 <div className="text-left">
                                                     <div className="text-[11px] font-medium tracking-wide text-gray-700 dark:text-white/80 group-hover:text-emerald-600 dark:group-hover:text-white">Add Staff Contact</div>
-                                                    <div className="text-[9px] text-gray-500 dark:text-white/40 font-light">Add staff member under this vendor</div>
+                                                    <div className="text-[9px] text-gray-500 dark:text-white/40 font-light">Add staff member under this party</div>
                                                 </div>
                                             </div>
                                             <Plus size={14} className="text-gray-400 dark:text-white/20 group-hover:text-emerald-600 dark:group-hover:text-emerald-400" />
                                         </button>
                                     ) : (
                                         <div className="text-center text-[10px] text-gray-400 dark:text-white/30 font-medium py-2.5">
-                                            Select the Client node or a Vendor node to add children.
+                                            Select the Client node or a Party node to add children.
                                         </div>
                                     )}
                                 </div>
@@ -1124,15 +1052,15 @@ const OrganisationChart = ({ onBack, setExtraBreadcrumbs, canWrite }) => {
                 )}
             </AnimatePresence>
 
-            {/* Vendor Selection Modal */}
+            {/* Party Selection Modal */}
             <AnimatePresence>
-                {isAddingVendor && (
+                {isAddingParty && (
                     <>
                         <motion.div
                             initial={{ opacity: 0 }}
                             animate={{ opacity: 1 }}
                             exit={{ opacity: 0 }}
-                            onClick={() => setIsAddingVendor(false)}
+                            onClick={() => setIsAddingParty(false)}
                             className="fixed inset-0 bg-black/40 backdrop-blur-sm z-[100]"
                         />
                         <motion.div
@@ -1147,10 +1075,10 @@ const OrganisationChart = ({ onBack, setExtraBreadcrumbs, canWrite }) => {
                                     <div className="p-2 bg-blue-500/10 rounded-lg">
                                         <Building size={20} className="text-blue-500" />
                                     </div>
-                                    <h2 className="text-lg font-bold text-gray-900 dark:text-white tracking-tight">Select Project Vendor</h2>
+                                    <h2 className="text-lg font-bold text-gray-900 dark:text-white tracking-tight">Select Project Party</h2>
                                 </div>
                                 <button
-                                    onClick={() => setIsAddingVendor(false)}
+                                    onClick={() => setIsAddingParty(false)}
                                     className="p-2 hover:bg-gray-200 dark:hover:bg-white/10 rounded-full text-gray-500 hover:text-gray-900 dark:text-gray-400 dark:hover:text-white transition-all outline-none cursor-pointer"
                                 >
                                     <X size={20} />
@@ -1163,40 +1091,40 @@ const OrganisationChart = ({ onBack, setExtraBreadcrumbs, canWrite }) => {
                                     <input
                                         autoFocus
                                         type="text"
-                                        placeholder="Search approved vendors..."
+                                        placeholder="Search project parties..."
                                         className="w-full pl-9 pr-4 py-2.5 bg-white dark:bg-[#161b22] border border-gray-200 dark:border-white/10 rounded-lg text-xs outline-none focus:border-blue-500 transition-all dark:text-white"
-                                        value={vendorSearchTerm}
-                                        onChange={(e) => setVendorSearchTerm(e.target.value)}
+                                        value={partySearchTerm}
+                                        onChange={(e) => setPartySearchTerm(e.target.value)}
                                     />
                                 </div>
                             </div>
 
                             <div className="overflow-y-auto max-h-80 custom-scrollbar flex-1 p-2">
                                 {(() => {
-                                    const filtered = globalVendors.filter(gv => {
-                                        const alreadyInProject = projectVendors.some(pv => pv.vendor_id === gv.id);
-                                        const matchesSearch = gv.name?.toLowerCase().includes(vendorSearchTerm.toLowerCase()) || 
-                                                             gv.job_nature?.toLowerCase().includes(vendorSearchTerm.toLowerCase());
-                                        return !alreadyInProject && matchesSearch;
+                                    const filtered = availableParties.filter(party => {
+                                        const matchesSearch = party.name?.toLowerCase().includes(partySearchTerm.toLowerCase()) ||
+                                            party.category?.toLowerCase().includes(partySearchTerm.toLowerCase()) ||
+                                            party.job_nature?.toLowerCase().includes(partySearchTerm.toLowerCase());
+                                        return matchesSearch;
                                     });
 
                                     return filtered.length > 0 ? (
-                                        filtered.map(gv => (
+                                        filtered.map(party => (
                                             <button
-                                                key={gv.id}
-                                                onClick={() => handleAddVendor(gv.id)}
+                                                key={party.id}
+                                                onClick={() => handleAddParty(party.id)}
                                                 className="w-full px-4 py-3 flex flex-col items-start hover:bg-blue-50 dark:hover:bg-blue-900/20 transition-colors border-b border-gray-50 dark:border-white/5 text-left group cursor-pointer rounded-lg"
                                             >
                                                 <div className="flex items-center justify-between w-full">
-                                                    <span className="text-sm font-bold text-gray-900 dark:text-white group-hover:text-blue-600 dark:group-hover:text-blue-400 transition-colors">{gv.name}</span>
+                                                    <span className="text-sm font-bold text-gray-900 dark:text-white group-hover:text-blue-600 dark:group-hover:text-blue-400 transition-colors">{party.name}</span>
                                                     <Plus size={12} className="text-gray-400 opacity-0 group-hover:opacity-100 transition-opacity" />
                                                 </div>
-                                                <span className="text-[10px] text-gray-500 dark:text-gray-400 mt-0.5">Trade: {gv.job_nature || 'General'}</span>
+                                                <span className="text-[10px] text-gray-500 dark:text-gray-400 mt-0.5">{party.category || 'Uncategorized'}{party.job_nature ? ` · ${party.job_nature}` : ''}</span>
                                             </button>
                                         ))
                                     ) : (
                                         <div className="px-4 py-8 text-center text-xs text-gray-400">
-                                            No eligible vendors found.
+                                            No eligible parties found.
                                         </div>
                                     );
                                 })()}
@@ -1204,7 +1132,7 @@ const OrganisationChart = ({ onBack, setExtraBreadcrumbs, canWrite }) => {
 
                             <div className="p-4 border-t border-gray-200 dark:border-white/10 bg-gray-50 dark:bg-[#161b22]/30 flex justify-end space-x-2">
                                 <button
-                                    onClick={() => setIsAddingVendor(false)}
+                                    onClick={() => setIsAddingParty(false)}
                                     className="px-4 py-2 bg-gray-100 dark:bg-white/5 hover:bg-gray-200 dark:hover:bg-white/10 text-gray-700 dark:text-gray-300 rounded-md text-xs font-bold transition-all outline-none border border-gray-300 dark:border-white/10 cursor-pointer"
                                 >
                                     Cancel

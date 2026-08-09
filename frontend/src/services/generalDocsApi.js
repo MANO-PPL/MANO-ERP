@@ -56,17 +56,21 @@ export const generalDocsApi = {
         return response.data;
     },
 
-    // ---- VENDORS ----
-    getVendors: async (projectId) => {
-        const response = await api.get(`/projects/${projectId}/vendors`);
+    // ---- PROJECT PARTIES ----
+    getParties: async (projectId) => {
+        const response = await api.get(`/projects/${projectId}/parties`);
         return response.data;
     },
-    addVendor: async (projectId, vendorIds) => {
-        const response = await api.post(`/projects/${projectId}/vendors`, { vendors: vendorIds });
+    getAvailableParties: async (projectId, params = {}) => {
+        const response = await api.get(`/projects/${projectId}/parties/available`, { params });
         return response.data;
     },
-    deleteVendor: async (projectId, pvId) => {
-        const response = await api.delete(`/projects/${projectId}/vendors`, { data: { pv_ids: [pvId] } });
+    addParties: async (projectId, partyIds) => {
+        const response = await api.post(`/projects/${projectId}/parties`, { parties: partyIds });
+        return response.data;
+    },
+    deleteParty: async (projectId, ppId) => {
+        const response = await api.delete(`/projects/${projectId}/parties`, { data: { pp_ids: [ppId] } });
         return response.data;
     },
 
@@ -120,9 +124,4 @@ export const generalDocsApi = {
         return response.data;
     },
 
-    // ---- GLOBAL VENDORS ----
-    getGlobalVendors: async (params = {}) => {
-        const response = await api.get('/vendors', { params });
-        return response.data;
-    }
 };

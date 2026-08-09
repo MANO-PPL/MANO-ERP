@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { FileText, FileSpreadsheet, FileImage, FileStack, ChevronRight } from 'lucide-react';
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { motion } from 'framer-motion';
-import ProjectVendorList from './ProjectVendorList';
+import ProjectPartiesList from './ProjectPartiesList';
 import ProjectDirectory from './ProjectDirectory';
 import StaffRoles from './StaffRoles';
 import ProjectSummary from './ProjectSummary';
@@ -36,8 +36,8 @@ const GeneralDocumentsIndex = ({ setExtraBreadcrumbs, canWrite }) => {
         }
     }, [currentView, setExtraBreadcrumbs]);
 
-    if (currentView === 'vendor-list') {
-        return <ProjectVendorList onBack={handleBack} setExtraBreadcrumbs={setExtraBreadcrumbs} canWrite={canWrite} />;
+    if (currentView === 'party-list') {
+        return <ProjectPartiesList onBack={handleBack} setExtraBreadcrumbs={setExtraBreadcrumbs} canWrite={canWrite} />;
     }
     if (currentView === 'directory') {
         return <ProjectDirectory onBack={handleBack} setExtraBreadcrumbs={setExtraBreadcrumbs} canWrite={canWrite} />;
@@ -76,10 +76,10 @@ const GeneralDocumentsIndex = ({ setExtraBreadcrumbs, canWrite }) => {
 
     const categories = [
         { 
-            name: 'Project Vendor List', 
-            desc: 'Directory of all approved vendor companies and trades associated with the project.', 
+            name: 'Project Parties',
+            desc: 'Directory of clients, PMCs, contractors, suppliers, consultants, and other project parties.',
             icon: <FileSpreadsheet size={20} />, 
-            view: 'vendor-list', 
+            view: 'party-list',
             type: 'Single Instance'
         },
         { 
@@ -119,7 +119,7 @@ const GeneralDocumentsIndex = ({ setExtraBreadcrumbs, canWrite }) => {
         },
         { 
             name: 'Organisation Chart', 
-            desc: 'Interactive structural view of client, vendors, and directory relationships.', 
+            desc: 'Interactive structural view of project parties and directory relationships.',
             icon: <FileImage size={20} />, 
             view: 'org-chart', 
             type: 'Single Instance'
