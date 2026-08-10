@@ -9,10 +9,9 @@ function parseIntOrNull(val) {
 }
 
 /**
- * A project resource is identified by resource_id inside proj_resources and is
- * scoped by the transaction header's project_id. Keep this check here because
- * proj_resources has a composite (project_id, resource_id) primary key, while
- * transaction lines store the resource component as project_resource_id.
+ * Transaction lines store the actual project-owned res_resources.id as
+ * project_resource_id. Project membership is therefore checked directly on
+ * res_resources.project_id; proj_resources is no longer involved.
  */
 async function verifyProjectResourceMembership(trx, projectId, orgId, lines) {
     if (lines.length === 0) return;
@@ -21,36 +20,14 @@ async function verifyProjectResourceMembership(trx, projectId, orgId, lines) {
     }
 
     const projectResourceIds = [...new Set(lines.map(line => line.project_resource_id))];
-    const query = trx('proj_resources')
-        .where({ project_id: projectId, is_deleted: 0 })
-        .whereIn('resource_id', projectResourceIds);
+    const query = trx('res_resources')
+        .where({ project_id: projectId })
+        .whereIn('id', projectResourceIds);
 
-    if (orgId !== null && orgId !== undefined) {
-        query.andWhere('org_id', orgId);
-    }
+    if (orgId !== null && orgId !== undefined) query.andWhere('org_id', orgId);
 
-    const memberships = await query.select('resource_id');
-    const validIds = new Set(memberships.map(row => String(row.resource_id)));
-
-    // Legacy project imports were stored only in res_rates/res_compositions.
-    // Accept those rows while installations migrate membership data into
-    // proj_resources; new imports are written to both representations.
-    const missingCandidates = projectResourceIds.filter(id => !validIds.has(String(id)));
-    if (missingCandidates.length > 0) {
-        const legacyRows = await trx('res_resources as r')
-            .where('r.org_id', orgId)
-            .whereIn('r.id', missingCandidates)
-            .where(function () {
-                this.whereIn('r.id', trx('res_rates')
-                    .where('project_id', projectId)
-                    .select('resource_id'))
-                    .orWhereIn('r.id', trx('res_compositions')
-                        .where('project_id', projectId)
-                        .select('parent_resource_id'));
-            })
-            .select('r.id as resource_id');
-        legacyRows.forEach(row => validIds.add(String(row.resource_id)));
-    }
+    const memberships = await query.select('id');
+    const validIds = new Set(memberships.map(row => String(row.id)));
 
     const missingId = projectResourceIds.find(id => !validIds.has(String(id)));
 

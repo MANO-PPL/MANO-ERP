@@ -1,16 +1,24 @@
 import { db } from '../../config/database.js';
 import AppError from '../../utils/AppError.js';
 import { getUnit, convert, UNIT_REGISTRY } from '../../services/unitRegistry.js';
-import { detectCycle } from '../../services/compositionResolver.js';
+import { detectCycle, getCompositionColumns } from '../../services/compositionResolver.js';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Helpers
 // ─────────────────────────────────────────────────────────────────────────────
 
-async function ensureResourceExists(orgId, id) {
-    const resource = await db('res_resources').where({ id, org_id: orgId }).first();
+async function ensureResourceExists(orgId, id, dbClient = db) {
+    const resource = await dbClient('res_resources').where({ id, org_id: orgId }).first();
     if (!resource) throw new AppError('Resource not found in your organization', 404);
     return resource;
+}
+
+async function ensureProjectExists(orgId, projectId, dbClient = db) {
+    const project = await dbClient('proj_projects')
+        .where({ id: projectId, org_id: orgId })
+        .first('id', 'org_id');
+    if (!project) throw new AppError('Project not found in your organization', 404);
+    return project;
 }
 
 async function hasIndex(tableName, indexName) {
@@ -26,10 +34,74 @@ async function hasIndex(tableName, indexName) {
  */
 export async function initializeResourceSchema() {
     if (await db.schema.hasTable('res_resources')) {
+        if (!(await db.schema.hasColumn('res_resources', 'project_id'))) {
+            await db.schema.alterTable('res_resources', table => table.integer('project_id').unsigned().nullable());
+        }
+        if (!(await db.schema.hasColumn('res_resources', 'parent_id'))) {
+            await db.schema.alterTable('res_resources', table => table.integer('parent_id').unsigned().nullable());
+        }
+
         if (!(await hasIndex('res_resources', 'idx_res_resources_org_name'))) {
             await db.schema.alterTable('res_resources', table => {
                 table.index(['org_id', 'name'], 'idx_res_resources_org_name');
             });
+        }
+
+        // Master resource codes are unique within an organization, but a
+        // project copy intentionally keeps the master's code. Include the
+        // nullable project scope in the uniqueness rule so copies do not fail
+        // with a duplicate-code error during import.
+        if (await hasIndex('res_resources', 'uk_resource_code_org')) {
+            await db.raw('ALTER TABLE ?? DROP INDEX ??', ['res_resources', 'uk_resource_code_org']);
+        }
+        if (!(await hasIndex('res_resources', 'uk_resource_code_org_project'))) {
+            await db.schema.alterTable('res_resources', table => {
+                table.unique(['org_id', 'code', 'project_id'], 'uk_resource_code_org_project');
+            });
+        }
+
+        if (!(await hasIndex('res_resources', 'uq_project_resource_copy'))) {
+            await db.schema.alterTable('res_resources', table => {
+                table.unique(['parent_id', 'project_id'], 'uq_project_resource_copy');
+            });
+        }
+
+        // These FKs are intentionally best-effort because older installations
+        // may not have the project table available during an early boot.
+        if (await db.schema.hasTable('proj_projects')) {
+            const [projectFkRows] = await db.raw(
+                `SELECT CONSTRAINT_NAME, REFERENCED_TABLE_NAME FROM information_schema.KEY_COLUMN_USAGE
+                 WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'res_resources'
+                   AND COLUMN_NAME = 'project_id' AND REFERENCED_TABLE_NAME IS NOT NULL`
+            );
+            for (const row of projectFkRows) {
+                if (row.REFERENCED_TABLE_NAME !== 'proj_projects') {
+                    await db.raw('ALTER TABLE ?? DROP FOREIGN KEY ??', ['res_resources', row.CONSTRAINT_NAME]);
+                }
+            }
+            if (!projectFkRows.some(row => row.REFERENCED_TABLE_NAME === 'proj_projects')) {
+                await db.schema.alterTable('res_resources', table => {
+                    table.foreign('project_id', 'fk_res_resources_project')
+                        .references('id').inTable('proj_projects').onDelete('CASCADE');
+                });
+            }
+
+            const [parentFkRows] = await db.raw(
+                `SELECT CONSTRAINT_NAME, REFERENCED_TABLE_NAME FROM information_schema.KEY_COLUMN_USAGE
+                 WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'res_resources'
+                   AND COLUMN_NAME = 'parent_id' AND REFERENCED_TABLE_NAME IS NOT NULL`
+            );
+            for (const row of parentFkRows) {
+                if (row.REFERENCED_TABLE_NAME !== 'res_resources') {
+                    await db.raw('ALTER TABLE ?? DROP FOREIGN KEY ??', ['res_resources', row.CONSTRAINT_NAME]);
+                }
+            }
+            if (!parentFkRows.some(row => row.REFERENCED_TABLE_NAME === 'res_resources')) {
+                await db.schema.alterTable('res_resources', table => {
+                    table.foreign('parent_id', 'fk_res_resources_parent')
+                        .references('id').inTable('res_resources').onDelete('CASCADE');
+                });
+            }
         }
     }
 
@@ -76,14 +148,15 @@ export async function initializeResourceSchema() {
             table.date('effective_from').notNullable().alter();
         });
 
+        const compositionColumns = await getCompositionColumns(db);
         if (!(await hasIndex('res_compositions', 'idx_res_compositions_parent_effective'))) {
             await db.schema.alterTable('res_compositions', table => {
-                table.index(['parent_resource_id', 'effective_from', 'effective_to'], 'idx_res_compositions_parent_effective');
+                table.index([compositionColumns.item, 'effective_from', 'effective_to'], 'idx_res_compositions_parent_effective');
             });
         }
         if (!(await hasIndex('res_compositions', 'idx_res_compositions_component'))) {
             await db.schema.alterTable('res_compositions', table => {
-                table.index(['component_resource_id'], 'idx_res_compositions_component');
+                table.index([compositionColumns.component], 'idx_res_compositions_component');
             });
         }
     }
@@ -123,17 +196,34 @@ function toDateOnly(value, fallback = new Date()) {
 }
 
 /**
- * Find the manual rate row effective on a particular date.
- * res_rates is organization-neutral in the current schema, so ownership is
- * enforced by joining through res_resources. This service only reads master
- * rows; project rows are owned by projectResourceService.
+ * Return the resource row whose rates should be used in a project. A project
+ * copy is preferred, while a missing copy naturally falls back to the master.
  */
-async function findEffectiveManualRate(orgId, resourceId, asOfDate, dbClient = db) {
-    return dbClient('res_rates as rr')
+async function resolveProjectResourceId(orgId, resourceId, projectId, dbClient = db) {
+    const resource = await ensureResourceExists(orgId, resourceId, dbClient);
+    const masterId = resource.project_id ? resource.parent_id : resource.id;
+    if (!projectId) return resource.id;
+    if (resource.project_id && Number(resource.project_id) === Number(projectId)) return resource.id;
+
+    const copy = await dbClient('res_resources')
+        .where({ org_id: orgId, parent_id: masterId, project_id: projectId })
+        .first('id');
+    return copy?.id || masterId;
+}
+
+/**
+ * Find the effective manual rate for a master resource or its project copy.
+ * Rates never carry project_id; scope is resolved through res_resources.
+ */
+async function findEffectiveManualRate(orgId, resourceId, asOfDate, dbClient = db, projectId = null) {
+    const targetResourceId = await resolveProjectResourceId(orgId, resourceId, projectId, dbClient);
+    const targetResource = await ensureResourceExists(orgId, targetResourceId, dbClient);
+
+    const scopedRate = await dbClient('res_rates as rr')
         .join('res_resources as r', 'rr.resource_id', 'r.id')
-        .where('rr.resource_id', resourceId)
+        .where('rr.resource_id', targetResource.id)
         .andWhere('r.org_id', orgId)
-        .whereNull('rr.project_id')
+        .where('rr.is_active', 1)
         .whereNotNull('rr.rate')
         .andWhere('rr.effective_from', '<=', asOfDate)
         .andWhere(function () {
@@ -143,6 +233,64 @@ async function findEffectiveManualRate(orgId, resourceId, asOfDate, dbClient = d
         .orderBy('rr.effective_from', 'desc')
         .orderBy('rr.id', 'desc')
         .first();
+
+    if (scopedRate || !targetResource.parent_id) return scopedRate;
+
+    return dbClient('res_rates as rr')
+        .join('res_resources as r', 'rr.resource_id', 'r.id')
+        .where('rr.resource_id', targetResource.parent_id)
+        .andWhere('r.org_id', orgId)
+        .where('rr.is_active', 1)
+        .whereNotNull('rr.rate')
+        .andWhere('rr.effective_from', '<=', asOfDate)
+        .andWhere(function () {
+            this.whereNull('rr.effective_to').orWhere('rr.effective_to', '>=', asOfDate);
+        })
+        .select('rr.id', 'rr.resource_id', 'rr.rate', 'rr.unit_code', 'rr.effective_from', 'rr.effective_to', 'rr.is_active', 'rr.remarks')
+        .orderBy('rr.effective_from', 'desc')
+        .orderBy('rr.id', 'desc')
+        .first();
+}
+
+/**
+ * Find or create the resource row owned by a project. The helper only copies
+ * the resource identity; rates and compositions are written separately.
+ */
+export async function findOrCreateProjectResource(orgId, resourceId, projectId, dbClient = db) {
+    if (!projectId) return resourceId;
+    await ensureProjectExists(orgId, projectId, dbClient);
+
+    const resource = await ensureResourceExists(orgId, resourceId, dbClient);
+    if (resource.project_id && Number(resource.project_id) === Number(projectId)) return resource.id;
+
+    const masterId = resource.project_id ? resource.parent_id : resource.id;
+    const master = await ensureResourceExists(orgId, masterId, dbClient);
+    const existing = await dbClient('res_resources')
+        .where({ org_id: orgId, parent_id: master.id, project_id: projectId })
+        .first();
+    if (existing) return existing.id;
+
+    try {
+        const [newId] = await dbClient('res_resources').insert({
+            org_id: orgId,
+            project_id: projectId,
+            parent_id: master.id,
+            name: master.name,
+            code: master.code,
+            type: master.type,
+            base_unit_code: master.base_unit_code,
+            description: master.description,
+            remarks: master.remarks
+        });
+        return newId;
+    } catch (error) {
+        // A concurrent request may have won the unique copy race.
+        const concurrentCopy = await dbClient('res_resources')
+            .where({ org_id: orgId, parent_id: master.id, project_id: projectId })
+            .first('id');
+        if (concurrentCopy) return concurrentCopy.id;
+        throw error;
+    }
 }
 
 function subtractOneDay(dateOnly) {
@@ -162,14 +310,15 @@ function subtractOneDay(dateOnly) {
  * rate calculation. The returned unit is always the resource's base unit for
  * computed items, and the stored rate unit for manual rates.
  */
-async function resolveRateInternal(orgId, resourceId, asOfDate, dbClient, path = new Set(), context = null) {
-    const numericResourceId = Number(resourceId);
+async function resolveRateInternal(orgId, resourceId, asOfDate, dbClient, path = new Set(), context = null, projectId = null) {
+    const scopedResourceId = await resolveProjectResourceId(orgId, resourceId, projectId, dbClient);
+    const numericResourceId = Number(scopedResourceId);
     let resource;
     if (context?.resourceCache?.has(numericResourceId)) {
         resource = context.resourceCache.get(numericResourceId);
     } else {
         resource = await dbClient('res_resources')
-            .where({ id: resourceId, org_id: orgId })
+            .where({ id: scopedResourceId, org_id: orgId })
             .first();
         if (resource && context?.resourceCache) {
             context.resourceCache.set(numericResourceId, resource);
@@ -189,12 +338,37 @@ async function resolveRateInternal(orgId, resourceId, asOfDate, dbClient, path =
         return context.rateCache.get(numericResourceId);
     }
 
+    let projectItemHasComposition = false;
+    if (resource.project_id && resource.type === 'item') {
+        const compositionColumns = await getCompositionColumns(dbClient);
+        projectItemHasComposition = Boolean(
+            await dbClient('res_compositions')
+                .where(compositionColumns.item, resource.id)
+                .first('id')
+        );
+    }
+
     let manualRate;
     if (context?.manualRateCache?.has(numericResourceId)) {
         manualRate = context.manualRateCache.get(numericResourceId);
     } else {
-        manualRate = await findEffectiveManualRate(orgId, resourceId, asOfDate, dbClient);
+        manualRate = await findEffectiveManualRate(orgId, resourceId, asOfDate, dbClient, projectId);
         context?.manualRateCache?.set(numericResourceId, manualRate || null);
+    }
+
+    // An imported project item owns its own composition. If it has no manual
+    // rate of its own, do not let the master's item-level rate short-circuit
+    // that project composition; the component rates must be recalculated for
+    // the project. Master fallback remains valid for project materials/labour
+    // and for project items without a project composition.
+    if (
+        manualRate
+        && resource.project_id
+        && resource.type === 'item'
+        && projectItemHasComposition
+        && Number(manualRate.resource_id) !== Number(resource.id)
+    ) {
+        manualRate = null;
     }
 
     if (manualRate) {
@@ -218,7 +392,11 @@ async function resolveRateInternal(orgId, resourceId, asOfDate, dbClient, path =
             rate: storedRate,
             unitCode: manualRate.unit_code,
             source: 'manual',
+            rateScope: Number(manualRate.resource_id) === Number(resource.id) && resource.project_id
+                ? 'project'
+                : 'master',
             rateId: manualRate.id,
+            projectId: resource.project_id || null,
             effectiveFrom: toIsoDate(manualRate.effective_from),
             effectiveTo: toIsoDate(manualRate.effective_to),
             isActive: Number(manualRate.is_active) === 1,
@@ -239,17 +417,17 @@ async function resolveRateInternal(orgId, resourceId, asOfDate, dbClient, path =
     if (context?.compositionCache?.has(numericResourceId)) {
         compositions = context.compositionCache.get(numericResourceId);
     } else {
+        const compositionColumns = await getCompositionColumns(dbClient);
         compositions = await dbClient('res_compositions as c')
-            .join('res_resources as component', 'c.component_resource_id', 'component.id')
-            .where('c.parent_resource_id', resource.id)
-            .whereNull('c.project_id')
+            .join('res_resources as component', `c.${compositionColumns.component}`, 'component.id')
+            .where(`c.${compositionColumns.item}`, resource.id)
             .andWhere('c.effective_from', '<=', asOfDate)
             .andWhere(function () {
                 this.whereNull('c.effective_to').orWhere('c.effective_to', '>=', asOfDate);
             })
             .andWhere('component.org_id', orgId)
             .select(
-                'c.component_resource_id',
+                `c.${compositionColumns.component} as component_resource_id`,
                 'c.quantity',
                 'c.unit_code',
                 'c.effective_from',
@@ -286,7 +464,8 @@ async function resolveRateInternal(orgId, resourceId, asOfDate, dbClient, path =
             asOfDate,
             dbClient,
             nextPath,
-            context
+            context,
+            null
         );
 
         let quantityInRateUnit;
@@ -323,6 +502,7 @@ async function resolveRateInternal(orgId, resourceId, asOfDate, dbClient, path =
         rate: total,
         unitCode: resource.base_unit_code,
         source: 'computed',
+        rateScope: resource.project_id ? 'project' : 'master',
         asOfDate,
         effectiveFrom: toIsoDate(compositions[0].effective_from),
         effectiveTo: toIsoDate(compositions[0].effective_to),
@@ -336,24 +516,37 @@ async function resolveRateInternal(orgId, resourceId, asOfDate, dbClient, path =
  * Public rate entry point. All callers should use this method rather than
  * joining res_rates or calculating composition costs themselves.
  */
-export async function getResolvedRate(orgId, resourceId, asOfDate) {
+export async function getResolvedRate(orgId, resourceId, asOfDate, projectId = null) {
     const effectiveDate = toDateOnly(asOfDate);
-    return resolveRateInternal(orgId, resourceId, effectiveDate, db);
+    if (projectId) await ensureProjectExists(orgId, projectId);
+    return resolveRateInternal(orgId, resourceId, effectiveDate, db, new Set(), null, projectId);
 }
 
 /**
  * Resolve several resources for the same date without making the client fan
  * out into one HTTP request per component.
  */
-export async function getResolvedRates(orgId, resourceIds, asOfDate) {
+export async function getResolvedRates(orgId, resourceIds, asOfDate, projectId = null) {
     const effectiveDate = toDateOnly(asOfDate);
     const uniqueIds = [...new Set(resourceIds.map(Number))];
+    if (projectId) await ensureProjectExists(orgId, projectId);
 
     return Promise.all(uniqueIds.map(async resourceId => {
         try {
+            const resolved = await resolveRateInternal(
+                orgId,
+                resourceId,
+                effectiveDate,
+                db,
+                new Set(),
+                null,
+                projectId
+            );
             return {
                 resourceId,
-                ...(await resolveRateInternal(orgId, resourceId, effectiveDate, db))
+                projectResourceId: resolved.resourceId,
+                ...resolved,
+                resourceId
             };
         } catch {
             return { resourceId, rate: null, source: null, unitCode: null };
@@ -390,7 +583,6 @@ async function _writeManualRateVersion(orgId, resource, { rate, unit_code, effec
 
     const latestRate = await dbClient('res_rates')
         .where({ resource_id: resource.id })
-        .whereNull('project_id')
         .max('effective_from as latest_effective_from')
         .first();
     if (latestRate?.latest_effective_from) {
@@ -406,8 +598,7 @@ async function _writeManualRateVersion(orgId, resource, { rate, unit_code, effec
     // The active flag tracks the latest edit, while effective dates still
     // determine which historical row applies to a requested date.
     const activeRateQuery = dbClient('res_rates')
-        .where({ resource_id: resource.id, is_active: 1 })
-        .whereNull('project_id');
+        .where({ resource_id: resource.id, is_active: 1 });
 
     const activeRate = await activeRateQuery
         .orderBy('id', 'desc')
@@ -445,21 +636,38 @@ async function _writeManualRateVersion(orgId, resource, { rate, unit_code, effec
     return insertId;
 }
 
-export async function addRate(orgId, resourceId, rateData) {
-    const resource = await ensureResourceExists(orgId, resourceId);
-    return db.transaction(async (trx) => _writeManualRateVersion(orgId, resource, rateData, trx));
+export async function addRate(orgId, resourceId, rateData = {}) {
+    const projectId = rateData.project_id || null;
+    if (projectId) await ensureProjectExists(orgId, projectId);
+
+    return db.transaction(async (trx) => {
+        const requestedResource = await ensureResourceExists(orgId, resourceId, trx);
+        let scopedResourceId;
+        if (projectId && requestedResource.type === 'item') {
+            scopedResourceId = await resolveProjectResourceId(orgId, resourceId, projectId, trx);
+            const scopedResource = await ensureResourceExists(orgId, scopedResourceId, trx);
+            if (!scopedResource.project_id || Number(scopedResource.project_id) !== Number(projectId)) {
+                throw new AppError('Import this item into the project before adding a project rate', 400);
+            }
+        } else {
+            scopedResourceId = await findOrCreateProjectResource(orgId, resourceId, projectId, trx);
+        }
+        const resource = await ensureResourceExists(orgId, scopedResourceId, trx);
+        return _writeManualRateVersion(orgId, resource, rateData, trx);
+    });
 }
 
 /**
  * Return all manual rate versions for a resource, newest first.
  */
-export async function getRateHistory(orgId, resourceId) {
-    await ensureResourceExists(orgId, resourceId);
+export async function getRateHistory(orgId, resourceId, projectId = null) {
+    if (projectId) await ensureProjectExists(orgId, projectId);
+    const scopedResourceId = await resolveProjectResourceId(orgId, resourceId, projectId);
+    await ensureResourceExists(orgId, scopedResourceId);
     const query = db('res_rates as rr')
         .join('res_resources as r', 'rr.resource_id', 'r.id')
-        .where('rr.resource_id', resourceId)
+        .where('rr.resource_id', scopedResourceId)
         .andWhere('r.org_id', orgId)
-        .whereNull('rr.project_id')
         .select(
             'rr.id', 'rr.resource_id', 'rr.rate', 'rr.unit_code',
             'rr.effective_from', 'rr.effective_to', 'rr.is_active',
@@ -496,7 +704,8 @@ export async function getResources(orgId, {
 } = {}) {
     const query = db('res_resources')
         .where('org_id', orgId)
-        .select('id', 'name', 'code', 'type', 'description', 'remarks', 'base_unit_code')
+        .whereNull('project_id')
+        .select('id', 'name', 'code', 'type', 'description', 'remarks', 'base_unit_code', 'project_id', 'parent_id')
         .orderBy('name');
 
     if (type) query.where('type', type);
@@ -515,6 +724,7 @@ export async function getResources(orgId, {
     if (resources.length > 0) {
         const resourceIds = resources.map(r => r.id);
         const asOfDate = toDateOnly();
+        const compositionColumns = await getCompositionColumns(db);
 
         const [conversions, compositions, manualRates] = await Promise.all([
             includeDetails
@@ -526,9 +736,8 @@ export async function getResources(orgId, {
 
             includeDetails
                 ? db('res_compositions as c')
-                    .join('res_resources as r2', 'c.component_resource_id', 'r2.id')
-                    .whereIn('c.parent_resource_id', resourceIds)
-                    .whereNull('c.project_id')
+                    .join('res_resources as r2', `c.${compositionColumns.component}`, 'r2.id')
+                    .whereIn(`c.${compositionColumns.item}`, resourceIds)
                     .andWhere('r2.org_id', orgId)
                     .andWhere('c.effective_from', '<=', asOfDate)
                     .andWhere(function () {
@@ -536,8 +745,8 @@ export async function getResources(orgId, {
                     })
                     .select(
                         'c.id',
-                        'c.parent_resource_id',
-                        'c.component_resource_id',
+                        `c.${compositionColumns.item} as parent_resource_id`,
+                        `c.${compositionColumns.component} as component_resource_id`,
                         'r2.name as component_name',
                         'r2.code as component_code',
                         'c.quantity',
@@ -550,7 +759,6 @@ export async function getResources(orgId, {
             includeRates
                 ? db('res_rates as rr')
                     .whereIn('rr.resource_id', resourceIds)
-                    .whereNull('rr.project_id')
                     .whereNotNull('rr.rate')
                     .andWhere('rr.effective_from', '<=', asOfDate)
                     .andWhere(function () {
@@ -667,10 +875,14 @@ export async function getResources(orgId, {
 // Get single resource with full detail
 // ─────────────────────────────────────────────────────────────────────────────
 
-export async function getResourceById(orgId, id, asOfDate) {
+export async function getResourceById(orgId, id, asOfDate, projectId = null) {
+    if (projectId) await ensureProjectExists(orgId, projectId);
+    const scopedResourceId = projectId
+        ? await resolveProjectResourceId(orgId, id, projectId)
+        : id;
     const resource = await db('res_resources')
-        .where({ id, org_id: orgId })
-        .select('id', 'name', 'code', 'type', 'description', 'remarks', 'base_unit_code')
+        .where({ id: scopedResourceId, org_id: orgId })
+        .select('id', 'name', 'code', 'type', 'description', 'remarks', 'base_unit_code', 'project_id', 'parent_id')
         .first();
 
     if (!resource) throw new AppError('Resource not found in your organization', 404);
@@ -682,7 +894,7 @@ export async function getResourceById(orgId, id, asOfDate) {
 
     // Fetch unit conversions
     const conversions = await db('res_conversions')
-        .where({ resource_id: id, org_id: orgId })
+        .where({ resource_id: scopedResourceId, org_id: orgId })
         .select('id', 'name', 'quantity', 'unit_code');
 
     conversions.forEach(c => {
@@ -695,10 +907,10 @@ export async function getResourceById(orgId, id, asOfDate) {
     // Fetch compositions (only meaningful for items)
     if (resource.type === 'item') {
         const compositionDate = toDateOnly(asOfDate);
+        const compositionColumns = await getCompositionColumns(db);
         const compositions = await db('res_compositions as c')
-            .join('res_resources as r2', 'c.component_resource_id', 'r2.id')
-            .where('c.parent_resource_id', id)
-            .whereNull('c.project_id')
+            .join('res_resources as r2', `c.${compositionColumns.component}`, 'r2.id')
+            .where(`c.${compositionColumns.item}`, scopedResourceId)
             .andWhere('r2.org_id', orgId)
             .andWhere('c.effective_from', '<=', compositionDate)
             .andWhere(function () {
@@ -706,7 +918,7 @@ export async function getResourceById(orgId, id, asOfDate) {
             })
             .select(
                 'c.id',
-                'c.component_resource_id',
+                `c.${compositionColumns.component} as component_resource_id`,
                 'r2.name as component_name',
                 'r2.code as component_code',
                 'c.quantity',
@@ -811,6 +1023,8 @@ export async function createResource(orgId, {
     const insertId = await db.transaction(async (trx) => {
         const [id] = await trx('res_resources').insert({
             org_id: orgId,
+            project_id: null,
+            parent_id: null,
             name,
             code: code || null,
             type,
@@ -880,15 +1094,17 @@ export async function updateResource(orgId, id, {
                 throw new AppError('type must be "material", "item", or "labour"', 400);
             }
             if (type === 'item') {
+                const compositionColumns = await getCompositionColumns(trx);
                 const usedAsComponent = await trx('res_compositions')
-                    .where('component_resource_id', id)
+                    .where(compositionColumns.component, id)
                     .count('id as cnt').first();
                 if (parseInt(usedAsComponent.cnt) > 0) {
                     throw new AppError('Cannot change type to "item": resource is used as a component in other composite item recipes', 400);
                 }
             }
             if (resource.type === 'item') {
-                await trx('res_compositions').where('parent_resource_id', id).del();
+                const compositionColumns = await getCompositionColumns(trx);
+                await trx('res_compositions').where(compositionColumns.item, id).del();
             }
             updates.type = type;
             activeType = type;
@@ -945,18 +1161,23 @@ export async function updateResource(orgId, id, {
 // ─────────────────────────────────────────────────────────────────────────────
 
 export async function deleteResource(orgId, id) {
-    await ensureResourceExists(orgId, id);
+    const resource = await ensureResourceExists(orgId, id);
+    if (resource.project_id) {
+        throw new AppError('Project resource copies must be removed from the project resource screen', 400);
+    }
+
+    const compositionColumns = await getCompositionColumns(db);
 
     // Guard: referenced as a component in any composition
     const usedAsComponent = await db('res_compositions')
-        .where('component_resource_id', id)
+        .where(compositionColumns.component, id)
         .count('id as cnt').first();
     if (parseInt(usedAsComponent.cnt) > 0) {
         throw new AppError('Cannot delete: resource is used as a component in item compositions', 400);
     }
 
     // Cascade compositions and conversions manually
-    await db('res_compositions').where('parent_resource_id', id).del();
+    await db('res_compositions').where(compositionColumns.item, id).del();
     await db('res_conversions').where('resource_id', id).del();
     // Rates reference the resource as well; remove them before deleting the
     // parent row when the database FK is not configured with ON DELETE CASCADE.
@@ -974,6 +1195,7 @@ export async function deleteResource(orgId, id) {
  * resource. Older versions remain available for historical reads.
  */
 async function _replaceCompositions(orgId, parentResourceId, compositions, dbClient = db, requestedEffectiveFrom) {
+    const compositionColumns = await getCompositionColumns(dbClient);
     const defaultEffectiveFrom = toDateOnly(requestedEffectiveFrom);
     const rowDates = compositions
         .map(c => c.effective_from)
@@ -989,8 +1211,7 @@ async function _replaceCompositions(orgId, parentResourceId, compositions, dbCli
     // composition that applies on that date, so every new version must start
     // after the latest recorded version.
     const latestVersion = await dbClient('res_compositions')
-        .where('parent_resource_id', parentResourceId)
-        .whereNull('project_id')
+        .where(compositionColumns.item, parentResourceId)
         .max('effective_from as latest_effective_from')
         .first();
     if (latestVersion?.latest_effective_from) {
@@ -1005,8 +1226,11 @@ async function _replaceCompositions(orgId, parentResourceId, compositions, dbCli
 
     const componentIds = new Set();
     for (const c of compositions) {
-        if (!c.component_resource_id || !c.quantity || !c.unit_code) {
+        if (!c.component_resource_id || c.quantity === undefined || c.quantity === null || c.quantity === '' || !c.unit_code) {
             throw new AppError('Each composition row must have component_resource_id, quantity, and unit_code', 400);
+        }
+        if (!Number.isFinite(Number(c.quantity)) || Number(c.quantity) < 0) {
+            throw new AppError('Composition quantity must be a non-negative number', 400);
         }
         if (componentIds.has(Number(c.component_resource_id))) {
             throw new AppError(
@@ -1025,8 +1249,8 @@ async function _replaceCompositions(orgId, parentResourceId, compositions, dbCli
 
         const comp = await dbClient('res_resources').where({ id: c.component_resource_id, org_id: orgId }).first();
         if (!comp) throw new AppError(`Component resource id ${c.component_resource_id} not found in your organization`, 400);
-        if (comp.type !== 'material' && comp.type !== 'labour') {
-            throw new AppError(`Component resource "${comp.name}" must be of type 'material' or 'labour'`, 400);
+        if (!['material', 'labour', 'item'].includes(comp.type)) {
+            throw new AppError(`Component resource "${comp.name}" has an unsupported type`, 400);
         }
 
         // Validate that the recipe unit matches the child component's unit category
@@ -1049,8 +1273,7 @@ async function _replaceCompositions(orgId, parentResourceId, compositions, dbCli
     // An empty composition therefore represents an intentional clear rather
     // than falling back to an older version.
     await dbClient('res_compositions')
-        .where('parent_resource_id', parentResourceId)
-        .whereNull('project_id')
+        .where(compositionColumns.item, parentResourceId)
         .andWhere('effective_from', '<', effectiveFrom)
         .andWhere(function () {
             this.whereNull('effective_to').orWhere('effective_to', '>=', effectiveFrom);
@@ -1062,11 +1285,10 @@ async function _replaceCompositions(orgId, parentResourceId, compositions, dbCli
 
     if (compositions.length > 0) {
         const rows = compositions.map(c => ({
-            parent_resource_id: parentResourceId,
-            component_resource_id: c.component_resource_id,
+            [compositionColumns.item]: parentResourceId,
+            [compositionColumns.component]: c.component_resource_id,
             quantity: c.quantity,
             unit_code: c.unit_code,
-            project_id: null,
             effective_from: effectiveFrom,
             effective_to: null,
             is_active: 1
@@ -1077,15 +1299,126 @@ async function _replaceCompositions(orgId, parentResourceId, compositions, dbCli
 }
 
 /**
+ * Import an item by creating its project resource row and snapshotting the
+ * currently effective master recipe. Every component is copied as well so the
+ * project recipe points only at project-owned resource ids.
+ */
+export async function importItemToProject(orgId, projectId, masterItemId, effectiveFrom) {
+    await ensureProjectExists(orgId, projectId);
+    const masterItem = await ensureResourceExists(orgId, masterItemId);
+    if (masterItem.project_id) {
+        throw new AppError('Import must start from a master item resource', 400);
+    }
+    if (masterItem.type !== 'item') {
+        throw new AppError('Only item resources can be imported into a project', 400);
+    }
+
+    const importDate = toDateOnly(effectiveFrom);
+    return db.transaction(async trx => {
+        const compositionColumns = await getCompositionColumns(trx);
+        const projectItemId = await findOrCreateProjectResource(orgId, masterItem.id, projectId, trx);
+
+        const existingProjectComposition = await trx('res_compositions')
+            .where(compositionColumns.item, projectItemId)
+            .first('id');
+        if (existingProjectComposition) {
+            throw new AppError('This item has already been imported into this project', 400);
+        }
+
+        const copyItemComposition = async (masterId, projectIdForItem, path = new Set()) => {
+            if (path.has(Number(masterId))) {
+                throw new AppError(`Circular composition detected while importing item ${masterId}`, 400);
+            }
+
+            const existingProjectComposition = await trx('res_compositions')
+                .where(compositionColumns.item, projectIdForItem)
+                .first('id');
+            if (existingProjectComposition) return;
+
+            const masterComposition = await trx('res_compositions')
+                .where(compositionColumns.item, masterId)
+                .andWhere('effective_from', '<=', importDate)
+                .andWhere(function () {
+                    this.whereNull('effective_to').orWhere('effective_to', '>=', importDate);
+                })
+                .select(
+                    `${compositionColumns.component} as component_resource_id`,
+                    'quantity',
+                    'unit_code'
+                );
+
+            if (masterComposition.length === 0) return;
+
+            const nextPath = new Set(path);
+            nextPath.add(Number(masterId));
+            const rows = [];
+            for (const composition of masterComposition) {
+                const component = await ensureResourceExists(orgId, composition.component_resource_id, trx);
+                const projectComponentId = await findOrCreateProjectResource(
+                    orgId,
+                    component.id,
+                    projectId,
+                    trx
+                );
+
+                if (component.type === 'item') {
+                    await copyItemComposition(component.id, projectComponentId, nextPath);
+                }
+
+                rows.push({
+                    [compositionColumns.item]: projectIdForItem,
+                    [compositionColumns.component]: projectComponentId,
+                    quantity: composition.quantity,
+                    unit_code: composition.unit_code,
+                    effective_from: importDate,
+                    effective_to: null,
+                    is_active: 1
+                });
+            }
+
+            await trx('res_compositions').insert(rows);
+        };
+
+        await copyItemComposition(masterItem.id, projectItemId);
+        return projectItemId;
+    });
+}
+
+/**
  * Public API to replace all compositions for an item resource.
  */
-export async function setCompositions(orgId, resourceId, compositions, effectiveFrom) {
-    const resource = await ensureResourceExists(orgId, resourceId);
+export async function setCompositions(orgId, resourceId, compositions, effectiveFrom, projectId = null) {
+    if (projectId) await ensureProjectExists(orgId, projectId);
+    const scopedItemId = projectId
+        ? await resolveProjectResourceId(orgId, resourceId, projectId)
+        : resourceId;
+    const resource = await ensureResourceExists(orgId, scopedItemId);
     if (resource.type !== 'item') {
         throw new AppError('Compositions can only be set for resources of type "item"', 400);
     }
+
+    if (projectId) {
+        const imported = await db('res_resources')
+            .where({ id: scopedItemId, org_id: orgId, project_id: projectId })
+            .first('id');
+        if (!imported) {
+            throw new AppError('Import this item into the project before editing its project composition', 400);
+        }
+    }
+
     await db.transaction(async (trx) => {
-        await _replaceCompositions(orgId, resourceId, compositions, trx, effectiveFrom);
+        const rows = projectId
+            ? await Promise.all(compositions.map(async composition => ({
+                ...composition,
+                component_resource_id: await findOrCreateProjectResource(
+                    orgId,
+                    composition.component_resource_id,
+                    projectId,
+                    trx
+                )
+            })))
+            : compositions;
+        await _replaceCompositions(orgId, scopedItemId, rows, trx, effectiveFrom);
     });
     return true;
 }
@@ -1094,19 +1427,23 @@ export async function setCompositions(orgId, resourceId, compositions, effective
  * Return every composition row/version for an item, newest version first.
  * Consumers can group rows by effective_from to render a version timeline.
  */
-export async function getCompositionHistory(orgId, resourceId) {
-    const resource = await ensureResourceExists(orgId, resourceId);
+export async function getCompositionHistory(orgId, resourceId, projectId = null) {
+    if (projectId) await ensureProjectExists(orgId, projectId);
+    const scopedResourceId = projectId
+        ? await resolveProjectResourceId(orgId, resourceId, projectId)
+        : resourceId;
+    const resource = await ensureResourceExists(orgId, scopedResourceId);
     if (resource.type !== 'item') return [];
 
+    const compositionColumns = await getCompositionColumns(db);
     const rows = await db('res_compositions as c')
-        .join('res_resources as component', 'c.component_resource_id', 'component.id')
-        .where('c.parent_resource_id', resourceId)
-        .whereNull('c.project_id')
+        .join('res_resources as component', `c.${compositionColumns.component}`, 'component.id')
+        .where(`c.${compositionColumns.item}`, scopedResourceId)
         .andWhere('component.org_id', orgId)
         .select(
             'c.id',
-            'c.parent_resource_id',
-            'c.component_resource_id',
+            `c.${compositionColumns.item} as parent_resource_id`,
+            `c.${compositionColumns.component} as component_resource_id`,
             'component.name as component_name',
             'component.code as component_code',
             'c.quantity',
@@ -1224,6 +1561,8 @@ export async function bulkInsertResources(orgId, resources) {
                 // Insert resource
                 const [insertId] = await trx('res_resources').insert({
                     org_id: orgId,
+                    project_id: null,
+                    parent_id: null,
                     name,
                     code: code || null,
                     type,
@@ -1347,15 +1686,17 @@ export async function bulkUpdateResources(orgId, resources) {
                         throw new Error('type must be "material", "item", or "labour"');
                     }
                     if (type === 'item') {
+                        const compositionColumns = await getCompositionColumns(trx);
                         const usedAsComponent = await trx('res_compositions')
-                            .where('component_resource_id', id)
+                            .where(compositionColumns.component, id)
                             .count('id as cnt').first();
                         if (parseInt(usedAsComponent.cnt) > 0) {
                             throw new Error('Cannot change type to "item": resource is used as a component in other composite item recipes');
                         }
                     }
                     if (existing.type === 'item') {
-                        await trx('res_compositions').where('parent_resource_id', id).del();
+                        const compositionColumns = await getCompositionColumns(trx);
+                        await trx('res_compositions').where(compositionColumns.item, id).del();
                     }
                     updates.type = type;
                     activeType = type;
@@ -1421,17 +1762,20 @@ export async function bulkUpdateResources(orgId, resources) {
  * Only valid for resources of type "item" — materials/labour have no
  * fallback pricing source, so they cannot be cleared.
  */
-export async function clearManualRate(orgId, resourceId, effectiveFrom) {
-    const resource = await ensureResourceExists(orgId, resourceId);
-    if (resource.type !== 'item') {
+export async function clearManualRate(orgId, resourceId, effectiveFrom, projectId = null) {
+    if (projectId) await ensureProjectExists(orgId, projectId);
+    const scopedResourceId = projectId
+        ? await resolveProjectResourceId(orgId, resourceId, projectId)
+        : resourceId;
+    const resource = await ensureResourceExists(orgId, scopedResourceId);
+    if (!projectId && resource.type !== 'item') {
         throw new AppError('Only items can revert to a computed rate; materials and labour require a manual rate', 400);
     }
     const clearFrom = toDateOnly(effectiveFrom);
 
     return db.transaction(async (trx) => {
         const activeRateQuery = trx('res_rates')
-            .where({ resource_id: resourceId, is_active: 1 })
-            .whereNull('project_id');
+            .where({ resource_id: scopedResourceId, is_active: 1 });
 
         const activeRate = await activeRateQuery
             .whereNotNull('rate')
@@ -1458,7 +1802,7 @@ export async function clearManualRate(orgId, resourceId, effectiveFrom) {
         // rate stays NULL — this row just marks "computed from here."
         // The actual number is always calculated live by the resolver.
         await trx('res_rates').insert({
-            resource_id: resourceId,
+            resource_id: scopedResourceId,
             rate: null,
             unit_code: resource.base_unit_code,
             effective_from: clearFrom,
@@ -1482,6 +1826,8 @@ export default {
     updateResource,
     deleteResource,
     initializeResourceSchema,
+    findOrCreateProjectResource,
+    importItemToProject,
     setCompositions,
     getCompositionHistory,
     addConversion,

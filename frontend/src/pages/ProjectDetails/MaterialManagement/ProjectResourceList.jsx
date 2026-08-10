@@ -196,6 +196,7 @@ const ProjectResourceList = ({ onBack, setExtraBreadcrumbs, canWrite }) => {
             setSearchTerm('');
             await fetchResources(true);
         } catch (err) {
+            console.error('Failed to import resource into project:', err.response?.data || err);
             toast.error(err.response?.data?.message || 'Failed to import resource into project');
         }
     };

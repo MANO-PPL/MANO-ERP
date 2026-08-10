@@ -1,6 +1,40 @@
 
 import db from '../config/database.js';
 
+let compositionColumnsPromise;
+
+/**
+ * The composition table was renamed from parent_resource_id/component_resource_id
+ * to item_id/component_id. Keep the resolver tolerant of an older test or
+ * partially migrated database while all new writes use the new names.
+ */
+export async function getCompositionColumns(dbClient = db) {
+    if (!dbClient.schema?.hasColumn) {
+        return { item: 'parent_resource_id', component: 'component_resource_id' };
+    }
+
+    if (dbClient === db && compositionColumnsPromise) return compositionColumnsPromise;
+
+    const promise = (async () => {
+        const hasItemId = await dbClient.schema.hasColumn('res_compositions', 'item_id');
+        const hasComponentId = await dbClient.schema.hasColumn('res_compositions', 'component_id');
+        if (hasItemId && hasComponentId) {
+            return { item: 'item_id', component: 'component_id' };
+        }
+
+        const hasParentId = await dbClient.schema.hasColumn('res_compositions', 'parent_resource_id');
+        const hasLegacyComponentId = await dbClient.schema.hasColumn('res_compositions', 'component_resource_id');
+        if (hasParentId && hasLegacyComponentId) {
+            return { item: 'parent_resource_id', component: 'component_resource_id' };
+        }
+
+        throw new Error('res_compositions must contain item_id/component_id columns');
+    })();
+
+    if (dbClient === db) compositionColumnsPromise = promise;
+    return promise;
+}
+
 /**
  * Checks recursively for circular references in compositions.
  * Throws an error if a cycle is detected.
@@ -18,12 +52,13 @@ async function checkCycles(resourceId, dbClient, visited = new Set()) {
 
     visited.add(resourceId);
 
+    const columns = await getCompositionColumns(dbClient);
     const components = await dbClient('res_compositions')
-        .where('parent_resource_id', resourceId)
-        .select('component_resource_id');
+        .where(columns.item, resourceId)
+        .select(columns.component);
 
     for (const comp of components) {
-        await checkCycles(comp.component_resource_id, dbClient, new Set(visited));
+        await checkCycles(comp[columns.component], dbClient, new Set(visited));
     }
 }
 
@@ -54,9 +89,10 @@ export async function resolveComponents(resourceId, dbClient = db) {
     await checkCycles(resourceId, dbClient);
 
     // Fetch immediate components
+    const columns = await getCompositionColumns(dbClient);
     const compositions = await dbClient('res_compositions')
-        .where('parent_resource_id', resourceId)
-        .select('component_resource_id as resourceId', 'quantity', 'unit_code as unitCode');
+        .where(columns.item, resourceId)
+        .select(`${columns.component} as resourceId`, 'quantity', 'unit_code as unitCode');
 
     return compositions.map(c => ({
         resourceId: c.resourceId,
@@ -76,9 +112,10 @@ export async function detectCycle(parentId, componentId, dbClient = db, asOfDate
     }
     visited.add(Number(componentId));
 
+    const columns = await getCompositionColumns(dbClient);
     const query = dbClient('res_compositions')
-        .where('parent_resource_id', componentId)
-        .select('component_resource_id');
+        .where(columns.item, componentId)
+        .select(columns.component);
 
     if (asOfDate) {
         query
@@ -91,7 +128,7 @@ export async function detectCycle(parentId, componentId, dbClient = db, asOfDate
     const children = await query;
 
     for (const child of children) {
-        const childId = child.component_resource_id;
+        const childId = child[columns.component];
         if (Number(childId) === Number(parentId)) {
             return true; // componentId's subtree reaches back to parentId
         }
@@ -104,5 +141,6 @@ export async function detectCycle(parentId, componentId, dbClient = db, asOfDate
 }
 export default {
     resolveComponents,
-    detectCycle
+    detectCycle,
+    getCompositionColumns
 };
