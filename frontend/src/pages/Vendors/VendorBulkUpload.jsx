@@ -11,6 +11,7 @@ import {
     ArrowLeft
 } from 'lucide-react';
 import Papa from 'papaparse';
+import * as XLSX from 'xlsx';
 import { toast } from 'react-toastify';
 import api from '../../services/api';
 
@@ -23,76 +24,114 @@ const VendorBulkUpload = () => {
     const [uploadReport, setUploadReport] = useState(null);
     const [validation, setValidation] = useState(null);
 
+    const isSupportedFile = (fileObj) => {
+        if (!fileObj) return false;
+        const name = fileObj.name.toLowerCase();
+        return name.endsWith('.csv') || name.endsWith('.xlsx') || name.endsWith('.xls') || fileObj.type === 'text/csv' || fileObj.type === 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
+    };
+
     const handleFileDrop = (e) => {
         e.preventDefault();
         const droppedFile = e.dataTransfer.files[0];
-        if (droppedFile && (droppedFile.type === 'text/csv' || droppedFile.name.endsWith('.csv'))) {
+        if (droppedFile && isSupportedFile(droppedFile)) {
             setFile(droppedFile);
-            parseCSV(droppedFile);
+            parseFile(droppedFile);
         } else {
-            toast.error("Please upload a valid CSV file");
+            toast.error("Please upload a valid CSV or Excel file (.csv, .xlsx, .xls)");
         }
     };
 
     const handleFileSelect = (e) => {
         const selectedFile = e.target.files[0];
         if (selectedFile) {
+            if (!isSupportedFile(selectedFile)) {
+                toast.error("Please upload a valid CSV or Excel file (.csv, .xlsx, .xls)");
+                return;
+            }
             setFile(selectedFile);
-            parseCSV(selectedFile);
+            parseFile(selectedFile);
         }
     };
 
-    const parseCSV = (file) => {
-        Papa.parse(file, {
-            header: true,
-            skipEmptyLines: true,
-            complete: async (results) => {
-                const data = results.data;
-                try {
-                    // Send directly to backend to validate and find any new job natures or sectors
-                    const res = await api.post('/vendors/bulk-validate', { vendors: data });
-                    const report = res.data.validation;
-                    setValidation(report);
+    const processParsedData = async (data) => {
+        try {
+            const res = await api.post('/vendors/bulk-validate', { vendors: data });
+            const report = res.data.validation;
+            setValidation(report);
 
-                    // Map status based on duplicates specifically
-                    const processed = data.map((row, idx) => {
-                        const rowNum = idx + 1;
-                        const errorMatches = report.duplicates.filter(d => d.row === rowNum);
+            const processed = data.map((row, idx) => {
+                const rowNum = idx + 1;
+                const errorMatches = (report.duplicates || []).filter(d => d.row === rowNum);
 
-                        let status = 'Valid';
-                        let errorMsg = '';
+                let status = 'Valid';
+                let errorMsg = '';
 
-                        if (errorMatches.length > 0) {
-                            status = 'Error';
-                            errorMsg = errorMatches.map(e => e.reason).join(', ');
-                        } else if (!row['Name'] && !row['name'] && !row['Company'] && !row['company']) {
-                            status = 'Error';
-                            errorMsg = 'Missing Name';
-                        }
-
-                        return {
-                            ...row,
-                            status,
-                            errorMsg,
-                            name: row['Name'] || row['name'] || row['Company'] || row['company'],
-                            email: row['Email'] || row['email'],
-                            contact_no: row['Contact No'] || row['contact no'] || row['Mobile'] || row['mobile'] || row['Telephone'] || row['telephone'],
-                            jobNature: row['Job Nature'] || row['job nature'] || row['job_nature'] || row['Nature of Job'] || row['nature of job']
-                        };
-                    });
-
-                    setPreviewData(processed);
-                    setStep(2);
-                } catch (error) {
-                    console.error('Validation Error:', error);
-                    toast.error("Failed to validate CSV structure against the database.");
+                if (errorMatches.length > 0) {
+                    status = 'Error';
+                    errorMsg = errorMatches.map(e => e.reason).join(', ');
+                } else if (!row['Name'] && !row['name'] && !row['Company'] && !row['company']) {
+                    status = 'Error';
+                    errorMsg = 'Missing Name';
                 }
-            },
-            error: (error) => {
-                console.error(error);
-                toast.error("Failed to parse CSV file");
-            }
-        });
+
+                return {
+                    ...row,
+                    status,
+                    errorMsg,
+                    name: row['Name'] || row['name'] || row['Company'] || row['company'],
+                    email: row['Email'] || row['email'],
+                    contact_no: row['Contact No'] || row['contact no'] || row['Mobile'] || row['mobile'] || row['Telephone'] || row['telephone'],
+                    jobNature: row['Job Nature'] || row['job nature'] || row['job_nature'] || row['Nature of Job'] || row['nature of job']
+                };
+            });
+
+            setPreviewData(processed);
+            setStep(2);
+        } catch (error) {
+            console.error('Validation Error:', error);
+            toast.error("Failed to validate file data against the database.");
+        }
+    };
+
+    const parseFile = (fileObj) => {
+        const fileName = fileObj.name.toLowerCase();
+        if (fileName.endsWith('.xlsx') || fileName.endsWith('.xls')) {
+            const reader = new FileReader();
+            reader.onload = (e) => {
+                try {
+                    const data = new Uint8Array(e.target.result);
+                    const workbook = XLSX.read(data, { type: 'array' });
+                    const firstSheetName = workbook.SheetNames[0];
+                    const worksheet = workbook.Sheets[firstSheetName];
+                    const jsonRows = XLSX.utils.sheet_to_json(worksheet, { defval: '' });
+                    if (!jsonRows || jsonRows.length === 0) {
+                        toast.error("The uploaded Excel file contains no data rows.");
+                        return;
+                    }
+                    processParsedData(jsonRows);
+                } catch (err) {
+                    console.error(err);
+                    toast.error("Failed to parse Excel file");
+                }
+            };
+            reader.readAsArrayBuffer(fileObj);
+        } else {
+            Papa.parse(fileObj, {
+                header: true,
+                skipEmptyLines: true,
+                complete: (results) => {
+                    if (!results.data || results.data.length === 0) {
+                        toast.error("The uploaded CSV file contains no data rows.");
+                        return;
+                    }
+                    processParsedData(results.data);
+                },
+                error: (error) => {
+                    console.error(error);
+                    toast.error("Failed to parse CSV file");
+                }
+            });
+        }
     };
 
     const handleUpload = async () => {
@@ -194,14 +233,14 @@ const VendorBulkUpload = () => {
                             type="file"
                             id="fileInput"
                             className="hidden"
-                            accept=".csv"
+                            accept=".csv,.xlsx,.xls"
                             onChange={handleFileSelect}
                         />
                         <div className="w-16 h-16 bg-indigo-50 dark:bg-indigo-900/20 text-indigo-600 dark:text-indigo-400 rounded-full flex items-center justify-center mx-auto mb-4 group-hover:scale-110 transition-transform">
                             <UploadCloud size={32} />
                         </div>
                         <h3 className="text-xl font-semibold text-slate-800 dark:text-white mb-2">Click to upload or drag and drop</h3>
-                        <p className="text-slate-500 dark:text-slate-400 mb-6">CSV files only (Max 5MB)</p>
+                        <p className="text-slate-500 dark:text-slate-400 mb-6">Excel (.xlsx, .xls) or CSV files supported (Max 10MB)</p>
                         <button className="px-6 py-2 bg-slate-900 dark:bg-slate-700 text-white font-medium rounded-lg hover:bg-slate-800 dark:hover:bg-slate-600 transition-colors">
                             Select File
                         </button>
