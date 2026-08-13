@@ -87,5 +87,5 @@ jobs:
           cp -r $GITHUB_WORKSPACE/frontend/dist/* /home/ubuntu/MANO-ERP/frontend/dist/
           
           # Fix Nginx permissions
-          sudo chmod +x /home/ubuntu
-          sudo chmod -R 755 /home/ubuntu/MANO-ERP/frontend/dist
+          chmod +x /home/ubuntu
+          chmod -R 755 /home/ubuntu/MANO-ERP/frontend/dist
