@@ -48,13 +48,68 @@ const COLUMN_METADATA = [
 
 
 
+const parseExcelClipboardText = (text) => {
+    if (!text || typeof text !== 'string') return [];
+    const cleanText = text.replace(/\r\n$/, '').replace(/\n$/, '').replace(/\r$/, '');
+    if (!cleanText) return [];
+
+    const isTabDelimited = cleanText.includes('\t');
+    const delimiter = isTabDelimited ? '\t' : (cleanText.includes(',') && !cleanText.includes('\n') ? ',' : '\t');
+
+    const rows = [];
+    let currentRow = [];
+    let currentCell = '';
+    let insideQuotes = false;
+
+    for (let i = 0; i < cleanText.length; i++) {
+        const char = cleanText[i];
+        const nextChar = cleanText[i + 1];
+
+        if (char === '"') {
+            if (insideQuotes && nextChar === '"') {
+                currentCell += '"';
+                i++;
+            } else {
+                insideQuotes = !insideQuotes;
+            }
+        } else if (!insideQuotes && char === delimiter) {
+            currentRow.push(currentCell.trim());
+            currentCell = '';
+        } else if (!insideQuotes && (char === '\n' || char === '\r')) {
+            if (char === '\r' && nextChar === '\n') i++;
+            currentRow.push(currentCell.trim());
+            rows.push(currentRow);
+            currentRow = [];
+            currentCell = '';
+        } else {
+            currentCell += char;
+        }
+    }
+
+    if (currentCell || currentRow.length > 0) {
+        currentRow.push(currentCell.trim());
+        rows.push(currentRow);
+    }
+
+    return rows.filter(r => r.length > 0 && r.some(c => c !== ''));
+};
+
+const parseNumericRate = (rawVal) => {
+    if (rawVal === null || rawVal === undefined) return null;
+    if (typeof rawVal === 'number') return isNaN(rawVal) ? null : rawVal;
+    let clean = String(rawVal).replace(/[^0-9.-]/g, '').trim();
+    if (!clean) return null;
+    const num = parseFloat(clean);
+    return isNaN(num) ? null : parseFloat(num.toFixed(2));
+};
+
 const resolveType = (rawStr) => {
     if (!rawStr) return 'material';
     const cleaned = rawStr.trim().toLowerCase();
     if (['material', 'item', 'labour'].includes(cleaned)) return cleaned;
-    if (cleaned === 'composite' || cleaned === 'items') return 'item';
-    if (cleaned === 'materials') return 'material';
-    if (cleaned === 'labor') return 'labour';
+    if (cleaned === 'composite' || cleaned === 'items' || cleaned === 'finished') return 'item';
+    if (cleaned === 'materials' || cleaned === 'mat') return 'material';
+    if (cleaned === 'labor' || cleaned === 'manpower' || cleaned === 'service') return 'labour';
     return 'material';
 };
 
@@ -62,6 +117,30 @@ const resolveUnitCode = (rawStr) => {
     if (!rawStr) return 'kg';
     const cleaned = rawStr.trim().toLowerCase();
     if (UNIT_REGISTRY[cleaned]) return cleaned;
+
+    const ALIAS_MAP = {
+        'kgs': 'kg', 'kilogram': 'kg', 'kilograms': 'kg',
+        'nos': 'nos', 'no': 'nos', 'numbers': 'nos', 'number': 'nos', 'pcs': 'nos', 'pc': 'nos', 'piece': 'nos', 'pieces': 'nos', 'units': 'nos', 'unit': 'nos',
+        'sqft': 'sqft', 'sq.ft': 'sqft', 'sq ft': 'sqft', 'square feet': 'sqft', 'sqfeet': 'sqft', 'sft': 'sqft',
+        'cum': 'cum', 'cu.m': 'cum', 'cu m': 'cum', 'cubic meter': 'cum', 'cubic meters': 'cum', 'm3': 'cum',
+        'sqm': 'sqm', 'sq.m': 'sqm', 'sq m': 'sqm', 'square meter': 'sqm', 'square meters': 'sqm', 'm2': 'sqm',
+        'm': 'm', 'mtr': 'm', 'meter': 'm', 'meters': 'm', 'rm': 'm', 'r.m': 'm',
+        'ton': 'ton', 'tons': 'ton', 'tonne': 'ton', 'tonnes': 'ton', 'mt': 'ton',
+        'bag': 'bag', 'bags': 'bag',
+        'ltr': 'ltr', 'litre': 'ltr', 'litres': 'ltr', 'liter': 'ltr', 'liters': 'ltr', 'l': 'ltr',
+        'hr': 'hr', 'hrs': 'hr', 'hour': 'hr', 'hours': 'hr',
+        'day': 'day', 'days': 'day',
+        'pkt': 'pkt', 'packet': 'pkt', 'packets': 'pkt', 'pkts': 'pkt',
+        'box': 'box', 'boxes': 'box',
+        'bundle': 'bundle', 'bundles': 'bundle',
+        'set': 'set', 'sets': 'set',
+        'trip': 'trip', 'trips': 'trip',
+        'load': 'load', 'loads': 'load',
+        'coil': 'coil', 'coils': 'coil',
+        'roll': 'roll', 'rolls': 'roll'
+    };
+
+    if (ALIAS_MAP[cleaned]) return ALIAS_MAP[cleaned];
 
     const found = Object.entries(UNIT_REGISTRY).find(([uCode, meta]) => {
         return (
@@ -211,37 +290,60 @@ const ResourceList = () => {
     // Ref to container for click outside detection
     const tableContainerRef = useRef(null);
 
-    // Helper to get initial cached state for 0ms render time
-    const getInitialResources = () => {
+    // Helper to get initial cached state or draft cache from sessionStorage
+    const getInitialDraftState = () => {
         try {
-            const cached = sessionStorage.getItem('mano_resources_cache');
-            if (cached) return JSON.parse(cached);
+            const draftGridStr = sessionStorage.getItem('mano_resources_draft_grid');
+            const draftDeletedStr = sessionStorage.getItem('mano_resources_draft_deleted');
+            if (draftGridStr) {
+                const draftGrid = JSON.parse(draftGridStr);
+                const draftDeleted = draftDeletedStr ? new Set(JSON.parse(draftDeletedStr)) : new Set();
+                return { draftGrid, draftDeleted };
+            }
         } catch (e) { }
-        return [];
+
+        let cached = [];
+        try {
+            const cachedStr = sessionStorage.getItem('mano_resources_cache');
+            if (cachedStr) cached = JSON.parse(cachedStr);
+        } catch (e) { }
+
+        return {
+            draftGrid: cached.map(r => ({ ...r, _status: 'saved', _errors: {} })),
+            draftDeleted: new Set()
+        };
     };
 
-    const getInitialGridData = (resourcesList) => {
-        return resourcesList.map(r => ({
-            ...r,
-            _status: 'saved',
-            _errors: {}
-        }));
-    };
-
-    const initialResources = getInitialResources();
+    const initialDraft = getInitialDraftState();
 
     // Original list from server
-    const [resources, setResources] = useState(initialResources);
+    const [resources, setResources] = useState(() => initialDraft.draftGrid.filter(r => r._status === 'saved'));
     const resourcesRef = useRef(resources);
     resourcesRef.current = resources;
 
     // Spreadsheet grid state
-    const [gridData, setGridData] = useState(() => getInitialGridData(initialResources));
+    const [gridData, setGridData] = useState(() => initialDraft.draftGrid);
     const gridDataRef = useRef(gridData);
     gridDataRef.current = gridData;
 
     // Deleted IDs tracking for manual save
-    const [deletedIds, setDeletedIds] = useState(new Set());
+    const [deletedIds, setDeletedIds] = useState(initialDraft.draftDeleted);
+    const deletedIdsRef = useRef(deletedIds);
+    deletedIdsRef.current = deletedIds;
+
+    // Auto-sync local unsaved changes to sessionStorage
+    useEffect(() => {
+        try {
+            const hasDraft = gridData.some(r => r._status === 'modified' || r._status === 'new') || deletedIds.size > 0;
+            if (hasDraft) {
+                sessionStorage.setItem('mano_resources_draft_grid', JSON.stringify(gridData));
+                sessionStorage.setItem('mano_resources_draft_deleted', JSON.stringify(Array.from(deletedIds)));
+            } else {
+                sessionStorage.removeItem('mano_resources_draft_grid');
+                sessionStorage.removeItem('mano_resources_draft_deleted');
+            }
+        } catch (e) { }
+    }, [gridData, deletedIds]);
 
     const hasUnsavedChanges = useMemo(() => {
         const hasModified = gridData.some(r => (r._status === 'modified' || r._status === 'new') && r.name && r.name.trim() && r.base_unit_code);
@@ -271,7 +373,7 @@ const ResourceList = () => {
         redoStackRef.current = [];
     };
 
-    const [isLoading, setIsLoading] = useState(() => initialResources.length === 0);
+    const [isLoading, setIsLoading] = useState(() => initialDraft.draftGrid.length === 0);
     const [isSaving, setIsSaving] = useState(false);
     const [lastSavedTime, setLastSavedTime] = useState(null);
     const [compositionEffectiveFrom, setCompositionEffectiveFrom] = useState(today());
@@ -389,6 +491,55 @@ const ResourceList = () => {
     const [selectionFocus, setSelectionFocus] = useState(null);   // { r: number, c: number }
     const [isMouseDown, setIsMouseDown] = useState(false);
     const [editingCell, setEditingCell] = useState(null); // { rowIndex, colName }
+
+    // Refs for always-fresh access in event callbacks (avoids stale closures)
+    const selectionAnchorRef = useRef(null);
+    selectionAnchorRef.current = selectionAnchor;
+    const selectionFocusRef = useRef(null);
+    selectionFocusRef.current = selectionFocus;
+    const selectedIdsRef = useRef(new Set());
+    selectedIdsRef.current = selectedIds;
+
+    // Internal clipboard buffer for cut/copy/paste between cells
+    const internalClipboardRef = useRef('');
+
+    // Always-fresh ref to executePaste â€” avoids stale closure in useEffect event handlers
+    const executePasteRef = useRef(null);
+
+    // Compute selection bounds from refs (safe to call inside any event handler)
+    const getBoundsFromRefs = () => {
+        const anchor = selectionAnchorRef.current;
+        if (!anchor) return null;
+        const focus = selectionFocusRef.current || anchor;
+        return {
+            minRow: Math.min(anchor.r, focus.r),
+            maxRow: Math.max(anchor.r, focus.r),
+            minCol: Math.min(anchor.c, focus.c),
+            maxCol: Math.max(anchor.c, focus.c),
+        };
+    };
+
+    // Helper to get target index right below current cursor/selection
+    const getTargetInsertIndex = () => {
+        const bounds = getBoundsFromRefs();
+        const anchor = selectionAnchorRef.current;
+        let activeSortedRowIdx = -1;
+        if (bounds) {
+            activeSortedRowIdx = bounds.maxRow;
+        } else if (anchor) {
+            activeSortedRowIdx = anchor.r;
+        }
+
+        if (activeSortedRowIdx >= 0 && sortedGridDataRef.current[activeSortedRowIdx]) {
+            const targetRowId = sortedGridDataRef.current[activeSortedRowIdx].id;
+            const realIdx = gridDataRef.current.findIndex(r => r.id === targetRowId);
+            if (realIdx !== -1) {
+                return { gridInsertIdx: realIdx + 1, sortedRowIdx: activeSortedRowIdx + 1 };
+            }
+        }
+
+        return { gridInsertIdx: gridDataRef.current.length, sortedRowIdx: sortedGridDataRef.current.length };
+    };
 
     // Custom popups dropdown cell states
     const [activeDropdownCell, setActiveDropdownCell] = useState(null); // { rowIndex, colName }
@@ -595,21 +746,9 @@ const ResourceList = () => {
             }
         };
 
-        const handleGlobalKeyDown = (e) => {
-            if (e.key === 'Escape') {
-                setSelectionAnchor(null);
-                setSelectionFocus(null);
-                setEditingCell(null);
-                setSelectedIds(new Set());
-                closeDropdown();
-            }
-        };
-
         document.addEventListener('mousedown', handleClickOutside);
-        window.addEventListener('keydown', handleGlobalKeyDown);
         return () => {
             document.removeEventListener('mousedown', handleClickOutside);
-            window.removeEventListener('keydown', handleGlobalKeyDown);
         };
     }, []);
 
@@ -653,6 +792,18 @@ const ResourceList = () => {
         const maxCol = Math.max(selectionAnchor.c, focus.c);
         return { minRow, maxRow, minCol, maxCol };
     };
+
+    // Reactive bounds for JSX rendering (context menu visibility, etc.)
+    const bounds = useMemo(() => {
+        if (!selectionAnchor) return null;
+        const focus = selectionFocus || selectionAnchor;
+        return {
+            minRow: Math.min(selectionAnchor.r, focus.r),
+            maxRow: Math.max(selectionAnchor.r, focus.r),
+            minCol: Math.min(selectionAnchor.c, focus.c),
+            maxCol: Math.max(selectionAnchor.c, focus.c),
+        };
+    }, [selectionAnchor, selectionFocus]);
 
     // Stats
     const stats = {
@@ -753,7 +904,7 @@ const ResourceList = () => {
         return payload;
     };
 
-    // ─── Manual Batch Save Engine ──────────────────────────────────────────────
+    // â”€â”€â”€ Manual Batch Save Engine â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
     const saveGridRows = async () => {
         const targetGrid = gridDataRef.current;
         const newRows = targetGrid.filter(r => r._status === 'new' && r.name && r.name.trim() && r.base_unit_code);
@@ -909,19 +1060,8 @@ const ResourceList = () => {
         return sortedGridData.slice(start, start + size);
     }, [sortedGridData, currentPage, pageSize]);
 
-    // ─── Custom Context Menu & Excel Fill Operations ───────────────────────
+    // Custom Context Menu & Excel Fill Operations
     const [contextMenu, setContextMenu] = useState(null); // { x: number, y: number, rowIndex: number, colIndex: number }
-
-    // Auto-scroll focused cell into view during keyboard navigation
-    useEffect(() => {
-        if (selectionFocus && tableContainerRef.current) {
-            const colName = GRID_COLUMNS[selectionFocus.c];
-            const cellEl = document.getElementById(`cell-${selectionFocus.r}-${colName}`);
-            if (cellEl) {
-                cellEl.scrollIntoView({ block: 'nearest', inline: 'nearest' });
-            }
-        }
-    }, [selectionFocus]);
 
     const handleContextMenu = (e, rowIndex, colIndex) => {
         e.preventDefault();
@@ -965,7 +1105,7 @@ const ResourceList = () => {
 
             const rowCopy = { ...updatedGrid[realIdx] };
             for (let c = bounds.minCol; c <= bounds.maxCol; c++) {
-                const col = GRID_COLUMNS[c];
+                const col = activeGridColumns[c];
                 if (col !== 'code') {
                     rowCopy[col] = sourceRowObj[col];
                 }
@@ -992,12 +1132,12 @@ const ResourceList = () => {
             const realIdx = updatedGrid.findIndex(row => row.id === targetRowObj.id);
             if (realIdx === -1) continue;
 
-            const sourceColName = GRID_COLUMNS[bounds.minCol];
+            const sourceColName = activeGridColumns[bounds.minCol];
             const fillVal = targetRowObj[sourceColName];
 
             const rowCopy = { ...updatedGrid[realIdx] };
             for (let c = bounds.minCol + 1; c <= bounds.maxCol; c++) {
-                const col = GRID_COLUMNS[c];
+                const col = activeGridColumns[c];
                 if (col !== 'code') {
                     rowCopy[col] = fillVal;
                 }
@@ -1030,7 +1170,7 @@ const ResourceList = () => {
 
             const rowCopy = { ...updatedGrid[realIdx] };
             for (let c = bounds.minCol; c <= bounds.maxCol; c++) {
-                const col = GRID_COLUMNS[c];
+                const col = activeGridColumns[c];
                 if (col !== 'code') {
                     rowCopy[col] = sourceRowObj[col];
                 }
@@ -1042,6 +1182,36 @@ const ResourceList = () => {
         setGridData(updatedGrid);
         setSelectionFocus({ r: totalRows - 1, c: bounds.maxCol });
         showToast('sparkle', 'Auto-Fill Down', `Auto-filled values down to bottom of table (${totalRows} rows).`);
+    };
+
+    // Cancel Changes Handler
+    const handleCancelChanges = () => {
+        if (!hasUnsavedChanges) return;
+        setConfirmModal({
+            isOpen: true,
+            title: 'Cancel & Discard Unsaved Changes?',
+            message: `Are you sure you want to discard all ${unsavedCount} unsaved change(s)? This will revert your table back to the saved state.`,
+            confirmText: 'Discard Changes',
+            cancelText: 'Keep Editing',
+            variant: 'warning',
+            isLoading: false,
+            onConfirm: () => {
+                pushUndoState(gridDataRef.current);
+                try {
+                    sessionStorage.removeItem('mano_resources_draft_grid');
+                    sessionStorage.removeItem('mano_resources_draft_deleted');
+                } catch (e) { }
+
+                const savedList = resourcesRef.current.map(r => ({ ...r, _status: 'saved', _errors: {} }));
+                setGridData(savedList);
+                setDeletedIds(new Set());
+                setSelectionAnchor(null);
+                setSelectionFocus(null);
+                setEditingCell(null);
+                closeConfirmModal();
+                showToast('info', 'Changes Cancelled', 'All unsaved local changes have been discarded.');
+            }
+        });
     };
 
     // Insert Row Above / Below
@@ -1066,26 +1236,21 @@ const ResourceList = () => {
             return next;
         });
 
-        setSelectionAnchor({ r: insertIdx, c: 1 });
-        setSelectionFocus({ r: insertIdx, c: 1 });
+        setSelectionAnchor({ r: insertIdx, c: 0 });
+        setSelectionFocus({ r: insertIdx, c: 0 });
         showToast('info', 'Row Inserted', `Inserted new row ${position} row #${targetRowIndex + 1}.`);
     };
 
-    // ─── Global Keyboard Shortcuts ──────────────────────────────────────────
+    // ─── Global Keyboard Shortcuts ───────────────────────────────────────────
     useEffect(() => {
         const handleGlobalShortcuts = (e) => {
-            const activeTag = document.activeElement?.tagName?.toLowerCase();
-            if (activeTag === 'input' || activeTag === 'textarea') {
-                if (e.key === 'Escape') {
-                    setEditingCell(null);
-                    setSelectionAnchor(null);
-                    setSelectionFocus(null);
-                    setSelectedIds(new Set());
-                    closeDropdown();
-                }
-                return;
-            }
+            const isMac = navigator.platform.toUpperCase().indexOf('MAC') >= 0;
+            const modifier = isMac ? e.metaKey : e.ctrlKey;
+            const activeEl = document.activeElement;
+            const activeTag = activeEl?.tagName?.toLowerCase();
+            const isEditingText = activeTag === 'input' || activeTag === 'textarea';
 
+            // Escape always works regardless of focus
             if (e.key === 'Escape') {
                 setEditingCell(null);
                 setSelectionAnchor(null);
@@ -1095,10 +1260,26 @@ const ResourceList = () => {
                 return;
             }
 
-            const isMac = navigator.platform.toUpperCase().indexOf('MAC') >= 0;
-            const modifier = isMac ? e.metaKey : e.ctrlKey;
+            // Ctrl+V / Cmd+V : Paste — always let the native 'paste' event fire.
+            // We handle the actual paste in the window 'paste' event (handleNativePaste).
+            // Do NOT block or preventDefault here — just return to let the event propagate.
+            if (modifier && (e.key === 'v' || e.key === 'V')) {
+                // Only if a cell or row is selected — otherwise let browser handle naturally.
+                const hasSel = selectedIdsRef.current.size > 0 || selectionAnchorRef.current !== null;
+                if (hasSel && canWrite) {
+                    // Do NOT call preventDefault — the browser must fire the 'paste' event
+                    // so handleNativePaste gets e.clipboardData synchronously.
+                    return;
+                }
+                // No cell selected — allow native behaviour (e.g. paste into a regular input).
+                return;
+            }
 
-            // Delete or Backspace key
+            // For all other shortcuts: if a text input is focused and the user is
+            // actively editing (not just navigating), skip the spreadsheet shortcuts.
+            if (isEditingText) return;
+
+            // Delete or Backspace key : clear selected cells / delete selected rows
             if (e.key === 'Delete' || e.key === 'Backspace') {
                 if (canWrite) {
                     const bounds = getSelectionBounds();
@@ -1116,30 +1297,24 @@ const ResourceList = () => {
                                 const targetRowObj = sortedGridDataRef.current[r];
                                 if (targetRowObj) rowsToDelete.push(targetRowObj);
                             }
-                            if (rowsToDelete.length > 0) {
-                                requestDeleteRowEntries(rowsToDelete);
-                            }
+                            if (rowsToDelete.length > 0) requestDeleteRowEntries(rowsToDelete);
                         } else {
                             pushUndoState(gridDataRef.current);
                             let updatedGrid = [...gridDataRef.current];
                             let numCleared = 0;
-
                             for (let r = bounds.minRow; r <= bounds.maxRow; r++) {
                                 const targetRowObj = sortedGridDataRef.current[r];
                                 if (!targetRowObj) continue;
                                 const realIdx = updatedGrid.findIndex(row => row.id === targetRowObj.id);
                                 if (realIdx === -1) continue;
-
                                 const rowCopy = { ...updatedGrid[realIdx] };
                                 for (let c = bounds.minCol; c <= bounds.maxCol; c++) {
-                                    const col = GRID_COLUMNS[c];
-                                    rowCopy[col] = '';
+                                    rowCopy[activeGridColumns[c]] = '';
                                     numCleared++;
                                 }
                                 if (rowCopy._status !== 'new') rowCopy._status = 'modified';
                                 updatedGrid[realIdx] = rowCopy;
                             }
-
                             if (numCleared > 0) {
                                 setGridData(updatedGrid);
                                 showToast('info', 'Cells Cleared', `Cleared content from ${numCleared} cell(s). Click "Save Changes" to apply.`);
@@ -1150,28 +1325,18 @@ const ResourceList = () => {
                 }
             }
 
-
-
-            // Alt+N : Add New Row at end of table (Excel behavior)
+            // Alt+N : Add New Row
             if (e.altKey && (e.key === 'n' || e.key === 'N')) {
-                if (canWrite) {
-                    e.preventDefault();
-                    handleAddRows(1);
-                    return;
-                }
+                if (canWrite) { e.preventDefault(); handleAddRows(1); return; }
             }
 
-            // Ctrl+A / Cmd+A : Select All
+            // Ctrl+A : Select All
             if (modifier && (e.key === 'a' || e.key === 'A')) {
                 e.preventDefault();
                 if (sortedGridDataRef.current.length > 0) {
                     setSelectionAnchor({ r: 0, c: 0 });
-                    setSelectionFocus({
-                        r: sortedGridDataRef.current.length - 1,
-                        c: activeGridColumns.length - 1
-                    });
-                    const allIds = new Set(sortedGridDataRef.current.map(r => r.id));
-                    setSelectedIds(allIds);
+                    setSelectionFocus({ r: sortedGridDataRef.current.length - 1, c: activeGridColumns.length - 1 });
+                    setSelectedIds(new Set(sortedGridDataRef.current.map(r => r.id)));
                     showToast('info', 'Selected All', `Selected all ${sortedGridDataRef.current.length} row(s) and cells.`);
                 }
                 return;
@@ -1179,19 +1344,15 @@ const ResourceList = () => {
 
             // Ctrl+D : Fill Down
             if (modifier && (e.key === 'd' || e.key === 'D')) {
-                e.preventDefault();
-                handleFillDown();
-                return;
+                e.preventDefault(); handleFillDown(); return;
             }
 
             // Ctrl+R : Fill Right
             if (modifier && (e.key === 'r' || e.key === 'R')) {
-                e.preventDefault();
-                handleFillRight();
-                return;
+                e.preventDefault(); handleFillRight(); return;
             }
 
-            // Ctrl+Z / Cmd+Z : Undo
+            // Ctrl+Z : Undo
             if (modifier && !e.shiftKey && (e.key === 'z' || e.key === 'Z')) {
                 e.preventDefault();
                 if (undoStackRef.current.length > 0) {
@@ -1205,8 +1366,8 @@ const ResourceList = () => {
                 return;
             }
 
-            // Ctrl+Y / Cmd+Y or Ctrl+Shift+Z : Redo
-            if (modifier && (e.key === 'y' || e.key === 'Y' || (e.shiftKey && (e.key === 'z' || e.key === 'Z')))) {
+            // Ctrl+Y / Ctrl+Shift+Z : Redo
+            if ((modifier && (e.key === 'y' || e.key === 'Y')) || (modifier && e.shiftKey && (e.key === 'z' || e.key === 'Z'))) {
                 e.preventDefault();
                 if (redoStackRef.current.length > 0) {
                     const nextState = redoStackRef.current.pop();
@@ -1218,36 +1379,45 @@ const ResourceList = () => {
                 }
                 return;
             }
+
+            // Ctrl+C : Copy
+            if (modifier && (e.key === 'c' || e.key === 'C')) {
+                const hasSel = selectedIdsRef.current.size > 0 || selectionAnchorRef.current !== null;
+                if (hasSel) { e.preventDefault(); executeCopy(); }
+                return;
+            }
+
+            // Ctrl+X : Cut
+            if (modifier && (e.key === 'x' || e.key === 'X')) {
+                if (canWrite) {
+                    const hasSel = selectedIdsRef.current.size > 0 || selectionAnchorRef.current !== null;
+                    if (hasSel) { e.preventDefault(); executeCut(); }
+                    return;
+                }
+            }
         };
 
         window.addEventListener('keydown', handleGlobalShortcuts);
         return () => window.removeEventListener('keydown', handleGlobalShortcuts);
-    }, [selectedIds, selectionAnchor, selectionFocus]);
+    }, [canWrite]);
 
-    // ─── Cell Copy (Ctrl+C), Cut (Ctrl+X), & Paste (Ctrl+V) Core Functions ─────
-    const executeCopy = (clipboardEvent = null) => {
-        const activeTag = document.activeElement?.tagName?.toLowerCase();
-        if (activeTag === 'input' || activeTag === 'textarea') return null;
-
+    // â”€â”€â”€ Cell Copy (Ctrl+C), Cut (Ctrl+X), & Paste (Ctrl+V) Core Functions â”€â”€â”€â”€â”€
+    const executeCopy = () => {
         let rowsToCopy = [];
         let minCol = 0;
         let maxCol = activeGridColumns.length - 1;
 
-        const bounds = getSelectionBounds();
+        const curSelectedIds = selectedIdsRef.current;
+        const bounds = getBoundsFromRefs();
 
-        if (bounds) {
+        if (curSelectedIds.size > 0) {
+            rowsToCopy = sortedGridDataRef.current.filter(r => curSelectedIds.has(r.id));
+        } else if (bounds) {
             for (let r = bounds.minRow; r <= bounds.maxRow; r++) {
                 if (sortedGridDataRef.current[r]) rowsToCopy.push(sortedGridDataRef.current[r]);
             }
             minCol = bounds.minCol;
             maxCol = bounds.maxCol;
-        } else if (selectionAnchor) {
-            const rowObj = sortedGridDataRef.current[selectionAnchor.r];
-            if (rowObj) rowsToCopy.push(rowObj);
-            minCol = selectionAnchor.c;
-            maxCol = selectionAnchor.c;
-        } else if (selectedIds.size > 0) {
-            rowsToCopy = sortedGridDataRef.current.filter(r => selectedIds.has(r.id));
         }
 
         if (rowsToCopy.length === 0) return null;
@@ -1262,26 +1432,28 @@ const ResourceList = () => {
         });
 
         const tsvData = tsvLines.join('\n');
-        if (tsvData) {
-            if (clipboardEvent && clipboardEvent.clipboardData) {
-                clipboardEvent.clipboardData.setData('text/plain', tsvData);
-                clipboardEvent.preventDefault();
-            } else {
-                navigator.clipboard?.writeText(tsvData).catch(err => console.warn('Clipboard write error:', err));
-            }
+        if (tsvData.trim()) {
+            internalClipboardRef.current = tsvData;
+            navigator.clipboard?.writeText(tsvData).catch(() => {});
             const numCells = tsvLines.length * (maxCol - minCol + 1);
             showToast('sparkle', 'Copied to Clipboard', `Copied ${numCells} cell(s) across ${tsvLines.length} row(s)`);
         }
         return tsvData;
     };
 
-    const executeCut = (clipboardEvent = null) => {
-        const bounds = getSelectionBounds();
-        if (!bounds || !canWrite) return;
-
-        executeCopy(clipboardEvent);
-
+    const executeCut = () => {
+        if (!canWrite) return;
+        executeCopy();
         pushUndoState(gridDataRef.current);
+        const curSelectedIds = selectedIdsRef.current;
+        const bounds = getBoundsFromRefs();
+
+        if (curSelectedIds.size > 0) {
+            handleBulkDelete();
+            return;
+        }
+
+        if (!bounds) return;
         let updatedGrid = [...gridDataRef.current];
         let numCleared = 0;
 
@@ -1293,7 +1465,7 @@ const ResourceList = () => {
 
             const rowCopy = { ...updatedGrid[realIdx] };
             for (let c = bounds.minCol; c <= bounds.maxCol; c++) {
-                const col = GRID_COLUMNS[c];
+                const col = activeGridColumns[c];
                 rowCopy[col] = '';
                 numCleared++;
             }
@@ -1307,160 +1479,354 @@ const ResourceList = () => {
         }
     };
 
-    const executePaste = async (pastedDataText) => {
-        let textToPaste = pastedDataText;
-        if (!textToPaste) {
-            try {
-                textToPaste = await navigator.clipboard.readText();
-            } catch (err) {
-                console.warn('Clipboard read error:', err);
-            }
-        }
+    const executeDuplicate = () => {
+        if (!canWrite) return;
 
-        if (!textToPaste || !textToPaste.trim()) {
-            showToast('info', 'Clipboard Empty', 'No data found in clipboard.');
+        const curSelectedIds = selectedIdsRef.current;
+        if (curSelectedIds.size > 0) {
+            handleBulkDuplicate();
             return;
         }
 
+        const bounds = getBoundsFromRefs();
+        if (!bounds) return;
+
         pushUndoState(gridDataRef.current);
 
-        const lines = textToPaste.trim().split(/\r?\n/);
-        let updatedGrid = [...gridDataRef.current];
-        const newStartIdx = updatedGrid.length;
-        let newRowsAddedCount = 0;
+        const totalCols = activeGridColumns.length;
+        const isFullRowSelected = (bounds.minCol === 0 && bounds.maxCol === totalCols - 1);
 
-        lines.forEach((line, dr) => {
-            if (!line.trim()) return;
-            const cells = line.split('\t');
-
-            let code = '';
-            let name = '';
-            let type = 'material';
-            let base_unit_code = 'kg';
-            let rate = null;
-            let description = '';
-            let remarks = '';
-
-            if (cells.length >= 2) {
-                const c0 = cells[0]?.trim() || '';
-                const c1 = cells[1]?.trim() || '';
-
-                if (c0 && c1) {
-                    code = c0;
-                    name = c1;
-                } else if (c0 && !c1) {
-                    name = c0;
-                } else if (!c0 && c1) {
-                    name = c1;
-                }
-
-                cells.forEach((val, colIdx) => {
-                    const colName = activeGridColumns[colIdx];
-                    const trimmed = val.trim();
-                    if (!colName || !trimmed) return;
-
-                    if (colName === 'type') {
-                        type = resolveType(trimmed);
-                    } else if (colName === 'base_unit_code') {
-                        base_unit_code = resolveUnitCode(trimmed);
-                    } else if (colName === 'rate') {
-                        const parsedRate = parseFloat(trimmed.replace(/[^0-9.]/g, ''));
-                        if (!isNaN(parsedRate)) rate = parsedRate;
-                    } else if (colName === 'description') {
-                        description = trimmed;
-                    } else if (colName === 'remarks') {
-                        remarks = trimmed;
-                    }
-                });
-            } else {
-                const singleVal = cells[0]?.trim() || '';
-                if (singleVal) name = singleVal;
+        if (isFullRowSelected) {
+            // Duplicate entire selected row(s) right below selection
+            const rowsToDuplicate = [];
+            for (let r = bounds.minRow; r <= bounds.maxRow; r++) {
+                const targetRowObj = sortedGridDataRef.current[r];
+                if (targetRowObj) rowsToDuplicate.push(targetRowObj);
             }
 
-            if (name || code) {
-                if (!name && code) name = code;
-
-                if (!code) {
-                    const stem = name.substring(0, 4).toUpperCase().replace(/[^A-Z0-9]/g, '') || 'RES';
-                    code = generateUniqueCode(stem, updatedGrid);
-                } else {
-                    const isExisting = resourcesRef.current.some(r => r.code?.toLowerCase() === code.toLowerCase()) ||
-                        updatedGrid.some(r => r.code?.toLowerCase() === code.toLowerCase());
-                    if (isExisting) {
-                        code = generateUniqueCode(code, updatedGrid);
-                    }
+            if (rowsToDuplicate.length > 0) {
+                const lastRowObj = rowsToDuplicate[rowsToDuplicate.length - 1];
+                let insertIdx = gridDataRef.current.length;
+                if (lastRowObj) {
+                    const foundIdx = gridDataRef.current.findIndex(r => r.id === lastRowObj.id);
+                    if (foundIdx !== -1) insertIdx = foundIdx + 1;
                 }
 
-                updatedGrid.push({
-                    id: `temp_${Date.now()}_${Math.random().toString(36).substring(2, 9)}_${dr}`,
-                    code,
-                    name,
-                    type,
-                    base_unit_code,
-                    rate: rate !== null ? rate : null,
-                    rate_source: rate !== null ? 'manual' : undefined,
-                    description,
-                    remarks,
-                    compositions: [],
-                    conversions: [],
-                    _rateModified: rate !== null,
+                const duplicates = rowsToDuplicate.map((row, idx) => ({
+                    id: `temp_${Date.now()}_${Math.random().toString(36).substring(2, 9)}_${idx}`,
+                    code: generateUniqueCode(row.code || 'RES', gridDataRef.current),
+                    name: row.name ? `${row.name} (Copy)` : 'Copy',
+                    type: row.type || 'material',
+                    base_unit_code: row.base_unit_code || 'kg',
+                    rate: row.rate !== undefined ? row.rate : null,
+                    description: row.description || '',
+                    remarks: row.remarks || '',
+                    compositions: row.compositions ? JSON.parse(JSON.stringify(row.compositions)) : [],
+                    conversions: row.conversions ? JSON.parse(JSON.stringify(row.conversions)) : [],
                     _status: 'new',
                     _errors: {}
+                }));
+
+                setGridData(prev => {
+                    const next = [...prev];
+                    next.splice(insertIdx, 0, ...duplicates);
+                    return next;
                 });
-                newRowsAddedCount++;
+
+                const targetFocusRow = bounds.maxRow + 1;
+                const targetCol = bounds ? bounds.minCol : 0;
+                setSelectionAnchor({ r: targetFocusRow, c: targetCol });
+                setSelectionFocus({ r: targetFocusRow + duplicates.length - 1, c: targetCol });
+                showToast('sparkle', 'Duplicated Row(s) (Ctrl+D)', `Created ${duplicates.length} duplicate row(s) right below selection.`);
             }
-        });
+        } else {
+            // Fill down cell values
+            let updatedGrid = [...gridDataRef.current];
+            let numCellsFilled = 0;
 
-        if (newRowsAddedCount > 0) {
-            setGridData(updatedGrid);
+            if (bounds.minRow === bounds.maxRow) {
+                // Single row / cell selection: copy from row above
+                if (bounds.minRow > 0) {
+                    const sourceRowObj = sortedGridDataRef.current[bounds.minRow - 1];
+                    const targetRowObj = sortedGridDataRef.current[bounds.minRow];
+                    if (sourceRowObj && targetRowObj) {
+                        const realIdx = updatedGrid.findIndex(row => row.id === targetRowObj.id);
+                        if (realIdx !== -1) {
+                            const rowCopy = { ...updatedGrid[realIdx] };
+                            for (let c = bounds.minCol; c <= bounds.maxCol; c++) {
+                                const colName = activeGridColumns[c];
+                                if (colName !== 'code') {
+                                    rowCopy[colName] = sourceRowObj[colName] ?? '';
+                                    numCellsFilled++;
+                                }
+                            }
+                            if (rowCopy._status !== 'new') rowCopy._status = 'modified';
+                            updatedGrid[realIdx] = rowCopy;
+                        }
+                    }
+                } else {
+                    showToast('info', 'Fill Down', 'No row above to copy from.');
+                    return;
+                }
+            } else {
+                // Range selection (multiple rows): fill from top row of range down
+                const sourceRowObj = sortedGridDataRef.current[bounds.minRow];
+                if (sourceRowObj) {
+                    for (let r = bounds.minRow + 1; r <= bounds.maxRow; r++) {
+                        const targetRowObj = sortedGridDataRef.current[r];
+                        if (!targetRowObj) continue;
+                        const realIdx = updatedGrid.findIndex(row => row.id === targetRowObj.id);
+                        if (realIdx === -1) continue;
 
-            if (pageSize !== 'All') {
-                const lastPage = Math.ceil(updatedGrid.length / Number(pageSize)) || 1;
-                setCurrentPage(lastPage);
+                        const rowCopy = { ...updatedGrid[realIdx] };
+                        for (let c = bounds.minCol; c <= bounds.maxCol; c++) {
+                            const colName = activeGridColumns[c];
+                            if (colName !== 'code') {
+                                rowCopy[colName] = sourceRowObj[colName] ?? '';
+                                numCellsFilled++;
+                            }
+                        }
+                        if (rowCopy._status !== 'new') rowCopy._status = 'modified';
+                        updatedGrid[realIdx] = rowCopy;
+                    }
+                }
             }
 
-            setTimeout(() => {
-                setSelectionAnchor({ r: newStartIdx, c: 0 });
-                setSelectionFocus({ r: updatedGrid.length - 1, c: activeGridColumns.length - 1 });
-            }, 50);
-
-            showToast('sparkle', 'Pasted New Rows at End', `Appended ${newRowsAddedCount} new resource row(s) to the bottom of the table.`);
+            if (numCellsFilled > 0) {
+                setGridData(updatedGrid);
+                setEditingCell(null);
+                showToast('sparkle', 'Filled Down (Ctrl+D)', `Duplicated value from row above across ${numCellsFilled} cell(s). Click "Save Changes" to apply.`);
+            }
         }
     };
 
+    const executePaste = (pastedDataText, forcedStartRow, forcedStartCol) => {
+        let textToPaste = pastedDataText || internalClipboardRef.current;
+        if (!textToPaste || !textToPaste.trim()) {
+            showToast('info', 'Clipboard Empty', 'No content available to paste.');
+            return;
+        }
+
+        const parsedRows = parseExcelClipboardText(textToPaste);
+        if (parsedRows.length === 0) return;
+
+        pushUndoState(gridDataRef.current);
+
+        let startRow = 0;
+        let startCol = 0;
+
+        const curSelectedIds = selectedIdsRef.current;
+        const bounds = getBoundsFromRefs();
+
+        if (forcedStartRow !== undefined && forcedStartCol !== undefined) {
+            startRow = forcedStartRow;
+            startCol = forcedStartCol;
+        } else if (curSelectedIds.size > 0) {
+            const firstSelectedId = Array.from(curSelectedIds)[0];
+            const foundIdx = sortedGridDataRef.current.findIndex(r => r.id === firstSelectedId);
+            if (foundIdx !== -1) startRow = foundIdx;
+            startCol = bounds ? bounds.minCol : 0;
+        } else if (bounds) {
+            startRow = bounds.minRow;
+            startCol = bounds.minCol;
+        } else if (selectionAnchorRef.current) {
+            startRow = selectionAnchorRef.current.r;
+            startCol = selectionAnchorRef.current.c;
+        }
+
+        // Smart Excel Range Replication
+        let expandedRows = parsedRows;
+        if (bounds && (bounds.maxRow > bounds.minRow || bounds.maxCol > bounds.minCol) && forcedStartRow === undefined) {
+            const targetRowCount = bounds.maxRow - bounds.minRow + 1;
+            const targetColCount = bounds.maxCol - bounds.minCol + 1;
+
+            if (parsedRows.length === 1 && parsedRows[0].length === 1) {
+                const singleVal = parsedRows[0][0];
+                expandedRows = Array.from({ length: targetRowCount }, () =>
+                    Array.from({ length: targetColCount }, () => singleVal)
+                );
+            } else if (parsedRows.length === 1 && targetRowCount > 1) {
+                expandedRows = Array.from({ length: targetRowCount }, () => [...parsedRows[0]]);
+            } else if (parsedRows[0].length === 1 && targetColCount > 1) {
+                expandedRows = parsedRows.map(row => Array.from({ length: targetColCount }, () => row[0]));
+            }
+        }
+
+        let updatedGrid = [...gridDataRef.current];
+        let numCellsUpdated = 0;
+        let newRowsAddedCount = 0;
+
+        expandedRows.forEach((cells, dr) => {
+            const r = startRow + dr;
+            const targetRowObj = sortedGridDataRef.current[r];
+
+            if (targetRowObj) {
+                const realIdx = updatedGrid.findIndex(row => row.id === targetRowObj.id);
+                if (realIdx !== -1) {
+                    const rowCopy = { ...updatedGrid[realIdx] };
+                    cells.forEach((cellVal, dc) => {
+                        const c = startCol + dc;
+                        if (c < activeGridColumns.length) {
+                            const colName = activeGridColumns[c];
+                            if (colName !== 'compositions' && colName !== 'conversions') {
+                                let cleanVal = (cellVal ?? '').trim();
+                                if (colName === 'type') {
+                                    cleanVal = resolveType(cleanVal);
+                                } else if (colName === 'base_unit_code') {
+                                    cleanVal = resolveUnitCode(cleanVal);
+                                } else if (colName === 'rate') {
+                                    cleanVal = parseNumericRate(cleanVal);
+                                    rowCopy.rate_source = 'manual';
+                                }
+                                rowCopy[colName] = cleanVal;
+                                numCellsUpdated++;
+                            }
+                        }
+                    });
+                    if (rowCopy._status !== 'new') rowCopy._status = 'modified';
+                    if (rowCopy._errors?.name && rowCopy.name?.trim()) {
+                        delete rowCopy._errors.name;
+                    }
+                    updatedGrid[realIdx] = rowCopy;
+                }
+            } else {
+                const newRow = {
+                    id: `temp_${Date.now()}_${Math.random().toString(36).substring(2, 9)}_${dr}`,
+                    code: generateUniqueCode('RES', updatedGrid),
+                    name: '',
+                    type: 'material',
+                    base_unit_code: 'kg',
+                    rate: null,
+                    description: '',
+                    remarks: '',
+                    compositions: [],
+                    conversions: [],
+                    _status: 'new',
+                    _errors: {}
+                };
+                cells.forEach((cellVal, dc) => {
+                    const c = startCol + dc;
+                    if (c < activeGridColumns.length) {
+                        const colName = activeGridColumns[c];
+                        if (colName !== 'compositions' && colName !== 'conversions') {
+                            let cleanVal = (cellVal ?? '').trim();
+                            if (colName === 'type') {
+                                cleanVal = resolveType(cleanVal);
+                            } else if (colName === 'base_unit_code') {
+                                cleanVal = resolveUnitCode(cleanVal);
+                            } else if (colName === 'rate') {
+                                cleanVal = parseNumericRate(cleanVal);
+                                newRow.rate_source = 'manual';
+                            } else if (colName === 'code' && cleanVal) {
+                                newRow.code = cleanVal;
+                            }
+                            if (colName !== 'code' || cleanVal) {
+                                newRow[colName] = cleanVal;
+                            }
+                            numCellsUpdated++;
+                        }
+                    }
+                });
+                if (!newRow.name) {
+                    const nonVal = cells.find(c => c && c.trim());
+                    if (nonVal) newRow.name = nonVal.trim();
+                }
+                if (newRow.name) {
+                    updatedGrid.push(newRow);
+                    newRowsAddedCount++;
+                }
+            }
+        });
+
+        if (numCellsUpdated > 0) {
+            setGridData(updatedGrid);
+
+            const endRow = Math.min(startRow + expandedRows.length - 1, (sortedGridDataRef.current.length + newRowsAddedCount) - 1);
+            const endCol = Math.min(startCol + (expandedRows[0]?.length || 1) - 1, activeGridColumns.length - 1);
+            setSelectionAnchor({ r: startRow, c: startCol });
+            setSelectionFocus({ r: endRow, c: endCol });
+
+            if (newRowsAddedCount > 0) {
+                showToast('sparkle', 'Added New Rows', `Pasted values into ${numCellsUpdated} cell(s) and created ${newRowsAddedCount} new resource row(s).`);
+            } else {
+                showToast('sparkle', 'Paste Success', `Pasted content into ${numCellsUpdated} cell(s). Click "Save Changes" to apply.`);
+            }
+        }
+    };
+    executePasteRef.current = executePaste;
+
+
+    // â”€â”€â”€ Native Browser Copy/Paste event handlers (fires when focus is NOT on an input) â”€
     useEffect(() => {
-        const handleGlobalCopy = (e) => {
-            const activeTag = document.activeElement?.tagName?.toLowerCase();
-            if (activeTag === 'input' || activeTag === 'textarea') return;
-            executeCopy(e);
-        };
+        const handleNativeCopy = (e) => {
+            const activeEl = document.activeElement;
+            const activeTag = activeEl?.tagName?.toLowerCase();
+            if ((activeTag === 'input' || activeTag === 'textarea') &&
+                activeEl.selectionStart !== activeEl.selectionEnd) {
+                return;
+            }
+            const curSelectedIds = selectedIdsRef.current;
+            const anchor = selectionAnchorRef.current;
+            if (curSelectedIds.size === 0 && !anchor) return;
 
-        const handleGlobalCut = (e) => {
-            const activeTag = document.activeElement?.tagName?.toLowerCase();
-            if (activeTag === 'input' || activeTag === 'textarea') return;
-            if (!canWrite) return;
-            executeCut(e);
-        };
+            const bounds = getBoundsFromRefs();
+            let rowsToCopy = [];
+            let minCol = 0;
+            let maxCol = activeGridColumns.length - 1;
 
-        const handleGlobalPaste = (e) => {
-            const activeTag = document.activeElement?.tagName?.toLowerCase();
-            if (activeTag === 'input' || activeTag === 'textarea') return;
-            if (!canWrite) return;
+            if (curSelectedIds.size > 0) {
+                rowsToCopy = sortedGridDataRef.current.filter(r => curSelectedIds.has(r.id));
+            } else if (bounds) {
+                for (let r = bounds.minRow; r <= bounds.maxRow; r++) {
+                    if (sortedGridDataRef.current[r]) rowsToCopy.push(sortedGridDataRef.current[r]);
+                }
+                minCol = bounds.minCol;
+                maxCol = bounds.maxCol;
+            }
 
-            const text = e.clipboardData?.getData('text/plain') || e.clipboardData?.getData('text');
+            if (rowsToCopy.length === 0) return;
+
             e.preventDefault();
-            executePaste(text);
+            const tsvLines = rowsToCopy.map(rowObj => {
+                const rowVals = [];
+                for (let c = minCol; c <= maxCol; c++) {
+                    rowVals.push(rowObj[activeGridColumns[c]] ?? '');
+                }
+                return rowVals.join('\t');
+            });
+            const tsvData = tsvLines.join('\n');
+            e.clipboardData.setData('text/plain', tsvData);
         };
 
-        window.addEventListener('copy', handleGlobalCopy);
-        window.addEventListener('cut', handleGlobalCut);
-        window.addEventListener('paste', handleGlobalPaste);
-        return () => {
-            window.removeEventListener('copy', handleGlobalCopy);
-            window.removeEventListener('cut', handleGlobalCut);
-            window.removeEventListener('paste', handleGlobalPaste);
+        const handleNativePaste = (e) => {
+            const pastedData = e.clipboardData?.getData('text/plain');
+            if (!pastedData || !pastedData.trim()) return;
+
+            const activeEl = document.activeElement;
+            const activeTag = activeEl?.tagName?.toLowerCase();
+            const isInInput = activeTag === 'input' || activeTag === 'textarea';
+
+            // If an input/textarea is focused, only intercept if the pasted text
+            // is multi-cell (contains tabs or newlines) â€” i.e. it's from Excel/Sheets.
+            const isMultiCell = pastedData.includes('\t') || pastedData.includes('\n');
+
+            if (isInInput && !isMultiCell) return;
+
+            // Require at least a cell or row to be selected
+            if (!selectionAnchorRef.current && selectedIdsRef.current.size === 0) return;
+
+            e.preventDefault();
+            // Use ref to avoid stale closure â€” always calls the latest executePaste
+            executePasteRef.current(pastedData);
         };
-    }, [selectionAnchor, selectionFocus, canWrite]);
+
+        window.addEventListener('copy', handleNativeCopy);
+        window.addEventListener('paste', handleNativePaste);
+        return () => {
+            window.removeEventListener('copy', handleNativeCopy);
+            window.removeEventListener('paste', handleNativePaste);
+        };
+    }, []);
 
     const handleSort = (key) => {
         const nextDirection = sortConfig.key === key && sortConfig.direction === 'asc' ? 'desc' : 'asc';
@@ -1529,7 +1895,7 @@ const ResourceList = () => {
                     const minR = Math.min(...selectedIndices);
                     const maxR = Math.max(...selectedIndices);
                     setSelectionAnchor({ r: minR, c: 0 });
-                    setSelectionFocus({ r: maxR, c: activeGridColumns.length - 1 });
+                    setSelectionFocus({ r: maxR, c: 0 });
                 }
             } else {
                 setSelectionAnchor(null);
@@ -1541,7 +1907,7 @@ const ResourceList = () => {
         setLastSelectedId(id);
     };
 
-    // ─── Cell Management with Immediate Auto-Save & Undo Push ─────────────────
+    // â”€â”€â”€ Cell Management with Immediate Auto-Save & Undo Push â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
     const handleCellChange = (rowIndex, field, value, shouldAutoSave = false) => {
         pushUndoState(gridDataRef.current);
         let updatedGridData = [];
@@ -1592,7 +1958,7 @@ const ResourceList = () => {
         setEditingCell(null);
     };
 
-    // ─── Helper for Deleting Entire Row Entries when All Cells Selected ────────
+    // â”€â”€â”€ Helper for Deleting Entire Row Entries when All Cells Selected â”€â”€â”€â”€â”€â”€â”€â”€
     const deleteSelectedRowEntries = async (rowsToDelete) => {
         pushUndoState(gridDataRef.current);
         const rowIds = new Set(rowsToDelete.map(r => r.id));
@@ -1635,11 +2001,11 @@ const ResourceList = () => {
         });
     };
 
-    // ─── Spreadsheet Keyboard Navigation & Range Operations ────────────────────
+    // ─── Spreadsheet Keyboard Navigation & Range Operations ───────────────────
     const handleCellKeyDown = (e, rowIndex, colName) => {
-        const colIndex = GRID_COLUMNS.indexOf(colName);
+        const colIndex = activeGridColumns.indexOf(colName);
         const totalRows = sortedGridData.length;
-        const totalCols = GRID_COLUMNS.length;
+        const totalCols = activeGridColumns.length;
         const isModifier = e.ctrlKey || e.metaKey;
 
         if (editingCell?.rowIndex === rowIndex && editingCell?.colName === colName) {
@@ -1706,7 +2072,7 @@ const ResourceList = () => {
 
                     const rowCopy = { ...updatedGrid[realIdx] };
                     for (let c = bounds.minCol; c <= bounds.maxCol; c++) {
-                        const col = GRID_COLUMNS[c];
+                        const col = activeGridColumns[c];
                         if (col !== 'type' && col !== 'base_unit_code' && col !== 'name') {
                             rowCopy[col] = '';
                             numCleared++;
@@ -1916,9 +2282,11 @@ const ResourceList = () => {
         }
     };
 
-    // ─── Add Row(s) ────────────────────────────────────────────────────────────
+    // â”€â”€â”€ Add Row(s) (inserted right below active cursor) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
     const handleAddRows = (count = 1) => {
         pushUndoState(gridDataRef.current);
+        const { gridInsertIdx, sortedRowIdx } = getTargetInsertIndex();
+
         const newRows = Array.from({ length: count }).map((_, idx) => ({
             id: `temp_${Date.now()}_${Math.random().toString(36).substring(2, 9)}_${idx}`,
             code: '',
@@ -1932,34 +2300,23 @@ const ResourceList = () => {
             _status: 'new',
             _errors: {}
         }));
-        
-        let newStartIdx = 0;
+
         setGridData(prev => {
-            newStartIdx = prev.length;
-            const updated = [...prev, ...newRows];
-            return updated;
+            const next = [...prev];
+            next.splice(gridInsertIdx, 0, ...newRows);
+            return next;
         });
 
-        const newTotalCount = gridDataRef.current.length + count;
-        if (pageSize !== 'All') {
-            const lastPage = Math.ceil(newTotalCount / Number(pageSize)) || 1;
-            setCurrentPage(lastPage);
-        }
-
-        setTimeout(() => {
-            setSelectionAnchor({ r: newStartIdx, c: 1 });
-            setSelectionFocus({ r: newStartIdx + count - 1, c: activeGridColumns.length - 1 });
-            setEditingCell({ rowIndex: newStartIdx, colName: 'name' });
-        }, 50);
-
-        showToast('info', 'Row Appended', `Appended ${count} new resource row(s) at the bottom of the table.`);
+        setSelectionAnchor({ r: sortedRowIdx, c: 0 });
+        setSelectionFocus({ r: sortedRowIdx + count - 1, c: 0 });
+        showToast('info', 'Rows Added', `Added ${count} new resource row(s) below selection.`);
     };
 
-    // ─── Duplicate Row ──────────────────────────────────────────────────────────
+    // â”€â”€â”€ Duplicate Row (inserted right below duplicated row) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
     const handleDuplicateRow = (targetRow) => {
         let row = targetRow;
         if (!row) {
-            const bounds = getSelectionBounds();
+            const bounds = getBoundsFromRefs();
             if (bounds && sortedGridDataRef.current[bounds.minRow]) {
                 row = sortedGridDataRef.current[bounds.minRow];
             }
@@ -1972,7 +2329,7 @@ const ResourceList = () => {
         pushUndoState(gridDataRef.current);
         const duplicate = {
             id: `temp_${Date.now()}_${Math.random().toString(36).substring(2, 9)}_${Math.floor(Math.random() * 1000)}`,
-            code: row.code ? generateUniqueCode(row.code) : '',
+            code: row.code ? generateUniqueCode(row.code, gridDataRef.current) : '',
             name: row.name ? `${row.name} (Copy)` : 'New Copy',
             type: row.type || 'material',
             base_unit_code: row.base_unit_code || 'kg',
@@ -1981,25 +2338,25 @@ const ResourceList = () => {
             _status: 'new',
             _errors: {}
         };
-        let updatedGrid = [];
-        let newIdx = 0;
-        setGridData(prev => {
-            updatedGrid = [...prev, duplicate];
-            newIdx = updatedGrid.length - 1;
-            return updatedGrid;
-        });
 
-        if (pageSize !== 'All') {
-            const lastPage = Math.ceil((gridDataRef.current.length + 1) / Number(pageSize)) || 1;
-            setCurrentPage(lastPage);
+        let realIdx = gridDataRef.current.length;
+        let sortedIdx = sortedGridDataRef.current.length;
+        if (row && row.id) {
+            const foundIdx = gridDataRef.current.findIndex(r => r.id === row.id);
+            if (foundIdx !== -1) realIdx = foundIdx + 1;
+            const foundSortedIdx = sortedGridDataRef.current.findIndex(r => r.id === row.id);
+            if (foundSortedIdx !== -1) sortedIdx = foundSortedIdx + 1;
         }
 
-        setTimeout(() => {
-            setSelectionAnchor({ r: newIdx, c: 0 });
-            setSelectionFocus({ r: newIdx, c: activeGridColumns.length - 1 });
-        }, 50);
+        setGridData(prev => {
+            const next = [...prev];
+            next.splice(realIdx, 0, duplicate);
+            return next;
+        });
 
-        showToast('sparkle', 'Row Duplicated', `Duplicated "${row.name || 'resource'}" to the bottom of the table.`);
+        setSelectionAnchor({ r: sortedIdx, c: 0 });
+        setSelectionFocus({ r: sortedIdx, c: 0 });
+        showToast('sparkle', 'Row Duplicated', `Duplicated "${row.name || 'resource'}" right below.`);
     };
 
     // Remove Duplicate Resources Modal Handler
@@ -2022,7 +2379,7 @@ const ResourceList = () => {
         showToast('success', 'Duplicates Removed', `Removed ${idsToDelete.length} selected duplicate resource(s) locally. Click "Save Changes" to apply.`);
     };
 
-    // ─── Bulk Actions ───────────────────────────────────────────────────────────
+    // â”€â”€â”€ Bulk Actions â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
     const handleBulkDelete = () => {
         if (selectedIds.size === 0) return;
 
@@ -2040,7 +2397,6 @@ const ResourceList = () => {
                 const savedIds = idsToDelete.filter(id => !String(id).startsWith('temp_'));
                 const count = selectedIds.size;
 
-                // Instant Optimistic UI Update (1-2ms)
                 setResources(prev => prev.filter(r => !selectedIds.has(r.id)));
                 setGridData(prev => prev.filter(r => !selectedIds.has(r.id)));
                 setSelectedIds(new Set());
@@ -2058,12 +2414,25 @@ const ResourceList = () => {
     };
 
     const handleBulkDuplicate = () => {
-        if (selectedIds.size === 0) return;
+        const curSelectedIds = selectedIdsRef.current;
+        if (curSelectedIds.size === 0) return;
         pushUndoState(gridDataRef.current);
-        const selectedRows = gridData.filter(r => selectedIds.has(r.id));
+
+        const selectedRows = sortedGridDataRef.current.filter(r => curSelectedIds.has(r.id));
+        const lastSelectedRow = selectedRows[selectedRows.length - 1];
+
+        let insertIdx = gridDataRef.current.length;
+        let lastSortedIdx = sortedGridDataRef.current.length;
+        if (lastSelectedRow) {
+            const foundIdx = gridDataRef.current.findIndex(r => r.id === lastSelectedRow.id);
+            if (foundIdx !== -1) insertIdx = foundIdx + 1;
+            const foundSorted = sortedGridDataRef.current.findIndex(r => r.id === lastSelectedRow.id);
+            if (foundSorted !== -1) lastSortedIdx = foundSorted + 1;
+        }
+
         const duplicates = selectedRows.map((row, idx) => ({
             id: `temp_${Date.now()}_${Math.random().toString(36).substring(2, 9)}_${idx}`,
-            code: row.code ? generateUniqueCode(row.code) : '',
+            code: row.code ? generateUniqueCode(row.code, gridDataRef.current) : '',
             name: row.name ? `${row.name} (Copy)` : 'Copy',
             type: row.type || 'material',
             base_unit_code: row.base_unit_code || 'kg',
@@ -2072,15 +2441,18 @@ const ResourceList = () => {
             _status: 'new',
             _errors: {}
         }));
-        setGridData(prev => [...prev, ...duplicates]);
-        const count = selectedIds.size;
-        const totalCount = gridDataRef.current.length + duplicates.length;
-        if (pageSize !== 'All') {
-            const lastPage = Math.ceil(totalCount / Number(pageSize)) || 1;
-            setCurrentPage(lastPage);
-        }
+
+        setGridData(prev => {
+            const next = [...prev];
+            next.splice(insertIdx, 0, ...duplicates);
+            return next;
+        });
+
+        const count = curSelectedIds.size;
         setSelectedIds(new Set());
-        showToast('sparkle', 'Bulk Duplicated', `Appended ${count} row duplicate(s) at the bottom of the table.`);
+        setSelectionAnchor({ r: lastSortedIdx, c: 0 });
+        setSelectionFocus({ r: lastSortedIdx + duplicates.length - 1, c: 0 });
+        showToast('sparkle', 'Bulk Duplicated', `Created ${count} duplicate row(s) right below selection.`);
     };
 
     const handleBulkChangeType = (newType) => {
@@ -2123,7 +2495,7 @@ const ResourceList = () => {
         showToast('sparkle', 'Unit Updated', `Changed base unit to "${unitName}" for ${count} row(s). Click "Save Changes" to apply.`);
     };
 
-    // ─── Delete Row ─────────────────────────────────────────────────────────────
+    // â”€â”€â”€ Delete Row â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
     const handleDeleteRow = (row) => {
         if (row._status === 'new') {
             pushUndoState(gridDataRef.current);
@@ -2158,7 +2530,7 @@ const ResourceList = () => {
         });
     };
 
-    // ─── Export CSV ────────────────────────────────────────────────────────────
+    // â”€â”€â”€ Export CSV â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
     const handleExportCSV = () => {
         const headers = ['Code', 'Name', 'Type', 'Base Unit', 'Effective Rate (INR)', 'Rate Source', 'Recipe Breakdown', 'Unit Conversions', 'Description', 'Remarks'];
         const csvRows = sortedGridData.map(r => {
@@ -2196,7 +2568,6 @@ const ResourceList = () => {
         showToast('success', 'Excel Export Complete', `Exported ${sortedGridData.length} resources with full rates, recipes & conversion details.`);
     };
 
-    const bounds = getSelectionBounds();
 
     if (activeTab !== 'grid') {
         const tabContent = activeTab === 'recipes' ? (
@@ -2337,10 +2708,21 @@ const ResourceList = () => {
                         </button>
 
                         {hasUnsavedChanges && (
-                            <span className="text-[11px] font-semibold text-amber-600 dark:text-amber-400 flex items-center gap-1">
-                                <AlertCircle size={12} />
-                                <span>Unsaved local changes</span>
-                            </span>
+                            <div className="flex items-center gap-2">
+                                <span className="text-[11px] font-semibold text-amber-600 dark:text-amber-400 flex items-center gap-1">
+                                    <AlertCircle size={12} />
+                                    <span>Unsaved local changes</span>
+                                </span>
+                                <button
+                                    type="button"
+                                    onClick={handleCancelChanges}
+                                    className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs font-bold bg-gray-100 hover:bg-gray-200 dark:bg-white/10 dark:hover:bg-white/15 text-gray-700 dark:text-gray-200 border border-gray-200 dark:border-white/10 transition-all cursor-pointer shadow-xs active:scale-[0.98]"
+                                    title="Discard all unsaved local changes and revert to saved data"
+                                >
+                                    <RotateCcw size={12} className="stroke-[2.5]" />
+                                    <span>Cancel Changes</span>
+                                </button>
+                            </div>
                         )}
                     </div>
                 </div>
@@ -2413,7 +2795,7 @@ const ResourceList = () => {
                                         >
                                             Select All
                                         </button>
-                                        <span className="text-gray-300 dark:text-white/10">•</span>
+                                        <span className="text-gray-300 dark:text-white/10">â€¢</span>
                                         <button
                                             type="button"
                                             onClick={resetDefaultColumns}
@@ -2507,31 +2889,32 @@ const ResourceList = () => {
                 </div>
             </div>
 
-            {/* Excel Floating Bulk Actions Toolbar */}
-            {selectedIds.size > 0 && (
-                <motion.div
-                    initial={{ opacity: 0, y: -10 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    className="px-6 py-2.5 bg-blue-600 text-white flex items-center justify-between text-xs shrink-0 shadow-lg z-30"
-                >
-                    <div className="flex items-center gap-3 font-semibold">
-                        <span className="flex items-center gap-1.5 px-2.5 py-1 bg-white/20 rounded-md font-bold text-[11px]">
-                            <CheckSquare size={14} />
-                            {selectedIds.size} row(s) selected
-                        </span>
-                        <span className="text-white/70">· Bulk Operations:</span>
-                    </div>
+            {/* Excel Floating Bulk Actions Toaster Dock */}
+            <AnimatePresence>
+                {selectedIds.size > 0 && (
+                    <motion.div
+                        initial={{ opacity: 0, y: 50, scale: 0.95 }}
+                        animate={{ opacity: 1, y: 0, scale: 1 }}
+                        exit={{ opacity: 0, y: 50, scale: 0.95 }}
+                        transition={{ type: 'spring', stiffness: 400, damping: 25 }}
+                        className="fixed bottom-6 left-1/2 -translate-x-1/2 z-[6500] bg-gray-900/95 dark:bg-[#161b22]/95 backdrop-blur-md text-white px-4 py-2.5 rounded-2xl shadow-2xl border border-gray-700/60 dark:border-white/15 flex items-center gap-3.5 select-none"
+                    >
+                        <div className="flex items-center gap-2 pr-2 border-r border-gray-700/80 dark:border-white/10 font-semibold text-xs">
+                            <span className="flex items-center justify-center w-5 h-5 rounded-full bg-blue-500 text-white font-black text-[11px]">
+                                {selectedIds.size}
+                            </span>
+                            <span className="text-gray-200">Selected</span>
+                        </div>
 
-                    <div className="flex items-center gap-2 relative">
                         {canWrite && (
-                            <>
+                            <div className="flex items-center gap-2 relative">
                                 <button
                                     onClick={handleBulkDuplicate}
-                                    className="flex items-center gap-1.5 px-3 py-1.5 bg-white/10 hover:bg-white/20 rounded-lg text-xs font-bold transition"
+                                    className="flex items-center gap-1.5 px-3 py-1.5 bg-white/10 hover:bg-white/20 text-white rounded-lg text-xs font-bold transition active:scale-95"
                                     title="Duplicate selected rows"
                                 >
                                     <Copy size={13} />
-                                    Duplicate ({selectedIds.size})
+                                    <span>Duplicate ({selectedIds.size})</span>
                                 </button>
 
                                 {/* Bulk Change Type Dropdown */}
@@ -2541,58 +2924,58 @@ const ResourceList = () => {
                                             setShowBulkTypeMenu(v => !v);
                                             setShowBulkUnitMenu(false);
                                         }}
-                                        className="flex items-center gap-1.5 px-3 py-1.5 bg-white/10 hover:bg-white/20 rounded-lg text-xs font-bold transition"
+                                        className="flex items-center gap-1.5 px-3 py-1.5 bg-white/10 hover:bg-white/20 text-white rounded-lg text-xs font-bold transition active:scale-95"
                                     >
                                         <span>Change Type</span>
                                         <ChevronDown size={12} />
                                     </button>
                                     {showBulkTypeMenu && (
-                                        <div className="absolute right-0 top-full mt-1 w-44 bg-white dark:bg-[#161b22] border border-gray-200 dark:border-white/10 rounded-md shadow-xl z-[6000] py-1 text-xs text-gray-800 dark:text-gray-200 font-medium no-scrollbar">
-                                            {['material', 'item', 'labour'].map(t => (
+                                        <div className="absolute right-0 bottom-full mb-2 w-44 bg-white dark:bg-[#161b22] border border-gray-200 dark:border-white/10 rounded-md shadow-xl z-[6600] py-1 text-xs text-gray-800 dark:text-gray-200 font-medium no-scrollbar">
+                                            {['material', 'item', 'labour'].map(type => (
                                                 <button
-                                                    key={t}
-                                                    onClick={() => handleBulkChangeType(t)}
-                                                    className="w-full text-left px-3 py-2 hover:bg-gray-100 dark:hover:bg-white/5 capitalize font-semibold"
+                                                    key={type}
+                                                    onClick={() => handleBulkChangeType(type)}
+                                                    className="w-full text-left px-3 py-1.5 hover:bg-gray-100 dark:hover:bg-white/5 capitalize font-semibold"
                                                 >
-                                                    Set to {t}
+                                                    {type}
                                                 </button>
                                             ))}
                                         </div>
                                     )}
                                 </div>
 
-                                {/* Bulk Change Base Unit Dropdown */}
+                                {/* Bulk Change Unit Dropdown */}
                                 <div className="relative">
                                     <button
                                         onClick={() => {
                                             setShowBulkUnitMenu(v => !v);
                                             setShowBulkTypeMenu(false);
                                         }}
-                                        className="flex items-center gap-1.5 px-3 py-1.5 bg-white/10 hover:bg-white/20 rounded-lg text-xs font-bold transition"
+                                        className="flex items-center gap-1.5 px-3 py-1.5 bg-white/10 hover:bg-white/20 text-white rounded-lg text-xs font-bold transition active:scale-95"
                                     >
-                                        <span>Change Base Unit</span>
+                                        <span>Change Unit</span>
                                         <ChevronDown size={12} />
                                     </button>
                                     {showBulkUnitMenu && (
-                                        <div className="absolute right-0 top-full mt-1 w-56 bg-white dark:bg-[#161b22] border border-gray-200 dark:border-white/10 rounded-md shadow-xl z-[6000] p-2 text-xs text-gray-800 dark:text-gray-200 flex flex-col max-h-64 overflow-hidden">
+                                        <div className="absolute right-0 bottom-full mb-2 w-56 bg-white dark:bg-[#161b22] border border-gray-200 dark:border-white/10 rounded-md shadow-xl z-[6600] p-2 text-xs text-gray-800 dark:text-gray-200 font-medium">
                                             <input
                                                 type="text"
-                                                placeholder="Search base unit..."
-                                                className="w-full px-2 py-1 bg-gray-50 dark:bg-[#0d1117] border border-gray-200 dark:border-white/10 rounded text-xs focus:outline-none mb-1 font-semibold text-gray-900 dark:text-white"
+                                                placeholder="Search unit..."
+                                                className="w-full px-2 py-1 bg-gray-50 dark:bg-[#0d1117] border border-gray-200 dark:border-white/10 rounded text-xs mb-1 font-medium focus:outline-none"
                                                 value={bulkUnitSearch}
                                                 onChange={e => setBulkUnitSearch(e.target.value)}
                                             />
-                                            <div className="overflow-y-auto no-scrollbar flex-1">
+                                            <div className="max-h-48 overflow-y-auto no-scrollbar space-y-0.5">
                                                 {UNIT_OPTIONS
-                                                    .filter(u => u.name.toLowerCase().includes(bulkUnitSearch.toLowerCase()) || u.symbol.toLowerCase().includes(bulkUnitSearch.toLowerCase()) || u.code.toLowerCase().includes(bulkUnitSearch.toLowerCase()))
+                                                    .filter(u => u.name.toLowerCase().includes(bulkUnitSearch.toLowerCase()) || u.symbol.toLowerCase().includes(bulkUnitSearch.toLowerCase()))
                                                     .map(u => (
                                                         <button
                                                             key={u.code}
                                                             onClick={() => handleBulkChangeUnit(u.code)}
-                                                            className="w-full text-left px-2.5 py-1.5 hover:bg-gray-100 dark:hover:bg-white/5 rounded text-xs font-semibold flex justify-between items-center"
+                                                            className="w-full text-left px-2 py-1 hover:bg-gray-100 dark:hover:bg-white/5 rounded text-xs flex justify-between font-semibold"
                                                         >
                                                             <span>{u.name}</span>
-                                                            <span className="text-[10px] text-gray-400">({u.symbol})</span>
+                                                            <span className="text-gray-400 font-mono">({u.symbol})</span>
                                                         </button>
                                                     ))
                                                 }
@@ -2603,22 +2986,25 @@ const ResourceList = () => {
 
                                 <button
                                     onClick={handleBulkDelete}
-                                    className="flex items-center gap-1.5 px-3 py-1.5 bg-red-500/90 hover:bg-red-600 text-white rounded-lg text-xs font-bold transition shadow-sm"
+                                    className="flex items-center gap-1.5 px-3 py-1.5 bg-red-500/20 hover:bg-red-500/30 text-red-300 rounded-lg text-xs font-bold transition active:scale-95 border border-red-500/30"
+                                    title="Delete selected rows"
                                 >
                                     <Trash2 size={13} />
-                                    Delete ({selectedIds.size})
+                                    <span>Delete ({selectedIds.size})</span>
                                 </button>
-                            </>
+                            </div>
                         )}
+
                         <button
                             onClick={() => setSelectedIds(new Set())}
-                            className="px-2.5 py-1.5 text-white/80 hover:text-white text-xs font-medium"
+                            className="p-1 text-gray-400 hover:text-white rounded-lg hover:bg-white/10 transition"
+                            title="Clear selection"
                         >
-                            Deselect
+                            <X size={14} />
                         </button>
-                    </div>
-                </motion.div>
-            )}
+                    </motion.div>
+                )}
+            </AnimatePresence>
 
             {/* Main Content Layout with optional Sidebar detail panel */}
             <div
@@ -2633,7 +3019,7 @@ const ResourceList = () => {
             >
                 {/* Spreadsheet Grid Table */}
                 <div className="flex-1 min-h-0 overflow-auto table-scrollbar">
-                    <table className="w-full min-w-[1900px] text-left whitespace-nowrap text-[13px] border-collapse bg-white dark:bg-[#0d1117] select-none">
+                    <table className="w-full min-w-[1900px] text-left whitespace-nowrap text-sm border-collapse bg-white dark:bg-[#0d1117] select-none">
                         <thead className="bg-[#f9fafb] dark:bg-[#161b22] text-gray-500 dark:text-gray-400 sticky top-0 z-20 border-b border-gray-200 dark:border-white/5 tracking-wider text-[10px] uppercase font-bold select-none shadow-sm">
                             <tr>
                                 {/* Master Checkbox */}
@@ -2701,7 +3087,7 @@ const ResourceList = () => {
                                     >
                                         <div className="flex items-center justify-between">
                                             <span className="flex items-center gap-1 text-emerald-600 dark:text-emerald-400">
-                                                <DollarSign size={12} /> Rate (₹)
+                                                <DollarSign size={12} /> Rate (â‚¹)
                                             </span>
                                             {sortConfig.key === 'rate' && (sortConfig.direction === 'asc' ? <ArrowUp size={12} /> : <ArrowDown size={12} />)}
                                         </div>
@@ -2819,7 +3205,7 @@ const ResourceList = () => {
                                                     )}
                                                 </td>
 
-                                                {/* ─── GRID CELLS ─── */}
+                                                {/* â”€â”€â”€ GRID CELLS â”€â”€â”€ */}
                                                 {activeGridColumns.map((colName, colIndex) => {
                                                     const isInRange = bounds && (
                                                         rowIndex >= bounds.minRow && rowIndex <= bounds.maxRow &&
@@ -2906,12 +3292,22 @@ const ResourceList = () => {
                                                                     <input
                                                                         autoFocus
                                                                         type="text"
-                                                                        className={`w-full px-3 py-2.5 bg-white dark:bg-[#161b22] border border-blue-500 text-xs font-semibold text-gray-900 dark:text-white focus:outline-none shadow-sm ${colName === 'code' ? 'font-mono' : ''
+                                                                        className={`w-full px-3 py-2 bg-white dark:bg-[#161b22] border border-blue-500 text-sm font-semibold text-gray-900 dark:text-white focus:outline-none shadow-sm ${colName === 'code' ? 'font-mono' : colName === 'name' ? 'font-bold' : ''
                                                                             }`}
                                                                         value={resource[colName] || ''}
                                                                         onChange={e => handleCellChange(rowIndex, colName, e.target.value)}
                                                                         onBlur={handleCellBlur}
                                                                         onKeyDown={e => handleCellKeyDown(e, rowIndex, colName)}
+                                                                        onPaste={(e) => {
+                                                                            const text = e.clipboardData?.getData('text/plain');
+                                                                            if (text && (text.includes('\t') || text.includes('\n') || text.includes('\r'))) {
+                                                                                e.preventDefault();
+                                                                                setEditingCell(null);
+                                                                                setSelectionAnchor({ r: rowIndex, c: colIndex });
+                                                                                setSelectionFocus({ r: rowIndex, c: colIndex });
+                                                                                executePasteRef.current(text, rowIndex, colIndex);
+                                                                            }
+                                                                        }}
                                                                         placeholder={
                                                                             colName === 'code' ? 'CEM-OPC' :
                                                                                 colName === 'name' ? 'Enter resource name...' :
@@ -2919,7 +3315,7 @@ const ResourceList = () => {
                                                                         }
                                                                     />
                                                                 ) : (
-                                                                    <div className={`w-full px-3 py-2.5 text-xs text-gray-800 dark:text-gray-200 truncate cursor-pointer min-h-[37px] flex items-center ${colName === 'code' ? 'font-mono' : colName === 'name' ? 'font-bold text-gray-900 dark:text-white' : ''
+                                                                    <div className={`w-full px-3 py-2 text-sm text-gray-800 dark:text-gray-200 truncate cursor-pointer min-h-[37px] flex items-center ${colName === 'code' ? 'font-mono' : colName === 'name' ? 'font-bold text-gray-900 dark:text-white' : ''
                                                                         }`}>
                                                                         {resource[colName] || <span className="text-gray-350 dark:text-white/10 font-normal italic">
                                                                             {colName === 'code' ? 'CEM-OPC' : colName === 'name' ? 'Enter resource name...' : colName === 'description' ? 'Short details...' : 'Internal specs...'}
@@ -2935,7 +3331,7 @@ const ResourceList = () => {
                                                                         autoFocus
                                                                         type="number"
                                                                         step="0.01"
-                                                                        className="w-full px-3 py-2.5 bg-white dark:bg-[#161b22] border border-blue-500 text-xs font-mono font-bold text-gray-900 dark:text-white focus:outline-none shadow-sm"
+                                                                        className="w-full px-3 py-2 bg-white dark:bg-[#161b22] border border-blue-500 text-sm font-mono font-bold text-gray-900 dark:text-white focus:outline-none shadow-sm"
                                                                         value={resource.rate ?? ''}
                                                                         onChange={e => {
                                                                             const val = e.target.value === '' ? null : parseFloat(e.target.value);
@@ -2944,6 +3340,16 @@ const ResourceList = () => {
                                                                         }}
                                                                         onBlur={handleCellBlur}
                                                                         onKeyDown={e => handleCellKeyDown(e, rowIndex, colName)}
+                                                                        onPaste={(e) => {
+                                                                            const text = e.clipboardData?.getData('text/plain');
+                                                                            if (text && (text.includes('\t') || text.includes('\n') || text.includes('\r'))) {
+                                                                                e.preventDefault();
+                                                                                setEditingCell(null);
+                                                                                setSelectionAnchor({ r: rowIndex, c: colIndex });
+                                                                                setSelectionFocus({ r: rowIndex, c: colIndex });
+                                                                                executePasteRef.current(text, rowIndex, colIndex);
+                                                                            }
+                                                                        }}
                                                                         placeholder="0.00"
                                                                     />
                                                                 ) : (
@@ -2952,7 +3358,7 @@ const ResourceList = () => {
                                                                             setSelectionAnchor({ r: rowIndex, c: colIndex });
                                                                             setSelectionFocus({ r: rowIndex, c: colIndex });
                                                                         }}
-                                                                        className="w-full px-3 py-2.5 text-xs cursor-pointer min-h-[37px] flex items-center justify-between gap-1 select-none"
+                                                                        className="w-full px-3 py-2 text-sm cursor-pointer min-h-[37px] flex items-center justify-between gap-1 select-none"
                                                                     >
                                                                         <span className="font-mono font-bold text-gray-900 dark:text-white">
                                                                             {resource.rate !== null && resource.rate !== undefined && !isNaN(Number(resource.rate))
@@ -3040,13 +3446,9 @@ const ResourceList = () => {
                                                                 <>
                                                                     <div
                                                                         onClick={(e) => {
-                                                                            e.stopPropagation();
-                                                                            setSelectionAnchor({ r: rowIndex, c: colIndex });
-                                                                            setSelectionFocus({ r: rowIndex, c: colIndex });
-                                                                            if (canWrite) {
-                                                                                setActiveDropdownCell(prev =>
-                                                                                    prev?.rowIndex === rowIndex && prev?.colName === 'type' ? null : { rowIndex, colName: 'type' }
-                                                                                );
+                                                                            if (selectionAnchor?.r !== rowIndex || selectionAnchor?.c !== colIndex) {
+                                                                                setSelectionAnchor({ r: rowIndex, c: colIndex });
+                                                                                setSelectionFocus({ r: rowIndex, c: colIndex });
                                                                             }
                                                                         }}
                                                                         className={`w-full h-full px-3 py-2.5 bg-transparent text-xs text-gray-900 dark:text-white cursor-pointer flex items-center justify-between group select-none ${!canWrite ? 'opacity-60 cursor-not-allowed' : ''
@@ -3063,7 +3465,18 @@ const ResourceList = () => {
                                                                             );
                                                                         })()}
                                                                         {canWrite && (
-                                                                            <ChevronDown size={12} className="text-gray-400 group-hover:text-gray-600 dark:group-hover:text-gray-300 transition" />
+                                                                            <button
+                                                                                type="button"
+                                                                                onClick={(e) => {
+                                                                                    e.stopPropagation();
+                                                                                    setActiveDropdownCell(prev =>
+                                                                                        prev?.rowIndex === rowIndex && prev?.colName === 'type' ? null : { rowIndex, colName: 'type' }
+                                                                                    );
+                                                                                }}
+                                                                                className="p-1 hover:bg-gray-200 dark:hover:bg-white/10 rounded text-gray-400 opacity-60 group-hover:opacity-100 transition-opacity"
+                                                                            >
+                                                                                <ChevronDown size={12} />
+                                                                            </button>
                                                                         )}
                                                                     </div>
 
@@ -3101,13 +3514,9 @@ const ResourceList = () => {
                                                                 <>
                                                                     <div
                                                                         onClick={(e) => {
-                                                                            e.stopPropagation();
-                                                                            setSelectionAnchor({ r: rowIndex, c: colIndex });
-                                                                            setSelectionFocus({ r: rowIndex, c: colIndex });
-                                                                            if (canWrite) {
-                                                                                setActiveDropdownCell(prev =>
-                                                                                    prev?.rowIndex === rowIndex && prev?.colName === 'base_unit_code' ? null : { rowIndex, colName: 'base_unit_code' }
-                                                                                );
+                                                                            if (selectionAnchor?.r !== rowIndex || selectionAnchor?.c !== colIndex) {
+                                                                                setSelectionAnchor({ r: rowIndex, c: colIndex });
+                                                                                setSelectionFocus({ r: rowIndex, c: colIndex });
                                                                             }
                                                                         }}
                                                                         className={`w-full h-full px-3 py-2.5 bg-transparent text-xs text-gray-900 dark:text-white cursor-pointer flex items-center justify-between group select-none ${!canWrite ? 'opacity-60 cursor-not-allowed' : ''
@@ -3129,13 +3538,24 @@ const ResourceList = () => {
                                                                             );
                                                                         })()}
                                                                         {canWrite && (
-                                                                            <ChevronDown size={12} className="text-gray-400 group-hover:text-gray-600 dark:group-hover:text-gray-300 transition" />
+                                                                            <button
+                                                                                type="button"
+                                                                                onClick={(e) => {
+                                                                                    e.stopPropagation();
+                                                                                    setActiveDropdownCell(prev =>
+                                                                                        prev?.rowIndex === rowIndex && prev?.colName === 'base_unit_code' ? null : { rowIndex, colName: 'base_unit_code' }
+                                                                                    );
+                                                                                }}
+                                                                                className="p-1 hover:bg-gray-200 dark:hover:bg-white/10 rounded text-gray-400 opacity-60 group-hover:opacity-100 transition-opacity"
+                                                                            >
+                                                                                <ChevronDown size={12} />
+                                                                            </button>
                                                                         )}
                                                                     </div>
 
                                                                     {activeDropdownCell?.rowIndex === rowIndex && activeDropdownCell?.colName === 'base_unit_code' && (
-                                                                        <div className="absolute left-0 top-full mt-1 w-64 bg-white dark:bg-[#161b22] border border-gray-200 dark:border-white/10 rounded-md shadow-2xl z-[6000] flex flex-col max-h-72 overflow-hidden">
-                                                                            <div className="p-2 border-b border-gray-100 dark:border-white/5 bg-gray-50/50 dark:bg-white/[0.01] shrink-0">
+                                                                        <div className="absolute left-0 top-full mt-1 w-64 bg-white dark:bg-[#161b22] border border-gray-200 dark:border-white/10 rounded-md shadow-2xl z-[6000]">
+                                                                            <div className="p-2 border-b border-gray-100 dark:border-white/5 bg-gray-50/50 dark:bg-white/[0.01]">
                                                                                 <input
                                                                                     type="text"
                                                                                     placeholder="Search base units..."
@@ -3143,10 +3563,19 @@ const ResourceList = () => {
                                                                                     value={unitSearch}
                                                                                     onChange={e => setUnitSearch(e.target.value)}
                                                                                     onClick={e => e.stopPropagation()}
+                                                                                    onKeyDown={e => {
+                                                                                        if (e.key === 'Escape') {
+                                                                                            e.preventDefault();
+                                                                                            e.stopPropagation();
+                                                                                            closeDropdown();
+                                                                                        } else {
+                                                                                            e.stopPropagation();
+                                                                                        }
+                                                                                    }}
                                                                                 />
                                                                             </div>
 
-                                                                            <div className="overflow-y-auto no-scrollbar flex-1 py-1">
+                                                                            <div className="max-h-56 overflow-y-auto py-1" style={{scrollbarWidth:'none',msOverflowStyle:'none'}}>
                                                                                 {(() => {
                                                                                     const filteredGroups = Object.entries(UNIT_GROUPS).map(([type, units]) => {
                                                                                         const matched = units.filter(u =>
@@ -3568,7 +3997,7 @@ const ResourceList = () => {
                                 className="px-2 py-1 rounded border border-gray-200 dark:border-white/10 text-gray-600 dark:text-gray-300 disabled:opacity-30 disabled:cursor-not-allowed hover:bg-gray-100 dark:hover:bg-white/5 font-semibold text-[11px]"
                                 title="First Page"
                             >
-                                « First
+                                Â« First
                             </button>
                             <button
                                 onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
@@ -3576,7 +4005,7 @@ const ResourceList = () => {
                                 className="px-2 py-1 rounded border border-gray-200 dark:border-white/10 text-gray-600 dark:text-gray-300 disabled:opacity-30 disabled:cursor-not-allowed hover:bg-gray-100 dark:hover:bg-white/5 font-semibold text-[11px]"
                                 title="Previous Page"
                             >
-                                ‹ Prev
+                                â€¹ Prev
                             </button>
 
                             <span className="px-3 text-xs font-bold text-gray-700 dark:text-gray-300">
@@ -3589,7 +4018,7 @@ const ResourceList = () => {
                                 className="px-2 py-1 rounded border border-gray-200 dark:border-white/10 text-gray-600 dark:text-gray-300 disabled:opacity-30 disabled:cursor-not-allowed hover:bg-gray-100 dark:hover:bg-white/5 font-semibold text-[11px]"
                                 title="Next Page"
                             >
-                                Next ›
+                                Next â€º
                             </button>
                             <button
                                 onClick={() => setCurrentPage(totalPages)}
@@ -3597,7 +4026,7 @@ const ResourceList = () => {
                                 className="px-2 py-1 rounded border border-gray-200 dark:border-white/10 text-gray-600 dark:text-gray-300 disabled:opacity-30 disabled:cursor-not-allowed hover:bg-gray-100 dark:hover:bg-white/5 font-semibold text-[11px]"
                                 title="Last Page"
                             >
-                                Last »
+                                Last Â»
                             </button>
                         </div>
                     )}
@@ -3643,7 +4072,7 @@ const ResourceList = () => {
                     return cleanName || cleanCode;
                 }}
                 getLabel={(row) => row.name || 'Unnamed Resource'}
-                getSubLabel={(row) => [row.code, row.type, row.base_unit_code].filter(Boolean).join(' • ')}
+                getSubLabel={(row) => [row.code, row.type, row.base_unit_code].filter(Boolean).join(' â€¢ ')}
                 onDeleteDuplicates={handleConfirmDeleteDuplicates}
             />
 
@@ -3683,7 +4112,15 @@ const ResourceList = () => {
                             onClick={(e) => {
                                 e.stopPropagation();
                                 setContextMenu(null);
-                                executePaste();
+                                if (navigator.clipboard && navigator.clipboard.readText) {
+                                    navigator.clipboard.readText().then(text => {
+                                        if (text && text.trim()) executePasteRef.current(text);
+                                    }).catch(err => {
+                                        showToast('error', 'Paste Error', 'Unable to access clipboard. Use Ctrl+V shortcut instead.');
+                                    });
+                                } else {
+                                    showToast('error', 'Paste Error', 'Clipboard access not supported in this browser. Use Ctrl+V.');
+                                }
                             }}
                             className="w-full text-left px-3.5 py-1.5 hover:bg-blue-50 dark:hover:bg-white/5 text-gray-800 dark:text-gray-200 flex items-center justify-between font-semibold border-b border-gray-100 dark:border-white/5 pb-1.5 mb-1"
                         >

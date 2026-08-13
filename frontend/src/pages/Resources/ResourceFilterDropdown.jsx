@@ -120,13 +120,14 @@ const ResourceFilterDropdown = ({ activeFilters, onApply }) => {
                             className="w-full px-2.5 py-1 bg-gray-50 dark:bg-[#0d1117] border border-gray-200 dark:border-white/10 rounded text-xs mb-1.5 focus:outline-none font-semibold text-gray-900 dark:text-white"
                             value={unitSearch}
                             onChange={e => setUnitSearch(e.target.value)}
+                            onKeyDown={e => e.stopPropagation()}
                         />
                         <div
                             className="max-h-32 overflow-y-auto border border-gray-150 dark:border-white/10 rounded-lg p-1 space-y-0.5 [&::-webkit-scrollbar]:hidden"
                             style={{ scrollbarWidth: 'none', msOverflowStyle: 'none' }}
                         >
                             {filteredUnits.length > 0 ? (
-                                filteredUnits.map(u => {
+                                filteredUnits.slice(0, 5).map(u => {
                                     const isSelected = (activeFilters.units || []).includes(u.code);
                                     return (
                                         <div
