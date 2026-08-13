@@ -399,7 +399,13 @@ const VendorsList = () => {
         e.stopPropagation();
 
         const curBounds = getBoundsFromRefs();
-        if (!curBounds || rowIndex < curBounds.minRow || rowIndex > curBounds.maxRow || colIndex < curBounds.minCol || colIndex > curBounds.maxCol) {
+        const isInRange = curBounds &&
+            rowIndex >= curBounds.minRow && rowIndex <= curBounds.maxRow &&
+            colIndex >= curBounds.minCol && colIndex <= curBounds.maxCol;
+
+        if (!isInRange) {
+            selectionAnchorRef.current = { r: rowIndex, c: colIndex };
+            selectionFocusRef.current = { r: rowIndex, c: colIndex };
             setSelectionAnchor({ r: rowIndex, c: colIndex });
             setSelectionFocus({ r: rowIndex, c: colIndex });
         }
@@ -776,7 +782,7 @@ const VendorsList = () => {
     // Global click outside & keydown listener
     useEffect(() => {
         const handleClickOutside = (e) => {
-            if (e.target.closest('.z-\\[6000\\]') || e.target.closest('.z-\\[9999\\]') || e.target.closest('[role="dialog"]')) {
+            if (e.target.closest('.z-\\[6000\\]') || e.target.closest('.z-\\[9999\\]') || e.target.closest('.z-\\[9000\\]') || e.target.closest('[data-context-menu="true"]') || e.target.closest('[role="dialog"]')) {
                 return;
             }
             if (!e.target.closest('td[id^="cell-"]')) {
@@ -3043,9 +3049,11 @@ const VendorsList = () => {
             {/* Right-Click Context Menu Overlay */}
             {contextMenu && (
                 <div
+                    data-context-menu="true"
                     className="fixed bg-white dark:bg-[#161b22] border border-gray-200 dark:border-white/10 rounded-xl shadow-2xl z-[9000] py-1.5 w-56 text-xs select-none backdrop-blur-md"
                     style={{ left: `${contextMenu.x}px`, top: `${contextMenu.y}px` }}
                     onClick={(e) => e.stopPropagation()}
+                    onMouseDown={(e) => e.stopPropagation()}
                 >
                     {canWrite && (
                         <button
@@ -3073,17 +3081,26 @@ const VendorsList = () => {
                     </button>
                     {canWrite && (
                         <button
-                            onClick={(e) => {
+                            onClick={async (e) => {
                                 e.stopPropagation();
+                                const targetRow = contextMenu.rowIndex;
+                                const targetCol = contextMenu.colIndex;
                                 setContextMenu(null);
+                                let text = '';
                                 if (navigator.clipboard && navigator.clipboard.readText) {
-                                    navigator.clipboard.readText().then(text => {
-                                        if (text && text.trim()) executePasteRef.current(text);
-                                    }).catch(err => {
-                                        showToast('error', 'Paste Error', 'Unable to access clipboard. Use Ctrl+V shortcut instead.');
-                                    });
+                                    try {
+                                        text = await navigator.clipboard.readText();
+                                    } catch (err) {
+                                        text = internalClipboardRef.current;
+                                    }
+                                }
+                                if (!text && internalClipboardRef.current) {
+                                    text = internalClipboardRef.current;
+                                }
+                                if (text && text.trim()) {
+                                    executePasteRef.current(text, targetRow, targetCol);
                                 } else {
-                                    showToast('error', 'Paste Error', 'Clipboard access not supported in this browser. Use Ctrl+V.');
+                                    showToast('info', 'Clipboard Empty', 'No content available to paste. Copy cells or use Ctrl+V.');
                                 }
                             }}
                             className="w-full text-left px-3.5 py-1.5 hover:bg-blue-50 dark:hover:bg-white/5 text-gray-800 dark:text-gray-200 flex items-center justify-between font-semibold border-b border-gray-100 dark:border-white/5 pb-1.5 mb-1"
@@ -3095,7 +3112,8 @@ const VendorsList = () => {
 
                     {canWrite && ((bounds && bounds.minRow < bounds.maxRow) || selectedIds.size > 1) && (
                         <button
-                            onClick={() => {
+                            onClick={(e) => {
+                                e.stopPropagation();
                                 setContextMenu(null);
                                 handleFillDown();
                             }}
@@ -3107,7 +3125,8 @@ const VendorsList = () => {
                     )}
                     {canWrite && bounds && bounds.minCol < bounds.maxCol && (
                         <button
-                            onClick={() => {
+                            onClick={(e) => {
+                                e.stopPropagation();
                                 setContextMenu(null);
                                 handleFillRight();
                             }}
@@ -3121,18 +3140,22 @@ const VendorsList = () => {
                     {canWrite && (
                         <>
                             <button
-                                onClick={() => {
+                                onClick={(e) => {
+                                    e.stopPropagation();
+                                    const rIdx = contextMenu.rowIndex;
                                     setContextMenu(null);
-                                    handleInsertRow(contextMenu.rowIndex, 'above');
+                                    handleInsertRow(rIdx, 'above');
                                 }}
                                 className="w-full text-left px-3.5 py-1.5 hover:bg-blue-50 dark:hover:bg-white/5 text-gray-800 dark:text-gray-200 flex items-center justify-between font-semibold"
                             >
                                 <span>Insert Row Above</span>
                             </button>
                             <button
-                                onClick={() => {
+                                onClick={(e) => {
+                                    e.stopPropagation();
+                                    const rIdx = contextMenu.rowIndex;
                                     setContextMenu(null);
-                                    handleInsertRow(contextMenu.rowIndex, 'below');
+                                    handleInsertRow(rIdx, 'below');
                                 }}
                                 className="w-full text-left px-3.5 py-1.5 hover:bg-blue-50 dark:hover:bg-white/5 text-gray-800 dark:text-gray-200 flex items-center justify-between font-semibold border-b border-gray-100 dark:border-white/5 pb-1.5 mb-1"
                             >
@@ -3140,9 +3163,11 @@ const VendorsList = () => {
                             </button>
 
                             <button
-                                onClick={() => {
+                                onClick={(e) => {
+                                    e.stopPropagation();
+                                    const rIdx = contextMenu.rowIndex;
                                     setContextMenu(null);
-                                    const targetRow = sortedGridDataRef.current[contextMenu.rowIndex];
+                                    const targetRow = sortedGridDataRef.current[rIdx];
                                     if (targetRow) handleDuplicateRow(targetRow);
                                 }}
                                 className="w-full text-left px-3.5 py-1.5 hover:bg-purple-50 dark:hover:bg-purple-900/20 text-purple-700 dark:text-purple-300 flex items-center justify-between font-semibold"
@@ -3150,12 +3175,14 @@ const VendorsList = () => {
                                 <span>Duplicate Row</span>
                             </button>
                             <button
-                                onClick={() => {
+                                onClick={(e) => {
+                                    e.stopPropagation();
+                                    const rIdx = contextMenu.rowIndex;
                                     setContextMenu(null);
                                     if (selectedIds.size > 0) {
                                         handleBulkDelete();
                                     } else {
-                                        const targetRow = sortedGridDataRef.current[contextMenu.rowIndex];
+                                        const targetRow = sortedGridDataRef.current[rIdx];
                                         if (targetRow) handleDeleteRow(targetRow);
                                     }
                                 }}
