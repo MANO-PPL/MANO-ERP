@@ -104,13 +104,14 @@ const VendorFilterDropdown = ({ activeFilters, onApply, categoryOptions = [], av
                             className="w-full px-2.5 py-1 bg-gray-50 dark:bg-[#0d1117] border border-gray-200 dark:border-white/10 rounded text-xs mb-1.5 focus:outline-none font-semibold text-gray-900 dark:text-white"
                             value={jobSearch}
                             onChange={e => setJobSearch(e.target.value)}
+                            onKeyDown={e => e.stopPropagation()}
                         />
                         <div
                             className="max-h-36 overflow-y-auto border border-gray-150 dark:border-white/10 rounded-lg p-1 space-y-0.5 [&::-webkit-scrollbar]:hidden"
                             style={{ scrollbarWidth: 'none', msOverflowStyle: 'none' }}
                         >
                             {filteredJobs.length > 0 ? (
-                                filteredJobs.map(j => {
+                                filteredJobs.slice(0, 5).map(j => {
                                     const isSelected = (activeFilters.jobs || []).includes(j.job_name);
                                     return (
                                         <div

@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
+import ReactDOM from 'react-dom';
 import {
     Search, Plus, Trash2, Info, RefreshCw, Layers, Users, X, UploadCloud,
     Download, Save, RotateCcw, AlertCircle, ChevronDown, Copy, Eye, CheckSquare,
@@ -42,6 +43,54 @@ const COLUMN_LABELS = {
     address: 'Address',
     location: 'Location',
     remarks: 'Remarks'
+};
+
+const parseExcelClipboardText = (text) => {
+    if (!text || typeof text !== 'string') return [];
+    const cleanText = text.replace(/\r\n$/, '').replace(/\n$/, '').replace(/\r$/, '');
+    if (!cleanText) return [];
+
+    const isTabDelimited = cleanText.includes('\t');
+    const delimiter = isTabDelimited ? '\t' : (cleanText.includes(',') && !cleanText.includes('\n') ? ',' : '\t');
+
+    const rows = [];
+    let currentRow = [];
+    let currentCell = '';
+    let insideQuotes = false;
+
+    for (let i = 0; i < cleanText.length; i++) {
+        const char = cleanText[i];
+        const nextChar = cleanText[i + 1];
+
+        if (char === '"') {
+            if (insideQuotes && nextChar === '"') {
+                currentCell += '"';
+                i++;
+            } else {
+                insideQuotes = !insideQuotes;
+            }
+        } else if (!insideQuotes && char === delimiter) {
+            currentRow.push(currentCell.trim());
+            currentCell = '';
+        } else if (!insideQuotes && (char === '\n' || (char === '\r' && nextChar === '\n'))) {
+            if (char === '\r') i++;
+            currentRow.push(currentCell.trim());
+            rows.push(currentRow);
+            currentRow = [];
+            currentCell = '';
+        } else if (!insideQuotes && char === '\r') {
+            currentRow.push(currentCell.trim());
+            rows.push(currentRow);
+            currentRow = [];
+            currentCell = '';
+        } else {
+            currentCell += char;
+        }
+    }
+    currentRow.push(currentCell.trim());
+    rows.push(currentRow);
+
+    return rows.filter(r => r.length > 0 && r.some(c => c !== ''));
 };
 
 const CustomCheckbox = ({ checked, onChange, title }) => (
@@ -168,27 +217,34 @@ const ClientsList = () => {
 
     const tableContainerRef = useRef(null);
 
-    // Helper to get initial cached state for 0ms render time
-    const getInitialClients = () => {
+    // Helper to load initial state or draft cache from sessionStorage
+    const getInitialDraftState = () => {
         try {
-            const cached = sessionStorage.getItem('mano_clients_cache');
-            if (cached) return JSON.parse(cached);
+            const draftGridStr = sessionStorage.getItem('mano_clients_draft_grid');
+            const draftDeletedStr = sessionStorage.getItem('mano_clients_draft_deleted');
+            if (draftGridStr) {
+                const draftGrid = JSON.parse(draftGridStr);
+                const draftDeleted = draftDeletedStr ? new Set(JSON.parse(draftDeletedStr)) : new Set();
+                return { draftGrid, draftDeleted };
+            }
         } catch (e) { }
-        return [];
+
+        let cached = [];
+        try {
+            const cachedStr = sessionStorage.getItem('mano_clients_cache');
+            if (cachedStr) cached = JSON.parse(cachedStr);
+        } catch (e) { }
+
+        return {
+            draftGrid: cached.map(c => ({ ...c, _status: 'saved', _errors: {} })),
+            draftDeleted: new Set()
+        };
     };
 
-    const getInitialGridData = (clientsList) => {
-        return clientsList.map(c => ({
-            ...c,
-            _status: 'saved',
-            _errors: {}
-        }));
-    };
-
-    const initialClients = getInitialClients();
+    const initialDraft = getInitialDraftState();
 
     // Metadata & Original list
-    const [clients, setClients] = useState(initialClients);
+    const [clients, setClients] = useState(() => initialDraft.draftGrid.filter(r => r._status === 'saved'));
     const clientsRef = useRef(clients);
     clientsRef.current = clients;
 
@@ -196,12 +252,28 @@ const ClientsList = () => {
     const [allSectors, setAllSectors] = useState([]);
 
     // Spreadsheet grid state
-    const [gridData, setGridData] = useState(() => getInitialGridData(initialClients));
+    const [gridData, setGridData] = useState(initialDraft.draftGrid);
     const gridDataRef = useRef(gridData);
     gridDataRef.current = gridData;
 
     // Deleted IDs tracking for manual save
-    const [deletedIds, setDeletedIds] = useState(new Set());
+    const [deletedIds, setDeletedIds] = useState(initialDraft.draftDeleted);
+    const deletedIdsRef = useRef(deletedIds);
+    deletedIdsRef.current = deletedIds;
+
+    // Auto-sync local unsaved changes to sessionStorage
+    useEffect(() => {
+        try {
+            const hasDraft = gridData.some(r => r._status === 'modified' || r._status === 'new') || deletedIds.size > 0;
+            if (hasDraft) {
+                sessionStorage.setItem('mano_clients_draft_grid', JSON.stringify(gridData));
+                sessionStorage.setItem('mano_clients_draft_deleted', JSON.stringify(Array.from(deletedIds)));
+            } else {
+                sessionStorage.removeItem('mano_clients_draft_grid');
+                sessionStorage.removeItem('mano_clients_draft_deleted');
+            }
+        } catch (e) { }
+    }, [gridData, deletedIds]);
 
     const hasUnsavedChanges = useMemo(() => {
         const hasModified = gridData.some(r => (r._status === 'modified' || r._status === 'new') && r.name && r.name.trim());
@@ -225,7 +297,7 @@ const ClientsList = () => {
         redoStackRef.current = [];
     };
 
-    const [isLoading, setIsLoading] = useState(initialClients.length === 0);
+    const [isLoading, setIsLoading] = useState(initialDraft.draftGrid.length === 0);
     const [isSaving, setIsSaving] = useState(false);
     const [lastSavedTime, setLastSavedTime] = useState(null);
 
@@ -247,7 +319,7 @@ const ClientsList = () => {
     // Selection & Bulk State
     const [selectedIds, setSelectedIds] = useState(new Set());
     const [lastSelectedId, setLastSelectedId] = useState(null);
-    const [sortConfig, setSortConfig] = useState({ key: 'name', direction: 'asc' });
+    const [sortConfig, setSortConfig] = useState({ key: null, direction: 'asc' });
 
     // Toast & Confirm Modal
     const [toast, setToast] = useState(null);
@@ -279,10 +351,60 @@ const ClientsList = () => {
     const [isMouseDown, setIsMouseDown] = useState(false);
     const [editingCell, setEditingCell] = useState(null);
 
+    // Refs for always-fresh access in event callbacks (avoids stale closures)
+    const selectionAnchorRef = useRef(null);
+    selectionAnchorRef.current = selectionAnchor;
+    const selectionFocusRef = useRef(null);
+    selectionFocusRef.current = selectionFocus;
+    const selectedIdsRef = useRef(new Set());
+    selectedIdsRef.current = selectedIds;
+
+    // Internal clipboard buffer for cut/copy/paste between cells
+    const internalClipboardRef = useRef('');
+
+    // Always-fresh ref to executePaste — avoids stale closure in useEffect event handlers
+    const executePasteRef = useRef(null);
+
+    // Compute selection bounds from refs (safe to call inside any event handler)
+    const getBoundsFromRefs = () => {
+        const anchor = selectionAnchorRef.current;
+        if (!anchor) return null;
+        const focus = selectionFocusRef.current || anchor;
+        return {
+            minRow: Math.min(anchor.r, focus.r),
+            maxRow: Math.max(anchor.r, focus.r),
+            minCol: Math.min(anchor.c, focus.c),
+            maxCol: Math.max(anchor.c, focus.c),
+        };
+    };
+
+    // Helper to get target index right below current cursor/selection
+    const getTargetInsertIndex = () => {
+        const bounds = getBoundsFromRefs();
+        const anchor = selectionAnchorRef.current;
+        let activeSortedRowIdx = -1;
+        if (bounds) {
+            activeSortedRowIdx = bounds.maxRow;
+        } else if (anchor) {
+            activeSortedRowIdx = anchor.r;
+        }
+
+        if (activeSortedRowIdx >= 0 && sortedGridDataRef.current[activeSortedRowIdx]) {
+            const targetRowId = sortedGridDataRef.current[activeSortedRowIdx].id;
+            const realIdx = gridDataRef.current.findIndex(r => r.id === targetRowId);
+            if (realIdx !== -1) {
+                return { gridInsertIdx: realIdx + 1, sortedRowIdx: activeSortedRowIdx + 1 };
+            }
+        }
+
+        return { gridInsertIdx: gridDataRef.current.length, sortedRowIdx: sortedGridDataRef.current.length };
+    };
+
     // Custom In-Table Dropdowns State
     const [activeDropdownCell, setActiveDropdownCell] = useState(null);
     const [jobNatureSearch, setJobNatureSearch] = useState('');
     const [sectorSearch, setSectorSearch] = useState('');
+    const [dropdownPortalProps, setDropdownPortalProps] = useState(null); // { rowIndex, colName, top, left }
 
     // Bulk Change Menus State
     const [showBulkJobMenu, setShowBulkJobMenu] = useState(false);
@@ -299,6 +421,7 @@ const ClientsList = () => {
         setBulkJobSearch('');
         setBulkSectorSearch('');
         setContextMenu(null);
+        setDropdownPortalProps(null);
     };
 
     const [contextMenu, setContextMenu] = useState(null);
@@ -313,7 +436,7 @@ const ClientsList = () => {
         e.preventDefault();
         e.stopPropagation();
 
-        const curBounds = bounds;
+        const curBounds = getBoundsFromRefs();
         if (!curBounds || rowIndex < curBounds.minRow || rowIndex > curBounds.maxRow || colIndex < curBounds.minCol || colIndex > curBounds.maxCol) {
             setSelectionAnchor({ r: rowIndex, c: colIndex });
             setSelectionFocus({ r: rowIndex, c: colIndex });
@@ -328,26 +451,28 @@ const ClientsList = () => {
     };
 
     const handleFillDown = () => {
+        const bounds = getBoundsFromRefs();
         if (!bounds || bounds.minRow === bounds.maxRow || !canWrite) return;
         pushUndoState(gridDataRef.current);
 
         let updatedGrid = [...gridDataRef.current];
-        const sourceRowObj = sortedGridDataRef.current[bounds.minRow];
-        if (!sourceRowObj) return;
 
-        for (let r = bounds.minRow + 1; r <= bounds.maxRow; r++) {
-            const targetRowObj = sortedGridDataRef.current[r];
-            if (!targetRowObj) continue;
-            const realIdx = updatedGrid.findIndex(row => row.id === targetRowObj.id);
-            if (realIdx === -1) continue;
+        for (let c = bounds.minCol; c <= bounds.maxCol; c++) {
+            const colName = GRID_COLUMNS[c];
+            const topRowObj = sortedGridDataRef.current[bounds.minRow];
+            if (!topRowObj) continue;
+            const topVal = topRowObj[colName];
 
-            const rowCopy = { ...updatedGrid[realIdx] };
-            for (let c = bounds.minCol; c <= bounds.maxCol; c++) {
-                const col = GRID_COLUMNS[c];
-                rowCopy[col] = sourceRowObj[col];
+            for (let r = bounds.minRow + 1; r <= bounds.maxRow; r++) {
+                const targetRowObj = sortedGridDataRef.current[r];
+                if (!targetRowObj) continue;
+                const realIdx = updatedGrid.findIndex(row => row.id === targetRowObj.id);
+                if (realIdx === -1) continue;
+
+                const rowCopy = { ...updatedGrid[realIdx], [colName]: topVal };
+                if (rowCopy._status !== 'new') rowCopy._status = 'modified';
+                updatedGrid[realIdx] = rowCopy;
             }
-            if (rowCopy._status !== 'new') rowCopy._status = 'modified';
-            updatedGrid[realIdx] = rowCopy;
         }
 
         setGridData(updatedGrid);
@@ -355,6 +480,7 @@ const ClientsList = () => {
     };
 
     const handleFillRight = () => {
+        const bounds = getBoundsFromRefs();
         if (!bounds || bounds.minCol === bounds.maxCol || !canWrite) return;
         pushUndoState(gridDataRef.current);
 
@@ -384,7 +510,13 @@ const ClientsList = () => {
 
     const handleInsertRow = (targetRowIndex, position = 'below') => {
         pushUndoState(gridDataRef.current);
-        const insertIdx = position === 'above' ? targetRowIndex : targetRowIndex + 1;
+        const targetRow = sortedGridDataRef.current[targetRowIndex];
+        let realIdx = targetRowIndex;
+        if (targetRow) {
+            const found = gridDataRef.current.findIndex(r => r.id === targetRow.id);
+            if (found !== -1) realIdx = found;
+        }
+        const insertIdx = position === 'above' ? realIdx : realIdx + 1;
         const newRow = {
             id: `temp_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`,
             name: '',
@@ -413,28 +545,21 @@ const ClientsList = () => {
     };
 
     const executeCopy = () => {
-        const activeTag = document.activeElement?.tagName?.toLowerCase();
-        if (activeTag === 'input' || activeTag === 'textarea') return;
-
         let rowsToCopy = [];
         let minCol = 0;
         let maxCol = GRID_COLUMNS.length - 1;
 
-        const bounds = getSelectionBounds();
+        const curSelectedIds = selectedIdsRef.current;
+        const bounds = getBoundsFromRefs();
 
-        if (selectedIds.size > 0) {
-            rowsToCopy = sortedGridDataRef.current.filter(r => selectedIds.has(r.id));
+        if (curSelectedIds.size > 0) {
+            rowsToCopy = sortedGridDataRef.current.filter(r => curSelectedIds.has(r.id));
         } else if (bounds) {
             for (let r = bounds.minRow; r <= bounds.maxRow; r++) {
                 if (sortedGridDataRef.current[r]) rowsToCopy.push(sortedGridDataRef.current[r]);
             }
             minCol = bounds.minCol;
             maxCol = bounds.maxCol;
-        } else if (selectionAnchor) {
-            const rowObj = sortedGridDataRef.current[selectionAnchor.r];
-            if (rowObj) rowsToCopy.push(rowObj);
-            minCol = selectionAnchor.c;
-            maxCol = selectionAnchor.c;
         }
 
         if (rowsToCopy.length === 0) return;
@@ -443,14 +568,17 @@ const ClientsList = () => {
             const rowVals = [];
             for (let c = minCol; c <= maxCol; c++) {
                 const colName = GRID_COLUMNS[c];
-                rowVals.push(rowObj[colName] || '');
+                rowVals.push(rowObj[colName] ?? '');
             }
             return rowVals.join('\t');
         });
 
         const tsvData = tsvLines.join('\n');
-        if (tsvData) {
-            navigator.clipboard.writeText(tsvData);
+        if (tsvData.trim()) {
+            internalClipboardRef.current = tsvData;
+            if (navigator.clipboard && navigator.clipboard.writeText) {
+                navigator.clipboard.writeText(tsvData).catch(err => console.warn(err));
+            }
             const numCells = tsvLines.length * (maxCol - minCol + 1);
             showToast('sparkle', 'Copied to Clipboard', `Copied ${numCells} cell(s) across ${tsvLines.length} row(s)`);
         }
@@ -460,9 +588,10 @@ const ClientsList = () => {
         if (!canWrite) return;
         executeCopy();
         pushUndoState(gridDataRef.current);
-        const bounds = getSelectionBounds();
+        const curSelectedIds = selectedIdsRef.current;
+        const bounds = getBoundsFromRefs();
 
-        if (selectedIds.size > 0) {
+        if (curSelectedIds.size > 0) {
             handleBulkDelete();
             return;
         }
@@ -493,47 +622,98 @@ const ClientsList = () => {
         }
     };
 
-    const executePaste = async (pastedText = null) => {
-        let textToPaste = pastedText;
-        if (!textToPaste) {
-            try {
-                textToPaste = await navigator.clipboard.readText();
-            } catch (err) {
-                console.error('Clipboard access error', err);
+    // Auto-Fill Down (Double-Click Fill Handle)
+    const handleAutoFillDown = () => {
+        const bounds = getBoundsFromRefs();
+        if (!bounds || !canWrite) return;
+        const totalRows = sortedGridDataRef.current.length;
+        if (bounds.maxRow >= totalRows - 1) return;
+
+        pushUndoState(gridDataRef.current);
+        let updatedGrid = [...gridDataRef.current];
+        const sourceRowObj = sortedGridDataRef.current[bounds.maxRow];
+        if (!sourceRowObj) return;
+
+        for (let r = bounds.maxRow + 1; r < totalRows; r++) {
+            const targetRowObj = sortedGridDataRef.current[r];
+            if (!targetRowObj) continue;
+            const realIdx = updatedGrid.findIndex(row => row.id === targetRowObj.id);
+            if (realIdx === -1) continue;
+
+            const rowCopy = { ...updatedGrid[realIdx] };
+            for (let c = bounds.minCol; c <= bounds.maxCol; c++) {
+                const colName = GRID_COLUMNS[c];
+                rowCopy[colName] = sourceRowObj[colName] ?? '';
             }
+            if (rowCopy._status !== 'new') rowCopy._status = 'modified';
+            updatedGrid[realIdx] = rowCopy;
         }
-        if (!textToPaste || !textToPaste.trim()) return;
+
+        setGridData(updatedGrid);
+        setSelectionFocus({ r: totalRows - 1, c: bounds.maxCol });
+        showToast('sparkle', 'Auto-Fill Down', `Auto-filled values down to bottom of table (${totalRows} rows).`);
+    };
+
+    const executePaste = (pastedText, forcedStartRow, forcedStartCol) => {
+        const textToPaste = pastedText || internalClipboardRef.current;
+        if (!textToPaste || !textToPaste.trim()) {
+            showToast('info', 'Clipboard Empty', 'No content available to paste.');
+            return;
+        }
+
+        const parsedRows = parseExcelClipboardText(textToPaste);
+        if (parsedRows.length === 0) return;
 
         pushUndoState(gridDataRef.current);
 
         let startRow = 0;
         let startCol = 0;
 
-        const bounds = getSelectionBounds();
+        const curSelectedIds = selectedIdsRef.current;
+        const bounds = getBoundsFromRefs();
 
-        if (selectedIds.size > 0) {
-            const firstSelectedId = Array.from(selectedIds)[0];
+        if (forcedStartRow !== undefined && forcedStartCol !== undefined) {
+            startRow = forcedStartRow;
+            startCol = forcedStartCol;
+        } else if (curSelectedIds.size > 0) {
+            const firstSelectedId = Array.from(curSelectedIds)[0];
             const foundIdx = sortedGridDataRef.current.findIndex(r => r.id === firstSelectedId);
             if (foundIdx !== -1) startRow = foundIdx;
+            startCol = bounds ? bounds.minCol : 0;
         } else if (bounds) {
             startRow = bounds.minRow;
             startCol = bounds.minCol;
-        } else if (selectionAnchor) {
-            startRow = selectionAnchor.r;
-            startCol = selectionAnchor.c;
+        } else if (selectionAnchorRef.current) {
+            startRow = selectionAnchorRef.current.r;
+            startCol = selectionAnchorRef.current.c;
         }
 
-        const lines = textToPaste.trim().split(/\r?\n/);
+        // Smart Excel Range Replication
+        let expandedRows = parsedRows;
+        if (bounds && (bounds.maxRow > bounds.minRow || bounds.maxCol > bounds.minCol) && forcedStartRow === undefined) {
+            const targetRowCount = bounds.maxRow - bounds.minRow + 1;
+            const targetColCount = bounds.maxCol - bounds.minCol + 1;
+
+            if (parsedRows.length === 1 && parsedRows[0].length === 1) {
+                const singleVal = parsedRows[0][0];
+                expandedRows = Array.from({ length: targetRowCount }, () =>
+                    Array.from({ length: targetColCount }, () => singleVal)
+                );
+            } else if (parsedRows.length === 1 && targetRowCount > 1) {
+                expandedRows = Array.from({ length: targetRowCount }, () => [...parsedRows[0]]);
+            } else if (parsedRows[0].length === 1 && targetColCount > 1) {
+                expandedRows = parsedRows.map(row => Array.from({ length: targetColCount }, () => row[0]));
+            }
+        }
+
         let updatedGrid = [...gridDataRef.current];
         let numCellsUpdated = 0;
         let newRowsAddedCount = 0;
 
-        lines.forEach((line, dr) => {
-            if (!line.trim()) return;
+        expandedRows.forEach((cells, dr) => {
             const r = startRow + dr;
-            const cells = line.split('\t');
-
             const targetRowObj = sortedGridDataRef.current[r];
+
             if (targetRowObj) {
                 const realIdx = updatedGrid.findIndex(row => row.id === targetRowObj.id);
                 if (realIdx !== -1) {
@@ -542,11 +722,30 @@ const ClientsList = () => {
                         const c = startCol + dc;
                         if (c < GRID_COLUMNS.length) {
                             const colName = GRID_COLUMNS[c];
-                            rowCopy[colName] = cellVal.trim();
+                            let valToAssign = (cellVal ?? '').trim();
+                            // Dropdown matching for Nature of Job
+                            if (colName === 'job_name') {
+                                const matchedJob = allJobNatures.find(j =>
+                                    (j.job_name || '').toLowerCase() === valToAssign.toLowerCase()
+                                );
+                                if (matchedJob) valToAssign = matchedJob.job_name;
+                            }
+                            // Dropdown matching for Sector
+                            else if (colName === 'sector_name') {
+                                const matchedSec = allSectors.find(s =>
+                                    (s.sector_name || '').toLowerCase() === valToAssign.toLowerCase()
+                                );
+                                if (matchedSec) valToAssign = matchedSec.sector_name;
+                            }
+
+                            rowCopy[colName] = valToAssign;
                             numCellsUpdated++;
                         }
                     });
                     if (rowCopy._status !== 'new') rowCopy._status = 'modified';
+                    if (rowCopy._errors?.name && rowCopy.name?.trim()) {
+                        delete rowCopy._errors.name;
+                    }
                     updatedGrid[realIdx] = rowCopy;
                 }
             } else {
@@ -569,12 +768,24 @@ const ClientsList = () => {
                     const c = startCol + dc;
                     if (c < GRID_COLUMNS.length) {
                         const colName = GRID_COLUMNS[c];
-                        newRow[colName] = cellVal.trim();
+                        let valToAssign = (cellVal ?? '').trim();
+                        if (colName === 'job_name') {
+                            const matchedJob = allJobNatures.find(j =>
+                                (j.job_name || '').toLowerCase() === valToAssign.toLowerCase()
+                            );
+                            if (matchedJob) valToAssign = matchedJob.job_name;
+                        } else if (colName === 'sector_name') {
+                            const matchedSec = allSectors.find(s =>
+                                (s.sector_name || '').toLowerCase() === valToAssign.toLowerCase()
+                            );
+                            if (matchedSec) valToAssign = matchedSec.sector_name;
+                        }
+                        newRow[colName] = valToAssign;
                         numCellsUpdated++;
                     }
                 });
                 if (!newRow.name) {
-                    const nonVal = cells.find(c => c.trim());
+                    const nonVal = cells.find(c => c && c.trim());
                     if (nonVal) newRow.name = nonVal.trim();
                 }
                 if (newRow.name) {
@@ -586,13 +797,22 @@ const ClientsList = () => {
 
         if (numCellsUpdated > 0) {
             setGridData(updatedGrid);
+
+            const endRow = Math.min(startRow + expandedRows.length - 1, (sortedGridDataRef.current.length + newRowsAddedCount) - 1);
+            const endCol = Math.min(startCol + (expandedRows[0]?.length || 1) - 1, GRID_COLUMNS.length - 1);
+            setSelectionAnchor({ r: startRow, c: startCol });
+            setSelectionFocus({ r: endRow, c: endCol });
+
             if (newRowsAddedCount > 0) {
-                showToast('sparkle', 'Added New Rows', `Pasted ${newRowsAddedCount} new row(s) into spreadsheet`);
+                showToast('sparkle', 'Pasted Data', `Pasted values into ${numCellsUpdated} cell(s) and created ${newRowsAddedCount} new row(s).`);
             } else {
-                showToast('sparkle', 'Paste Success', `Pasted content into ${numCellsUpdated} cell(s).`);
+                showToast('sparkle', 'Paste Success', `Pasted content into ${numCellsUpdated} cell(s). Click "Save Changes" to apply.`);
             }
         }
     };
+    // Keep the ref up to date every render so event handlers always call latest version
+    executePasteRef.current = executePaste;
+
 
     // Global MouseUp for range drag selection
     useEffect(() => {
@@ -687,7 +907,11 @@ const ClientsList = () => {
                 api.get('/admin/job-natures'),
                 api.get('/admin/sectors')
             ]);
-            if (jobRes.data.success) setAllJobNatures(jobRes.data.job_natures || []);
+            if (jobRes.data.success) {
+                const natures = jobRes.data.job_natures || [];
+                console.log('[ClientsList] Loaded', natures.length, 'job natures');
+                setAllJobNatures(natures);
+            }
             if (sectorRes.data.success) setAllSectors(sectorRes.data.sectors || []);
         } catch (err) {
             console.error('Failed to fetch metadata:', err);
@@ -710,21 +934,24 @@ const ClientsList = () => {
             setClients(fetchedList);
 
             setGridData(prevGrid => {
-                const newUnsaved = prevGrid.filter(r => String(r.id).startsWith('temp_'));
+                const newUnsaved = prevGrid.filter(r => r._status === 'new' || String(r.id).startsWith('temp_'));
                 const modifiedMap = new Map(
                     prevGrid.filter(r => r._status === 'modified' || r._status === 'error').map(r => [r.id, r])
                 );
+                const curDeletedIds = deletedIdsRef.current;
 
-                const updatedGrid = fetchedList.map(fetched => {
-                    if (modifiedMap.has(fetched.id)) {
-                        return modifiedMap.get(fetched.id);
-                    }
-                    return {
-                        ...fetched,
-                        _status: 'saved',
-                        _errors: {}
-                    };
-                });
+                const updatedGrid = fetchedList
+                    .filter(fetched => !curDeletedIds.has(fetched.id))
+                    .map(fetched => {
+                        if (modifiedMap.has(fetched.id)) {
+                            return modifiedMap.get(fetched.id);
+                        }
+                        return {
+                            ...fetched,
+                            _status: 'saved',
+                            _errors: {}
+                        };
+                    });
 
                 return [...updatedGrid, ...newUnsaved];
             });
@@ -838,6 +1065,11 @@ const ClientsList = () => {
                 return updated;
             });
 
+            try {
+                sessionStorage.removeItem('mano_clients_draft_grid');
+                sessionStorage.removeItem('mano_clients_draft_deleted');
+            } catch (e) { }
+
             const timeStr = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
             setLastSavedTime(timeStr);
             showToast('success', 'Changes Saved', 'All changes have been successfully saved to database & cloud.');
@@ -875,12 +1107,6 @@ const ClientsList = () => {
     const sortedGridData = useMemo(() => {
         if (!sortConfig.key) return filteredGridData;
         return [...filteredGridData].sort((a, b) => {
-            // Keep newly added/unsaved rows at the bottom below older ones
-            const aIsNew = a._status === 'new' || String(a.id).startsWith('temp_');
-            const bIsNew = b._status === 'new' || String(b.id).startsWith('temp_');
-            if (aIsNew && !bIsNew) return 1;
-            if (!aIsNew && bIsNew) return -1;
-
             let aVal = a[sortConfig.key] || '';
             let bVal = b[sortConfig.key] || '';
             if (typeof aVal === 'string') aVal = aVal.toLowerCase();
@@ -907,7 +1133,6 @@ const ClientsList = () => {
         if (pageSize === 'All') return 1;
         return Math.ceil(sortedGridData.length / Number(pageSize)) || 1;
     }, [sortedGridData.length, pageSize]);
-
     const paginatedGridData = useMemo(() => {
         if (pageSize === 'All') return sortedGridData;
         const size = Number(pageSize);
@@ -915,20 +1140,159 @@ const ClientsList = () => {
         return sortedGridData.slice(start, start + size);
     }, [sortedGridData, currentPage, pageSize]);
 
-    // ─── Global Keyboard Shortcuts (Ctrl+A, Ctrl+Z, Ctrl+Y) ────────────────────
+    const handleCancelChanges = () => {
+        if (!hasUnsavedChanges) return;
+        setConfirmModal({
+            isOpen: true,
+            title: 'Cancel & Discard Unsaved Changes?',
+            message: `Are you sure you want to discard all ${unsavedCount} unsaved change(s)? This will revert your table back to the saved state.`,
+            confirmText: 'Discard Changes',
+            cancelText: 'Keep Editing',
+            variant: 'warning',
+            isLoading: false,
+            onConfirm: () => {
+                pushUndoState(gridDataRef.current);
+                try {
+                    sessionStorage.removeItem('mano_clients_draft_grid');
+                    sessionStorage.removeItem('mano_clients_draft_deleted');
+                } catch (e) { }
+
+                const savedList = clientsRef.current.map(c => ({ ...c, _status: 'saved', _errors: {} }));
+                setGridData(savedList);
+                setDeletedIds(new Set());
+                setSelectionAnchor(null);
+                setSelectionFocus(null);
+                setEditingCell(null);
+                closeConfirmModal();
+                showToast('info', 'Changes Cancelled', 'All unsaved local changes have been discarded.');
+            }
+        });
+    };
+
+    const executeDuplicate = () => {
+        if (!canWrite) return;
+
+        const curSelectedIds = selectedIdsRef.current;
+        if (curSelectedIds.size > 0) {
+            handleBulkDuplicate();
+            return;
+        }
+
+        const bounds = getBoundsFromRefs();
+        if (!bounds) return;
+
+        pushUndoState(gridDataRef.current);
+
+        const totalCols = GRID_COLUMNS.length;
+        const isFullRowSelected = (bounds.minCol === 0 && bounds.maxCol === totalCols - 1);
+
+        if (isFullRowSelected) {
+            // Duplicate entire selected row(s) right below the selection
+            const rowsToDuplicate = [];
+            for (let r = bounds.minRow; r <= bounds.maxRow; r++) {
+                const targetRowObj = sortedGridDataRef.current[r];
+                if (targetRowObj) rowsToDuplicate.push(targetRowObj);
+            }
+
+            if (rowsToDuplicate.length > 0) {
+                const lastRowObj = rowsToDuplicate[rowsToDuplicate.length - 1];
+                let insertIdx = gridDataRef.current.length;
+                if (lastRowObj) {
+                    const foundIdx = gridDataRef.current.findIndex(r => r.id === lastRowObj.id);
+                    if (foundIdx !== -1) insertIdx = foundIdx + 1;
+                }
+
+                const duplicates = rowsToDuplicate.map((row, idx) => ({
+                    id: `temp_${Date.now()}_${Math.random().toString(36).substring(2, 9)}_${idx}`,
+                    name: row.name ? `${row.name} (Copy)` : 'Copy',
+                    job_name: row.job_name || '',
+                    sector_name: row.sector_name || '',
+                    contact_person: row.contact_person || '',
+                    designation: row.designation || '',
+                    telephone_no: row.telephone_no || '',
+                    email: row.email || '',
+                    address: row.address || '',
+                    location: row.location || '',
+                    remarks: row.remarks || '',
+                    _status: 'new',
+                    _errors: {}
+                }));
+
+                setGridData(prev => {
+                    const next = [...prev];
+                    next.splice(insertIdx, 0, ...duplicates);
+                    return next;
+                });
+
+                const targetFocusRow = bounds.maxRow + 1;
+                const targetCol = bounds ? bounds.minCol : 0;
+                setSelectionAnchor({ r: targetFocusRow, c: targetCol });
+                setSelectionFocus({ r: targetFocusRow + duplicates.length - 1, c: targetCol });
+                showToast('sparkle', 'Duplicated Row(s) (Ctrl+D)', `Created ${duplicates.length} duplicate row(s) right below selection.`);
+            }
+        } else {
+            // Fill down cell values
+            let updatedGrid = [...gridDataRef.current];
+            let numCellsFilled = 0;
+
+            if (bounds.minRow === bounds.maxRow) {
+                // Single row / cell selection: copy from row above
+                if (bounds.minRow > 0) {
+                    const sourceRowObj = sortedGridDataRef.current[bounds.minRow - 1];
+                    const targetRowObj = sortedGridDataRef.current[bounds.minRow];
+                    if (sourceRowObj && targetRowObj) {
+                        const realIdx = updatedGrid.findIndex(row => row.id === targetRowObj.id);
+                        if (realIdx !== -1) {
+                            const rowCopy = { ...updatedGrid[realIdx] };
+                            for (let c = bounds.minCol; c <= bounds.maxCol; c++) {
+                                const colName = GRID_COLUMNS[c];
+                                rowCopy[colName] = sourceRowObj[colName] ?? '';
+                                numCellsFilled++;
+                            }
+                            if (rowCopy._status !== 'new') rowCopy._status = 'modified';
+                            updatedGrid[realIdx] = rowCopy;
+                        }
+                    }
+                } else {
+                    showToast('info', 'Fill Down', 'No row above to copy from.');
+                    return;
+                }
+            } else {
+                // Range selection (multiple rows): fill from top row of range down
+                const sourceRowObj = sortedGridDataRef.current[bounds.minRow];
+                if (sourceRowObj) {
+                    for (let r = bounds.minRow + 1; r <= bounds.maxRow; r++) {
+                        const targetRowObj = sortedGridDataRef.current[r];
+                        if (!targetRowObj) continue;
+                        const realIdx = updatedGrid.findIndex(row => row.id === targetRowObj.id);
+                        if (realIdx === -1) continue;
+
+                        const rowCopy = { ...updatedGrid[realIdx] };
+                        for (let c = bounds.minCol; c <= bounds.maxCol; c++) {
+                            const colName = GRID_COLUMNS[c];
+                            rowCopy[colName] = sourceRowObj[colName] ?? '';
+                            numCellsFilled++;
+                        }
+                        if (rowCopy._status !== 'new') rowCopy._status = 'modified';
+                        updatedGrid[realIdx] = rowCopy;
+                    }
+                }
+            }
+
+            if (numCellsFilled > 0) {
+                setGridData(updatedGrid);
+                setEditingCell(null);
+                showToast('sparkle', 'Filled Down (Ctrl+D)', `Duplicated value from row above across ${numCellsFilled} cell(s). Click "Save Changes" to apply.`);
+            }
+        }
+    };
+
+    // ─── Global Keyboard Shortcuts (Ctrl+C, Ctrl+V, Ctrl+D, Ctrl+A, Ctrl+Z, Ctrl+Y) ───
     useEffect(() => {
         const handleGlobalShortcuts = (e) => {
-            const activeTag = document.activeElement?.tagName?.toLowerCase();
-            if (activeTag === 'input' || activeTag === 'textarea') {
-                if (e.key === 'Escape') {
-                    setEditingCell(null);
-                    setSelectionAnchor(null);
-                    setSelectionFocus(null);
-                    setSelectedIds(new Set());
-                    closeDropdown();
-                }
-                return;
-            }
+            const activeEl = document.activeElement;
+            const activeTag = activeEl?.tagName?.toLowerCase();
+            const isEditingText = activeTag === 'input' || activeTag === 'textarea';
 
             if (e.key === 'Escape') {
                 setEditingCell(null);
@@ -943,10 +1307,11 @@ const ClientsList = () => {
             const modifier = isMac ? e.metaKey : e.ctrlKey;
 
             // Delete or Backspace key
-            if (e.key === 'Delete' || e.key === 'Backspace') {
+            if (!isEditingText && (e.key === 'Delete' || e.key === 'Backspace')) {
                 if (canWrite) {
-                    const bounds = getSelectionBounds();
-                    if (selectedIds.size > 0) {
+                    const curSelectedIds = selectedIdsRef.current;
+                    const bounds = getBoundsFromRefs();
+                    if (curSelectedIds.size > 0) {
                         e.preventDefault();
                         handleBulkDelete();
                         return;
@@ -996,220 +1361,185 @@ const ClientsList = () => {
 
             // Ctrl+C / Cmd+C : Copy
             if (modifier && (e.key === 'c' || e.key === 'C')) {
-                e.preventDefault();
-                executeCopy();
+                // Allow native copy when text is highlighted inside an input
+                if (isEditingText && activeEl?.selectionStart !== activeEl?.selectionEnd) {
+                    return;
+                }
+                // Only intercept if we have a spreadsheet selection
+                const hasSel = selectedIdsRef.current.size > 0 || selectionAnchorRef.current !== null;
+                if (hasSel) {
+                    e.preventDefault();
+                    executeCopy();
+                }
                 return;
             }
 
             // Ctrl+X / Cmd+X : Cut
             if (modifier && (e.key === 'x' || e.key === 'X')) {
-                if (canWrite) {
-                    e.preventDefault();
-                    executeCut();
+                if (!isEditingText && canWrite) {
+                    const hasSel = selectedIdsRef.current.size > 0 || selectionAnchorRef.current !== null;
+                    if (hasSel) {
+                        e.preventDefault();
+                        executeCut();
+                    }
                     return;
                 }
             }
 
-            // Ctrl+V / Cmd+V : Paste
+            // Ctrl+V / Cmd+V : Paste — let the native 'paste' event fire so we get
+            // synchronous clipboardData access (navigator.clipboard.readText is async
+            // and requires explicit user permission which browsers often deny silently).
+            // We only preventDefault here to stop the browser from trying to paste raw
+            // text into a focused <td>; the actual paste is handled by handleNativePaste.
             if (modifier && (e.key === 'v' || e.key === 'V')) {
+                if (!isEditingText && canWrite) {
+                    const hasSel = selectedIdsRef.current.size > 0 || selectionAnchorRef.current !== null;
+                    if (hasSel) {
+                        // Do NOT preventDefault — let the browser fire the 'paste' event
+                        // which our handleNativePaste handler will intercept.
+                        return;
+                    }
+                }
+            }
+
+            // Ctrl+D / Cmd+D : Duplicate / Fill Down
+            if (modifier && (e.key === 'd' || e.key === 'D')) {
                 if (canWrite) {
                     e.preventDefault();
-                    executePaste();
+                    executeDuplicate();
                     return;
                 }
             }
 
             // Ctrl+A / Cmd+A : Select All
             if (modifier && (e.key === 'a' || e.key === 'A')) {
-                e.preventDefault();
-                if (sortedGridDataRef.current.length > 0) {
-                    setSelectionAnchor({ r: 0, c: 0 });
-                    setSelectionFocus({
-                        r: sortedGridDataRef.current.length - 1,
-                        c: GRID_COLUMNS.length - 1
-                    });
-                    const allIds = new Set(sortedGridDataRef.current.map(r => r.id));
-                    setSelectedIds(allIds);
-                    showToast('info', 'Selected All', `Selected all ${sortedGridDataRef.current.length} row(s) and cells.`);
+                if (!isEditingText) {
+                    e.preventDefault();
+                    if (sortedGridDataRef.current.length > 0) {
+                        setSelectionAnchor({ r: 0, c: 0 });
+                        setSelectionFocus({
+                            r: sortedGridDataRef.current.length - 1,
+                            c: GRID_COLUMNS.length - 1
+                        });
+                        const allIds = new Set(sortedGridDataRef.current.map(r => r.id));
+                        setSelectedIds(allIds);
+                        showToast('info', 'Selected All', `Selected all ${sortedGridDataRef.current.length} row(s) and cells.`);
+                    }
+                    return;
                 }
-                return;
             }
 
             // Ctrl+Z / Cmd+Z : Undo
             if (modifier && !e.shiftKey && (e.key === 'z' || e.key === 'Z')) {
-                e.preventDefault();
-                if (undoStackRef.current.length > 0) {
-                    const previousState = undoStackRef.current.pop();
-                    redoStackRef.current.push(JSON.parse(JSON.stringify(gridDataRef.current)));
-                    setGridData(previousState);
-                    showToast('sparkle', 'Undo Successful', 'Restored previous spreadsheet state');
-                } else {
-                    showToast('info', 'Undo', 'No previous actions to undo');
+                if (!isEditingText) {
+                    e.preventDefault();
+                    if (undoStackRef.current.length > 0) {
+                        const previousState = undoStackRef.current.pop();
+                        redoStackRef.current.push(JSON.parse(JSON.stringify(gridDataRef.current)));
+                        setGridData(previousState);
+                        showToast('sparkle', 'Undo Successful', 'Restored previous spreadsheet state');
+                    } else {
+                        showToast('info', 'Undo', 'No previous actions to undo');
+                    }
+                    return;
                 }
-                return;
             }
 
             // Ctrl+Y / Cmd+Y or Ctrl+Shift+Z : Redo
             if (modifier && (e.key === 'y' || e.key === 'Y' || (e.shiftKey && (e.key === 'z' || e.key === 'Z')))) {
-                e.preventDefault();
-                if (redoStackRef.current.length > 0) {
-                    const nextState = redoStackRef.current.pop();
-                    undoStackRef.current.push(JSON.parse(JSON.stringify(gridDataRef.current)));
-                    setGridData(nextState);
-                    showToast('sparkle', 'Redo Successful', 'Restored redone spreadsheet state');
-                } else {
-                    showToast('info', 'Redo', 'No actions to redo');
+                if (!isEditingText) {
+                    e.preventDefault();
+                    if (redoStackRef.current.length > 0) {
+                        const nextState = redoStackRef.current.pop();
+                        undoStackRef.current.push(JSON.parse(JSON.stringify(gridDataRef.current)));
+                        setGridData(nextState);
+                        showToast('sparkle', 'Redo Successful', 'Restored redone spreadsheet state');
+                    } else {
+                        showToast('info', 'Redo', 'No actions to redo');
+                    }
+                    return;
                 }
-                return;
             }
         };
 
         window.addEventListener('keydown', handleGlobalShortcuts);
         return () => window.removeEventListener('keydown', handleGlobalShortcuts);
-    }, [selectedIds, selectionAnchor, selectionFocus]);
+    }, [canWrite]);
 
-    // ─── Cell Copy (Ctrl+C) & Cell Paste (Ctrl+V) ──────────────────────────────
+    // ─── Native Browser Copy/Paste event handlers (fires when focus is NOT on an input) ─
     useEffect(() => {
-        const handleGlobalCopy = (e) => {
-            const activeTag = document.activeElement?.tagName?.toLowerCase();
-            if (activeTag === 'input' || activeTag === 'textarea') return;
+        const handleNativeCopy = (e) => {
+            const activeEl = document.activeElement;
+            const activeTag = activeEl?.tagName?.toLowerCase();
+            // If text is selected inside an input, allow native copy
+            if ((activeTag === 'input' || activeTag === 'textarea') &&
+                activeEl.selectionStart !== activeEl.selectionEnd) {
+                return;
+            }
+            // Only intercept if we have a spreadsheet selection
+            const curSelectedIds = selectedIdsRef.current;
+            const anchor = selectionAnchorRef.current;
+            if (curSelectedIds.size === 0 && !anchor) return;
 
+            const bounds = getBoundsFromRefs();
             let rowsToCopy = [];
-            if (selectedIds.size > 0) {
-                rowsToCopy = sortedGridDataRef.current.filter(r => selectedIds.has(r.id));
+            let minCol = 0;
+            let maxCol = GRID_COLUMNS.length - 1;
+
+            if (curSelectedIds.size > 0) {
+                rowsToCopy = sortedGridDataRef.current.filter(r => curSelectedIds.has(r.id));
             } else if (bounds) {
                 for (let r = bounds.minRow; r <= bounds.maxRow; r++) {
                     if (sortedGridDataRef.current[r]) rowsToCopy.push(sortedGridDataRef.current[r]);
                 }
+                minCol = bounds.minCol;
+                maxCol = bounds.maxCol;
             }
 
             if (rowsToCopy.length === 0) return;
 
             e.preventDefault();
-            const minCol = (selectedIds.size > 0 || !bounds) ? 0 : bounds.minCol;
-            const maxCol = (selectedIds.size > 0 || !bounds) ? GRID_COLUMNS.length - 1 : bounds.maxCol;
-
             const tsvLines = rowsToCopy.map(rowObj => {
                 const rowVals = [];
                 for (let c = minCol; c <= maxCol; c++) {
-                    const colName = GRID_COLUMNS[c];
-                    rowVals.push(rowObj[colName] || '');
+                    rowVals.push(rowObj[GRID_COLUMNS[c]] ?? '');
                 }
                 return rowVals.join('\t');
             });
-
             const tsvData = tsvLines.join('\n');
-            if (tsvData) {
-                navigator.clipboard.writeText(tsvData);
-                const numCells = tsvLines.length * (maxCol - minCol + 1);
-                showToast('sparkle', 'Copied to Clipboard', `Copied ${numCells} cell(s) across ${tsvLines.length} row(s)`);
-            }
+            e.clipboardData.setData('text/plain', tsvData);
         };
 
-        const handleGlobalPaste = (e) => {
-            const activeTag = document.activeElement?.tagName?.toLowerCase();
-            if (activeTag === 'input' || activeTag === 'textarea') return;
-
+        const handleNativePaste = (e) => {
             const pastedData = e.clipboardData?.getData('text/plain');
             if (!pastedData || !pastedData.trim()) return;
 
+            const activeEl = document.activeElement;
+            const activeTag = activeEl?.tagName?.toLowerCase();
+            const isInInput = activeTag === 'input' || activeTag === 'textarea';
+
+            // If an input/textarea is focused, only intercept if the pasted text
+            // is multi-cell (contains tabs or newlines) — i.e. it's from Excel/Sheets.
+            // Single-value pastes are left for the input to handle natively.
+            const isMultiCell = pastedData.includes('\t') || pastedData.includes('\n');
+
+            if (isInInput && !isMultiCell) return;
+
+            // Require at least a cell to be selected (or fall back to row 0 col 0)
+            if (!selectionAnchorRef.current && selectedIdsRef.current.size === 0) return;
+
             e.preventDefault();
-            pushUndoState(gridDataRef.current);
-
-            const selectedBounds = bounds;
-            const startRow = selectedBounds ? selectedBounds.minRow : sortedGridDataRef.current.length;
-            const startCol = selectedBounds ? selectedBounds.minCol : 0;
-
-            const lines = pastedData.trim().split(/\r?\n/);
-            let updatedGrid = [...gridDataRef.current];
-            let numCellsUpdated = 0;
-            let newRowsAddedCount = 0;
-            let firstNewRowIndex = -1;
-
-            lines.forEach((line, dr) => {
-                if (!line.trim()) return;
-                const r = startRow + dr;
-                const cells = line.split('\t');
-
-                const targetRowObj = sortedGridDataRef.current[r];
-                if (targetRowObj) {
-                    const realIdx = updatedGrid.findIndex(row => row.id === targetRowObj.id);
-                    if (realIdx !== -1) {
-                        const rowCopy = { ...updatedGrid[realIdx] };
-                        cells.forEach((cellVal, dc) => {
-                            const c = startCol + dc;
-                            if (c < GRID_COLUMNS.length) {
-                                const colName = GRID_COLUMNS[c];
-                                rowCopy[colName] = cellVal.trim();
-                                numCellsUpdated++;
-                            }
-                        });
-                        if (rowCopy._status !== 'new') rowCopy._status = 'modified';
-                        updatedGrid[realIdx] = rowCopy;
-                    }
-                } else {
-                    let name = cells[0]?.trim() || '';
-                    let job_name = cells[1]?.trim() || '';
-                    let sector_name = cells[2]?.trim() || '';
-                    let contact_person = cells[3]?.trim() || '';
-                    let designation = cells[4]?.trim() || '';
-                    let telephone_no = cells[5]?.trim() || '';
-                    let email = cells[6]?.trim() || '';
-                    let address = cells[7]?.trim() || '';
-                    let location = cells[8]?.trim() || '';
-                    let remarks = cells[9]?.trim() || '';
-
-                    if (!name) {
-                        const nonVal = cells.find(c => c.trim());
-                        if (nonVal) name = nonVal.trim();
-                    }
-
-                    if (name) {
-                        const newRowIdx = updatedGrid.length;
-                        if (firstNewRowIndex === -1) firstNewRowIndex = newRowIdx;
-
-                        updatedGrid.push({
-                            id: `temp_${Date.now()}_${Math.random().toString(36).substring(2, 9)}_${dr}`,
-                            name,
-                            job_name,
-                            sector_name,
-                            contact_person,
-                            designation,
-                            telephone_no,
-                            email,
-                            address,
-                            location,
-                            remarks,
-                            _status: 'new',
-                            _errors: {}
-                        });
-                        numCellsUpdated += cells.length;
-                        newRowsAddedCount++;
-                    }
-                }
-            });
-
-            if (numCellsUpdated > 0) {
-                setGridData(updatedGrid);
-                if (newRowsAddedCount > 0) {
-                    showToast('sparkle', 'Added New Rows', `Pasted ${newRowsAddedCount} new client row(s) into spreadsheet`);
-                } else {
-                    showToast('sparkle', 'Excel Paste Success', `Pasted values into ${numCellsUpdated} cell(s) across spreadsheet`);
-                }
-                if (firstNewRowIndex !== -1) {
-                    setSelectionAnchor({ r: firstNewRowIndex, c: 0 });
-                    setSelectionFocus({ r: updatedGrid.length - 1, c: GRID_COLUMNS.length - 1 });
-                }
-            }
+            // Use ref to avoid stale closure — always calls the latest executePaste
+            executePasteRef.current(pastedData);
         };
 
-        window.addEventListener('copy', handleGlobalCopy);
-        window.addEventListener('paste', handleGlobalPaste);
+        window.addEventListener('copy', handleNativeCopy);
+        window.addEventListener('paste', handleNativePaste);
         return () => {
-            window.removeEventListener('copy', handleGlobalCopy);
-            window.removeEventListener('paste', handleGlobalPaste);
+            window.removeEventListener('copy', handleNativeCopy);
+            window.removeEventListener('paste', handleNativePaste);
         };
-    }, [selectionAnchor, selectionFocus]);
+    }, []);
 
     const handleSort = (key) => {
         setSortConfig(prev => ({
@@ -1222,26 +1552,17 @@ const ClientsList = () => {
         e?.stopPropagation();
         if (selectedIds.size === sortedGridData.length) {
             setSelectedIds(new Set());
-            setSelectionAnchor(null);
-            setSelectionFocus(null);
         } else {
             const allIds = new Set(sortedGridData.map(r => r.id));
             setSelectedIds(allIds);
-            if (sortedGridData.length > 0) {
-                setSelectionAnchor({ r: 0, c: 0 });
-                setSelectionFocus({
-                    r: sortedGridData.length - 1,
-                    c: GRID_COLUMNS.length - 1
-                });
-            }
         }
     };
 
     const handleToggleSelectRow = (e, id) => {
-        e.stopPropagation();
+        e?.stopPropagation();
         setSelectedIds(prev => {
             const next = new Set(prev);
-            if (e.shiftKey && lastSelectedId) {
+            if (e?.shiftKey && lastSelectedId) {
                 const currentIndex = sortedGridData.findIndex(r => r.id === id);
                 const lastIndex = sortedGridData.findIndex(r => r.id === lastSelectedId);
                 const [start, end] = [Math.min(currentIndex, lastIndex), Math.max(currentIndex, lastIndex)];
@@ -1252,22 +1573,6 @@ const ClientsList = () => {
                 if (next.has(id)) next.delete(id);
                 else next.add(id);
             }
-
-            if (next.size > 0) {
-                const selectedIndices = sortedGridData
-                    .map((r, idx) => next.has(r.id) ? idx : -1)
-                    .filter(idx => idx !== -1);
-                if (selectedIndices.length > 0) {
-                    const minR = Math.min(...selectedIndices);
-                    const maxR = Math.max(...selectedIndices);
-                    setSelectionAnchor({ r: minR, c: 0 });
-                    setSelectionFocus({ r: maxR, c: GRID_COLUMNS.length - 1 });
-                }
-            } else {
-                setSelectionAnchor(null);
-                setSelectionFocus(null);
-            }
-
             return next;
         });
         setLastSelectedId(id);
@@ -1614,9 +1919,11 @@ const ClientsList = () => {
         }
     };
 
-    // Add Row
+    // Add Row (inserted right below active cursor)
     const handleAddRows = (count = 1) => {
         pushUndoState(gridDataRef.current);
+        const { gridInsertIdx, sortedRowIdx } = getTargetInsertIndex();
+
         const newRows = Array.from({ length: count }).map((_, idx) => ({
             id: `temp_${Date.now()}_${Math.random().toString(36).substring(2, 9)}_${idx}`,
             name: '',
@@ -1632,11 +1939,19 @@ const ClientsList = () => {
             _status: 'new',
             _errors: {}
         }));
-        setGridData(prev => [...prev, ...newRows]);
-        showToast('info', 'Rows Added', `Added ${count} new client row(s).`);
+
+        setGridData(prev => {
+            const next = [...prev];
+            next.splice(gridInsertIdx, 0, ...newRows);
+            return next;
+        });
+
+        setSelectionAnchor({ r: sortedRowIdx, c: 0 });
+        setSelectionFocus({ r: sortedRowIdx + count - 1, c: 0 });
+        showToast('info', 'Rows Added', `Added ${count} new client row(s) below selection.`);
     };
 
-    // Duplicate Row
+    // Duplicate Row (inserted right below duplicated row)
     const handleDuplicateRow = (row) => {
         pushUndoState(gridDataRef.current);
         const duplicate = {
@@ -1654,13 +1969,25 @@ const ClientsList = () => {
             _status: 'new',
             _errors: {}
         };
-        let updatedGrid = [];
+
+        let realIdx = gridDataRef.current.length;
+        let sortedIdx = sortedGridDataRef.current.length;
+        if (row && row.id) {
+            const foundIdx = gridDataRef.current.findIndex(r => r.id === row.id);
+            if (foundIdx !== -1) realIdx = foundIdx + 1;
+            const foundSortedIdx = sortedGridDataRef.current.findIndex(r => r.id === row.id);
+            if (foundSortedIdx !== -1) sortedIdx = foundSortedIdx + 1;
+        }
+
         setGridData(prev => {
-            updatedGrid = [...prev, duplicate];
-            return updatedGrid;
+            const next = [...prev];
+            next.splice(realIdx, 0, duplicate);
+            return next;
         });
-        showToast('sparkle', 'Row Duplicated', `Duplicated "${row.name || 'client'}".`);
-        setTimeout(() => saveGridRows(updatedGrid), 150);
+
+        setSelectionAnchor({ r: sortedIdx, c: 0 });
+        setSelectionFocus({ r: sortedIdx, c: 0 });
+        showToast('sparkle', 'Row Duplicated', `Duplicated "${row.name || 'client'}" right below.`);
     };
 
     // Remove Duplicate Clients Modal Handler
@@ -1718,9 +2045,22 @@ const ClientsList = () => {
     };
 
     const handleBulkDuplicate = () => {
-        if (selectedIds.size === 0) return;
+        const curSelectedIds = selectedIdsRef.current;
+        if (curSelectedIds.size === 0) return;
         pushUndoState(gridDataRef.current);
-        const selectedRows = gridData.filter(r => selectedIds.has(r.id));
+
+        const selectedRows = sortedGridDataRef.current.filter(r => curSelectedIds.has(r.id));
+        const lastSelectedRow = selectedRows[selectedRows.length - 1];
+
+        let insertIdx = gridDataRef.current.length;
+        let lastSortedIdx = sortedGridDataRef.current.length;
+        if (lastSelectedRow) {
+            const foundIdx = gridDataRef.current.findIndex(r => r.id === lastSelectedRow.id);
+            if (foundIdx !== -1) insertIdx = foundIdx + 1;
+            const foundSorted = sortedGridDataRef.current.findIndex(r => r.id === lastSelectedRow.id);
+            if (foundSorted !== -1) lastSortedIdx = foundSorted + 1;
+        }
+
         const duplicates = selectedRows.map((row, idx) => ({
             id: `temp_${Date.now()}_${Math.random().toString(36).substring(2, 9)}_${idx}`,
             name: row.name ? `${row.name} (Copy)` : 'Copy',
@@ -1736,10 +2076,18 @@ const ClientsList = () => {
             _status: 'new',
             _errors: {}
         }));
-        setGridData(prev => [...prev, ...duplicates]);
-        const count = selectedIds.size;
+
+        setGridData(prev => {
+            const next = [...prev];
+            next.splice(insertIdx, 0, ...duplicates);
+            return next;
+        });
+
+        const count = curSelectedIds.size;
         setSelectedIds(new Set());
-        showToast('sparkle', 'Bulk Duplicated', `Created ${count} client duplicate(s). Click "Save Changes" to apply.`);
+        setSelectionAnchor({ r: lastSortedIdx, c: 0 });
+        setSelectionFocus({ r: lastSortedIdx + duplicates.length - 1, c: 0 });
+        showToast('sparkle', 'Bulk Duplicated', `Created ${count} duplicate row(s) right below selection.`);
     };
 
     const handleBulkChangeJob = (newJobName) => {
@@ -1843,27 +2191,56 @@ const ClientsList = () => {
         showToast('success', 'Export Complete', `Exported ${sortedGridData.length} clients to CSV.`);
     };
 
-    const handleSaveClientFromModal = async (clientData) => {
+    const handleSaveClientFromModal = (clientData) => {
         try {
+            pushUndoState(gridDataRef.current);
+            const mappedData = {
+                name: clientData.name || '',
+                contact_person: clientData.contact_person || '',
+                designation: clientData.designation || '',
+                email: clientData.email || '',
+                telephone_no: clientData.contact_no || clientData.telephone_no || '',
+                address: clientData.address || '',
+                job_name: clientData.job_nature || clientData.job_name || '',
+                sector_name: clientData.sector || clientData.sector_name || '',
+                location: clientData.location || '',
+                remarks: clientData.remarks || ''
+            };
+
             if (editingClient) {
-                const res = await api.put(`/clients/${editingClient.id}`, clientData);
-                if (res.data.success) {
-                    showToast('success', 'Client Updated', 'Client saved successfully');
-                    fetchClients();
-                    fetchMetadata();
-                }
+                setGridData(prevGrid => prevGrid.map(row => {
+                    if (row.id === editingClient.id) {
+                        return {
+                            ...row,
+                            ...mappedData,
+                            _status: row._status === 'new' ? 'new' : 'modified'
+                        };
+                    }
+                    return row;
+                }));
+                showToast('info', 'Client Updated (Local)', 'Client details updated in local draft. Click "Save Changes" to apply.');
             } else {
-                const res = await api.post('/clients', clientData);
-                if (res.data.success) {
-                    showToast('success', 'Client Added', 'New client created');
-                    fetchClients();
-                    fetchMetadata();
-                }
+                const tempId = `temp_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`;
+                const newRow = {
+                    id: tempId,
+                    ...mappedData,
+                    _status: 'new',
+                    _errors: {}
+                };
+                const { gridInsertIdx, sortedRowIdx } = getTargetInsertIndex();
+                setGridData(prevGrid => {
+                    const next = [...prevGrid];
+                    next.splice(gridInsertIdx, 0, newRow);
+                    return next;
+                });
+                setSelectionAnchor({ r: sortedRowIdx, c: 0 });
+                setSelectionFocus({ r: sortedRowIdx, c: 0 });
+                showToast('info', 'Client Added (Local)', 'New client added to local draft right below selection.');
             }
             setIsAddModalOpen(false);
             setEditingClient(null);
         } catch (err) {
-            showToast('error', 'Save Failed', err.response?.data?.message || 'Failed to save client');
+            showToast('error', 'Save Failed', 'Failed to update local draft client');
         }
     };
 
@@ -1881,6 +2258,7 @@ const ClientsList = () => {
     };
 
     return (
+        <>
         <div className="flex-1 min-h-0 flex flex-col overflow-hidden bg-white dark:bg-[#0d1117] transition-colors h-full relative">
 
             {/* Custom Confirm Modal */}
@@ -1957,10 +2335,21 @@ const ClientsList = () => {
                         </button>
 
                         {hasUnsavedChanges && (
-                            <span className="text-[11px] font-semibold text-amber-600 dark:text-amber-400 flex items-center gap-1">
-                                <AlertCircle size={12} />
-                                <span>Unsaved local changes</span>
-                            </span>
+                            <div className="flex items-center gap-2">
+                                <span className="text-[11px] font-semibold text-amber-600 dark:text-amber-400 flex items-center gap-1">
+                                    <AlertCircle size={12} />
+                                    <span>Unsaved local changes</span>
+                                </span>
+                                <button
+                                    type="button"
+                                    onClick={handleCancelChanges}
+                                    className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs font-bold bg-gray-100 hover:bg-gray-200 dark:bg-white/10 dark:hover:bg-white/15 text-gray-700 dark:text-gray-200 border border-gray-200 dark:border-white/10 transition-all cursor-pointer shadow-xs active:scale-[0.98]"
+                                    title="Discard all unsaved local changes and revert to saved data"
+                                >
+                                    <RotateCcw size={12} className="stroke-[2.5]" />
+                                    <span>Cancel Changes</span>
+                                </button>
+                            </div>
                         )}
                     </div>
                 </div>
@@ -2117,135 +2506,159 @@ const ClientsList = () => {
                 </div>
             </div>
 
-            {/* Excel Floating Bulk Actions Toolbar */}
-            {selectedIds.size > 0 && (
-                <motion.div
-                    initial={{ opacity: 0, y: -10 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    className="px-6 py-2.5 bg-blue-600 text-white flex items-center justify-between text-xs shrink-0 shadow-lg z-30"
-                >
-                    <div className="flex items-center gap-3 font-semibold">
-                        <span className="flex items-center gap-1.5 px-2.5 py-1 bg-white/20 rounded-md font-bold text-[11px]">
-                            <CheckSquare size={14} />
-                            {selectedIds.size} row(s) selected
-                        </span>
-                        <span className="text-white/70">· Bulk Operations:</span>
-                    </div>
+            {/* Floating Bottom Action Toaster Dock */}
+            <AnimatePresence>
+                {selectedIds.size > 0 && (
+                    <motion.div
+                        initial={{ opacity: 0, y: 30, scale: 0.95 }}
+                        animate={{ opacity: 1, y: 0, scale: 1 }}
+                        exit={{ opacity: 0, y: 30, scale: 0.95 }}
+                        transition={{ duration: 0.2, ease: 'easeOut' }}
+                        className="fixed bottom-8 left-1/2 -translate-x-1/2 z-[6500] bg-gray-900/95 dark:bg-[#161b22]/95 border border-blue-500/40 text-white shadow-2xl backdrop-blur-md rounded-2xl px-4 py-2 flex items-center gap-3 select-none text-xs"
+                    >
+                        <div className="flex items-center gap-2 pr-3 border-r border-white/10 font-semibold">
+                            <span className="flex items-center gap-1.5 px-2.5 py-1 bg-blue-600 rounded-xl font-bold text-xs text-white shadow-sm">
+                                <CheckSquare size={13} />
+                                {selectedIds.size} {selectedIds.size === 1 ? 'row' : 'rows'} selected
+                            </span>
+                        </div>
 
-                    <div className="flex items-center gap-2 relative">
-                        {canWrite && (
-                            <>
-                                <button
-                                    onClick={handleBulkDuplicate}
-                                    className="flex items-center gap-1.5 px-3 py-1.5 bg-white/10 hover:bg-white/20 rounded-lg text-xs font-bold transition"
-                                    title="Duplicate selected rows"
-                                >
-                                    <Copy size={13} />
-                                    Duplicate ({selectedIds.size})
-                                </button>
-
-                                {/* Bulk Change Job Nature Dropdown */}
-                                <div className="relative">
+                        <div className="flex items-center gap-2 relative">
+                            {canWrite && (
+                                <>
                                     <button
-                                        onClick={() => {
-                                            setShowBulkJobMenu(v => !v);
-                                            setShowBulkSectorMenu(false);
-                                        }}
-                                        className="flex items-center gap-1.5 px-3 py-1.5 bg-white/10 hover:bg-white/20 rounded-lg text-xs font-bold transition"
+                                        onClick={handleBulkDuplicate}
+                                        className="flex items-center gap-1.5 px-3 py-1.5 bg-white/10 hover:bg-white/20 rounded-xl text-xs font-bold transition text-white"
+                                        title="Duplicate selected rows"
                                     >
-                                        <span>Change Job Nature</span>
-                                        <ChevronDown size={12} />
+                                        <Copy size={13} />
+                                        Duplicate ({selectedIds.size})
                                     </button>
-                                    {showBulkJobMenu && (
-                                        <div className="absolute right-0 top-full mt-1 w-56 bg-white dark:bg-[#161b22] border border-gray-200 dark:border-white/10 rounded-md shadow-xl z-[6000] p-2 text-xs text-gray-800 dark:text-gray-200 flex flex-col max-h-64 overflow-hidden">
-                                            <input
-                                                type="text"
-                                                placeholder="Search job nature..."
-                                                className="w-full px-2 py-1 bg-gray-50 dark:bg-[#0d1117] border border-gray-200 dark:border-white/10 rounded text-xs focus:outline-none mb-1 font-semibold text-gray-900 dark:text-white"
-                                                value={bulkJobSearch}
-                                                onChange={e => setBulkJobSearch(e.target.value)}
-                                            />
-                                            <div className="overflow-y-auto no-scrollbar flex-1">
-                                                {allJobNatures
-                                                    .filter(j => (j.job_name || '').toLowerCase().includes(bulkJobSearch.toLowerCase()))
-                                                    .map(j => (
-                                                        <button
-                                                            key={j.job_id || j.job_name}
-                                                            onClick={() => handleBulkChangeJob(j.job_name)}
-                                                            className="w-full text-left px-2.5 py-1.5 hover:bg-gray-100 dark:hover:bg-white/5 rounded text-xs font-semibold"
-                                                        >
-                                                            {j.job_name}
-                                                        </button>
-                                                    ))
-                                                }
-                                            </div>
-                                        </div>
-                                    )}
-                                </div>
 
-                                {/* Bulk Change Sector Dropdown */}
-                                <div className="relative">
+                                    {/* Bulk Change Job Nature Dropdown */}
+                                    <div className="relative">
+                                        <button
+                                            onClick={() => {
+                                                setShowBulkJobMenu(v => !v);
+                                                setShowBulkSectorMenu(false);
+                                            }}
+                                            className="flex items-center gap-1.5 px-3 py-1.5 bg-white/10 hover:bg-white/20 rounded-xl text-xs font-bold transition text-white"
+                                        >
+                                            <span>Change Job Nature</span>
+                                            <ChevronDown size={12} className={`transition-transform duration-200 ${showBulkJobMenu ? 'rotate-180' : ''}`} />
+                                        </button>
+                                        {showBulkJobMenu && (
+                                            <div className="absolute left-0 bottom-full mb-2.5 w-56 bg-white dark:bg-[#161b22] border border-gray-200 dark:border-white/10 rounded-xl shadow-2xl z-[7000] p-2 text-xs text-gray-800 dark:text-gray-200">
+                                                <input
+                                                    type="text"
+                                                    placeholder="Search job nature..."
+                                                    className="w-full px-2 py-1 bg-gray-50 dark:bg-[#0d1117] border border-gray-200 dark:border-white/10 rounded-lg text-xs focus:outline-none mb-1 font-semibold text-gray-900 dark:text-white"
+                                                    value={bulkJobSearch}
+                                                    onChange={e => setBulkJobSearch(e.target.value)}
+                                                    onKeyDown={e => {
+                                                        if (e.key === 'Escape') {
+                                                            e.preventDefault();
+                                                            e.stopPropagation();
+                                                            closeDropdown();
+                                                        } else {
+                                                            e.stopPropagation();
+                                                        }
+                                                    }}
+                                                />
+                                                <div className="max-h-48 overflow-y-auto" style={{ scrollbarWidth: 'none', msOverflowStyle: 'none' }}>
+                                                    {allJobNatures
+                                                        .filter(j => (j.job_name || '').toLowerCase().includes(bulkJobSearch.toLowerCase()))
+                                                        .slice(0, 5)
+                                                        .map(j => (
+                                                            <button
+                                                                key={j.job_id || j.job_name}
+                                                                onClick={() => handleBulkChangeJob(j.job_name)}
+                                                                className="w-full text-left px-2.5 py-1.5 hover:bg-blue-50 dark:hover:bg-white/5 rounded-lg text-xs font-semibold"
+                                                            >
+                                                                {j.job_name}
+                                                            </button>
+                                                        ))
+                                                    }
+                                                </div>
+                                            </div>
+                                        )}
+                                    </div>
+
+                                    {/* Bulk Change Sector Dropdown */}
+                                    <div className="relative">
+                                        <button
+                                            onClick={() => {
+                                                setShowBulkSectorMenu(v => !v);
+                                                setShowBulkJobMenu(false);
+                                            }}
+                                            className="flex items-center gap-1.5 px-3 py-1.5 bg-white/10 hover:bg-white/20 rounded-xl text-xs font-bold transition text-white"
+                                        >
+                                            <span>Change Sector</span>
+                                            <ChevronDown size={12} className={`transition-transform duration-200 ${showBulkSectorMenu ? 'rotate-180' : ''}`} />
+                                        </button>
+                                        {showBulkSectorMenu && (
+                                            <div className="absolute left-0 bottom-full mb-2.5 w-56 bg-white dark:bg-[#161b22] border border-gray-200 dark:border-white/10 rounded-xl shadow-2xl z-[7000] p-2 text-xs text-gray-800 dark:text-gray-200">
+                                                <input
+                                                    type="text"
+                                                    placeholder="Search sector..."
+                                                    className="w-full px-2 py-1 bg-gray-50 dark:bg-[#0d1117] border border-gray-200 dark:border-white/10 rounded-lg text-xs focus:outline-none mb-1 font-semibold text-gray-900 dark:text-white"
+                                                    value={bulkSectorSearch}
+                                                    onChange={e => setBulkSectorSearch(e.target.value)}
+                                                    onKeyDown={e => {
+                                                        if (e.key === 'Escape') {
+                                                            e.preventDefault();
+                                                            e.stopPropagation();
+                                                            closeDropdown();
+                                                        } else {
+                                                            e.stopPropagation();
+                                                        }
+                                                    }}
+                                                />
+                                                <div className="max-h-48 overflow-y-auto" style={{ scrollbarWidth: 'none', msOverflowStyle: 'none' }}>
+                                                    {allSectors
+                                                        .filter(s => (s.sector_name || '').toLowerCase().includes(bulkSectorSearch.toLowerCase()))
+                                                        .slice(0, 5)
+                                                        .map(s => (
+                                                            <button
+                                                                key={s.sector_id || s.sector_name}
+                                                                onClick={() => handleBulkChangeSector(s.sector_name)}
+                                                                className="w-full text-left px-2.5 py-1.5 hover:bg-blue-50 dark:hover:bg-white/5 rounded-lg text-xs font-semibold"
+                                                            >
+                                                                {s.sector_name}
+                                                            </button>
+                                                        ))
+                                                    }
+                                                </div>
+                                            </div>
+                                        )}
+                                    </div>
+
                                     <button
-                                        onClick={() => {
-                                            setShowBulkSectorMenu(v => !v);
-                                            setShowBulkJobMenu(false);
-                                        }}
-                                        className="flex items-center gap-1.5 px-3 py-1.5 bg-white/10 hover:bg-white/20 rounded-lg text-xs font-bold transition"
+                                        onClick={handleBulkDelete}
+                                        className="flex items-center gap-1.5 px-3 py-1.5 bg-red-600/90 hover:bg-red-600 text-white rounded-xl text-xs font-bold transition shadow-sm"
                                     >
-                                        <span>Change Sector</span>
-                                        <ChevronDown size={12} />
+                                        <Trash2 size={13} />
+                                        Delete ({selectedIds.size})
                                     </button>
-                                    {showBulkSectorMenu && (
-                                        <div className="absolute right-0 top-full mt-1 w-56 bg-white dark:bg-[#161b22] border border-gray-200 dark:border-white/10 rounded-md shadow-xl z-[6000] p-2 text-xs text-gray-800 dark:text-gray-200 flex flex-col max-h-64 overflow-hidden">
-                                            <input
-                                                type="text"
-                                                placeholder="Search sector..."
-                                                className="w-full px-2 py-1 bg-gray-50 dark:bg-[#0d1117] border border-gray-200 dark:border-white/10 rounded text-xs focus:outline-none mb-1 font-semibold text-gray-900 dark:text-white"
-                                                value={bulkSectorSearch}
-                                                onChange={e => setBulkSectorSearch(e.target.value)}
-                                            />
-                                            <div className="overflow-y-auto no-scrollbar flex-1">
-                                                {allSectors
-                                                    .filter(s => (s.sector_name || '').toLowerCase().includes(bulkSectorSearch.toLowerCase()))
-                                                    .map(s => (
-                                                        <button
-                                                            key={s.sector_id || s.sector_name}
-                                                            onClick={() => handleBulkChangeSector(s.sector_name)}
-                                                            className="w-full text-left px-2.5 py-1.5 hover:bg-gray-100 dark:hover:bg-white/5 rounded text-xs font-semibold"
-                                                        >
-                                                            {s.sector_name}
-                                                        </button>
-                                                    ))
-                                                }
-                                            </div>
-                                        </div>
-                                    )}
-                                </div>
-
-                                <button
-                                    onClick={handleBulkDelete}
-                                    className="flex items-center gap-1.5 px-3 py-1.5 bg-red-500/90 hover:bg-red-600 text-white rounded-lg text-xs font-bold transition shadow-sm"
-                                >
-                                    <Trash2 size={13} />
-                                    Delete ({selectedIds.size})
-                                </button>
-                            </>
-                        )}
-                        <button
-                            onClick={() => setSelectedIds(new Set())}
-                            className="px-2.5 py-1.5 text-white/80 hover:text-white text-xs font-medium"
-                        >
-                            Deselect
-                        </button>
-                    </div>
-                </motion.div>
-            )}
+                                </>
+                            )}
+                            <button
+                                onClick={() => setSelectedIds(new Set())}
+                                className="p-1.5 text-gray-400 hover:text-white hover:bg-white/10 rounded-xl transition ml-1"
+                                title="Deselect all rows"
+                            >
+                                <X size={15} />
+                            </button>
+                        </div>
+                    </motion.div>
+                )}
+            </AnimatePresence>
 
             {/* Main Content Layout */}
             <div ref={tableContainerRef} className="flex-1 min-h-0 flex overflow-hidden w-full relative">
                 {/* Spreadsheet Grid Table */}
                 <div className="flex-1 min-h-0 overflow-auto no-scrollbar">
-                    <table className="w-full min-w-[1500px] text-left whitespace-nowrap text-[13px] border-collapse bg-white dark:bg-[#0d1117] select-none">
+                    <table className="w-full min-w-[1500px] text-left whitespace-nowrap text-sm border-collapse bg-white dark:bg-[#0d1117] select-none">
                         <thead className="bg-[#f9fafb] dark:bg-[#161b22] text-gray-500 dark:text-gray-400 sticky top-0 z-20 border-b border-gray-200 dark:border-white/5 tracking-wider text-[10px] uppercase font-bold select-none shadow-sm">
                             <tr>
                                 {/* Master Checkbox */}
@@ -2315,6 +2728,7 @@ const ClientsList = () => {
                                     return (
                                         <tr
                                             key={client.id || `row-${rowIndex}`}
+                                            onContextMenu={(e) => handleContextMenu(e, rowIndex, 0)}
                                             className={`hover:bg-blue-50/20 dark:hover:bg-white/[0.02] transition-colors group/row text-gray-700 dark:text-gray-300 ${isRowSelected ? 'bg-blue-50/30 dark:bg-blue-900/10' : ''
                                                 }`}
                                         >
@@ -2367,6 +2781,7 @@ const ClientsList = () => {
 
                                                 const isAnchor = selectionAnchor && selectionAnchor.r === rowIndex && selectionAnchor.c === colIndex;
                                                 const isEditing = editingCell?.rowIndex === rowIndex && editingCell?.colName === colName;
+                                                const isFillHandleCell = bounds && rowIndex === bounds.maxRow && colIndex === bounds.maxCol;
 
                                                 const rawValue = client[colName] || '';
 
@@ -2392,6 +2807,15 @@ const ClientsList = () => {
                                                                 setSelectionFocus({ r: rowIndex, c: colIndex });
                                                             }
                                                         }}
+                                                        onClick={(e) => {
+                                                            if (e.target.closest('.z-\\[6000\\]') || e.target.closest('button')) return;
+                                                            if (canWrite) {
+                                                                if (selectionAnchor?.r !== rowIndex || selectionAnchor?.c !== colIndex) {
+                                                                    setSelectionAnchor({ r: rowIndex, c: colIndex });
+                                                                    setSelectionFocus({ r: rowIndex, c: colIndex });
+                                                                }
+                                                            }
+                                                        }}
                                                         onDoubleClick={() => {
                                                             if (canWrite) {
                                                                 if (colName === 'job_name' || colName === 'sector_name') {
@@ -2403,11 +2827,37 @@ const ClientsList = () => {
                                                         }}
                                                         onKeyDown={(e) => handleCellKeyDown(e, rowIndex, colName)}
                                                         onContextMenu={(e) => handleContextMenu(e, rowIndex, colIndex)}
-                                                        className={`px-3 py-2 border-r border-b border-gray-100 dark:border-white/5 relative outline-none select-none ${isInRange ? 'bg-blue-50/50 dark:bg-blue-900/20' : ''
-                                                            } ${isAnchor ? 'ring-2 ring-blue-500/70 z-10' : ''}`}
+                                                        className={`px-3 py-2 border-r border-b border-gray-100 dark:border-white/5 relative outline-none select-none cursor-pointer ${isEditing
+                                                            ? 'bg-white dark:bg-[#161b22]'
+                                                            : isInRange
+                                                                ? 'bg-blue-50/50 dark:bg-blue-900/20'
+                                                                : 'hover:bg-gray-50/70 dark:hover:bg-white/[0.03]'
+                                                            }`}
                                                     >
-                                                        {/* Selection Border Overlay */}
-                                                        {isInRange && (
+                                                        {/* Active Cell / Anchor Blue Border Marker Overlay */}
+                                                        {(isAnchor || isEditing) && (
+                                                            <div className="absolute inset-0 pointer-events-none z-20 border-2 border-blue-500 shadow-xs" />
+                                                        )}
+
+                                                        {/* Fill Handle Marker */}
+                                                        {isFillHandleCell && !isEditing && (
+                                                            <div
+                                                                onMouseDown={(e) => {
+                                                                    e.stopPropagation();
+                                                                    setIsMouseDown(true);
+                                                                }}
+                                                                onDoubleClick={(e) => {
+                                                                    e.stopPropagation();
+                                                                    handleAutoFillDown();
+                                                                }}
+                                                                className="absolute -bottom-1 -right-1 w-2.5 h-2.5 bg-blue-600 border border-white dark:border-gray-900 rounded-sm z-30 cursor-crosshair shadow-sm hover:scale-125 transition-transform"
+                                                                title="Drag or double-click to Auto-Fill Down"
+                                                            />
+                                                        )}
+
+
+                                                        {/* Selection Range Border Overlay */}
+                                                        {isInRange && !isAnchor && !isEditing && (
                                                             <div className="absolute inset-0 pointer-events-none z-10">
                                                                 {isTopEdge && <div className="absolute top-0 left-0 right-0 h-[2px] bg-blue-500" />}
                                                                 {isBottomEdge && <div className="absolute bottom-0 left-0 right-0 h-[2px] bg-blue-500" />}
@@ -2425,11 +2875,21 @@ const ClientsList = () => {
                                                                 onChange={(e) => handleCellChange(rowIndex, colName, e.target.value)}
                                                                 onBlur={handleCellBlur}
                                                                 onKeyDown={(e) => handleCellKeyDown(e, rowIndex, colName)}
-                                                                className="w-full bg-white dark:bg-[#161b22] px-2 py-1 border-2 border-blue-500 rounded text-xs focus:outline-none font-medium text-gray-900 dark:text-white shadow-lg"
+                                                                onPaste={(e) => {
+                                                                    const text = e.clipboardData?.getData('text/plain');
+                                                                    if (text && (text.includes('\t') || text.includes('\n') || text.includes('\r'))) {
+                                                                        e.preventDefault();
+                                                                        setEditingCell(null);
+                                                                        setSelectionAnchor({ r: rowIndex, c: colIndex });
+                                                                        setSelectionFocus({ r: rowIndex, c: colIndex });
+                                                                        executePasteRef.current(text, rowIndex, colIndex);
+                                                                    }
+                                                                }}
+                                                                className={`w-full bg-transparent border-0 outline-none focus:outline-none focus:ring-0 p-0 text-sm ${colName === 'name' ? 'font-bold' : 'font-semibold'} text-gray-900 dark:text-white relative z-10`}
                                                             />
                                                         ) : colName === 'job_name' ? (
-                                                            /* Nature of Job Dropdown Cell */
-                                                            <div className="relative group/cell flex items-center justify-between w-full">
+                                                            /* Nature of Job — portal trigger */
+                                                            <div className="group/cell flex items-center justify-between w-full">
                                                                 <span className="font-semibold text-gray-800 dark:text-gray-200 truncate">
                                                                     {rawValue || <span className="text-gray-400 dark:text-gray-500 font-normal italic">Select job nature...</span>}
                                                                 </span>
@@ -2437,61 +2897,21 @@ const ClientsList = () => {
                                                                     <button
                                                                         onClick={(e) => {
                                                                             e.stopPropagation();
-                                                                            setActiveDropdownCell(prev => (prev?.rowIndex === rowIndex && prev?.colName === 'job_name') ? null : { rowIndex, colName: 'job_name' });
+                                                                            if (allJobNatures.length === 0) fetchMetadata();
+                                                                            const rect = e.currentTarget.closest('td')?.getBoundingClientRect() || e.currentTarget.getBoundingClientRect();
+                                                                            const isOpen = dropdownPortalProps?.rowIndex === rowIndex && dropdownPortalProps?.colName === 'job_name';
+                                                                            if (isOpen) { setDropdownPortalProps(null); setJobNatureSearch(''); }
+                                                                            else { setDropdownPortalProps({ rowIndex, colName: 'job_name', top: rect.bottom + 4, left: rect.left }); setJobNatureSearch(''); }
                                                                         }}
                                                                         className="p-1 hover:bg-gray-200 dark:hover:bg-white/10 rounded text-gray-400 opacity-60 group-hover/cell:opacity-100 transition-opacity"
                                                                     >
                                                                         <ChevronDown size={12} />
                                                                     </button>
                                                                 )}
-
-                                                                {/* Job Nature Popup Menu */}
-                                                                {activeDropdownCell?.rowIndex === rowIndex && activeDropdownCell?.colName === 'job_name' && (
-                                                                    <div className="absolute left-0 top-full mt-1 w-64 bg-white dark:bg-[#161b22] border border-gray-200 dark:border-white/10 rounded-lg shadow-2xl z-[6000] p-2 flex flex-col max-h-64 overflow-hidden">
-                                                                        <input
-                                                                            type="text"
-                                                                            autoFocus
-                                                                            placeholder="Search or enter job nature..."
-                                                                            className="w-full px-2 py-1 bg-gray-50 dark:bg-[#0d1117] border border-gray-200 dark:border-white/10 rounded text-xs focus:outline-none mb-1 font-semibold text-gray-900 dark:text-white"
-                                                                            value={jobNatureSearch}
-                                                                            onChange={(e) => setJobNatureSearch(e.target.value)}
-                                                                        />
-                                                                        <div className="overflow-y-auto no-scrollbar flex-1">
-                                                                            {allJobNatures
-                                                                                .filter(j => (j.job_name || '').toLowerCase().includes(jobNatureSearch.toLowerCase()))
-                                                                                .map(j => (
-                                                                                    <button
-                                                                                        key={j.job_id || j.job_name}
-                                                                                        onClick={(e) => {
-                                                                                            e.stopPropagation();
-                                                                                            handleCellChange(rowIndex, 'job_name', j.job_name, true);
-                                                                                            closeDropdown();
-                                                                                        }}
-                                                                                        className="w-full text-left px-2.5 py-1.5 hover:bg-gray-100 dark:hover:bg-white/5 rounded text-xs font-semibold text-gray-800 dark:text-gray-200"
-                                                                                    >
-                                                                                        {j.job_name}
-                                                                                    </button>
-                                                                                ))
-                                                                            }
-                                                                            {jobNatureSearch.trim() && !allJobNatures.some(j => (j.job_name || '').toLowerCase() === jobNatureSearch.trim().toLowerCase()) && (
-                                                                                <button
-                                                                                    onClick={(e) => {
-                                                                                        e.stopPropagation();
-                                                                                        handleCellChange(rowIndex, 'job_name', jobNatureSearch.trim(), true);
-                                                                                        closeDropdown();
-                                                                                    }}
-                                                                                    className="w-full text-left px-2.5 py-1.5 bg-blue-50 dark:bg-blue-900/20 text-blue-600 dark:text-blue-400 rounded text-xs font-bold mt-1"
-                                                                                >
-                                                                                    + Add "{jobNatureSearch.trim()}"
-                                                                                </button>
-                                                                            )}
-                                                                        </div>
-                                                                    </div>
-                                                                )}
                                                             </div>
                                                         ) : colName === 'sector_name' ? (
-                                                            /* Sector Dropdown Cell */
-                                                            <div className="relative group/cell flex items-center justify-between w-full">
+                                                            /* Sector — portal trigger */
+                                                            <div className="group/cell flex items-center justify-between w-full">
                                                                 <span className="font-semibold text-gray-800 dark:text-gray-200 truncate">
                                                                     {rawValue || <span className="text-gray-400 dark:text-gray-500 font-normal italic">Select sector...</span>}
                                                                 </span>
@@ -2499,56 +2919,15 @@ const ClientsList = () => {
                                                                     <button
                                                                         onClick={(e) => {
                                                                             e.stopPropagation();
-                                                                            setActiveDropdownCell(prev => (prev?.rowIndex === rowIndex && prev?.colName === 'sector_name') ? null : { rowIndex, colName: 'sector_name' });
+                                                                            const rect = e.currentTarget.closest('td')?.getBoundingClientRect() || e.currentTarget.getBoundingClientRect();
+                                                                            const isOpen = dropdownPortalProps?.rowIndex === rowIndex && dropdownPortalProps?.colName === 'sector_name';
+                                                                            if (isOpen) { setDropdownPortalProps(null); setSectorSearch(''); }
+                                                                            else { setDropdownPortalProps({ rowIndex, colName: 'sector_name', top: rect.bottom + 4, left: rect.left }); setSectorSearch(''); }
                                                                         }}
                                                                         className="p-1 hover:bg-gray-200 dark:hover:bg-white/10 rounded text-gray-400 opacity-60 group-hover/cell:opacity-100 transition-opacity"
                                                                     >
                                                                         <ChevronDown size={12} />
                                                                     </button>
-                                                                )}
-
-                                                                {/* Sector Popup Menu */}
-                                                                {activeDropdownCell?.rowIndex === rowIndex && activeDropdownCell?.colName === 'sector_name' && (
-                                                                    <div className="absolute left-0 top-full mt-1 w-64 bg-white dark:bg-[#161b22] border border-gray-200 dark:border-white/10 rounded-lg shadow-2xl z-[6000] p-2 flex flex-col max-h-64 overflow-hidden">
-                                                                        <input
-                                                                            type="text"
-                                                                            autoFocus
-                                                                            placeholder="Search or enter sector..."
-                                                                            className="w-full px-2 py-1 bg-gray-50 dark:bg-[#0d1117] border border-gray-200 dark:border-white/10 rounded text-xs focus:outline-none mb-1 font-semibold text-gray-900 dark:text-white"
-                                                                            value={sectorSearch}
-                                                                            onChange={(e) => setSectorSearch(e.target.value)}
-                                                                        />
-                                                                        <div className="overflow-y-auto no-scrollbar flex-1">
-                                                                            {allSectors
-                                                                                .filter(s => (s.sector_name || '').toLowerCase().includes(sectorSearch.toLowerCase()))
-                                                                                .map(s => (
-                                                                                    <button
-                                                                                        key={s.sector_id || s.sector_name}
-                                                                                        onClick={(e) => {
-                                                                                            e.stopPropagation();
-                                                                                            handleCellChange(rowIndex, 'sector_name', s.sector_name, true);
-                                                                                            closeDropdown();
-                                                                                        }}
-                                                                                        className="w-full text-left px-2.5 py-1.5 hover:bg-gray-100 dark:hover:bg-white/5 rounded text-xs font-semibold text-gray-800 dark:text-gray-200"
-                                                                                    >
-                                                                                        {s.sector_name}
-                                                                                    </button>
-                                                                                ))
-                                                                            }
-                                                                            {sectorSearch.trim() && !allSectors.some(s => (s.sector_name || '').toLowerCase() === sectorSearch.trim().toLowerCase()) && (
-                                                                                <button
-                                                                                    onClick={(e) => {
-                                                                                        e.stopPropagation();
-                                                                                        handleCellChange(rowIndex, 'sector_name', sectorSearch.trim(), true);
-                                                                                        closeDropdown();
-                                                                                    }}
-                                                                                    className="w-full text-left px-2.5 py-1.5 bg-blue-50 dark:bg-blue-900/20 text-blue-600 dark:text-blue-400 rounded text-xs font-bold mt-1"
-                                                                                >
-                                                                                    + Add "{sectorSearch.trim()}"
-                                                                                </button>
-                                                                            )}
-                                                                        </div>
-                                                                    </div>
                                                                 )}
                                                             </div>
                                                         ) : (
@@ -2808,7 +3187,15 @@ const ClientsList = () => {
                             onClick={(e) => {
                                 e.stopPropagation();
                                 setContextMenu(null);
-                                executePaste();
+                                if (navigator.clipboard && navigator.clipboard.readText) {
+                                    navigator.clipboard.readText().then(text => {
+                                        if (text && text.trim()) executePasteRef.current(text);
+                                    }).catch(err => {
+                                        showToast('error', 'Paste Error', 'Unable to access clipboard. Use Ctrl+V shortcut instead.');
+                                    });
+                                } else {
+                                    showToast('error', 'Paste Error', 'Clipboard access not supported in this browser. Use Ctrl+V.');
+                                }
                             }}
                             className="w-full text-left px-3.5 py-1.5 hover:bg-blue-50 dark:hover:bg-white/5 text-gray-800 dark:text-gray-200 flex items-center justify-between font-semibold border-b border-gray-100 dark:border-white/5 pb-1.5 mb-1"
                         >
@@ -2892,6 +3279,133 @@ const ClientsList = () => {
                 </div>
             )}
         </div>
+
+            {/* ── Job Nature Portal Dropdown ── */}
+            {dropdownPortalProps?.colName === 'job_name' && ReactDOM.createPortal(
+                <div
+                    style={{ position: 'fixed', top: dropdownPortalProps.top, left: dropdownPortalProps.left, width: 256, zIndex: 9999 }}
+                    className="bg-white dark:bg-[#161b22] border border-gray-200 dark:border-white/10 rounded-lg shadow-2xl p-2"
+                    onMouseDown={e => e.stopPropagation()}
+                >
+                    <input
+                        type="text"
+                        autoFocus
+                        placeholder="Search or enter job nature..."
+                        className="w-full px-2 py-1 bg-gray-50 dark:bg-[#0d1117] border border-gray-200 dark:border-white/10 rounded text-xs focus:outline-none mb-1 font-semibold text-gray-900 dark:text-white"
+                        value={jobNatureSearch}
+                        onChange={e => setJobNatureSearch(e.target.value)}
+                        onKeyDown={e => {
+                            if (e.key === 'Escape') {
+                                e.preventDefault();
+                                e.stopPropagation();
+                                closeDropdown();
+                            } else {
+                                e.stopPropagation();
+                            }
+                        }}
+                    />
+                    <div style={{ maxHeight: 192, overflowY: 'auto', scrollbarWidth: 'none' }}>
+                        {allJobNatures
+                            .filter(j => (j.job_name || '').toLowerCase().includes(jobNatureSearch.toLowerCase()))
+                            .slice(0, 5)
+                            .map(j => (
+                                <button
+                                    key={j.job_id || j.job_name}
+                                    onMouseDown={e => {
+                                        e.preventDefault();
+                                        e.stopPropagation();
+                                        handleCellChange(dropdownPortalProps.rowIndex, 'job_name', j.job_name, true);
+                                        setDropdownPortalProps(null);
+                                        setJobNatureSearch('');
+                                    }}
+                                    className="w-full text-left px-2.5 py-1.5 hover:bg-gray-100 dark:hover:bg-white/5 rounded text-xs font-semibold text-gray-800 dark:text-gray-200"
+                                >
+                                    {j.job_name}
+                                </button>
+                            ))
+                        }
+                        {jobNatureSearch.trim() && !allJobNatures.some(j => (j.job_name || '').toLowerCase() === jobNatureSearch.trim().toLowerCase()) && (
+                            <button
+                                onMouseDown={e => {
+                                    e.preventDefault();
+                                    e.stopPropagation();
+                                    handleCellChange(dropdownPortalProps.rowIndex, 'job_name', jobNatureSearch.trim(), true);
+                                    setDropdownPortalProps(null);
+                                    setJobNatureSearch('');
+                                }}
+                                className="w-full text-left px-2.5 py-1.5 bg-blue-50 dark:bg-blue-900/20 text-blue-600 dark:text-blue-400 rounded text-xs font-bold mt-1"
+                            >
+                                + Add "{jobNatureSearch.trim()}"
+                            </button>
+                        )}
+                    </div>
+                </div>,
+                document.body
+            )}
+
+            {/* ── Sector Portal Dropdown ── */}
+            {dropdownPortalProps?.colName === 'sector_name' && ReactDOM.createPortal(
+                <div
+                    style={{ position: 'fixed', top: dropdownPortalProps.top, left: dropdownPortalProps.left, width: 256, zIndex: 9999 }}
+                    className="bg-white dark:bg-[#161b22] border border-gray-200 dark:border-white/10 rounded-lg shadow-2xl p-2"
+                    onMouseDown={e => e.stopPropagation()}
+                >
+                    <input
+                        type="text"
+                        autoFocus
+                        placeholder="Search or enter sector..."
+                        className="w-full px-2 py-1 bg-gray-50 dark:bg-[#0d1117] border border-gray-200 dark:border-white/10 rounded text-xs focus:outline-none mb-1 font-semibold text-gray-900 dark:text-white"
+                        value={sectorSearch}
+                        onChange={e => setSectorSearch(e.target.value)}
+                        onKeyDown={e => {
+                            if (e.key === 'Escape') {
+                                e.preventDefault();
+                                e.stopPropagation();
+                                closeDropdown();
+                            } else {
+                                e.stopPropagation();
+                            }
+                        }}
+                    />
+                    <div style={{ maxHeight: 192, overflowY: 'auto', scrollbarWidth: 'none' }}>
+                        {allSectors
+                            .filter(s => (s.sector_name || '').toLowerCase().includes(sectorSearch.toLowerCase()))
+                            .slice(0, 5)
+                            .map(s => (
+                                <button
+                                    key={s.sector_id || s.sector_name}
+                                    onMouseDown={e => {
+                                        e.preventDefault();
+                                        e.stopPropagation();
+                                        handleCellChange(dropdownPortalProps.rowIndex, 'sector_name', s.sector_name, true);
+                                        setDropdownPortalProps(null);
+                                        setSectorSearch('');
+                                    }}
+                                    className="w-full text-left px-2.5 py-1.5 hover:bg-gray-100 dark:hover:bg-white/5 rounded text-xs font-semibold text-gray-800 dark:text-gray-200"
+                                >
+                                    {s.sector_name}
+                                </button>
+                            ))
+                        }
+                        {sectorSearch.trim() && !allSectors.some(s => (s.sector_name || '').toLowerCase() === sectorSearch.trim().toLowerCase()) && (
+                            <button
+                                onMouseDown={e => {
+                                    e.preventDefault();
+                                    e.stopPropagation();
+                                    handleCellChange(dropdownPortalProps.rowIndex, 'sector_name', sectorSearch.trim(), true);
+                                    setDropdownPortalProps(null);
+                                    setSectorSearch('');
+                                }}
+                                className="w-full text-left px-2.5 py-1.5 bg-blue-50 dark:bg-blue-900/20 text-blue-600 dark:text-blue-400 rounded text-xs font-bold mt-1"
+                            >
+                                + Add "{sectorSearch.trim()}"
+                            </button>
+                        )}
+                    </div>
+                </div>,
+                document.body
+            )}
+        </>
     );
 };
 
