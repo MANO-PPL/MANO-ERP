@@ -3,6 +3,7 @@ import AppError from '../../utils/AppError.js';
 export const TXN_TYPES = {
     SUPPLY_ASSIGN:   'SUPPLY_ASSIGN',
     TRANSFER_PARTY:  'TRANSFER_PARTY',
+    DAILY_PROGRESS:  'DAILY_PROGRESS',
     // CONSUME_ACTIVITY and ADJUSTMENT are disabled — pending activity module integration
 };
 
@@ -22,10 +23,10 @@ export const ROLES = {
  * Validates transaction header and lines for confirmation/saving.
  *
  * Rules:
- * 1. Minimum 2 lines.
- * 2. Every line must have party_id (INT, pdoc_parties.pv_id), project_resource_id, and valid signed_qty.
- * 3. SUM(signed_qty) grouped per project_resource_id must be zero (double-entry integrity).
- * 4. Type-specific rules for SUPPLY_ASSIGN and TRANSFER_PARTY.
+ * 1. Minimum 1 line.
+ * 2. Every line must have party_id (INT, pdoc_parties.pv_id) and valid signed_qty.
+ * 3. SUM(signed_qty) grouped per project_resource_id must be zero for inventory movement transactions (SUPPLY_ASSIGN, TRANSFER_PARTY).
+ * 4. Type-specific rules for SUPPLY_ASSIGN, TRANSFER_PARTY, and DAILY_PROGRESS.
  */
 export function validateTransaction(header, lines) {
     if (!header || typeof header !== 'object') {
@@ -36,8 +37,8 @@ export function validateTransaction(header, lines) {
         throw new AppError(`Invalid txn_type: ${header.txn_type}. Allowed: ${Object.values(TXN_TYPES).join(', ')}`, 400);
     }
 
-    if (!Array.isArray(lines) || lines.length < 2) {
-        throw new AppError('Transaction must have at least two lines', 400);
+    if (!Array.isArray(lines) || lines.length < 1) {
+        throw new AppError('Transaction must have at least one line', 400);
     }
 
     // Per-project-resource balance check & individual line validation
@@ -51,23 +52,23 @@ export function validateTransaction(header, lines) {
             throw new AppError(`Line at index ${i} has invalid party_id "${line.party_id}". Must be a positive integer (pdoc_parties.pv_id)`, 400);
         }
 
-        if (!line.project_resource_id) {
-            throw new AppError(`Line at index ${i} is missing project_resource_id`, 400);
-        }
-
         const signedQty = Number(line.signed_qty);
         if (isNaN(signedQty)) {
             throw new AppError(`Line at index ${i} has invalid signed_qty`, 400);
         }
 
-        const projectResourceId = String(line.project_resource_id);
-        projectResourceSums[projectResourceId] = (projectResourceSums[projectResourceId] || 0) + signedQty;
+        if (line.project_resource_id) {
+            const projectResourceId = String(line.project_resource_id);
+            projectResourceSums[projectResourceId] = (projectResourceSums[projectResourceId] || 0) + signedQty;
+        }
     }
 
-    // Verify zero-sum per resource (double-entry integrity)
-    for (const [projectResourceId, sum] of Object.entries(projectResourceSums)) {
-        if (Math.abs(sum) > 1e-6) {
-            throw new AppError(`Zero-sum validation failed for project resource '${projectResourceId}': SUM(signed_qty) = ${sum}, must be 0`, 400);
+    // Verify zero-sum per resource for inventory movements (double-entry integrity)
+    if (header.txn_type === TXN_TYPES.SUPPLY_ASSIGN || header.txn_type === TXN_TYPES.TRANSFER_PARTY) {
+        for (const [projectResourceId, sum] of Object.entries(projectResourceSums)) {
+            if (Math.abs(sum) > 1e-6) {
+                throw new AppError(`Zero-sum validation failed for project resource '${projectResourceId}': SUM(signed_qty) = ${sum}, must be 0`, 400);
+            }
         }
     }
 
@@ -91,6 +92,7 @@ export function validateTransaction(header, lines) {
             break;
         }
 
+        case TXN_TYPES.DAILY_PROGRESS:
         default:
             break;
     }

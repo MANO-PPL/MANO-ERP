@@ -14,12 +14,13 @@ function parseIntOrNull(val) {
  * res_resources.project_id; proj_resources is no longer involved.
  */
 async function verifyProjectResourceMembership(trx, projectId, orgId, lines) {
-    if (lines.length === 0) return;
+    const linesWithResource = lines.filter(line => line.project_resource_id !== null && line.project_resource_id !== undefined);
+    if (linesWithResource.length === 0) return;
     if (!projectId) {
         throw new AppError('project_id is required when transaction lines use project resources', 400);
     }
 
-    const projectResourceIds = [...new Set(lines.map(line => line.project_resource_id))];
+    const projectResourceIds = [...new Set(linesWithResource.map(line => line.project_resource_id))];
     const query = trx('res_resources')
         .where({ project_id: projectId })
         .whereIn('id', projectResourceIds);
@@ -40,7 +41,8 @@ async function verifyProjectResourceMembership(trx, projectId, orgId, lines) {
  * Verifies that non-Supplier parties have sufficient stock before transferring out resources.
  * Suppliers have unlimited allocation capacity. Contractors & others cannot transfer out more than their current net balance.
  */
-async function verifyPartyStockSufficiency(trx, projectId, orgId, linesToValidate) {
+async function verifyPartyStockSufficiency(trx, projectId, orgId, linesToValidate, txnType) {
+    if (txnType === TXN_TYPES.DAILY_PROGRESS) return;
     const outflowLines = linesToValidate.filter(l => Number(l.signed_qty) < 0);
     if (outflowLines.length === 0) return;
 
@@ -142,7 +144,7 @@ export async function createTransaction(txnData, linesData) {
 
         // Enforce stock availability for non-suppliers on confirmed transactions
         if (status === TXN_STATUS.CONFIRMED) {
-            await verifyPartyStockSufficiency(trx, header.project_id, header.org_id, linesToValidate);
+            await verifyPartyStockSufficiency(trx, header.project_id, header.org_id, linesToValidate, header.txn_type);
         }
 
         const [insertedId] = await trx('txn_transactions').insert(header);
