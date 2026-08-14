@@ -276,5 +276,40 @@ export const dprApi = {
         const response = await api.get(`/ledger/transactions/${transactionId}`);
         const data = response.data?.data || response.data;
         return dprApi.parseTxnToReport(data);
+    },
+
+    /**
+     * Fetch the most recent DPR created before the given target date
+     */
+    getPreviousDPR: async (projectId, targetDate) => {
+        try {
+            const reports = await dprApi.listDPRs(projectId);
+            if (!reports || reports.length === 0) return null;
+
+            const target = targetDate ? new Date(targetDate) : new Date();
+
+            // Find reports with date strictly before target date, sorted descending
+            const previousReports = reports
+                .filter(r => {
+                    const rDate = new Date(r.date);
+                    // Compare date strings or timestamps
+                    return rDate < target && r.date !== targetDate;
+                })
+                .sort((a, b) => new Date(b.date) - new Date(a.date));
+
+            if (previousReports.length > 0) {
+                return previousReports[0];
+            }
+
+            // If no report before target date, return latest report if not same date
+            const sortedAll = [...reports].sort((a, b) => new Date(b.date) - new Date(a.date));
+            if (sortedAll.length > 0 && sortedAll[0].date !== targetDate) {
+                return sortedAll[0];
+            }
+            return null;
+        } catch (err) {
+            console.error('Failed to get previous DPR:', err);
+            return null;
+        }
     }
 };

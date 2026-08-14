@@ -405,6 +405,69 @@ const DPRCreate = ({ onBack, initialData = null, isReadOnly = false, project = n
         fetchResources();
     }, [project]);
 
+    // Auto-load previous DPR data when creating a brand new report (!initialData)
+    useEffect(() => {
+        if (initialData) return; // Skip if viewing or editing an existing saved report
+
+        const loadPreviousDPRData = async () => {
+            const pId = project?.id || project?.dbId;
+            if (!pId) return;
+
+            try {
+                const prev = await dprApi.getPreviousDPR(pId, reportDate);
+                if (!prev) return;
+
+                // 1. Auto pre-fill Today's Progress from previous Tomorrow's Plan
+                if (prev.tomorrowPlan && Array.isArray(prev.tomorrowPlan)) {
+                    const validPlanItems = prev.tomorrowPlan
+                        .filter(r => (r.item && r.item.trim()) || (r.description && r.description.trim()))
+                        .map(r => ({
+                            item: r.item || '',
+                            description: r.description || '',
+                            unit: r.unit || '',
+                            qty: r.qty || ''
+                        }));
+
+                    if (validPlanItems.length > 0) {
+                        setTodayRows(validPlanItems);
+                    }
+                }
+
+                // 2. Auto pre-fill Labour Agency names (1st column only, counts initialized to 0)
+                if (prev.labourData && Array.isArray(prev.labourData)) {
+                    const validAgencies = prev.labourData
+                        .filter(r => r.agency && r.agency.trim())
+                        .map(r => {
+                            const row = { agency: r.agency, remarks: '' };
+                            LABOUR_KEYS.forEach(k => { row[k] = 0; });
+                            return row;
+                        });
+
+                    if (validAgencies.length > 0) {
+                        setLabourRows(validAgencies);
+                    }
+                }
+
+                // 3. Update cumulative last day manpower total
+                if (prev.personnel !== undefined || prev.labourData) {
+                    const prevManpower = prev.personnel || prev.labourData.reduce((sum, r) => {
+                        return sum + LABOUR_KEYS.reduce((sub, k) => sub + (parseInt(r[k]) || 0), 0);
+                    }, 0);
+                    const prevCumulative = (parseInt(prev.cumulativeLastDay) || 0) + prevManpower;
+                    if (prevCumulative > 0) {
+                        setCumulativeLastDay(prevCumulative);
+                    }
+                }
+
+                customToast.info("Loaded previous agency names & pre-filled Today's Progress from yesterday's Tomorrow Plan", "Auto-Filled");
+            } catch (err) {
+                console.error('Failed to auto-load previous DPR data:', err);
+            }
+        };
+
+        loadPreviousDPRData();
+    }, [project?.id, project?.dbId, initialData, reportDate]);
+
     // Stepper State Navigation
     const steps = [
         { id: 'project', label: 'Project & Site', desc: 'Hours, weather & duration' },
@@ -796,20 +859,43 @@ const DPRCreate = ({ onBack, initialData = null, isReadOnly = false, project = n
     const [distribution, setDistribution] = useState(initialData?.distribution || configuredDistributions[0] || 'GLOWMEX');
     const [preparedBy, setPreparedBy] = useState(initialData?.preparedBy || configuredPreparedBys[0] || 'MANO CPL');
 
-    const handleCopyYesterdaySite = () => {
-        setTimeSlots([{ from: '08:00', to: '17:30' }]);
-        setWeather('sunny');
-        setSiteCondition('dry');
-        customToast.info('Site hours & weather copied from yesterday', 'Copied');
+    const handleCopyYesterdaySite = async () => {
+        const pId = project?.id || project?.dbId;
+        const prev = await dprApi.getPreviousDPR(pId, reportDate);
+        if (prev) {
+            if (prev.timeSlots && prev.timeSlots.length > 0) {
+                setTimeSlots(prev.timeSlots.map(ts => ({ from: ts.from || '', to: ts.to || '' })));
+            }
+            if (prev.weather) setWeather(prev.weather);
+            if (prev.siteCondition) setSiteCondition(prev.siteCondition);
+            customToast.info('Site hours & weather loaded from previous DPR', 'Copied');
+        } else {
+            setTimeSlots([{ from: '08:00', to: '17:30' }]);
+            setWeather('sunny');
+            setSiteCondition('dry');
+            customToast.info('Default site hours & weather applied', 'Applied');
+        }
     };
 
-    const handleCopyYesterdayLabour = () => {
-        setLabourRows([
-            { agency: 'MANO PMC', plumber: 0, super: 0, carp: 0, fitter: 0, elect: 0, opera: 0, mason: 0, labou: 0, storel: 0, staff: 3, remarks: '' },
-            { agency: 'Departmental (Ind)', plumber: 1, super: 2, carp: 3, fitter: 3, elect: 1, opera: 0, mason: 0, labou: 0, storel: 1, staff: 0, remarks: '' },
-            { agency: 'Departmental (Con)', plumber: 0, super: 1, carp: 4, fitter: 4, elect: 3, opera: 1, mason: 1, labou: 37, storel: 2, staff: 0, remarks: '' }
-        ]);
-        customToast.info('Agencies & headcounts copied from yesterday', 'Copied');
+    const handleCopyYesterdayLabour = async () => {
+        const pId = project?.id || project?.dbId;
+        const prev = await dprApi.getPreviousDPR(pId, reportDate);
+        if (prev?.labourData && Array.isArray(prev.labourData) && prev.labourData.length > 0) {
+            const validAgencies = prev.labourData
+                .filter(r => r.agency && r.agency.trim())
+                .map(r => {
+                    const row = { agency: r.agency, remarks: '' };
+                    LABOUR_KEYS.forEach(k => { row[k] = 0; });
+                    return row;
+                });
+
+            if (validAgencies.length > 0) {
+                setLabourRows(validAgencies);
+                customToast.info('Agency names loaded from previous DPR (counts initialized to 0)', 'Loaded');
+                return;
+            }
+        }
+        customToast.info('No previous DPR labour records found', 'Notice');
     };
 
     const handleFinalize = async () => {
@@ -1085,49 +1171,78 @@ const DPRCreate = ({ onBack, initialData = null, isReadOnly = false, project = n
                                     </div>
                                 </div>
 
-                                {/* Rain Stoppage Time Sessions */}
-                                <div className="space-y-2 pt-1 border-t border-gray-200 dark:border-zinc-800">
-                                    <div className="flex items-center justify-between">
-                                        <label className="block text-[11px] font-bold text-gray-700 dark:text-zinc-300">
-                                            Work Stoppage / Rain Sessions ({timeSlots.length})
-                                        </label>
-                                        {!isReadOnly && (
-                                            <button 
-                                                onClick={addTimeSlot} 
-                                                className="text-[10px] text-blue-600 hover:text-blue-800 dark:text-blue-400 font-bold flex items-center"
-                                            >
-                                                <Plus size={11} className="mr-0.5" /> Add Time Slot
-                                            </button>
-                                        )}
-                                    </div>
-                                    {timeSlots.map((ts, idx) => (
-                                        <div key={idx} className="flex items-center space-x-2 bg-gray-50 dark:bg-zinc-900 p-2 rounded-lg border border-gray-200 dark:border-zinc-800">
-                                            {!isReadOnly && timeSlots.length > 1 && (
-                                                <button onClick={() => deleteTimeSlot(idx)} className="text-red-500 hover:text-red-700 font-bold text-xs">
-                                                    ×
-                                                </button>
-                                            )}
-                                            <span className="text-[10px] font-bold text-gray-400">From:</span>
-                                            <input 
-                                                type="text" 
-                                                value={ts.from} 
-                                                onChange={(e) => updateTimeSlot(idx, 'from', e.target.value)} 
-                                                placeholder="08:00"
-                                                disabled={isReadOnly}
-                                                className="w-16 px-2 py-1 bg-white dark:bg-zinc-800 border border-gray-300 dark:border-zinc-700 rounded text-xs font-bold text-center"
-                                            />
-                                            <span className="text-[10px] font-bold text-gray-400">To:</span>
-                                            <input 
-                                                type="text" 
-                                                value={ts.to} 
-                                                onChange={(e) => updateTimeSlot(idx, 'to', e.target.value)} 
-                                                placeholder="17:30"
-                                                disabled={isReadOnly}
-                                                className="w-16 px-2 py-1 bg-white dark:bg-zinc-800 border border-gray-300 dark:border-zinc-700 rounded text-xs font-bold text-center"
-                                            />
+                                {/* Rain Stoppage Time Sessions - Only enabled for Normal+Slushy or Rainy+Slushy */}
+                                {(() => {
+                                    const isStoppageEnabled = siteCondition === 'slushy';
+                                    return (
+                                        <div className={`space-y-2 pt-2 border-t border-gray-200 dark:border-zinc-800 transition-opacity ${!isStoppageEnabled ? 'opacity-55' : 'opacity-100'}`}>
+                                            <div className="flex items-center justify-between">
+                                                <div className="flex items-center space-x-2">
+                                                    <label className="block text-[11px] font-bold text-gray-700 dark:text-zinc-300">
+                                                        Work Stoppage / Rain Sessions ({timeSlots.length})
+                                                    </label>
+                                                    {!isStoppageEnabled && (
+                                                        <span className="text-[9px] font-medium text-amber-700 dark:text-amber-400 bg-amber-50 dark:bg-amber-950/40 border border-amber-200 dark:border-amber-800/60 px-1.5 py-0.5 rounded">
+                                                            Disabled (Slushy only)
+                                                        </span>
+                                                    )}
+                                                </div>
+                                                {!isReadOnly && (
+                                                    <button 
+                                                        onClick={isStoppageEnabled ? addTimeSlot : undefined} 
+                                                        disabled={!isStoppageEnabled}
+                                                        className={`text-[10px] font-bold flex items-center transition-all ${
+                                                            isStoppageEnabled 
+                                                                ? 'text-blue-600 hover:text-blue-800 dark:text-blue-400 cursor-pointer' 
+                                                                : 'text-gray-400 dark:text-zinc-600 cursor-not-allowed'
+                                                        }`}
+                                                    >
+                                                        <Plus size={11} className="mr-0.5" /> Add Time Slot
+                                                    </button>
+                                                )}
+                                            </div>
+                                            {timeSlots.map((ts, idx) => (
+                                                <div key={idx} className={`flex items-center space-x-2 p-2 rounded-lg border transition-all ${
+                                                    isStoppageEnabled 
+                                                        ? 'bg-gray-50 dark:bg-zinc-900 border-gray-200 dark:border-zinc-800' 
+                                                        : 'bg-gray-100/70 dark:bg-zinc-900/40 border-gray-200/60 dark:border-zinc-800/60'
+                                                }`}>
+                                                    {!isReadOnly && timeSlots.length > 1 && isStoppageEnabled && (
+                                                        <button onClick={() => deleteTimeSlot(idx)} className="text-red-500 hover:text-red-700 font-bold text-xs">
+                                                            ×
+                                                        </button>
+                                                    )}
+                                                    <span className="text-[10px] font-bold text-gray-400">From:</span>
+                                                    <input 
+                                                        type="text" 
+                                                        value={ts.from} 
+                                                        onChange={(e) => isStoppageEnabled && updateTimeSlot(idx, 'from', e.target.value)} 
+                                                        placeholder="08:00"
+                                                        disabled={isReadOnly || !isStoppageEnabled}
+                                                        className={`w-16 px-2 py-1 border rounded text-xs font-bold text-center transition-all ${
+                                                            isStoppageEnabled 
+                                                                ? 'bg-white dark:bg-zinc-800 border-gray-300 dark:border-zinc-700 text-gray-900 dark:text-white' 
+                                                                : 'bg-gray-100 dark:bg-zinc-900 border-gray-200 dark:border-zinc-800 text-gray-400 dark:text-zinc-600 cursor-not-allowed'
+                                                        }`}
+                                                    />
+                                                    <span className="text-[10px] font-bold text-gray-400">To:</span>
+                                                    <input 
+                                                        type="text" 
+                                                        value={ts.to} 
+                                                        onChange={(e) => isStoppageEnabled && updateTimeSlot(idx, 'to', e.target.value)} 
+                                                        placeholder="17:30"
+                                                        disabled={isReadOnly || !isStoppageEnabled}
+                                                        className={`w-16 px-2 py-1 border rounded text-xs font-bold text-center transition-all ${
+                                                            isStoppageEnabled 
+                                                                ? 'bg-white dark:bg-zinc-800 border-gray-300 dark:border-zinc-700 text-gray-900 dark:text-white' 
+                                                                : 'bg-gray-100 dark:bg-zinc-900 border-gray-200 dark:border-zinc-800 text-gray-400 dark:text-zinc-600 cursor-not-allowed'
+                                                        }`}
+                                                    />
+                                                </div>
+                                            ))}
                                         </div>
-                                    ))}
-                                </div>
+                                    );
+                                })()}
 
                                 <div className="pt-1">
                                     <label className="block text-[11px] font-bold text-gray-700 dark:text-zinc-300 mb-1.5">
@@ -1854,7 +1969,11 @@ const DPRCreate = ({ onBack, initialData = null, isReadOnly = false, project = n
                                                 </td>
                                             )}
                                             <td className="p-2 border-r border-gray-400 w-1/3 align-middle bg-white dark:bg-[#161b22] text-gray-900 dark:text-gray-100 font-bold text-center">
-                                                <span>From: <b>{slot.from || '—'}</b> To: <b>{slot.to || '—'}</b></span>
+                                                {siteCondition === 'slushy' ? (
+                                                    <span>From: <b>{slot.from || '—'}</b> To: <b>{slot.to || '—'}</b></span>
+                                                ) : (
+                                                    <span className="text-gray-400 dark:text-zinc-500 font-normal italic">From: — To: —</span>
+                                                )}
                                             </td>
                                             {idx === 0 && (
                                                 <td rowSpan={timeSlots.length} className="p-2 border-gray-400 w-1/3 align-middle bg-white dark:bg-[#161b22] text-gray-900 dark:text-gray-100 font-bold">
