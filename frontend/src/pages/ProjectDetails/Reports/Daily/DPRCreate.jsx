@@ -3,6 +3,7 @@ import { ArrowLeft, Save, Send, Plus, X, Download, Check, ChevronRight, Copy, Ro
 import { generalDocsApi } from '../../../../services/generalDocsApi';
 import { projectApi } from '../../../../services/projectApi';
 import { resourceApi } from '../../../../services/resourceApi';
+import { dprApi } from '../../../../services/dprApi';
 import { customToast } from '../../../../utils/toast';
 
 const MaterialTypeahead = ({ id, value, onChange, onSelectResource, resources, disabled, placeholder, onEnterNext, onKeyDownExtra }) => {
@@ -811,7 +812,7 @@ const DPRCreate = ({ onBack, initialData = null, isReadOnly = false, project = n
         customToast.info('Agencies & headcounts copied from yesterday', 'Copied');
     };
 
-    const handleFinalize = () => {
+    const handleFinalize = async () => {
         const totalWorkers = getTotalManpowerToday();
         const activeTodayTasks = todayRows.filter(r => r.item).map(r => r.item).join(', ');
         const summaryText = activeTodayTasks 
@@ -849,6 +850,34 @@ const DPRCreate = ({ onBack, initialData = null, isReadOnly = false, project = n
             preparedBy,
             generalRemarks: remarksList.filter(Boolean).join('\n') || 'Day progressed as scheduled. No safety incidents.'
         };
+
+        try {
+            const pId = project?.id || project?.dbId || 'default';
+            const dprFormData = {
+                projectId: pId,
+                orgId: project?.org_id || 1,
+                reportDate,
+                weather,
+                siteCondition,
+                timeSlots,
+                labourRows,
+                todayRows,
+                tomorrowRows,
+                eventsList,
+                remarksList,
+                distribution,
+                preparedBy,
+                projectParties,
+                projectResources,
+                isConfirmed: true
+            };
+
+            await dprApi.saveDPR(dprFormData);
+            customToast.success('Daily Progress Report transaction voucher saved to ledger!', 'DPR Saved');
+        } catch (err) {
+            console.error('Failed to post DPR transaction voucher to ledger:', err);
+            // Continue graciously to return or trigger onSave callback
+        }
 
         if (onSave) {
             onSave(newReport);
