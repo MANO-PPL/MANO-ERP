@@ -136,7 +136,8 @@ export async function getClients(orgId, query = {}) {
     return {
         clients: clients.map(c => ({
             ...c,
-            contact_no: c.telephone_no, // UI alias
+            telephone_no: c.telephone_no || c.mobile || null,
+            contact_no: c.telephone_no || c.mobile || null, // UI alias
             web_site: c.website, // UI alias
             self_remark: c.remarks, // UI alias
             job_id: c.job_nature_id, // User requested job_id
@@ -203,7 +204,7 @@ export async function createClient(orgId, data) {
         name: data.name,
         sector_id: data.sector_id || null,
         job_nature_id: data.job_nature_id || null,
-        category: 'client',
+        category: 'Client',
         contact_person: data.contact_person || null,
         designation: data.designation || null,
         telephone_no: data.telephone_no || data.contact_no || null,
@@ -248,7 +249,7 @@ export async function updateClient(orgId, id, data) {
     if (data.sector_id !== undefined) updateData.sector_id = data.sector_id;
     if (data.job_nature_id !== undefined) updateData.job_nature_id = data.job_nature_id;
     if (data.job_id !== undefined) updateData.job_nature_id = data.job_id;
-    updateData.category = 'client';
+    updateData.category = 'Client';
     if (data.contact_person !== undefined) updateData.contact_person = data.contact_person;
     if (data.designation !== undefined) updateData.designation = data.designation;
     if (data.telephone_no !== undefined) updateData.telephone_no = data.telephone_no;

@@ -883,7 +883,7 @@ const VendorsList = () => {
             setIsLoading(true);
         }
         try {
-            const params = { limit: 1000 };
+            const params = { limit: 50000 };
             const resData = await vendorApi.getVendors(params);
             const fetchedList = resData.vendors || [];
 
@@ -1057,7 +1057,13 @@ const VendorsList = () => {
                 (r.address || '').toLowerCase().includes(lowerSearch);
 
             const matchesJobFilter = activeFilters.jobs.length === 0 || activeFilters.jobs.includes(r.job_name);
-            const matchesCatFilter = activeFilters.categories.length === 0 || activeFilters.categories.map(c => c.toLowerCase()).includes((r.category || '').toLowerCase());
+            const matchesCatFilter = activeFilters.categories.length === 0 || activeFilters.categories.some(filterCat => {
+                const fc = filterCat.toLowerCase();
+                const rowCat = (r.category || '').toLowerCase();
+                if (fc === rowCat) return true;
+                if ((fc === 'consultant' || fc === 'consultants') && (rowCat === 'consultant' || rowCat === 'consultants')) return true;
+                return false;
+            });
 
             return matchesSearch && matchesJobFilter && matchesCatFilter;
         });

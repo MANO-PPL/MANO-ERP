@@ -94,7 +94,8 @@ export async function getVendors(orgId, query = {}) {
     return {
         vendors: vendors.map(v => ({
             ...v,
-            contact_no: v.telephone_no,
+            telephone_no: v.telephone_no || v.mobile || null,
+            contact_no: v.telephone_no || v.mobile || null,
             web_site: v.website,
             self_remark: v.remarks,
             job_id: v.job_nature_id,
@@ -152,6 +153,18 @@ export async function createInteraction(orgId, id, data) {
     return newId;
 }
 
+const VALID_CATEGORIES = ['Contractor', 'Supplier', 'Consultant', 'Manufacturer', 'Service Provider', 'Client', 'PMC'];
+
+function resolveCategory(cat, fallback = 'Contractor') {
+    if (!cat) return fallback;
+    const clean = String(cat).trim();
+    if (!clean) return fallback;
+    const matched = VALID_CATEGORIES.find(c => c.toLowerCase() === clean.toLowerCase());
+    if (matched) return matched;
+    if (clean.toLowerCase() === 'consultants') return 'Consultant';
+    throw new AppError(`Invalid category "${cat}". Allowed categories are: ${VALID_CATEGORIES.join(', ')}`, 400);
+}
+
 export async function createVendor(orgId, data) {
     if (!data.name) {
         throw new AppError('Vendor name is required', 400);
@@ -162,7 +175,7 @@ export async function createVendor(orgId, data) {
         name: data.name,
         sector_id: data.sector_id || null,
         job_nature_id: data.job_nature_id || null,
-        category: data.category || null,
+        category: resolveCategory(data.category, 'Contractor'),
         contact_person: data.contact_person || null,
         designation: data.designation || null,
         telephone_no: data.telephone_no || data.contact_no || null,
@@ -204,7 +217,7 @@ export async function updateVendor(orgId, id, data) {
     if (data.sector_id !== undefined) updateData.sector_id = data.sector_id;
     if (data.job_nature_id !== undefined) updateData.job_nature_id = data.job_nature_id;
     if (data.job_id !== undefined) updateData.job_nature_id = data.job_id;
-    if (data.category !== undefined) updateData.category = data.category;
+    if (data.category !== undefined) updateData.category = resolveCategory(data.category, vendor.category || 'Contractor');
     if (data.contact_person !== undefined) updateData.contact_person = data.contact_person;
     if (data.designation !== undefined) updateData.designation = data.designation;
     if (data.telephone_no !== undefined) updateData.telephone_no = data.telephone_no;

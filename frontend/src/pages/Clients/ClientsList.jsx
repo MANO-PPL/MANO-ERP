@@ -929,7 +929,7 @@ const ClientsList = () => {
             setIsLoading(true);
         }
         try {
-            const params = { limit: 1000 };
+            const params = { limit: 50000 };
             const resData = await clientApi.getClients(params);
             const fetchedList = resData.clients || [];
 
