@@ -14,6 +14,43 @@ const TopBar = () => {
   const [isProfileOpen, setIsProfileOpen] = useState(false);
   const { user, logout } = useAuth();
 
+  const [activeProjectInfo, setActiveProjectInfo] = useState(null);
+
+  React.useEffect(() => {
+    if (location.pathname.startsWith('/projects/')) {
+      const id = location.pathname.split('/')[2];
+      try {
+        const cached = sessionStorage.getItem(`active_project_info_${id}`);
+        if (cached) {
+          setActiveProjectInfo(JSON.parse(cached));
+          return;
+        }
+        const listStr = sessionStorage.getItem('crm_projects_list');
+        if (listStr) {
+          const list = JSON.parse(listStr);
+          const found = list.find(p => String(p.dbId) === String(id) || String(p.id) === String(id));
+          if (found) {
+            setActiveProjectInfo({ name: found.name, project_code: found.id });
+            return;
+          }
+        }
+      } catch (e) { }
+      setActiveProjectInfo(null);
+    } else {
+      setActiveProjectInfo(null);
+    }
+  }, [location.pathname]);
+
+  React.useEffect(() => {
+    const handleProjectUpdate = (e) => {
+      if (e.detail) {
+        setActiveProjectInfo(e.detail);
+      }
+    };
+    window.addEventListener('active-project-updated', handleProjectUpdate);
+    return () => window.removeEventListener('active-project-updated', handleProjectUpdate);
+  }, []);
+
   const handleLogout = async () => {
       try {
           await logout();
@@ -26,6 +63,18 @@ const TopBar = () => {
   const getPageTitle = () => {
     if (location.pathname.startsWith('/projects/')) {
       const id = location.pathname.split('/')[2];
+      if (activeProjectInfo?.name) {
+        return (
+          <div className="flex items-center gap-2">
+            <span className="font-extrabold text-gray-900 dark:text-white tracking-tight">{activeProjectInfo.name}</span>
+            {activeProjectInfo.project_code && (
+              <span className="px-2 py-0.5 rounded text-[10px] font-mono font-bold bg-blue-50 text-blue-600 dark:bg-blue-900/30 dark:text-blue-400 border border-blue-200/50 dark:border-blue-500/20">
+                {activeProjectInfo.project_code}
+              </span>
+            )}
+          </div>
+        );
+      }
       return `Project ${id}`;
     }
 
@@ -55,9 +104,9 @@ const TopBar = () => {
     <div className="h-11 min-h-[44px] bg-white dark:bg-gh-bg border-b border-gray-200 dark:border-gh-border flex items-center justify-between px-5 sticky top-0 z-[30] w-full transition-colors">
       {/* Left: Active Page Title */}
       <div className="flex items-center min-w-[130px]">
-        <h1 className="text-base font-extrabold text-gray-900 dark:text-white capitalize tracking-tight">
+        <div className="text-base font-extrabold text-gray-900 dark:text-white tracking-tight">
           {getPageTitle()}
-        </h1>
+        </div>
       </div>
 
       {/* Center: Spacer */}

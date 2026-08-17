@@ -45,14 +45,19 @@ const ProjectDetails = () => {
                 const projectsArr = JSON.parse(cachedList);
                 const found = projectsArr.find(p => String(p.dbId) === String(id) || String(p.id) === String(id));
                 if (found) {
-                    setProject({
+                    const foundProj = {
                         id: found.dbId,
                         name: found.name,
                         project_code: found.id,
                         location: found.location,
                         status: found.status?.toLowerCase() || 'active',
                         metadata: found.metadata
-                    });
+                    };
+                    setProject(foundProj);
+                    try {
+                        sessionStorage.setItem(`active_project_info_${id}`, JSON.stringify({ name: foundProj.name, project_code: foundProj.project_code }));
+                        window.dispatchEvent(new CustomEvent('active-project-updated', { detail: { id, name: foundProj.name, project_code: foundProj.project_code } }));
+                    } catch (e) { }
                     setLoading(false);
                 } else {
                     setLoading(true);
@@ -68,6 +73,10 @@ const ProjectDetails = () => {
             const res = await projectApi.getProject(id);
             if (res.success) {
                 setProject(res.project);
+                try {
+                    sessionStorage.setItem(`active_project_info_${id}`, JSON.stringify({ name: res.project.name, project_code: res.project.project_code }));
+                    window.dispatchEvent(new CustomEvent('active-project-updated', { detail: { id, name: res.project.name, project_code: res.project.project_code } }));
+                } catch (e) { }
                 
                 // Normalize permission levels from string format to numbers
                 const rawPerms = res.projectPermissions || {};
@@ -175,20 +184,6 @@ const ProjectDetails = () => {
 
     return (
         <div className="flex flex-col h-full w-full text-gray-900 dark:text-gray-300 bg-white dark:bg-[#0d1117] font-sans">
-            {/* Top Project Header */}
-            <div className="flex justify-between items-center px-3 py-2 border-b border-gray-200 dark:border-gh-border bg-[#f9fafb] dark:bg-gh-bg transition-colors shrink-0">
-                <div className="flex items-center space-x-2">
-                    <h1 className="text-sm font-bold text-gray-900 dark:text-white tracking-tight">
-                        {project?.name || 'Project Workspace'}
-                    </h1>
-                    {project?.project_code && (
-                        <span className="px-2 py-0.5 rounded text-[10px] font-mono font-bold bg-blue-50 text-blue-600 dark:bg-blue-900/30 dark:text-blue-400 border border-blue-200/50 dark:border-blue-500/20">
-                            {project.project_code}
-                        </span>
-                    )}
-                </div>
-            </div>
-
             {/* Sub-Navigation Tabs (Dashboard, WIP, Material Management, etc.) */}
             <div className="flex px-2 pt-1 border-b border-gray-200 dark:border-gh-border bg-[#f9fafb] dark:bg-gh-bg transition-colors overflow-x-auto custom-scrollbar shrink-0">
                 {allowedTabs.map((tab) => (

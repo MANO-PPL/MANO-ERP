@@ -10,6 +10,7 @@ import { UNIT_GROUPS, UNIT_REGISTRY } from './resourceConstants';
 import { useAuth } from '../../context/AuthContext';
 import ConfirmModal from '../../components/ConfirmModal';
 import CustomDatePicker from '../../components/CustomDatePicker';
+import CustomSelect from '../../components/CustomSelect';
 import LogoLoader from '../../components/LogoLoader';
 import { formatOrdinalDate } from '../../utils/dateUtils';
 
@@ -18,6 +19,8 @@ const dateOnly = (val) => (val ? String(val).slice(0, 10) : new Date().toISOStri
 const ResourceRecipesTab = ({
     initialResourceId,
     resources = [],
+    availableComponents = [],
+    initialProjectId = '',
     onRefreshResources,
     showToast
 }) => {
@@ -25,13 +28,13 @@ const ResourceRecipesTab = ({
     const canWrite = hasPermission('resources', 2);
 
     const itemsList = useMemo(() => resources.filter(r => r.type === 'item'), [resources]);
-    const rawComponents = useMemo(() => resources.filter(r => r.type === 'material' || r.type === 'labour'), [resources]);
+    const rawComponents = useMemo(() => (availableComponents && availableComponents.length > 0 ? availableComponents : resources).filter(r => r.type === 'material' || r.type === 'labour'), [availableComponents, resources]);
 
     const [selectedItemId, setSelectedItemId] = useState(initialResourceId ? String(initialResourceId) : '');
     const [searchItem, setSearchItem] = useState('');
     const [effectiveFrom, setEffectiveFrom] = useState(dateOnly());
     const [projects, setProjects] = useState([]);
-    const [selectedProjectId, setSelectedProjectId] = useState('');
+    const [selectedProjectId, setSelectedProjectId] = useState(initialProjectId ? String(initialProjectId) : '');
     const [isImporting, setIsImporting] = useState(false);
 
     const [selectedItemDetail, setSelectedItemDetail] = useState(null);
@@ -43,6 +46,9 @@ const ResourceRecipesTab = ({
     const [isSaving, setIsSaving] = useState(false);
     const [errorMsg, setErrorMsg] = useState('');
     const loadRequestRef = useRef(0);
+
+    // In-memory cache for loaded recipes
+    const recipeCacheRef = useRef({});
 
     const [confirmModal, setConfirmModal] = useState({
         isOpen: false,
@@ -110,6 +116,32 @@ const ResourceRecipesTab = ({
     }, []);
 
     useEffect(() => {
+        if (initialProjectId) {
+            setSelectedProjectId(String(initialProjectId));
+        }
+    }, [initialProjectId]);
+
+    const scopeOptions = useMemo(() => [
+        { label: 'Master / Organization', value: '' },
+        ...projects.map(project => ({ label: project.name, value: String(project.id) }))
+    ], [projects]);
+
+    const componentOptions = useMemo(() => rawComponents.map(c => ({
+        label: `${c.name} (${c.type.toUpperCase()}) — ${c.base_unit_code}`,
+        value: String(c.id)
+    })), [rawComponents]);
+
+    const unitOptions = useMemo(() => {
+        const list = [];
+        Object.entries(UNIT_GROUPS).forEach(([cat, units]) => {
+            units.forEach(u => {
+                list.push({ label: `${u.symbol} (${u.name}) — ${cat.toUpperCase()}`, value: u.code });
+            });
+        });
+        return list;
+    }, []);
+
+    useEffect(() => {
         if (initialResourceId && itemsList.some(r => String(r.id) === String(initialResourceId))) {
             setSelectedItemId(String(initialResourceId));
         } else if (!selectedItemId && itemsList.length > 0) {
@@ -128,8 +160,18 @@ const ResourceRecipesTab = ({
             : resourceApi.getResolvedRates(componentIds, effectiveFrom);
     };
 
-    const fetchItemRecipe = async () => {
+    const fetchItemRecipe = async (force = false) => {
         if (!selectedItemId) return;
+        const cacheKey = `${selectedItemId}_${selectedProjectId || 'master'}_${effectiveFrom}`;
+        if (!force && recipeCacheRef.current[cacheKey]) {
+            const cached = recipeCacheRef.current[cacheKey];
+            setSelectedItemDetail(cached.itemData);
+            setCompositionHistory(cached.history);
+            setRecipeRows(cached.rows);
+            setComponentRates(cached.ratesMap);
+            return;
+        }
+
         const requestId = ++loadRequestRef.current;
         setIsLoadingDetail(true);
         setErrorMsg('');
@@ -151,17 +193,14 @@ const ResourceRecipesTab = ({
                 ? rowsEffectiveOn(history, effectiveFrom)
                 : (itemData.compositions || rowsEffectiveOn(history, effectiveFrom));
 
-            // Populate recipe rows from the selected scope.
-            if (compositionsForDate.length > 0) {
-                setRecipeRows(compositionsForDate.map(c => ({
-                    component_resource_id: String(c.component_resource_id),
-                    quantity: String(c.quantity),
-                    unit_code: c.unit_code || 'kg',
-                    name: c.component_name || ''
-                })));
-            } else {
-                setRecipeRows([]);
-            }
+            const rowsToSet = compositionsForDate.length > 0 ? compositionsForDate.map(c => ({
+                component_resource_id: String(c.component_resource_id),
+                quantity: String(c.quantity),
+                unit_code: c.unit_code || 'kg',
+                name: c.component_name || ''
+            })) : [];
+
+            setRecipeRows(rowsToSet);
 
             const resolvedRates = ratesResult.rates || [];
             const ratesById = new Map(resolvedRates.map(rate => [String(rate.resourceId), rate]));
@@ -173,6 +212,13 @@ const ResourceRecipesTab = ({
                 }];
             }));
             setComponentRates(ratesMap);
+
+            recipeCacheRef.current[cacheKey] = {
+                itemData,
+                history,
+                rows: rowsToSet,
+                ratesMap
+            };
 
         } catch (err) {
             if (requestId === loadRequestRef.current) {
@@ -196,7 +242,8 @@ const ResourceRecipesTab = ({
         setErrorMsg('');
         try {
             await projectApi.importResource(selectedProjectId, selectedItemId, effectiveFrom);
-            await fetchItemRecipe();
+            recipeCacheRef.current = {};
+            await fetchItemRecipe(true);
             if (showToast) showToast('success', 'Item Imported', 'Master composition copied into the project.');
             if (onRefreshResources) onRefreshResources();
         } catch (err) {
@@ -335,8 +382,9 @@ const ResourceRecipesTab = ({
             } else {
                 await resourceApi.setCompositions(selectedItemId, formattedCompositions, effectiveFrom);
             }
+            recipeCacheRef.current = {};
             if (showToast) showToast('success', 'Recipe Saved', 'Item composition saved with effective date.');
-            await fetchItemRecipe();
+            await fetchItemRecipe(true);
             if (onRefreshResources) onRefreshResources();
         } catch (err) {
             console.error('Failed to save recipe', err);
@@ -403,9 +451,9 @@ const ResourceRecipesTab = ({
                                 <button
                                     key={item.id}
                                     onClick={() => setSelectedItemId(String(item.id))}
-                                    className={`w-full text-left px-3 py-2.5 rounded-lg transition-all border ${isSelected
-                                        ? 'bg-purple-50 dark:bg-purple-950/40 border-purple-300 dark:border-purple-500/40 text-purple-900 dark:text-purple-200 font-semibold'
-                                        : 'bg-white dark:bg-[#161b22] border-gray-200/70 dark:border-white/5 hover:border-purple-200 dark:hover:border-purple-500/20 text-gray-700 dark:text-gray-300'
+                                    className={`w-full text-left px-3 py-2 rounded-lg transition-all border ${isSelected
+                                        ? 'bg-purple-50 dark:bg-purple-950/40 border-purple-300 dark:border-purple-500/40 text-purple-900 dark:text-purple-200 font-semibold shadow-xs'
+                                        : 'bg-transparent border-transparent hover:bg-gray-100/70 dark:hover:bg-white/5 text-gray-700 dark:text-gray-300'
                                         }`}
                                 >
                                     <div className="flex items-center justify-between">
@@ -453,32 +501,29 @@ const ResourceRecipesTab = ({
                                 </p>
                             </div>
 
-                            <div className="flex items-center gap-3">
-                                <div className="flex items-center gap-2 bg-white dark:bg-[#0d1117] border border-gray-200 dark:border-white/10 rounded-lg px-2.5 py-1.5">
-                                    <span className="text-[10px] font-bold text-gray-400 uppercase">Scope:</span>
-                                    <select
-                                        value={selectedProjectId}
-                                        onChange={e => setSelectedProjectId(e.target.value)}
-                                        className="bg-transparent text-xs font-semibold outline-none max-w-[180px]"
-                                    >
-                                        <option value="">Master / Organization</option>
-                                        {projects.map(project => (
-                                            <option key={project.id} value={project.id}>{project.name}</option>
-                                        ))}
-                                    </select>
+                            <div className="flex flex-wrap items-center justify-end gap-3">
+                                <div className="flex items-center gap-2">
+                                    <span className="text-[10px] font-bold text-gray-400 uppercase shrink-0">Scope:</span>
+                                    <div className="w-48">
+                                        <CustomSelect
+                                            value={selectedProjectId}
+                                            onChange={e => setSelectedProjectId(e.target.value)}
+                                            options={scopeOptions}
+                                            placeholder="Master / Organization"
+                                        />
+                                    </div>
                                 </div>
 
                                 {/* Effective date picker */}
-                                <div className="flex items-center gap-1.5 bg-white dark:bg-[#0d1117] border border-gray-200 dark:border-white/10 rounded-lg px-2.5 py-1.5">
-                                    <Calendar size={13} className="text-gray-400" />
-                                    <span className="text-[10px] font-bold text-gray-400 uppercase">Effective:</span>
-                                    <input
-                                        type="date"
-                                        value={effectiveFrom}
-                                        disabled={!canWrite}
-                                        onChange={e => setEffectiveFrom(e.target.value)}
-                                        className="w-[125px] border-none bg-transparent shadow-none"
-                                    />
+                                <div className="flex items-center gap-2">
+                                    <span className="text-[10px] font-bold text-gray-400 uppercase shrink-0">Effective:</span>
+                                    <div className="w-44">
+                                        <CustomDatePicker
+                                            value={effectiveFrom}
+                                            disabled={!canWrite}
+                                            onChange={e => setEffectiveFrom(e.target.value)}
+                                        />
+                                    </div>
                                 </div>
 
                                 {canWrite && selectedProjectId && !projectItemImported ? (
@@ -578,21 +623,15 @@ const ResourceRecipesTab = ({
                                                     const unitRate = compRateObj ? compRateObj.rate : 0;
                                                     const qty = parseFloat(row.quantity) || 0;
                                                     const extCost = qty * unitRate;
-
-                                                    return (
+                                                     return (
                                                         <tr key={idx} className="hover:bg-gray-50/50 dark:hover:bg-white/[0.02]">
-                                                            <td className="px-4 py-2">
-                                                                <select
+                                                            <td className="px-4 py-2 min-w-[220px]">
+                                                                <CustomSelect
                                                                     value={row.component_resource_id}
                                                                     onChange={e => handleRowChange(idx, 'component_resource_id', e.target.value)}
-                                                                    className="w-full bg-gray-50 dark:bg-[#161b22] border border-gray-200 dark:border-white/10 rounded-lg px-2.5 py-1.5 text-xs font-semibold focus:outline-none focus:ring-1 focus:ring-purple-500 text-gray-900 dark:text-gray-100"
-                                                                >
-                                                                    {rawComponents.map(c => (
-                                                                        <option key={c.id} value={c.id}>
-                                                                            {c.name} ({c.type.toUpperCase()}) — {c.base_unit_code}
-                                                                        </option>
-                                                                    ))}
-                                                                </select>
+                                                                    options={componentOptions}
+                                                                    placeholder="Select component"
+                                                                />
                                                             </td>
                                                             <td className="px-4 py-2">
                                                                 <input
@@ -604,20 +643,13 @@ const ResourceRecipesTab = ({
                                                                     className="w-full bg-gray-50 dark:bg-[#161b22] border border-gray-200 dark:border-white/10 rounded-lg px-2.5 py-1.5 text-xs font-bold focus:outline-none focus:ring-1 focus:ring-purple-500 text-gray-900 dark:text-gray-100"
                                                                 />
                                                             </td>
-                                                            <td className="px-4 py-2">
-                                                                <select
+                                                            <td className="px-4 py-2 min-w-[140px]">
+                                                                <CustomSelect
                                                                     value={row.unit_code}
                                                                     onChange={e => handleRowChange(idx, 'unit_code', e.target.value)}
-                                                                    className="w-full bg-gray-50 dark:bg-[#161b22] border border-gray-200 dark:border-white/10 rounded-lg px-2.5 py-1.5 text-xs font-semibold focus:outline-none focus:ring-1 focus:ring-purple-500 text-gray-900 dark:text-gray-100"
-                                                                >
-                                                                    {Object.entries(UNIT_GROUPS).map(([cat, units]) => (
-                                                                        <optgroup key={cat} label={cat.toUpperCase()}>
-                                                                            {units.map(u => (
-                                                                                <option key={u.code} value={u.code}>{u.symbol} ({u.name})</option>
-                                                                            ))}
-                                                                        </optgroup>
-                                                                    ))}
-                                                                </select>
+                                                                    options={unitOptions}
+                                                                    placeholder="Unit"
+                                                                />
                                                             </td>
                                                             <td className="px-4 py-2 text-gray-600 dark:text-gray-300 font-mono text-xs font-medium">
                                                                 ₹{unitRate.toLocaleString('en-IN', { minimumFractionDigits: 2 })} / {compRateObj?.unitCode || 'unit'}
@@ -708,7 +740,7 @@ const ResourceRecipesTab = ({
                                 </div>
 
                                 {isLoadingDetail ? (
-                                    <div className="py-12 border border-gray-200 dark:border-white/10 rounded-xl bg-gray-50/50 dark:bg-[#161b22]/30">
+                                    <div className="py-12 border border-gray-200 dark:border-white/10 rounded-xl bg-gray-50/50 dark:bg-[#161b22]/30 flex items-center justify-center text-center">
                                         <LogoLoader text="Loading Version Timeline..." size="sm" fullPage={false} />
                                     </div>
                                 ) : compositionVersions.length === 0 ? (

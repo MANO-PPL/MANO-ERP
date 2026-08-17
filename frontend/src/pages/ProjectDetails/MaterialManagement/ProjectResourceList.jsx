@@ -642,12 +642,22 @@ const ProjectResourceList = ({ onBack, setExtraBreadcrumbs, canWrite }) => {
     // Active View Tab: 'project' (Project Resources) or 'master' (Master Data)
     const [activeTab, setActiveTab] = useState('project');
 
+    // Seed initial cached data from sessionStorage for instant rendering
+    const getInitialCache = () => {
+        try {
+            const cached = sessionStorage.getItem(`mano_proj_grid_${projectId}`);
+            if (cached) return JSON.parse(cached);
+        } catch (e) { }
+        return null;
+    };
+    const initialCache = getInitialCache();
+
     // Data states
-    const [resources, setResources] = useState([]);
-    const [allResources, setAllResources] = useState([]);
-    const [resolvedRates, setResolvedRates] = useState({});
-    const [loading, setLoading] = useState(true);
-    const [ratesLoading, setRatesLoading] = useState(true);
+    const [resources, setResources] = useState(() => initialCache?.resources || []);
+    const [allResources, setAllResources] = useState(() => initialCache?.allResources || []);
+    const [resolvedRates, setResolvedRates] = useState(() => initialCache?.resolvedRates || {});
+    const [loading, setLoading] = useState(() => !initialCache);
+    const [ratesLoading, setRatesLoading] = useState(() => !initialCache);
     const [error, setError] = useState('');
 
     // Date resolution
@@ -750,7 +760,16 @@ const ProjectResourceList = ({ onBack, setExtraBreadcrumbs, canWrite }) => {
             }];
         });
 
-        setResolvedRates(Object.fromEntries(entries));
+        const resolvedMap = Object.fromEntries(entries);
+        setResolvedRates(resolvedMap);
+
+        try {
+            const currentCache = JSON.parse(sessionStorage.getItem(`mano_proj_grid_${projectId}`) || '{}');
+            sessionStorage.setItem(`mano_proj_grid_${projectId}`, JSON.stringify({
+                ...currentCache,
+                resolvedRates: resolvedMap
+            }));
+        } catch (e) { }
     }, [projectId, effectiveDate]);
 
     // Fetch initial dataset
@@ -803,6 +822,15 @@ const ProjectResourceList = ({ onBack, setExtraBreadcrumbs, canWrite }) => {
             setAllResources(allMasterItems);
             setResources(projectItems);
             setLoading(false);
+
+            try {
+                const currentCache = JSON.parse(sessionStorage.getItem(`mano_proj_grid_${projectId}`) || '{}');
+                sessionStorage.setItem(`mano_proj_grid_${projectId}`, JSON.stringify({
+                    ...currentCache,
+                    resources: projectItems,
+                    allResources: allMasterItems
+                }));
+            } catch (e) { }
 
             try {
                 await loadResolvedRates(projectResources, masterResources, targetDate);
