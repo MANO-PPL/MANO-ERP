@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import {
     Search, Plus, Trash2, Save, RefreshCw, AlertCircle,
     ArrowRight
@@ -8,6 +8,7 @@ import { resourceApi } from '../../services/resourceApi';
 import { UNIT_GROUPS, UNIT_REGISTRY, convert } from './resourceConstants';
 import { useAuth } from '../../context/AuthContext';
 import ConfirmModal from '../../components/ConfirmModal';
+import CustomSelect from '../../components/CustomSelect';
 import LogoLoader from '../../components/LogoLoader';
 import { formatOrdinalDate } from '../../utils/dateUtils';
 
@@ -24,6 +25,9 @@ const ResourceConversionsTab = ({
     const [searchQuery, setSearchQuery] = useState('');
     const [resourceDetail, setResourceDetail] = useState(null);
     const [isLoadingDetail, setIsLoadingDetail] = useState(false);
+
+    // In-memory cache for resource conversions
+    const conversionCacheRef = useRef({});
 
     const [convName, setConvName] = useState('');
     const [convQty, setConvQty] = useState('');
@@ -76,12 +80,39 @@ const ResourceConversionsTab = ({
         }
     }, [selectedResource, baseUnitType]);
 
-    const fetchResourceDetail = async () => {
+    const compatibleUnitOptions = useMemo(() => {
+        const list = [];
+        Object.entries(compatibleUnitGroups).forEach(([cat, units]) => {
+            units.forEach(u => {
+                list.push({ label: `${u.symbol} (${u.name}) — ${cat.toUpperCase()}`, value: u.code });
+            });
+        });
+        return list;
+    }, [compatibleUnitGroups]);
+
+    const allUnitOptions = useMemo(() => {
+        const list = [];
+        Object.entries(UNIT_GROUPS).forEach(([cat, units]) => {
+            units.forEach(u => {
+                list.push({ label: `${u.symbol} (${u.name})`, value: u.code });
+            });
+        });
+        return list;
+    }, []);
+
+    const fetchResourceDetail = async (force = false) => {
         if (!selectedResourceId) return;
+        const cacheKey = String(selectedResourceId);
+        if (!force && conversionCacheRef.current[cacheKey]) {
+            setResourceDetail(conversionCacheRef.current[cacheKey]);
+            return;
+        }
+
         setIsLoadingDetail(true);
         setErrorMsg('');
         try {
             const data = await resourceApi.getResourceById(selectedResourceId);
+            conversionCacheRef.current[cacheKey] = data.resource;
             setResourceDetail(data.resource);
         } catch (err) {
             console.error('Failed to load resource detail', err);
@@ -129,7 +160,8 @@ const ResourceConversionsTab = ({
             if (showToast) showToast('success', 'Conversion Added', `Added 1 ${convName} conversion.`);
             setConvName('');
             setConvQty('');
-            fetchResourceDetail();
+            conversionCacheRef.current = {};
+            fetchResourceDetail(true);
             if (onRefreshResources) onRefreshResources();
         } catch (err) {
             console.error('Failed to add conversion', err);
@@ -156,7 +188,8 @@ const ResourceConversionsTab = ({
                 try {
                     await resourceApi.removeConversion(selectedResourceId, convId);
                     if (showToast) showToast('success', 'Conversion Removed', `Removed ${name} conversion.`);
-                    fetchResourceDetail();
+                    conversionCacheRef.current = {};
+                    fetchResourceDetail(true);
                     if (onRefreshResources) onRefreshResources();
                 } catch (err) {
                     console.error('Failed to remove conversion', err);
@@ -219,9 +252,9 @@ const ResourceConversionsTab = ({
                                 <button
                                     key={r.id}
                                     onClick={() => setSelectedResourceId(String(r.id))}
-                                    className={`w-full text-left px-3 py-2.5 rounded-lg transition-all border ${isSelected
-                                        ? 'bg-blue-50 dark:bg-blue-950/40 border-blue-300 dark:border-blue-500/40 text-blue-900 dark:text-blue-200 font-semibold'
-                                        : 'bg-white dark:bg-[#161b22] border-gray-200/70 dark:border-white/5 hover:border-blue-200 dark:hover:border-blue-500/20 text-gray-700 dark:text-gray-300'
+                                    className={`w-full text-left px-3 py-2 rounded-lg transition-all border ${isSelected
+                                        ? 'bg-blue-50 dark:bg-blue-950/40 border-blue-300 dark:border-blue-500/40 text-blue-900 dark:text-blue-200 font-semibold shadow-xs'
+                                        : 'bg-transparent border-transparent hover:bg-gray-100/70 dark:hover:bg-white/5 text-gray-700 dark:text-gray-300'
                                         }`}
                                 >
                                     <div className="flex items-center justify-between">
@@ -230,7 +263,7 @@ const ResourceConversionsTab = ({
                                             {r.base_unit_code}
                                         </span>
                                     </div>
-                                    <p className="text-[10px] text-gray-400 mt-1 capitalize">Type: {r.type}</p>
+                                    <p className="text-[10px] text-gray-400 mt-0.5 capitalize">Type: {r.type}</p>
                                 </button>
                             );
                         })
@@ -312,19 +345,12 @@ const ResourceConversionsTab = ({
 
                                         <div>
                                             <label className="block text-[10px] font-bold uppercase text-gray-400 mb-1">Target Unit</label>
-                                            <select
+                                            <CustomSelect
                                                 value={convUnitCode}
                                                 onChange={e => setConvUnitCode(e.target.value)}
-                                                className="w-full bg-gray-50 dark:bg-[#161b22] border border-gray-200 dark:border-white/10 rounded-lg px-2.5 py-1.5 text-xs font-semibold focus:ring-1 focus:ring-blue-500 outline-none text-gray-900 dark:text-gray-100"
-                                            >
-                                                {Object.entries(compatibleUnitGroups).map(([cat, units]) => (
-                                                    <optgroup key={cat} label={cat.toUpperCase()}>
-                                                        {units.map(u => (
-                                                            <option key={u.code} value={u.code}>{u.symbol} ({u.name})</option>
-                                                        ))}
-                                                    </optgroup>
-                                                ))}
-                                            </select>
+                                                options={compatibleUnitOptions}
+                                                placeholder="Select unit"
+                                            />
                                         </div>
 
                                         <div>
@@ -348,7 +374,7 @@ const ResourceConversionsTab = ({
                                 </h4>
 
                                 {isLoadingDetail ? (
-                                    <div className="py-12 border border-gray-200 dark:border-white/10 rounded-xl bg-gray-50/50 dark:bg-[#161b22]/30">
+                                    <div className="py-12 border border-gray-200 dark:border-white/10 rounded-xl bg-gray-50/50 dark:bg-[#161b22]/30 flex items-center justify-center text-center">
                                         <LogoLoader text="Rendering Unit Conversions..." size="sm" fullPage={false} />
                                     </div>
                                 ) : !resourceDetail?.conversions || resourceDetail.conversions.length === 0 ? (
@@ -417,52 +443,40 @@ const ResourceConversionsTab = ({
                                 </h4>
 
                                 <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 items-center">
-                                    <div>
-                                        <label className="block text-[10px] font-bold uppercase text-gray-400 mb-1">Quantity & From Unit</label>
-                                        <div className="flex items-center gap-2">
-                                            <input
-                                                type="number"
-                                                step="any"
-                                                value={calcFromQty}
-                                                onChange={e => setCalcFromQty(e.target.value)}
-                                                className="w-1/2 bg-white dark:bg-[#161b22] border border-gray-200 dark:border-white/10 rounded-lg px-2.5 py-1.5 text-xs font-bold focus:ring-1 focus:ring-blue-500 outline-none text-gray-900 dark:text-gray-100"
-                                            />
-                                            <select
+                                <div>
+                                    <label className="block text-[10px] font-bold uppercase text-gray-400 mb-1">Quantity & From Unit</label>
+                                    <div className="flex items-center gap-2">
+                                        <input
+                                            type="number"
+                                            step="any"
+                                            value={calcFromQty}
+                                            onChange={e => setCalcFromQty(e.target.value)}
+                                            className="w-1/2 bg-white dark:bg-[#161b22] border border-gray-200 dark:border-white/10 rounded-lg px-2.5 py-1.5 text-xs font-bold focus:ring-1 focus:ring-blue-500 outline-none text-gray-900 dark:text-gray-100"
+                                        />
+                                        <div className="w-1/2">
+                                            <CustomSelect
                                                 value={calcFromUnit}
                                                 onChange={e => setCalcFromUnit(e.target.value)}
-                                                className="w-1/2 bg-white dark:bg-[#161b22] border border-gray-200 dark:border-white/10 rounded-lg px-2 py-1.5 text-xs font-semibold focus:ring-1 focus:ring-blue-500 outline-none text-gray-900 dark:text-gray-100"
-                                            >
-                                                {Object.entries(UNIT_GROUPS).map(([cat, units]) => (
-                                                    <optgroup key={cat} label={cat.toUpperCase()}>
-                                                        {units.map(u => (
-                                                            <option key={u.code} value={u.code}>{u.symbol}</option>
-                                                        ))}
-                                                    </optgroup>
-                                                ))}
-                                            </select>
+                                                options={allUnitOptions}
+                                                placeholder="Unit"
+                                            />
                                         </div>
                                     </div>
+                                </div>
 
-                                    <div className="text-center pt-2">
-                                        <ArrowRight size={16} className="text-blue-500 mx-auto" />
-                                    </div>
+                                <div className="text-center pt-2">
+                                    <ArrowRight size={16} className="text-blue-500 mx-auto" />
+                                </div>
 
-                                    <div>
-                                        <label className="block text-[10px] font-bold uppercase text-gray-400 mb-1">To Target Unit</label>
-                                        <select
-                                            value={calcToUnit}
-                                            onChange={e => setCalcToUnit(e.target.value)}
-                                            className="w-full bg-white dark:bg-[#161b22] border border-gray-200 dark:border-white/10 rounded-lg px-2.5 py-1.5 text-xs font-semibold focus:ring-1 focus:ring-blue-500 outline-none text-gray-900 dark:text-gray-100"
-                                        >
-                                            {Object.entries(UNIT_GROUPS).map(([cat, units]) => (
-                                                <optgroup key={cat} label={cat.toUpperCase()}>
-                                                    {units.map(u => (
-                                                        <option key={u.code} value={u.code}>{u.symbol}</option>
-                                                    ))}
-                                                </optgroup>
-                                            ))}
-                                        </select>
-                                    </div>
+                                <div>
+                                    <label className="block text-[10px] font-bold uppercase text-gray-400 mb-1">To Target Unit</label>
+                                    <CustomSelect
+                                        value={calcToUnit}
+                                        onChange={e => setCalcToUnit(e.target.value)}
+                                        options={allUnitOptions}
+                                        placeholder="Unit"
+                                    />
+                                </div>
                                 </div>
 
                                 {calcError ? (

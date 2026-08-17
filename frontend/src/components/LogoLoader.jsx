@@ -77,21 +77,21 @@ const LogoLoader = ({ text = "Loading data...", size = "md", fullPage = true }) 
             </div>
 
             {/* Core Brand Icon & Status Container */}
-            <div className="relative z-10 flex flex-col items-center gap-4 text-center px-4 max-w-sm">
+            <div className="relative z-10 flex flex-col items-center justify-center gap-4 text-center px-4 max-w-sm">
                 {/* Brand Icon Outer Container */}
                 <div className="relative flex items-center justify-center">
                     {/* Pulsing Outer Gradient Ring */}
                     <motion.div 
                         animate={{ 
                             scale: [1, 1.2, 1],
-                            opacity: [0.2, 0.4, 0.2]
+                            opacity: [0.2, 0.45, 0.2]
                         }}
                         transition={{
                             duration: 3,
                             repeat: Infinity,
                             ease: "easeInOut"
                         }}
-                        className={`absolute ${s.ringOuter} bg-gradient-to-tr from-indigo-500 to-violet-500 opacity-20 dark:opacity-30 blur-md`}
+                        className={`absolute ${s.ringOuter} bg-gradient-to-tr from-indigo-500 to-violet-500 opacity-25 dark:opacity-35 blur-md`}
                     />
                     
                     {/* Rotating Spinner Border */}
@@ -102,17 +102,17 @@ const LogoLoader = ({ text = "Loading data...", size = "md", fullPage = true }) 
                             repeat: Infinity,
                             ease: "linear"
                         }}
-                        className={`absolute ${s.ringBorder} border-2 border-indigo-500/10 border-t-indigo-500 dark:border-indigo-400/10 dark:border-t-indigo-400`}
+                        className={`absolute ${s.ringBorder} border-2 border-indigo-500/20 border-t-indigo-500 dark:border-indigo-400/20 dark:border-t-indigo-400`}
                     />
                     
-                    {/* Central Logo Box */}
+                    {/* Central Logo - Clean and transparent without black background card */}
                     <motion.div 
-                        initial={{ scale: 0.8, y: 10 }}
+                        initial={{ scale: 0.8, y: 5 }}
                         animate={{ scale: 1, y: 0 }}
                         transition={{ type: "spring", stiffness: 100, damping: 15 }}
-                        className={`${s.box} bg-white dark:bg-[#0d1117] flex items-center justify-center border border-slate-200/80 dark:border-[#30363d] shadow-2xl relative overflow-hidden`}
+                        className={`${s.box} flex items-center justify-center relative`}
                     >
-                        <img src="/mano-logo.svg" alt="MANO" className="w-full h-full object-contain" />
+                        <img src="/mano-logo.svg" alt="MANO" className="w-full h-full object-contain filter drop-shadow-[0_2px_10px_rgba(99,102,241,0.4)]" />
                     </motion.div>
                 </div>
 

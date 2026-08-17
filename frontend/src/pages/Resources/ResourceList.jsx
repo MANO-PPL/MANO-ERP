@@ -277,6 +277,18 @@ const ResourceList = () => {
     const activeTab = searchParams.get('tab') || 'grid';
     const targetResourceId = searchParams.get('resourceId') || '';
 
+    // Cache visited tabs so their DOM and state are preserved when switching tabs
+    const [visitedTabs, setVisitedTabs] = useState(() => new Set([activeTab]));
+
+    useEffect(() => {
+        setVisitedTabs(prev => {
+            if (prev.has(activeTab)) return prev;
+            const next = new Set(prev);
+            next.add(activeTab);
+            return next;
+        });
+    }, [activeTab]);
+
     const setActiveTab = (tab, resId = null) => {
         const params = new URLSearchParams(searchParams);
         params.set('tab', tab);
@@ -2603,43 +2615,6 @@ const ResourceList = () => {
     };
 
 
-    if (activeTab !== 'grid') {
-        const tabContent = activeTab === 'recipes' ? (
-            <ResourceRecipesTab
-                initialResourceId={targetResourceId}
-                resources={resources}
-                onRefreshResources={() => fetchData(true)}
-                showToast={showToast}
-            />
-        ) : activeTab === 'rates' ? (
-            <ResourceRatesTab
-                initialResourceId={targetResourceId}
-                resources={resources}
-                onRefreshResources={() => fetchData(true)}
-                showToast={showToast}
-            />
-        ) : (
-            <ResourceConversionsTab
-                initialResourceId={targetResourceId}
-                resources={resources}
-                onRefreshResources={() => fetchData(true)}
-                showToast={showToast}
-            />
-        );
-
-        return (
-            <div className="flex-1 min-h-0 flex flex-col overflow-hidden bg-white dark:bg-[#0d1117] h-full">
-                <ResourceSubNav
-                    activeTab={activeTab}
-                    onChange={tab => setActiveTab(tab, targetResourceId || null)}
-                />
-                <div className="flex-1 min-h-0 overflow-hidden">
-                    {tabContent}
-                </div>
-            </div>
-        );
-    }
-
     return (
         <div className="flex-1 min-h-0 flex flex-col overflow-hidden bg-white dark:bg-[#0d1117] transition-colors h-full relative">
 
@@ -2648,9 +2623,46 @@ const ResourceList = () => {
                 onChange={tab => setActiveTab(tab, targetResourceId || null)}
             />
 
+            {/* Cached Tab: Recipes & History */}
+            {visitedTabs.has('recipes') && (
+                <div className={`flex-1 min-h-0 overflow-hidden ${activeTab === 'recipes' ? 'flex flex-col' : 'hidden'}`}>
+                    <ResourceRecipesTab
+                        initialResourceId={targetResourceId}
+                        resources={resources}
+                        onRefreshResources={() => fetchData(true)}
+                        showToast={showToast}
+                    />
+                </div>
+            )}
 
-            {/* Custom Confirmation Dialog */}
-            <ConfirmModal
+            {/* Cached Tab: Rates */}
+            {visitedTabs.has('rates') && (
+                <div className={`flex-1 min-h-0 overflow-hidden ${activeTab === 'rates' ? 'flex flex-col' : 'hidden'}`}>
+                    <ResourceRatesTab
+                        initialResourceId={targetResourceId}
+                        resources={resources}
+                        onRefreshResources={() => fetchData(true)}
+                        showToast={showToast}
+                    />
+                </div>
+            )}
+
+            {/* Cached Tab: Conversions */}
+            {visitedTabs.has('conversions') && (
+                <div className={`flex-1 min-h-0 overflow-hidden ${activeTab === 'conversions' ? 'flex flex-col' : 'hidden'}`}>
+                    <ResourceConversionsTab
+                        initialResourceId={targetResourceId}
+                        resources={resources}
+                        onRefreshResources={() => fetchData(true)}
+                        showToast={showToast}
+                    />
+                </div>
+            )}
+
+            {/* Tab: Resource Grid */}
+            <div className={`flex-1 min-h-0 flex flex-col overflow-hidden ${activeTab === 'grid' ? '' : 'hidden'}`}>
+                {/* Custom Confirmation Dialog */}
+                <ConfirmModal
                 isOpen={confirmModal.isOpen}
                 onClose={closeConfirmModal}
                 onConfirm={confirmModal.onConfirm}
@@ -4270,6 +4282,7 @@ const ResourceList = () => {
                     )}
                 </div>
             )}
+            </div>
         </div>
     );
 };
