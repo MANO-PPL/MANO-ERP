@@ -2,7 +2,7 @@ import React, { useState, useRef, useEffect } from 'react';
 import { createPortal } from 'react-dom';
 import { ChevronDown, Check } from 'lucide-react';
 
-const CustomSelect = ({ label, options, value, onChange, placeholder = 'Select option', className = '' }) => {
+const CustomSelect = ({ label, options, value, onChange, placeholder = 'Select option', className = '', direction = 'down', alwaysOpenDownward = true }) => {
     const [isOpen, setIsOpen] = useState(false);
     const [menuCoords, setMenuCoords] = useState({ top: 0, left: 0, width: 0, openUpward: false, maxHeight: 220 });
     const buttonRef = useRef(null);
@@ -12,14 +12,14 @@ const CustomSelect = ({ label, options, value, onChange, placeholder = 'Select o
         if (buttonRef.current) {
             const rect = buttonRef.current.getBoundingClientRect();
             const spaceBelow = window.innerHeight - rect.bottom;
-            const openUpward = spaceBelow < 180 && rect.top > 180;
+            const openUpward = (!alwaysOpenDownward && direction !== 'down') && (spaceBelow < 180 && rect.top > 180);
             
             setMenuCoords({
                 top: openUpward ? rect.top : rect.bottom + 4,
                 left: rect.left,
                 width: rect.width,
                 openUpward,
-                maxHeight: openUpward ? Math.min(220, rect.top - 10) : Math.min(220, spaceBelow - 10)
+                maxHeight: openUpward ? Math.min(220, rect.top - 10) : Math.min(240, Math.max(120, spaceBelow - 10))
             });
         }
     };

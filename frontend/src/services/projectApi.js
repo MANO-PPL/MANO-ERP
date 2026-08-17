@@ -43,6 +43,11 @@ export const projectApi = {
             effective_from: effectiveFrom
         })),
 
+    importResourcesBatch: (projectId, resourceIds, effectiveFrom) => unwrap(api.post(`/projects/${projectId}/resources/import-batch`, {
+            resourceIds,
+            effective_from: effectiveFrom
+        })),
+
     getResolvedResourceRate: (projectId, resourceId, date) => unwrap(api.get(`/projects/${projectId}/resources/${resourceId}/rate`, {
             params: date ? { date } : undefined
         })),

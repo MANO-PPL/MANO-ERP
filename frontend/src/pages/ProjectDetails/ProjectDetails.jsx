@@ -175,25 +175,66 @@ const ProjectDetails = () => {
 
     return (
         <div className="flex flex-col h-full w-full text-gray-900 dark:text-gray-300 bg-white dark:bg-[#0d1117] font-sans">
-            {/* Minimal Header */}
-            <div className="flex justify-between items-center px-2 py-1.5 border-b border-gray-200 dark:border-gh-border bg-[#f9fafb] dark:bg-gh-bg transition-colors shrink-0">
-                <div className="flex items-center space-x-1.5 text-xs">
+            {/* Top Project Header */}
+            <div className="flex justify-between items-center px-3 py-2 border-b border-gray-200 dark:border-gh-border bg-[#f9fafb] dark:bg-gh-bg transition-colors shrink-0">
+                <div className="flex items-center space-x-2">
+                    <h1 className="text-sm font-bold text-gray-900 dark:text-white tracking-tight">
+                        {project?.name || 'Project Workspace'}
+                    </h1>
+                    {project?.project_code && (
+                        <span className="px-2 py-0.5 rounded text-[10px] font-mono font-bold bg-blue-50 text-blue-600 dark:bg-blue-900/30 dark:text-blue-400 border border-blue-200/50 dark:border-blue-500/20">
+                            {project.project_code}
+                        </span>
+                    )}
+                </div>
+            </div>
+
+            {/* Sub-Navigation Tabs (Dashboard, WIP, Material Management, etc.) */}
+            <div className="flex px-2 pt-1 border-b border-gray-200 dark:border-gh-border bg-[#f9fafb] dark:bg-gh-bg transition-colors overflow-x-auto custom-scrollbar shrink-0">
+                {allowedTabs.map((tab) => (
+                    <button
+                        key={tab}
+                        onClick={() => setActiveTab(tab)}
+                        className={`pb-2 px-3 text-xs font-semibold border-b-2 transition-colors duration-200 whitespace-nowrap cursor-pointer ${activeTab === tab
+                            ? 'border-blue-600 text-blue-600 dark:border-blue-500 dark:text-blue-400'
+                            : 'border-transparent text-gray-500 dark:text-gray-400 hover:text-gray-800 dark:hover:text-gray-200 hover:border-gray-300 dark:hover:border-gray-500'
+                            }`}
+                    >
+                        {tab}
+                    </button>
+                ))}
+            </div>
+
+            {/* Breadcrumbs (Below the Navigation Tabs) */}
+            <div className="flex justify-between items-center px-3 py-1.5 border-b border-gray-200 dark:border-white/5 bg-gray-50/50 dark:bg-[#161b22]/30 transition-colors shrink-0 text-xs">
+                <div className="flex items-center space-x-1.5 text-xs text-gray-500 dark:text-gray-400">
                     <button
                         onClick={() => navigate('/projects')}
                         className="text-blue-600 dark:text-blue-400 hover:text-blue-800 dark:hover:text-blue-300 transition-colors font-medium cursor-pointer"
                     >
                         Projects
                     </button>
-                    <ChevronRight size={13} className="text-gray-400 dark:text-gray-500" />
+                    <ChevronRight size={12} className="text-gray-400 dark:text-gray-600" />
                     <span
-                        className={`transition-colors ${extraBreadcrumbs.length > 0 ? 'text-blue-600 dark:text-blue-400 font-medium cursor-pointer' : 'text-gray-900 dark:text-white font-semibold'}`}
-                        onClick={() => extraBreadcrumbs.length > 0 && setActiveTab('Dashboard')}
+                        className="text-blue-600 dark:text-blue-400 hover:text-blue-800 dark:hover:text-blue-300 transition-colors font-medium cursor-pointer"
+                        onClick={() => {
+                            if (activeTab !== 'Dashboard' || extraBreadcrumbs.length > 0) {
+                                setActiveTab('Dashboard');
+                            }
+                        }}
                     >
                         {project?.project_code || id} {project?.name ? `- ${project.name}` : ''}
                     </span>
+                    <ChevronRight size={12} className="text-gray-400 dark:text-gray-600" />
+                    <span
+                        className={`transition-colors ${extraBreadcrumbs.length === 0 ? 'text-gray-900 dark:text-white font-semibold' : 'text-blue-600 dark:text-blue-400 font-medium cursor-pointer'}`}
+                        onClick={() => extraBreadcrumbs.length > 0 && setExtraBreadcrumbs([])}
+                    >
+                        {activeTab}
+                    </span>
                     {extraBreadcrumbs.map((bc, index) => (
                         <React.Fragment key={index}>
-                            <ChevronRight size={13} className="text-gray-400 dark:text-gray-500" />
+                            <ChevronRight size={12} className="text-gray-400 dark:text-gray-600" />
                             <span
                                 className={`transition-colors ${index === extraBreadcrumbs.length - 1 ? 'text-gray-900 dark:text-white font-semibold' : 'text-blue-600 dark:text-blue-400 font-medium cursor-pointer'}`}
                                 onClick={() => {
@@ -206,22 +247,6 @@ const ProjectDetails = () => {
                         </React.Fragment>
                     ))}
                 </div>
-            </div>
-
-            {/* Sub-Navigation Tabs */}
-            <div className="flex px-1 pt-1 border-b border-gray-200 dark:border-gh-border bg-[#f9fafb] dark:bg-gh-bg transition-colors overflow-x-auto custom-scrollbar shrink-0">
-                {allowedTabs.map((tab) => (
-                    <button
-                        key={tab}
-                        onClick={() => setActiveTab(tab)}
-                        className={`pb-1.5 px-2.5 text-xs font-semibold border-b-2 transition-colors duration-200 whitespace-nowrap cursor-pointer ${activeTab === tab
-                            ? 'border-blue-600 text-blue-600 dark:border-blue-500 dark:text-blue-400'
-                            : 'border-transparent text-gray-500 dark:text-gray-400 hover:text-gray-800 dark:hover:text-gray-200 hover:border-gray-300 dark:hover:border-gray-500'
-                            }`}
-                    >
-                        {tab}
-                    </button>
-                ))}
             </div>
 
             {/* Content Area */}
