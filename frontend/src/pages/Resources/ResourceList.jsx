@@ -1934,6 +1934,15 @@ const ResourceList = () => {
                 row.compositions = [];
             }
 
+            if (field === 'base_unit_code' && row._status !== 'new' && row.base_unit_code) {
+                const oldType = UNIT_REGISTRY[row.base_unit_code]?.type;
+                const newType = UNIT_REGISTRY[value]?.type;
+                if (oldType && newType && oldType !== newType) {
+                    showToast('error', 'Incompatible Unit Category', `Cannot change from ${oldType.toUpperCase()} (${row.base_unit_code}) to ${newType.toUpperCase()} (${value}). Unit changes must stay within the same category (e.g. g to kg, MT) to protect rates and recipes.`);
+                    return prev;
+                }
+            }
+
             const errors = { ...(row._errors || {}) };
             if (field === 'name') {
                 if (!value || !value.trim()) errors.name = 'Name is required';
@@ -2482,6 +2491,25 @@ const ResourceList = () => {
 
     const handleBulkChangeUnit = (newUnit) => {
         if (selectedIds.size === 0) return;
+        const newUnitType = UNIT_REGISTRY[newUnit]?.type;
+        
+        // Validate category compatibility
+        const incompatibleRows = gridDataRef.current.filter(row => {
+            if (!selectedIds.has(row.id) || row._status === 'new' || !row.base_unit_code) return false;
+            const curType = UNIT_REGISTRY[row.base_unit_code]?.type;
+            return curType && newUnitType && curType !== newUnitType;
+        });
+
+        if (incompatibleRows.length > 0) {
+            closeDropdown();
+            showToast(
+                'error',
+                'Incompatible Unit Category',
+                `Cannot change ${incompatibleRows.length} resource(s) to "${newUnit}" (${newUnitType?.toUpperCase()}). Unit changes must stay within the same measurement category (e.g., grams to kilograms).`
+            );
+            return;
+        }
+
         pushUndoState(gridDataRef.current);
         const count = selectedIds.size;
         const u = UNIT_REGISTRY[newUnit];
@@ -3600,27 +3628,39 @@ const ResourceList = () => {
                                                                                         );
                                                                                     }
 
-                                                                                    return filteredGroups.map(([type, units]) => (
-                                                                                        <div key={type} className="px-1 py-1">
-                                                                                            <div className="px-2 py-0.5 text-[9px] font-black text-gray-400 dark:text-gray-500 uppercase tracking-widest bg-gray-50/50 dark:bg-white/[0.01] rounded">
-                                                                                                {unitTypeLabel[type] || type}
+                                                                                    const rowUnitType = resource.base_unit_code ? UNIT_REGISTRY[resource.base_unit_code]?.type : null;
+
+                                                                                    return filteredGroups.map(([type, units]) => {
+                                                                                        const isGroupCompatible = !rowUnitType || resource._status === 'new' || type === rowUnitType;
+                                                                                        return (
+                                                                                            <div key={type} className={`px-1 py-1 ${!isGroupCompatible ? 'opacity-50' : ''}`}>
+                                                                                                <div className="px-2 py-0.5 text-[9px] font-black text-gray-400 dark:text-gray-500 uppercase tracking-widest bg-gray-50/50 dark:bg-white/[0.01] rounded flex items-center justify-between">
+                                                                                                    <span>{unitTypeLabel[type] || type}</span>
+                                                                                                    {!isGroupCompatible && <span className="text-[8px] font-normal text-amber-500">Locked</span>}
+                                                                                                </div>
+                                                                                                {units.map(u => (
+                                                                                                    <button
+                                                                                                        key={u.code}
+                                                                                                        onClick={(e) => {
+                                                                                                            e.stopPropagation();
+                                                                                                            if (!isGroupCompatible) {
+                                                                                                                showToast('error', 'Incompatible Unit Category', `Cannot change from ${rowUnitType.toUpperCase()} (${resource.base_unit_code}) to ${type.toUpperCase()} (${u.code}). Units must stay in the same category (e.g. g to kg, MT) to protect rates and recipes.`);
+                                                                                                                return;
+                                                                                                            }
+                                                                                                            handleCellChange(rowIndex, 'base_unit_code', u.code, true);
+                                                                                                            closeDropdown();
+                                                                                                        }}
+                                                                                                        className={`w-full text-left px-2.5 py-1.5 text-gray-700 dark:text-gray-300 rounded-md text-xs font-semibold flex items-center justify-between ${
+                                                                                                            isGroupCompatible ? 'hover:bg-gray-50 dark:hover:bg-white/5 cursor-pointer' : 'cursor-not-allowed'
+                                                                                                        }`}
+                                                                                                    >
+                                                                                                        <span>{u.name}</span>
+                                                                                                        <span className="text-[10px] text-gray-400 font-mono">({u.symbol})</span>
+                                                                                                    </button>
+                                                                                                ))}
                                                                                             </div>
-                                                                                            {units.map(u => (
-                                                                                                <button
-                                                                                                    key={u.code}
-                                                                                                    onClick={(e) => {
-                                                                                                        e.stopPropagation();
-                                                                                                        handleCellChange(rowIndex, 'base_unit_code', u.code, true);
-                                                                                                        closeDropdown();
-                                                                                                    }}
-                                                                                                    className="w-full text-left px-2.5 py-1.5 hover:bg-gray-50 dark:hover:bg-white/5 text-gray-700 dark:text-gray-300 rounded-md text-xs font-semibold flex items-center justify-between"
-                                                                                                >
-                                                                                                    <span>{u.name}</span>
-                                                                                                    <span className="text-[10px] text-gray-400 font-mono">({u.symbol})</span>
-                                                                                                </button>
-                                                                                            ))}
-                                                                                        </div>
-                                                                                    ));
+                                                                                        );
+                                                                                    });
                                                                                 })()}
                                                                             </div>
                                                                         </div>
@@ -3884,7 +3924,7 @@ const ResourceList = () => {
                                                                                     value={newConvForm.unit_code}
                                                                                     onChange={e => setNewConvForm(prev => ({ ...prev, unit_code: e.target.value }))}
                                                                                 >
-                                                                                    {UNIT_OPTIONS.map(u => (
+                                                                                    {(UNIT_GROUPS[UNIT_REGISTRY[resource.base_unit_code]?.type] || UNIT_OPTIONS).map(u => (
                                                                                         <option key={u.code} value={u.code}>{u.code}</option>
                                                                                     ))}
                                                                                 </select>

@@ -1111,12 +1111,24 @@ export async function updateResource(orgId, id, {
         }
 
         let activeBaseUnitCode = resource.base_unit_code;
-        if (base_unit_code !== undefined) {
+        if (base_unit_code !== undefined && base_unit_code !== resource.base_unit_code) {
+            let newUnit;
             try {
-                getUnit(base_unit_code);
+                newUnit = getUnit(base_unit_code);
             } catch (err) {
                 throw new AppError(err.message, 400);
             }
+
+            if (resource.base_unit_code) {
+                const oldUnit = getUnit(resource.base_unit_code);
+                if (newUnit.type !== oldUnit.type) {
+                    throw new AppError(
+                        `Cannot change base unit category from "${resource.base_unit_code}" (${oldUnit.type}) to "${base_unit_code}" (${newUnit.type}). Unit changes must remain within the same measurement category (e.g., grams to kilograms, meters to centimeters) to preserve rate, conversion, and recipe integrity.`,
+                        400
+                    );
+                }
+            }
+
             updates.base_unit_code = base_unit_code;
             activeBaseUnitCode = base_unit_code;
         }
@@ -1703,12 +1715,23 @@ export async function bulkUpdateResources(orgId, resources) {
                 }
 
                 let activeBaseUnitCode = existing.base_unit_code;
-                if (base_unit_code !== undefined) {
+                if (base_unit_code !== undefined && base_unit_code !== existing.base_unit_code) {
+                    let newUnit;
                     try {
-                        getUnit(base_unit_code);
+                        newUnit = getUnit(base_unit_code);
                     } catch (err) {
                         throw new Error(err.message);
                     }
+
+                    if (existing.base_unit_code) {
+                        const oldUnit = getUnit(existing.base_unit_code);
+                        if (newUnit.type !== oldUnit.type) {
+                            throw new Error(
+                                `Cannot change base unit category from "${existing.base_unit_code}" (${oldUnit.type}) to "${base_unit_code}" (${newUnit.type}). Unit changes must remain within the same measurement category (e.g. grams to kilograms, meters to centimeters).`
+                            );
+                        }
+                    }
+
                     updates.base_unit_code = base_unit_code;
                     activeBaseUnitCode = base_unit_code;
                 }

@@ -3,11 +3,7 @@ import AppError from '../../utils/AppError.js';
 
 export async function getSectors(orgId) {
     const list = await db('crm_sectors')
-        .where(function() {
-            this.where('org_id', orgId)
-                .orWhere('org_id', 2)
-                .orWhereNull('org_id');
-        })
+        .where({ org_id: orgId })
         .orderBy('sector_name', 'asc')
         .select('*');
 
@@ -29,11 +25,7 @@ export async function findOrCreateSector(orgId, sectorName, connection = db) {
 
     const existing = await connection('crm_sectors')
         .whereRaw('LOWER(sector_name) = ?', [trimmed.toLowerCase()])
-        .where(function() {
-            this.where('org_id', orgId)
-                .orWhere('org_id', 2)
-                .orWhereNull('org_id');
-        })
+        .where({ org_id: orgId })
         .first();
 
     if (existing) return existing.sector_id;
@@ -47,11 +39,7 @@ export async function createSector(orgId, sectorName) {
     const trimmed = sectorName.trim();
     const existing = await db('crm_sectors')
         .whereRaw('LOWER(sector_name) = ?', [trimmed.toLowerCase()])
-        .where(function() {
-            this.where('org_id', orgId)
-                .orWhere('org_id', 2)
-                .orWhereNull('org_id');
-        })
+        .where({ org_id: orgId })
         .first();
 
     if (existing) return existing.sector_id;
@@ -62,10 +50,10 @@ export async function createSector(orgId, sectorName) {
 
 export async function deleteSector(orgId, sectorId) {
     if (!sectorId) throw new AppError('Sector ID is required', 400);
-    const inUse = await db('crm_contacts').where({ sector_id: sectorId }).first();
+    const inUse = await db('crm_contacts').where({ sector_id: sectorId, org_id: orgId }).first();
     if (inUse) throw new AppError('Cannot delete: This Sector is currently assigned to one or more contacts.', 400);
 
-    return await db('crm_sectors').where({ sector_id: sectorId }).delete();
+    return await db('crm_sectors').where({ sector_id: sectorId, org_id: orgId }).delete();
 }
 
 export default {

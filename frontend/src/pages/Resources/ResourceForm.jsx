@@ -324,22 +324,44 @@ const ResourceForm = ({ resource, onClose, onSave }) => {
                                         </select>
                                     </FormField>
 
-                                    <FormField label="Base Unit" required hint={baseUnitInfo ? `Category: ${baseUnitInfo.type}` : ''}>
+                                    <FormField
+                                        label="Base Unit"
+                                        required
+                                        hint={
+                                            isEditing && resource?.base_unit_code
+                                                ? `⚠️ Category locked to ${unitTypeLabel[UNIT_REGISTRY[resource.base_unit_code]?.type] || UNIT_REGISTRY[resource.base_unit_code]?.type}. Unit changes must stay within the same category to protect rates.`
+                                                : baseUnitInfo ? `Category: ${baseUnitInfo.type}` : ''
+                                        }
+                                    >
                                         <select
                                             required
                                             name="base_unit_code"
                                             value={formData.base_unit_code}
-                                            onChange={handleChange}
+                                            onChange={e => {
+                                                const newCode = e.target.value;
+                                                const newType = UNIT_REGISTRY[newCode]?.type;
+                                                const curType = UNIT_REGISTRY[resource?.base_unit_code]?.type;
+                                                if (isEditing && curType && newType && newType !== curType) {
+                                                    setError(`Cannot change base unit from "${resource.base_unit_code}" (${curType}) to "${newCode}" (${newType}). Measurement category cannot be changed to prevent corrupting historical rates and composite recipes.`);
+                                                    return;
+                                                }
+                                                handleChange(e);
+                                            }}
                                             className="w-full bg-white dark:bg-[#0d1117] border border-gray-300 dark:border-white/10 rounded-xl px-3 py-2.5 text-sm text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500/50 transition"
                                         >
                                             <option value="">Select a unit...</option>
-                                            {Object.entries(UNIT_GROUPS).map(([type, units]) => (
-                                                <optgroup key={type} label={unitTypeLabel[type] || type}>
-                                                    {units.map(u => (
-                                                        <option key={u.code} value={u.code}>{u.name} ({u.symbol})</option>
-                                                    ))}
-                                                </optgroup>
-                                            ))}
+                                            {Object.entries(UNIT_GROUPS).map(([type, units]) => {
+                                                const isCurrentCat = !isEditing || !resource?.base_unit_code || type === UNIT_REGISTRY[resource.base_unit_code]?.type;
+                                                return (
+                                                    <optgroup key={type} label={`${unitTypeLabel[type] || type} ${!isCurrentCat ? '(Locked - Incompatible)' : ''}`} disabled={!isCurrentCat}>
+                                                        {units.map(u => (
+                                                            <option key={u.code} value={u.code} disabled={!isCurrentCat}>
+                                                                {u.name} ({u.symbol}) {!isCurrentCat ? '— locked' : ''}
+                                                            </option>
+                                                        ))}
+                                                    </optgroup>
+                                                );
+                                            })}
                                         </select>
                                     </FormField>
                                 </div>
@@ -432,10 +454,14 @@ const ResourceForm = ({ resource, onClose, onSave }) => {
                                                     className="bg-white dark:bg-[#0d1117] border border-gray-300 dark:border-white/10 rounded-lg px-2 py-1.5 text-xs focus:ring-1 focus:ring-blue-500 focus:outline-none"
                                                 >
                                                     <option value="">Select unit</option>
-                                                    {Object.entries(UNIT_GROUPS).map(([type, units]) => (
+                                                    {Object.entries(
+                                                        baseUnitInfo && UNIT_GROUPS[baseUnitInfo.type]
+                                                            ? { [baseUnitInfo.type]: UNIT_GROUPS[baseUnitInfo.type] }
+                                                            : UNIT_GROUPS
+                                                    ).map(([type, units]) => (
                                                         <optgroup key={type} label={unitTypeLabel[type] || type}>
                                                             {units.map(u => (
-                                                                <option key={u.code} value={u.code}>{u.symbol}</option>
+                                                                <option key={u.code} value={u.code}>{u.symbol} ({u.name})</option>
                                                             ))}
                                                         </optgroup>
                                                     ))}

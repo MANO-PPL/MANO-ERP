@@ -61,12 +61,20 @@ const ResourceConversionsTab = ({
         [resources, selectedResourceId]
     );
 
+    const baseUnitType = UNIT_REGISTRY[selectedResource?.base_unit_code]?.type;
+    const compatibleUnitGroups = baseUnitType && UNIT_GROUPS[baseUnitType]
+        ? { [baseUnitType]: UNIT_GROUPS[baseUnitType] }
+        : UNIT_GROUPS;
+
     useEffect(() => {
         if (selectedResource) {
             setConvUnitCode(selectedResource.base_unit_code || 'kg');
             setCalcFromUnit(selectedResource.base_unit_code || 'kg');
+            const compatibleUnits = UNIT_GROUPS[baseUnitType] || [];
+            const otherUnit = compatibleUnits.find(u => u.code !== selectedResource.base_unit_code);
+            setCalcToUnit(otherUnit?.code || selectedResource.base_unit_code || 'kg');
         }
-    }, [selectedResource]);
+    }, [selectedResource, baseUnitType]);
 
     const fetchResourceDetail = async () => {
         if (!selectedResourceId) return;
@@ -309,7 +317,7 @@ const ResourceConversionsTab = ({
                                                 onChange={e => setConvUnitCode(e.target.value)}
                                                 className="w-full bg-gray-50 dark:bg-[#161b22] border border-gray-200 dark:border-white/10 rounded-lg px-2.5 py-1.5 text-xs font-semibold focus:ring-1 focus:ring-blue-500 outline-none text-gray-900 dark:text-gray-100"
                                             >
-                                                {Object.entries(UNIT_GROUPS).map(([cat, units]) => (
+                                                {Object.entries(compatibleUnitGroups).map(([cat, units]) => (
                                                     <optgroup key={cat} label={cat.toUpperCase()}>
                                                         {units.map(u => (
                                                             <option key={u.code} value={u.code}>{u.symbol} ({u.name})</option>

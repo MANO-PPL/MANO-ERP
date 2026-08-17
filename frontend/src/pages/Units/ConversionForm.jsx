@@ -14,7 +14,13 @@ const defaultForm = {
  * e.g. name="Bag", quantity=50, unit_id=<kg unit id>
  */
 const ConversionForm = ({ resource, units, onClose, onSave }) => {
-    const [form, setForm] = useState(defaultForm);
+    const baseUnit = units.find(u => u.id === resource.base_unit_code || u.symbol === resource.base_unit_code);
+    const compatibleUnits = baseUnit ? units.filter(u => u.unit_type === baseUnit.unit_type) : units;
+
+    const [form, setForm] = useState({
+        ...defaultForm,
+        unit_id: resource.base_unit_code || (compatibleUnits[0]?.id || '')
+    });
     const [saving, setSaving] = useState(false);
     const [error, setError] = useState('');
 
@@ -31,7 +37,7 @@ const ConversionForm = ({ resource, units, onClose, onSave }) => {
             await resourceApi.addConversion(resource.id, {
                 name: form.name.trim(),
                 quantity: parseFloat(form.quantity),
-                unit_id: parseInt(form.unit_id),
+                unit_code: form.unit_id,
             });
             onSave();
         } catch (err) {
@@ -109,8 +115,8 @@ const ConversionForm = ({ resource, units, onClose, onSave }) => {
                                 onChange={handleChange}
                                 className="w-full bg-gray-50 dark:bg-white/[0.03] border border-gray-200 dark:border-white/10 rounded-lg px-3 py-2 text-sm text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-purple-500/50 transition"
                             >
-                                <option value="">Select unit</option>
-                                {units.map((u) => (
+                                <option value="">Select compatible unit</option>
+                                {compatibleUnits.map((u) => (
                                     <option key={u.id} value={u.id}>{u.name} ({u.symbol})</option>
                                 ))}
                             </select>
@@ -120,7 +126,7 @@ const ConversionForm = ({ resource, units, onClose, onSave }) => {
                     {/* Live preview */}
                     {form.name && form.quantity && form.unit_id && (
                         <div className="px-3 py-2 bg-purple-50 dark:bg-purple-900/10 border border-purple-200 dark:border-purple-800/50 rounded-lg text-xs text-purple-700 dark:text-purple-300 font-mono">
-                            1 {form.name} = {form.quantity} {units.find(u => u.id === parseInt(form.unit_id))?.symbol ?? '?'}
+                            1 {form.name} = {form.quantity} {units.find(u => String(u.id) === String(form.unit_id) || u.symbol === form.unit_id)?.symbol ?? form.unit_id}
                         </div>
                     )}
 

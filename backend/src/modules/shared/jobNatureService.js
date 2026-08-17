@@ -3,11 +3,7 @@ import AppError from '../../utils/AppError.js';
 
 export async function getJobNatures(orgId) {
     const list = await db('crm_job_nature')
-        .where(function() {
-            this.where('org_id', orgId)
-                .orWhere('org_id', 2)
-                .orWhereNull('org_id');
-        })
+        .where({ org_id: orgId })
         .orderBy('job_name', 'asc')
         .select('*');
 
@@ -29,11 +25,7 @@ export async function findOrCreateJobNature(orgId, jobName, connection = db) {
 
     const existing = await connection('crm_job_nature')
         .whereRaw('LOWER(job_name) = ?', [trimmed.toLowerCase()])
-        .where(function() {
-            this.where('org_id', orgId)
-                .orWhere('org_id', 2)
-                .orWhereNull('org_id');
-        })
+        .where({ org_id: orgId })
         .first();
 
     if (existing) return existing.job_id;
@@ -47,11 +39,7 @@ export async function createJobNature(orgId, jobName) {
     const trimmed = jobName.trim();
     const existing = await db('crm_job_nature')
         .whereRaw('LOWER(job_name) = ?', [trimmed.toLowerCase()])
-        .where(function() {
-            this.where('org_id', orgId)
-                .orWhere('org_id', 2)
-                .orWhereNull('org_id');
-        })
+        .where({ org_id: orgId })
         .first();
 
     if (existing) return existing.job_id;
@@ -62,10 +50,10 @@ export async function createJobNature(orgId, jobName) {
 
 export async function deleteJobNature(orgId, jobId) {
     if (!jobId) throw new AppError('Job Nature ID is required', 400);
-    const inUse = await db('crm_contacts').where({ job_nature_id: jobId }).first();
+    const inUse = await db('crm_contacts').where({ job_nature_id: jobId, org_id: orgId }).first();
     if (inUse) throw new AppError('Cannot delete: This Job Nature is currently assigned to one or more contacts.', 400);
 
-    return await db('crm_job_nature').where({ job_id: jobId }).delete();
+    return await db('crm_job_nature').where({ job_id: jobId, org_id: orgId }).delete();
 }
 
 export default {

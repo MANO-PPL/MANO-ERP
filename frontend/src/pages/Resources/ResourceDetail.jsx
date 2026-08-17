@@ -536,21 +536,44 @@ Remarks       : ${formData.remarks || '-'}
                         <SectionHeader title="General Information Inspector" />
                         <div className="bg-gray-50/70 dark:bg-white/[0.02] rounded-xl border border-gray-200/70 dark:border-white/10 p-3.5 space-y-3 mt-2">
                             {/* Base Unit Selector */}
-                            <div className="grid grid-cols-[100px_1fr] items-center gap-3">
-                                <label className="text-xs font-bold text-gray-600 dark:text-gray-400">Base Unit <span className="text-red-500">*</span></label>
-                                <select
-                                    value={formData.base_unit_code}
-                                    onChange={e => updateFormField('base_unit_code', e.target.value)}
-                                    className="w-full px-2.5 py-1.5 bg-white dark:bg-[#0d1117] border border-gray-200 dark:border-white/10 rounded-lg text-xs font-bold text-gray-900 dark:text-white focus:ring-1 focus:ring-blue-500 focus:outline-none"
-                                >
-                                    {Object.entries(UNIT_GROUPS).map(([groupType, units]) => (
-                                        <optgroup key={groupType} label={unitTypeLabel[groupType] || groupType}>
-                                            {units.map(u => (
-                                                <option key={u.code} value={u.code}>{u.name} ({u.symbol})</option>
-                                            ))}
-                                        </optgroup>
-                                    ))}
-                                </select>
+                            <div className="space-y-1.5">
+                                <div className="grid grid-cols-[100px_1fr] items-center gap-3">
+                                    <label className="text-xs font-bold text-gray-600 dark:text-gray-400">Base Unit <span className="text-red-500">*</span></label>
+                                    <select
+                                        value={formData.base_unit_code}
+                                        onChange={e => {
+                                            const newCode = e.target.value;
+                                            const newType = UNIT_REGISTRY[newCode]?.type;
+                                            const curType = UNIT_REGISTRY[resource?.base_unit_code]?.type;
+                                            if (curType && newType && newType !== curType) {
+                                                if (showToast) showToast('error', 'Incompatible Unit Category', `Cannot change from ${curType.toUpperCase()} (${resource.base_unit_code}) to ${newType.toUpperCase()} (${newCode}). Units must stay in the same category (e.g. g to kg, MT) to protect rates and recipes.`);
+                                                return;
+                                            }
+                                            updateFormField('base_unit_code', newCode);
+                                        }}
+                                        className="w-full px-2.5 py-1.5 bg-white dark:bg-[#0d1117] border border-gray-200 dark:border-white/10 rounded-lg text-xs font-bold text-gray-900 dark:text-white focus:ring-1 focus:ring-blue-500 focus:outline-none"
+                                    >
+                                        {Object.entries(UNIT_GROUPS).map(([groupType, units]) => {
+                                            const curType = UNIT_REGISTRY[resource?.base_unit_code]?.type;
+                                            const isCompatible = !curType || groupType === curType;
+                                            return (
+                                                <optgroup key={groupType} label={`${unitTypeLabel[groupType] || groupType} ${!isCompatible ? '(Locked - Incompatible)' : ''}`} disabled={!isCompatible}>
+                                                    {units.map(u => (
+                                                        <option key={u.code} value={u.code} disabled={!isCompatible}>
+                                                            {u.name} ({u.symbol}) {!isCompatible ? '— incompatible' : ''}
+                                                        </option>
+                                                    ))}
+                                                </optgroup>
+                                            );
+                                        })}
+                                    </select>
+                                </div>
+                                {resource?.base_unit_code && (
+                                    <p className="text-[10px] text-amber-600 dark:text-amber-400 font-medium pl-[112px] flex items-center gap-1">
+                                        <span>⚠️</span>
+                                        <span>Category locked to <strong>{unitTypeLabel[UNIT_REGISTRY[resource.base_unit_code]?.type] || UNIT_REGISTRY[resource.base_unit_code]?.type}</strong>. Unit changes must stay within the same category to protect historical rates & recipes.</span>
+                                    </p>
+                                )}
                             </div>
 
                             {/* Description Input */}
@@ -627,7 +650,7 @@ Remarks       : ${formData.remarks || '-'}
                                             onChange={e => setConvForm({ ...convForm, unit_code: e.target.value })}
                                             className="bg-white dark:bg-[#0d1117] border border-gray-200 dark:border-white/10 rounded-lg px-1.5 py-1 text-xs font-bold focus:outline-none"
                                         >
-                                            {UNIT_OPTIONS.map(u => (
+                                            {(UNIT_GROUPS[UNIT_REGISTRY[formData.base_unit_code]?.type] || UNIT_OPTIONS).map(u => (
                                                 <option key={u.code} value={u.code}>{u.code}</option>
                                             ))}
                                         </select>
