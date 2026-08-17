@@ -5,7 +5,7 @@ import {
 } from 'lucide-react';
 import { motion } from 'framer-motion';
 import { resourceApi } from '../../services/resourceApi';
-import { UNIT_GROUPS, convert } from './resourceConstants';
+import { UNIT_GROUPS, UNIT_REGISTRY, convert } from './resourceConstants';
 import { useAuth } from '../../context/AuthContext';
 import ConfirmModal from '../../components/ConfirmModal';
 import LogoLoader from '../../components/LogoLoader';
