@@ -105,6 +105,20 @@ export async function importResourceToProject(orgId, projectId, resourceId, effe
     return resourceService.importItemToProject(orgId, projectId, resourceId, effectiveFrom);
 }
 
+export async function importBatchResourcesToProject(orgId, projectId, resourceIds, effectiveFrom) {
+    await ensureProject(orgId, projectId);
+    const results = [];
+    for (const resId of resourceIds) {
+        try {
+            const res = await resourceService.importItemToProject(orgId, projectId, resId, effectiveFrom);
+            results.push({ resourceId: resId, status: 'fulfilled', result: res });
+        } catch (err) {
+            results.push({ resourceId: resId, status: 'rejected', reason: err.message });
+        }
+    }
+    return results;
+}
+
 export async function setCompositions(orgId, projectId, resourceId, compositions, effectiveFrom) {
     await ensureProject(orgId, projectId);
     return resourceService.setCompositions(orgId, resourceId, compositions, effectiveFrom, projectId);
@@ -125,6 +139,7 @@ export default {
     removeProjectResource,
     clearRate,
     importResourceToProject,
+    importBatchResourcesToProject,
     setCompositions,
     getCompositionHistory
 };

@@ -95,6 +95,21 @@ export const importResourceToProject = catchAsync(async (req, res) => {
     res.status(201).json({ success: true, message: 'Resource imported into project' });
 });
 
+export const importBatchResourcesToProject = catchAsync(async (req, res) => {
+    const projectId = parseId(req.params.id, 'Project ID');
+    const { resource_ids, resourceIds, effective_from } = req.body;
+    const ids = (resource_ids || resourceIds || []).map(Number).filter(Number.isInteger);
+    if (ids.length === 0) throw new AppError('resourceIds array is required', 400);
+
+    const results = await projectResourceService.importBatchResourcesToProject(
+        req.user.org_id,
+        projectId,
+        ids,
+        effective_from
+    );
+    res.status(200).json({ success: true, results });
+});
+
 export const setCompositions = catchAsync(async (req, res) => {
     const projectId = parseId(req.params.id, 'Project ID');
     const resourceId = parseId(req.params.resourceId, 'Resource ID');
@@ -127,6 +142,7 @@ export default {
     getRateHistory,
     clearRate,
     importResourceToProject,
+    importBatchResourcesToProject,
     setCompositions,
     getCompositionHistory
 };

@@ -16,6 +16,7 @@ router.get('/:resourceId/rates', projectResourceController.getRateHistory);
 router.post('/:resourceId/clear-rate', projectResourceController.clearRate);
 
 // Item compositions are imported once from master, then versioned independently.
+router.post('/import-batch', projectResourceController.importBatchResourcesToProject);
 router.post('/:resourceId/import', projectResourceController.importResourceToProject);
 router.put('/:resourceId/compositions', projectResourceController.setCompositions);
 router.get('/:resourceId/compositions', projectResourceController.getCompositionHistory);
