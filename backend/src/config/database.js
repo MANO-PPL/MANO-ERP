@@ -1,3 +1,4 @@
+import './config.js';
 import knex from 'knex';
 
 
@@ -10,12 +11,14 @@ export const db = knex({
         database: process.env.DB_NAME || 'mano_erp',
         port: process.env.DB_PORT || 3307,
         timezone: 'Z',
+        enableKeepAlive: true,
+        keepAliveInitialDelay: 10000
     },
     pool: {
         min: 2,
-        max: 10,
+        max: 20,
     },
-    acquireConnectionTimeout: 10000,
+    acquireConnectionTimeout: 30000,
 });
 
 export default db;

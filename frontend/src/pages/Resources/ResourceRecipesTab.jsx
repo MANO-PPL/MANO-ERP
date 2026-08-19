@@ -121,10 +121,19 @@ const ResourceRecipesTab = ({
         }
     }, [initialProjectId]);
 
-    const scopeOptions = useMemo(() => [
-        { label: 'Master / Organization', value: '' },
-        ...projects.map(project => ({ label: project.name, value: String(project.id) }))
-    ], [projects]);
+    const scopeOptions = useMemo(() => {
+        if (initialProjectId) {
+            const currentProj = projects.find(p => String(p.id) === String(initialProjectId));
+            return [
+                { label: currentProj ? `${currentProj.name} (Current Project)` : 'Current Project', value: String(initialProjectId) },
+                { label: 'Master / Organization', value: '' }
+            ];
+        }
+        return [
+            { label: 'Master / Organization', value: '' },
+            ...projects.map(project => ({ label: project.name, value: String(project.id) }))
+        ];
+    }, [projects, initialProjectId]);
 
     const componentOptions = useMemo(() => rawComponents.map(c => ({
         label: `${c.name} (${c.type.toUpperCase()}) — ${c.base_unit_code}`,

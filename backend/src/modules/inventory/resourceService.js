@@ -519,7 +519,28 @@ async function resolveRateInternal(orgId, resourceId, asOfDate, dbClient, path =
 export async function getResolvedRate(orgId, resourceId, asOfDate, projectId = null) {
     const effectiveDate = toDateOnly(asOfDate);
     if (projectId) await ensureProjectExists(orgId, projectId);
-    return resolveRateInternal(orgId, resourceId, effectiveDate, db, new Set(), null, projectId);
+    try {
+        return await resolveRateInternal(orgId, resourceId, effectiveDate, db, new Set(), null, projectId);
+    } catch (err) {
+        if (err.statusCode === 404 || err.message?.includes('no composition and no manual rate') || err.message?.includes('No effective manual rate')) {
+            const scopedResourceId = await resolveProjectResourceId(orgId, resourceId, projectId, db);
+            const resource = await ensureResourceExists(orgId, scopedResourceId, db);
+            return {
+                resourceId: resource.id,
+                resourceName: resource.name,
+                rate: null,
+                unitCode: resource.base_unit_code,
+                source: null,
+                rateScope: null,
+                projectId: resource.project_id || null,
+                effectiveFrom: effectiveDate,
+                effectiveTo: null,
+                isActive: false,
+                remarks: null
+            };
+        }
+        throw err;
+    }
 }
 
 /**
@@ -581,20 +602,6 @@ async function _writeManualRateVersion(orgId, resource, { rate, unit_code, effec
 
     const effectiveFrom = toDateOnly(effective_from);
 
-    const latestRate = await dbClient('res_rates')
-        .where({ resource_id: resource.id })
-        .max('effective_from as latest_effective_from')
-        .first();
-    if (latestRate?.latest_effective_from) {
-        const latestDate = toDateOnly(latestRate.latest_effective_from);
-        if (effectiveFrom <= latestDate) {
-            throw new AppError(
-                `New rate effective_from ${effectiveFrom} must be later than the latest rate ${latestDate}`,
-                400
-            );
-        }
-    }
-
     // The active flag tracks the latest edit, while effective dates still
     // determine which historical row applies to a requested date.
     const activeRateQuery = dbClient('res_rates')
@@ -607,20 +614,16 @@ async function _writeManualRateVersion(orgId, resource, { rate, unit_code, effec
 
     if (activeRate) {
         const activeFrom = toDateOnly(activeRate.effective_from);
-            if (effectiveFrom < activeFrom) {
+        if (effectiveFrom <= activeFrom) {
             throw new AppError(
-                `New rate effective_from ${effectiveFrom} cannot be earlier than the active rate ${activeFrom}`,
+                `New rate version effective date (${effectiveFrom}) must be at least one day after the current active rate (${activeFrom}). To adjust the rate for ${activeFrom}, use "Edit Version".`,
                 400
             );
         }
 
         await dbClient('res_rates').where({ id: activeRate.id }).update({
             is_active: 0,
-            // A same-day edit replaces the rate for that day. For a later
-            // edit, close the previous version the day before the new one.
-            effective_to: effectiveFrom === activeFrom
-                ? effectiveFrom
-                : subtractOneDay(effectiveFrom)
+            effective_to: subtractOneDay(effectiveFrom)
         });
     }
 
@@ -634,6 +637,88 @@ async function _writeManualRateVersion(orgId, resource, { rate, unit_code, effec
         remarks: remarks || null
     });
     return insertId;
+}
+
+/**
+ * Directly update an existing rate record (current or past rate).
+ */
+export async function updateRate(orgId, resourceId, rateId, rateData = {}, projectId = null) {
+    if (projectId) await ensureProjectExists(orgId, projectId);
+    const scopedResourceId = projectId
+        ? await resolveProjectResourceId(orgId, resourceId, projectId)
+        : resourceId;
+    const resource = await ensureResourceExists(orgId, scopedResourceId);
+
+    const numericRateId = parseInt(rateId, 10);
+    if (Number.isNaN(numericRateId)) {
+        throw new AppError('Invalid rate ID', 400);
+    }
+
+    return db.transaction(async (trx) => {
+        const existingRate = await trx('res_rates')
+            .where({ id: numericRateId, resource_id: resource.id })
+            .first();
+
+        if (!existingRate) {
+            throw new AppError('Rate record not found for this resource', 404);
+        }
+
+        const updates = {};
+
+        if (rateData.mode === 'computed' || rateData.rate === null) {
+            updates.rate = null;
+            if (rateData.remarks) updates.remarks = rateData.remarks;
+        } else if (rateData.rate !== undefined && rateData.rate !== null && rateData.rate !== '') {
+            const numericRate = Number(rateData.rate);
+            if (!Number.isFinite(numericRate) || numericRate < 0) {
+                throw new AppError('rate must be a non-negative number', 400);
+            }
+            updates.rate = numericRate;
+        }
+
+        if (rateData.unit_code) {
+            const rateUnit = getUnit(rateData.unit_code);
+            const resourceUnit = getUnit(resource.base_unit_code);
+            if (rateUnit.type !== resourceUnit.type) {
+                throw new AppError(
+                    `Rate unit "${rateData.unit_code}" must match resource base unit category "${resource.base_unit_code}"`,
+                    400
+                );
+            }
+            updates.unit_code = rateData.unit_code;
+        }
+
+        if (rateData.effective_from !== undefined) {
+            updates.effective_from = toDateOnly(rateData.effective_from);
+        }
+
+        if (rateData.effective_to !== undefined) {
+            updates.effective_to = rateData.effective_to ? toDateOnly(rateData.effective_to) : null;
+        }
+
+        if (rateData.remarks !== undefined) {
+            updates.remarks = rateData.remarks || null;
+        }
+
+        if (rateData.is_active !== undefined) {
+            updates.is_active = Number(rateData.is_active) ? 1 : 0;
+        } else if (updates.effective_to !== undefined) {
+            updates.is_active = updates.effective_to === null ? 1 : 0;
+        } else if (existingRate.effective_to === null) {
+            updates.is_active = 1;
+        }
+
+        if (Object.keys(updates).length > 0) {
+            await trx('res_rates').where({ id: numericRateId }).update(updates);
+        }
+
+        const updated = await trx('res_rates').where({ id: numericRateId }).first();
+        return {
+            ...updated,
+            effective_from: toIsoDate(updated.effective_from),
+            effective_to: toIsoDate(updated.effective_to)
+        };
+    });
 }
 
 export async function addRate(orgId, resourceId, rateData = {}) {
@@ -663,7 +748,21 @@ export async function addRate(orgId, resourceId, rateData = {}) {
 export async function getRateHistory(orgId, resourceId, projectId = null) {
     if (projectId) await ensureProjectExists(orgId, projectId);
     const scopedResourceId = await resolveProjectResourceId(orgId, resourceId, projectId);
-    await ensureResourceExists(orgId, scopedResourceId);
+    const resource = await ensureResourceExists(orgId, scopedResourceId);
+
+    // If this is a project copy and has no rate rows yet, auto-initialize its baseline rate from master catalog
+    if (projectId && resource.parent_id) {
+        const existingCount = await db('res_rates')
+            .where('resource_id', scopedResourceId)
+            .count('id as count')
+            .first();
+
+        if (Number(existingCount?.count || 0) === 0) {
+            const masterResource = await ensureResourceExists(orgId, resource.parent_id);
+            await ensureProjectRateFromMaster(orgId, masterResource, scopedResourceId, toDateOnly(), db);
+        }
+    }
+
     const query = db('res_rates as rr')
         .join('res_resources as r', 'rr.resource_id', 'r.id')
         .where('rr.resource_id', scopedResourceId)
@@ -1310,91 +1409,146 @@ async function _replaceCompositions(orgId, parentResourceId, compositions, dbCli
     }
 }
 
-/**
- * Import an item by creating its project resource row and snapshotting the
- * currently effective master recipe. Every component is copied as well so the
- * project recipe points only at project-owned resource ids.
- */
-export async function importItemToProject(orgId, projectId, masterItemId, effectiveFrom) {
-    await ensureProjectExists(orgId, projectId);
-    const masterItem = await ensureResourceExists(orgId, masterItemId);
-    if (masterItem.project_id) {
-        throw new AppError('Import must start from a master item resource', 400);
+async function ensureProjectRateFromMaster(orgId, masterResource, projectResourceId, importDate, trx) {
+    const existingRate = await trx('res_rates')
+        .where({ resource_id: projectResourceId, is_active: 1 })
+        .whereNotNull('rate')
+        .first('id');
+    if (existingRate) return;
+
+    let resolvedRate = null;
+    // 1. Try resolving for project copy
+    try {
+        resolvedRate = await resolveRateInternal(
+            orgId,
+            projectResourceId,
+            importDate,
+            trx,
+            new Set(),
+            null,
+            null
+        );
+    } catch { }
+
+    // 2. Try resolving for master resource
+    if (!resolvedRate || resolvedRate.rate === null || resolvedRate.rate === undefined) {
+        try {
+            resolvedRate = await resolveRateInternal(
+                orgId,
+                masterResource.id,
+                importDate,
+                trx,
+                new Set(),
+                null,
+                null
+            );
+        } catch { }
     }
-    if (masterItem.type !== 'item') {
-        throw new AppError('Only item resources can be imported into a project', 400);
+
+    // 3. Try finding manual rate
+    if (!resolvedRate || resolvedRate.rate === null || resolvedRate.rate === undefined) {
+        try {
+            resolvedRate = await findEffectiveManualRate(orgId, masterResource.id, importDate, trx, null);
+        } catch { }
+    }
+
+    if (resolvedRate && resolvedRate.rate !== null && resolvedRate.rate !== undefined) {
+        await trx('res_rates').insert({
+            resource_id: projectResourceId,
+            rate: Number(resolvedRate.rate),
+            unit_code: resolvedRate.unitCode || resolvedRate.unit_code || masterResource.base_unit_code,
+            effective_from: importDate,
+            effective_to: null,
+            is_active: 1,
+            remarks: 'Imported from master catalog'
+        });
+    }
+}
+
+/**
+ * Import a resource (item, material, labour) into a project by creating its
+ * project resource row, snapshotting any item recipe/compositions recursively,
+ * and initializing its rate in res_rates from the master catalog.
+ */
+export async function importResourceToProject(orgId, projectId, masterResourceId, effectiveFrom) {
+    await ensureProjectExists(orgId, projectId);
+    const masterResource = await ensureResourceExists(orgId, masterResourceId);
+    if (masterResource.project_id) {
+        throw new AppError('Import must start from a master resource', 400);
     }
 
     const importDate = toDateOnly(effectiveFrom);
     return db.transaction(async trx => {
         const compositionColumns = await getCompositionColumns(trx);
-        const projectItemId = await findOrCreateProjectResource(orgId, masterItem.id, projectId, trx);
+        const projectResourceId = await findOrCreateProjectResource(orgId, masterResource.id, projectId, trx);
 
-        const existingProjectComposition = await trx('res_compositions')
-            .where(compositionColumns.item, projectItemId)
-            .first('id');
-        if (existingProjectComposition) {
-            throw new AppError('This item has already been imported into this project', 400);
-        }
-
-        const copyItemComposition = async (masterId, projectIdForItem, path = new Set()) => {
-            if (path.has(Number(masterId))) {
-                throw new AppError(`Circular composition detected while importing item ${masterId}`, 400);
-            }
-
-            const existingProjectComposition = await trx('res_compositions')
-                .where(compositionColumns.item, projectIdForItem)
-                .first('id');
-            if (existingProjectComposition) return;
-
-            const masterComposition = await trx('res_compositions')
-                .where(compositionColumns.item, masterId)
-                .andWhere('effective_from', '<=', importDate)
-                .andWhere(function () {
-                    this.whereNull('effective_to').orWhere('effective_to', '>=', importDate);
-                })
-                .select(
-                    `${compositionColumns.component} as component_resource_id`,
-                    'quantity',
-                    'unit_code'
-                );
-
-            if (masterComposition.length === 0) return;
-
-            const nextPath = new Set(path);
-            nextPath.add(Number(masterId));
-            const rows = [];
-            for (const composition of masterComposition) {
-                const component = await ensureResourceExists(orgId, composition.component_resource_id, trx);
-                const projectComponentId = await findOrCreateProjectResource(
-                    orgId,
-                    component.id,
-                    projectId,
-                    trx
-                );
-
-                if (component.type === 'item') {
-                    await copyItemComposition(component.id, projectComponentId, nextPath);
+        // If it's an item with compositions, snapshot composition recipe
+        if (masterResource.type === 'item') {
+            const copyItemComposition = async (masterId, projectIdForItem, path = new Set()) => {
+                if (path.has(Number(masterId))) {
+                    throw new AppError(`Circular composition detected while importing item ${masterId}`, 400);
                 }
 
-                rows.push({
-                    [compositionColumns.item]: projectIdForItem,
-                    [compositionColumns.component]: projectComponentId,
-                    quantity: composition.quantity,
-                    unit_code: composition.unit_code,
-                    effective_from: importDate,
-                    effective_to: null,
-                    is_active: 1
-                });
-            }
+                const existingProjectComposition = await trx('res_compositions')
+                    .where(compositionColumns.item, projectIdForItem)
+                    .first('id');
+                if (existingProjectComposition) return;
 
-            await trx('res_compositions').insert(rows);
-        };
+                const masterComposition = await trx('res_compositions')
+                    .where(compositionColumns.item, masterId)
+                    .andWhere('effective_from', '<=', importDate)
+                    .andWhere(function () {
+                        this.whereNull('effective_to').orWhere('effective_to', '>=', importDate);
+                    })
+                    .select(
+                        `${compositionColumns.component} as component_resource_id`,
+                        'quantity',
+                        'unit_code'
+                    );
 
-        await copyItemComposition(masterItem.id, projectItemId);
-        return projectItemId;
+                if (masterComposition.length === 0) return;
+
+                const nextPath = new Set(path);
+                nextPath.add(Number(masterId));
+                const rows = [];
+                for (const composition of masterComposition) {
+                    const component = await ensureResourceExists(orgId, composition.component_resource_id, trx);
+                    const projectComponentId = await findOrCreateProjectResource(
+                        orgId,
+                        component.id,
+                        projectId,
+                        trx
+                    );
+
+                    await ensureProjectRateFromMaster(orgId, component, projectComponentId, importDate, trx);
+
+                    if (component.type === 'item') {
+                        await copyItemComposition(component.id, projectComponentId, nextPath);
+                    }
+
+                    rows.push({
+                        [compositionColumns.item]: projectIdForItem,
+                        [compositionColumns.component]: projectComponentId,
+                        quantity: composition.quantity,
+                        unit_code: composition.unit_code,
+                        effective_from: importDate,
+                        effective_to: null,
+                        is_active: 1
+                    });
+                }
+
+                await trx('res_compositions').insert(rows);
+            };
+
+            await copyItemComposition(masterResource.id, projectResourceId);
+        }
+
+        await ensureProjectRateFromMaster(orgId, masterResource, projectResourceId, importDate, trx);
+        return projectResourceId;
     });
 }
+
+export const importItemToProject = importResourceToProject;
 
 /**
  * Public API to replace all compositions for an item resource.
@@ -1785,15 +1939,16 @@ export async function bulkUpdateResources(orgId, resources) {
  * Only valid for resources of type "item" — materials/labour have no
  * fallback pricing source, so they cannot be cleared.
  */
-export async function clearManualRate(orgId, resourceId, effectiveFrom, projectId = null) {
+/**
+ * Reverts an item back to a computed rate (in master catalog) or reverts a
+ * project resource back to the master catalog rate by adding a new fallback rate row.
+ */
+export async function clearManualRate(orgId, resourceId, effectiveFrom, projectId = null, mode = null) {
     if (projectId) await ensureProjectExists(orgId, projectId);
     const scopedResourceId = projectId
         ? await resolveProjectResourceId(orgId, resourceId, projectId)
         : resourceId;
     const resource = await ensureResourceExists(orgId, scopedResourceId);
-    if (!projectId && resource.type !== 'item') {
-        throw new AppError('Only items can revert to a computed rate; materials and labour require a manual rate', 400);
-    }
     const clearFrom = toDateOnly(effectiveFrom);
 
     return db.transaction(async (trx) => {
@@ -1801,29 +1956,100 @@ export async function clearManualRate(orgId, resourceId, effectiveFrom, projectI
             .where({ resource_id: scopedResourceId, is_active: 1 });
 
         const activeRate = await activeRateQuery
-            .whereNotNull('rate')
             .orderBy('id', 'desc')
             .forUpdate()
             .first('id', 'effective_from');
 
-        if (!activeRate) {
-            throw new AppError('This item has no active manual rate to clear', 400);
+        if (projectId && mode !== 'computed') {
+            // Mode: Revert to master catalog rate snapshot (freezes project rate to master value on clearFrom date)
+            if (!resource.parent_id) {
+                throw new AppError('Cannot revert to master: this project resource is not linked to a master parent item', 400);
+            }
+            const masterId = resource.parent_id;
+            const masterResource = await ensureResourceExists(orgId, masterId, trx);
+            let resolvedMasterRate = null;
+            try {
+                resolvedMasterRate = await resolveRateInternal(
+                    orgId,
+                    masterId,
+                    clearFrom,
+                    trx,
+                    new Set(),
+                    null,
+                    null
+                );
+            } catch {
+                resolvedMasterRate = await findEffectiveManualRate(orgId, masterId, clearFrom, trx, null);
+            }
+
+            if (!resolvedMasterRate || resolvedMasterRate.rate === null || resolvedMasterRate.rate === undefined) {
+                throw new AppError(`Master resource "${masterResource.name}" has no rate to fallback to`, 400);
+            }
+
+            const snapshotUnitCode = resolvedMasterRate.unitCode || resolvedMasterRate.unit_code || masterResource.base_unit_code;
+            const rateUnit = getUnit(snapshotUnitCode);
+            const resourceUnit = getUnit(resource.base_unit_code);
+            if (rateUnit.type !== resourceUnit.type) {
+                throw new AppError(
+                    `Master rate unit "${snapshotUnitCode}" (${rateUnit.type}) is incompatible with project resource base unit "${resource.base_unit_code}" (${resourceUnit.type})`,
+                    400
+                );
+            }
+
+            // Enforce date validation: revert date must be strictly after the current active rate start date
+            if (activeRate) {
+                const activeFrom = toDateOnly(activeRate.effective_from);
+                if (clearFrom <= activeFrom) {
+                    throw new AppError(
+                        `Revert effective date (${clearFrom}) must be at least one day after the current active rate start date (${activeFrom}). To change past rates, use "Edit Version".`,
+                        400
+                    );
+                }
+
+                // Close active rate
+                await trx('res_rates').where({ id: activeRate.id }).update({
+                    is_active: 0,
+                    effective_to: subtractOneDay(clearFrom)
+                });
+            }
+
+            // Insert new independent frozen rate snapshot row for the project
+            await trx('res_rates').insert({
+                resource_id: scopedResourceId,
+                rate: Number(resolvedMasterRate.rate),
+                unit_code: resolvedMasterRate.unitCode || resolvedMasterRate.unit_code || masterResource.base_unit_code,
+                effective_from: clearFrom,
+                effective_to: null,
+                is_active: 1,
+                remarks: 'Reverted to master catalog rate snapshot'
+            });
+
+            // Fix any corrupted/inverted date ranges on this resource
+            await trx('res_rates')
+                .where({ resource_id: scopedResourceId })
+                .whereRaw('effective_to IS NOT NULL AND effective_to < effective_from')
+                .update({
+                    effective_to: trx.raw('effective_from')
+                });
+
+            return true;
         }
 
-        const activeFrom = toDateOnly(activeRate.effective_from);
-        if (clearFrom < activeFrom) {
-            throw new AppError(`Cannot clear a rate effective before its own start date ${activeFrom}`, 400);
+        // Mode: Revert to computed recipe rate (applicable to items in master catalog or in projects)
+        if (resource.type !== 'item') {
+            throw new AppError('Only items can revert to a computed rate; materials and labour require a manual rate', 400);
         }
 
-        await trx('res_rates').where({ id: activeRate.id }).update({
-            is_active: 0,
-            // A clear marker is ignored by manual-rate lookup, so the old
-            // manual row must end before the clear date even on same-day clears.
-            effective_to: subtractOneDay(clearFrom)
-        });
+        if (activeRate) {
+            const activeFrom = toDateOnly(activeRate.effective_from);
+            const effectiveTo = clearFrom <= activeFrom ? activeFrom : subtractOneDay(clearFrom);
+            await trx('res_rates').where({ resource_id: scopedResourceId, is_active: 1 }).update({
+                is_active: 0,
+                effective_to: effectiveTo
+            });
+        }
 
-        // rate stays NULL — this row just marks "computed from here."
-        // The actual number is always calculated live by the resolver.
+        // rate stays NULL — marks "computed from recipe"
         await trx('res_rates').insert({
             resource_id: scopedResourceId,
             rate: null,
@@ -1831,8 +2057,16 @@ export async function clearManualRate(orgId, resourceId, effectiveFrom, projectI
             effective_from: clearFrom,
             effective_to: null,
             is_active: 1,
-            remarks: 'Reverted to computed rate'
+            remarks: 'Reverted to computed recipe rate'
         });
+
+        // Fix any corrupted/inverted date ranges on this resource
+        await trx('res_rates')
+            .where({ resource_id: scopedResourceId })
+            .whereRaw('effective_to IS NOT NULL AND effective_to < effective_from')
+            .update({
+                effective_to: trx.raw('effective_from')
+            });
 
         return true;
     });
@@ -1844,12 +2078,14 @@ export default {
     getResolvedRate,
     getResolvedRates,
     addRate,
+    updateRate,
     getRateHistory,
     createResource,
     updateResource,
     deleteResource,
     initializeResourceSchema,
     findOrCreateProjectResource,
+    importResourceToProject,
     importItemToProject,
     setCompositions,
     getCompositionHistory,
@@ -1857,5 +2093,6 @@ export default {
     removeConversion,
     bulkInsertResources,
     bulkUpdateResources,
-    clearManualRate
+    clearManualRate,
+    getCompositionColumns
 };

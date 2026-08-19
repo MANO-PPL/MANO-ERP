@@ -5,7 +5,8 @@ import {
     RotateCcw, AlertCircle, ChevronDown, ChevronRight, Copy, Eye, CheckSquare, Square,
     ArrowUp, ArrowDown, Filter, Sparkles, Check, CheckCircle2, History,
     Calendar, Package, DollarSign, ArrowLeftRight, ExternalLink, HelpCircle,
-    Info, SlidersHorizontal, ChevronLeft, Edit3, CornerDownRight, Database, FolderKanban
+    Info, SlidersHorizontal, ChevronLeft, Edit3, CornerDownRight, Database, FolderKanban,
+    AlertTriangle, Edit2, Calculator
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { projectApi } from '../../../services/projectApi';
@@ -104,8 +105,10 @@ const ProjectResourceRow = React.memo(({
     onContextMenu,
     onSaveInlineRate,
     onRevertInlineRate,
+    onRevertToComputed,
     onRemoveResource,
-    onFormChange
+    onFormChange,
+    onEditRateHistory
 }) => {
     const resId = String(resource.resource_id);
     const hasOverride = rate?.rateScope === 'project';
@@ -147,19 +150,6 @@ const ProjectResourceRow = React.memo(({
                     </div>
                 </td>
 
-                {/* Status Badge */}
-                <td className="px-2 py-2 text-center border-r border-gray-100 dark:border-white/5 select-none">
-                    {hasOverride ? (
-                        <span className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded text-[9px] font-bold bg-blue-50 text-blue-600 dark:bg-blue-950/40 dark:text-blue-300 border border-blue-200/50 dark:border-blue-500/20">
-                            <Sparkles size={9} /> OVERRIDE
-                        </span>
-                    ) : (
-                        <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[9px] font-bold bg-emerald-50 text-emerald-600 dark:bg-emerald-950/20 dark:text-emerald-400 border border-emerald-200/50 dark:border-emerald-500/10">
-                            MASTER RATE
-                        </span>
-                    )}
-                </td>
-
                 {/* Item Code */}
                 <td className="px-3 py-2 font-mono text-[11px] font-medium text-gray-600 dark:text-gray-400 border-r border-gray-100 dark:border-white/5">
                     {resource.code ? (
@@ -190,35 +180,33 @@ const ProjectResourceRow = React.memo(({
                     </span>
                 </td>
 
-                {/* Master Catalog Rate (₹) */}
-                <td className="px-3 py-2 border-r border-gray-150 dark:border-white/5 font-mono text-gray-700 dark:text-gray-300">
-                    {resource.master_rate !== null && resource.master_rate !== undefined ? (
-                        <span>₹{Number(resource.master_rate).toLocaleString('en-IN', { minimumFractionDigits: 2 })}</span>
-                    ) : (
-                        <span className="text-gray-400 italic text-[11px]">Unset</span>
-                    )}
-                </td>
-
-                {/* Project Override Rate (₹) - INLINE INTERACTIVE CELL */}
-                <td className="px-3 py-2 border-r border-gray-150 dark:border-white/5">
-                    {hasOverride ? (
-                        <div className="flex items-center justify-between gap-1.5">
-                            <span className="font-mono font-bold text-blue-600 dark:text-blue-400 text-xs">
-                                ₹{Number(rate.rate).toLocaleString('en-IN', { minimumFractionDigits: 2 })}
-                            </span>
-                            <div className="flex items-center gap-1">
-                                <button
-                                    type="button"
-                                    onClick={(e) => {
-                                        e.stopPropagation();
-                                        onToggleExpand(resource);
-                                    }}
-                                    className="p-1 rounded text-gray-400 hover:text-blue-600 hover:bg-blue-50 dark:hover:bg-white/10 cursor-pointer"
-                                    title="Edit project override"
-                                >
-                                    <Edit3 size={11} />
-                                </button>
-                                {canWrite && (
+                {/* Final Applied Effective Rate */}
+                <td className="px-4 py-2 border-r border-gray-150 dark:border-white/5 font-mono font-bold text-gray-900 dark:text-white">
+                    {ratesLoading ? (
+                        <span className="text-gray-400 font-normal italic">Resolving…</span>
+                    ) : rate?.rate !== null && rate?.rate !== undefined ? (
+                        <div className="flex items-center justify-between gap-2">
+                            <div className="flex items-baseline gap-1">
+                                <span className={`text-xs font-bold ${hasOverride ? 'text-blue-600 dark:text-blue-400' : 'text-emerald-600 dark:text-emerald-400'}`}>
+                                    ₹{Number(rate.rate).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                                </span>
+                                <span className="text-[10px] font-normal text-gray-400">
+                                    / {rate.unitCode || resource.base_unit_code}
+                                </span>
+                            </div>
+                            {hasOverride && canWrite && (
+                                <div className="flex items-center gap-0.5">
+                                    <button
+                                        type="button"
+                                        onClick={(e) => {
+                                            e.stopPropagation();
+                                            onToggleExpand(resource);
+                                        }}
+                                        className="p-1 rounded text-gray-400 hover:text-blue-600 hover:bg-blue-50 dark:hover:bg-white/10 cursor-pointer"
+                                        title="Edit project override"
+                                    >
+                                        <Edit3 size={11} />
+                                    </button>
                                     <button
                                         type="button"
                                         onClick={(e) => {
@@ -230,12 +218,25 @@ const ProjectResourceRow = React.memo(({
                                     >
                                         <RotateCcw size={11} />
                                     </button>
-                                )}
-                            </div>
+                                </div>
+                            )}
+                            {!hasOverride && canWrite && (
+                                <button
+                                    type="button"
+                                    onClick={(e) => {
+                                        e.stopPropagation();
+                                        onToggleExpand(resource);
+                                    }}
+                                    className="opacity-0 group-hover/row:opacity-100 px-1.5 py-0.5 text-[10px] font-bold text-blue-600 dark:text-blue-400 hover:bg-blue-50 dark:hover:bg-white/10 rounded transition cursor-pointer"
+                                    title="Set project override rate"
+                                >
+                                    + Override
+                                </button>
+                            )}
                         </div>
                     ) : (
-                        <div className="flex items-center justify-between gap-1 text-gray-400">
-                            <span className="text-[11px] italic">Inherits master</span>
+                        <div className="flex items-center justify-between gap-1">
+                            <span className="text-gray-400 font-normal italic text-[11px]">Unset</span>
                             {canWrite && (
                                 <button
                                     type="button"
@@ -245,40 +246,22 @@ const ProjectResourceRow = React.memo(({
                                     }}
                                     className="px-1.5 py-0.5 text-[10px] font-bold text-blue-600 dark:text-blue-400 hover:bg-blue-50 dark:hover:bg-white/10 rounded transition cursor-pointer"
                                 >
-                                    + Override
+                                    + Set Rate
                                 </button>
                             )}
                         </div>
                     )}
                 </td>
 
-                {/* Final Applied Effective Rate */}
-                <td className="px-4 py-2 border-r border-gray-150 dark:border-white/5 font-mono font-bold text-gray-900 dark:text-white">
-                    {ratesLoading ? (
-                        <span className="text-gray-400 font-normal italic">Resolving…</span>
-                    ) : rate?.rate !== null && rate?.rate !== undefined ? (
-                        <div className="flex items-baseline gap-1">
-                            <span className="text-xs text-emerald-600 dark:text-emerald-400 font-bold">
-                                ₹{Number(rate.rate).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                            </span>
-                            <span className="text-[10px] font-normal text-gray-400">
-                                / {rate.unitCode || resource.base_unit_code}
-                            </span>
-                        </div>
-                    ) : (
-                        <span className="text-gray-400 font-normal">—</span>
-                    )}
-                </td>
-
                 {/* Rate Source */}
                 <td className="px-3 py-2 border-r border-gray-150 dark:border-white/5">
                     {hasOverride ? (
-                        <span className="inline-flex items-center gap-1 text-[11px] font-bold text-blue-600 dark:text-blue-400">
-                            <CheckCircle2 size={12} className="shrink-0" />
+                        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-bold bg-blue-50 text-blue-600 dark:bg-blue-950/40 dark:text-blue-300 border border-blue-200/50 dark:border-blue-500/20">
+                            <Sparkles size={10} />
                             <span>Project Override</span>
                         </span>
                     ) : (
-                        <span className="inline-flex items-center gap-1 text-[11px] font-semibold text-emerald-600 dark:text-emerald-400">
+                        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-semibold bg-emerald-50 text-emerald-600 dark:bg-emerald-950/20 dark:text-emerald-400 border border-emerald-200/50 dark:border-emerald-500/10">
                             <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
                             <span>Master Rate</span>
                         </span>
@@ -323,7 +306,7 @@ const ProjectResourceRow = React.memo(({
             {/* ─── INLINE EXPANDED SUB-SHEET (INSTANT RENDER WITH CUSTOM DATEPICKER & CUSTOM SELECT) ─── */}
             {isExpanded && (
                 <tr className="bg-gray-50/70 dark:bg-[#161b22]/70 border-b-2 border-blue-500/30">
-                    <td colSpan={11} className="p-0">
+                    <td colSpan={8} className="p-0">
                         <div className="p-4 md:p-5 space-y-4 border-l-4 border-blue-600 dark:border-blue-500 bg-gradient-to-r from-blue-50/30 via-white/50 to-transparent dark:from-blue-950/20 dark:via-[#161b22]/50">
                             {/* Comparison Header */}
                             <div className="flex flex-wrap items-center justify-between gap-3 pb-3 border-b border-gray-200/80 dark:border-white/10">
@@ -412,26 +395,40 @@ const ProjectResourceRow = React.memo(({
                                             />
                                         </div>
 
-                                        <div className="flex items-center gap-1.5">
+                                        <div className="flex items-center gap-1.5 flex-wrap">
                                             <button
                                                 type="button"
                                                 disabled={rowDetail?.saving || !rowDetail?.form?.rate}
                                                 onClick={() => onSaveInlineRate(resource)}
-                                                className="flex-1 flex items-center justify-center gap-1 px-3 py-1.5 rounded-lg bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold transition shadow-xs active:scale-95 cursor-pointer disabled:opacity-50 h-[34px]"
+                                                className="flex items-center justify-center gap-1 px-3 py-1.5 rounded-lg bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold transition shadow-xs active:scale-95 cursor-pointer disabled:opacity-50 h-[34px]"
                                             >
                                                 {rowDetail?.saving ? <RefreshCw size={12} className="animate-spin" /> : <Check size={12} className="stroke-[3]" />}
                                                 <span>Save Rate</span>
                                             </button>
+
+                                            {isItemResource(resource) && rowDetail?.activeProjectRate && (
+                                                <button
+                                                    type="button"
+                                                    disabled={rowDetail?.saving}
+                                                    onClick={() => onRevertToComputed && onRevertToComputed(resource)}
+                                                    className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-purple-300 dark:border-purple-500/30 bg-purple-50/50 dark:bg-purple-950/20 text-purple-700 dark:text-purple-300 hover:bg-purple-100 text-xs font-bold transition active:scale-95 cursor-pointer h-[34px]"
+                                                    title="Revert project item to dynamic recipe calculation"
+                                                >
+                                                    <Calculator size={12} />
+                                                    <span>Revert to Computed Recipe</span>
+                                                </button>
+                                            )}
 
                                             {rowDetail?.activeProjectRate && (
                                                 <button
                                                     type="button"
                                                     disabled={rowDetail?.saving}
                                                     onClick={() => onRevertInlineRate(resource)}
-                                                    className="px-2.5 py-1.5 rounded-lg border border-amber-200 dark:border-amber-500/30 text-amber-700 dark:text-amber-400 hover:bg-amber-50 dark:hover:bg-amber-950/20 text-xs font-bold transition active:scale-95 cursor-pointer h-[34px]"
-                                                    title="Revert override to master rate"
+                                                    className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-amber-300 dark:border-amber-500/30 bg-amber-50/50 dark:bg-amber-950/20 text-amber-700 dark:text-amber-300 hover:bg-amber-100 text-xs font-bold transition active:scale-95 cursor-pointer h-[34px]"
+                                                    title="Revert project override to master catalog rate"
                                                 >
                                                     <RotateCcw size={12} />
+                                                    <span>Revert to Master Rate</span>
                                                 </button>
                                             )}
                                         </div>
@@ -462,6 +459,7 @@ const ProjectResourceRow = React.memo(({
                                                     <th className="px-3 py-1.5">Effective From</th>
                                                     <th className="px-3 py-1.5">Effective To</th>
                                                     <th className="px-3 py-1.5">Remarks</th>
+                                                    <th className="px-3 py-1.5 text-center">Actions</th>
                                                 </tr>
                                             </thead>
                                             <tbody className="divide-y divide-gray-100 dark:divide-white/5 font-sans text-xs">
@@ -481,11 +479,34 @@ const ProjectResourceRow = React.memo(({
                                                                 )}
                                                             </td>
                                                             <td className="px-3 py-1.5 font-mono font-bold text-gray-900 dark:text-white">
-                                                                ₹{Number(hRow.rate).toLocaleString('en-IN', { minimumFractionDigits: 2 })} <span className="text-gray-400 font-normal text-[10px]">/ {hRow.unit_code}</span>
+                                                                {hRow.rate !== null && hRow.rate !== undefined ? (
+                                                                    <>₹{Number(hRow.rate).toLocaleString('en-IN', { minimumFractionDigits: 2 })} <span className="text-gray-400 font-normal text-[10px]">/ {hRow.unit_code}</span></>
+                                                                ) : (
+                                                                    <span className="inline-flex items-center gap-1 text-[10px] px-1.5 py-0.5 rounded font-bold bg-purple-50 dark:bg-purple-950/40 text-purple-700 dark:text-purple-300 border border-purple-200 dark:border-purple-500/30">
+                                                                        <Calculator size={10} />
+                                                                        Computed
+                                                                    </span>
+                                                                )}
                                                             </td>
                                                             <td className="px-3 py-1.5 font-mono text-[10px] text-gray-600 dark:text-gray-400">{hRow.effective_from}</td>
                                                             <td className="px-3 py-1.5 font-mono text-[10px] text-gray-600 dark:text-gray-400">{hRow.effective_to || 'Present'}</td>
                                                             <td className="px-3 py-1.5 text-gray-500 dark:text-gray-400 text-[11px] truncate max-w-xs">{hRow.remarks || '—'}</td>
+                                                            <td className="px-3 py-1.5 text-center">
+                                                                {canWrite && (
+                                                                    <button
+                                                                        type="button"
+                                                                        onClick={(e) => {
+                                                                            e.stopPropagation();
+                                                                            if (onEditRateHistory) onEditRateHistory(resource, hRow);
+                                                                        }}
+                                                                        className="inline-flex items-center gap-1 px-2 py-0.5 text-[10px] font-bold text-gray-600 dark:text-gray-300 hover:text-blue-600 dark:hover:text-blue-400 bg-gray-100 hover:bg-blue-50 dark:bg-white/5 dark:hover:bg-blue-950/40 rounded border border-gray-200 dark:border-white/10 transition cursor-pointer"
+                                                                        title="Edit this rate record"
+                                                                    >
+                                                                        <Edit2 size={10} />
+                                                                        <span>Edit</span>
+                                                                    </button>
+                                                                )}
+                                                            </td>
                                                         </tr>
                                                     );
                                                 })}
@@ -535,18 +556,7 @@ const MasterResourceRow = React.memo(({
                 <span>{rowIndex + 1}</span>
             </td>
 
-            {/* Status Badge */}
-            <td className="px-2 py-2 text-center border-r border-gray-100 dark:border-white/5 select-none">
-                {resource.isImported ? (
-                    <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[9px] font-bold bg-blue-50 text-blue-600 dark:bg-blue-950/40 dark:text-blue-400 border border-blue-200/50 dark:border-blue-500/20">
-                        IMPORTED
-                    </span>
-                ) : (
-                    <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[9px] font-bold bg-gray-100 text-gray-500 dark:bg-white/5 dark:text-gray-400 border border-gray-200/60 dark:border-white/5">
-                        AVAILABLE
-                    </span>
-                )}
-            </td>
+
 
             {/* Item Code */}
             <td className="px-3 py-2 font-mono text-[11px] font-medium text-gray-600 dark:text-gray-400 border-r border-gray-100 dark:border-white/5">
@@ -636,8 +646,9 @@ const MasterResourceRow = React.memo(({
 });
 
 // ─── MAIN COMPONENT ───────────────────────────────────────────────────────────
-const ProjectResourceList = ({ onBack, setExtraBreadcrumbs, canWrite }) => {
-    const { id: projectId } = useParams();
+const ProjectResourceList = ({ onBack, setExtraBreadcrumbs, canWrite, projectId: propProjectId, onRefreshResources }) => {
+    const { id: paramId } = useParams();
+    const projectId = propProjectId || paramId;
 
     // Active View Tab: 'project' (Project Resources) or 'master' (Master Data)
     const [activeTab, setActiveTab] = useState('project');
@@ -677,6 +688,10 @@ const ProjectResourceList = ({ onBack, setExtraBreadcrumbs, canWrite }) => {
     const [selectedIds, setSelectedIds] = useState(new Set());
     const tableContainerRef = useRef(null);
     const searchInputRef = useRef(null);
+
+    // Rate History Editing State
+    const [editingRateHistory, setEditingRateHistory] = useState(null);
+    const [isSavingHistoryEdit, setIsSavingHistoryEdit] = useState(false);
 
     // Toast & Confirm Modal
     const [toast, setToast] = useState(null);
@@ -781,7 +796,7 @@ const ProjectResourceList = ({ onBack, setExtraBreadcrumbs, canWrite }) => {
 
             const [projectResponse, masterResponse] = await Promise.all([
                 projectApi.listProjectResources(projectId),
-                resourceApi.getResources({ type: 'item', limit: 5000, include_details: false })
+                resourceApi.getResources({ type: 'item', limit: 5000, include_details: 'false', include_rates: 'false' })
             ]);
 
             const projectResources = projectResponse.resources || [];
@@ -1014,10 +1029,10 @@ const ProjectResourceList = ({ onBack, setExtraBreadcrumbs, canWrite }) => {
         const resId = String(resource.resource_id ?? resource.id);
         try {
             const [resolvedResponse, historyResponse] = await Promise.all([
-                projectApi.getResolvedResourceRate(projectId, resource.resource_id, effectiveDate),
-                projectApi.getResourceRateHistory(projectId, resource.resource_id)
+                projectApi.getResolvedResourceRate(projectId, resource.resource_id, effectiveDate).catch(() => ({ rate: null })),
+                projectApi.getResourceRateHistory(projectId, resource.resource_id).catch(() => ({ rates: [] }))
             ]);
-            const history = historyResponse.rates || [];
+            const history = historyResponse?.rates || [];
             const activeProjectRate = history.find(row => Number(row.is_active) === 1 && row.rate !== null && row.rate !== undefined);
 
             setRowRateDetails(prev => ({
@@ -1172,39 +1187,154 @@ const ProjectResourceList = ({ onBack, setExtraBreadcrumbs, canWrite }) => {
         });
     }, [projectId, rowRateDetails, closeConfirmModal, loadInlineRateDetails, showToast]);
 
+    // ─── EDIT HISTORICAL RATE VERSION ──────────────────────────────────────────
+    const handleOpenEditRateHistory = useCallback((resource, historyRow) => {
+        const isComputed = historyRow.rate === null || historyRow.rate === undefined || String(historyRow.remarks || '').toLowerCase().includes('computed');
+        setEditingRateHistory({
+            resource,
+            id: historyRow.id,
+            mode: (resource?.type === 'item' && isComputed) ? 'computed' : 'manual',
+            rate: historyRow.rate !== null && historyRow.rate !== undefined ? String(historyRow.rate) : '',
+            unit_code: historyRow.unit_code || resource.base_unit_code || 'nos',
+            effective_from: dateOnly(historyRow.effective_from),
+            effective_to: historyRow.effective_to ? dateOnly(historyRow.effective_to) : '',
+            remarks: historyRow.remarks || ''
+        });
+    }, []);
+
+    const handleSaveRateHistoryEdit = useCallback(async (e) => {
+        e.preventDefault();
+        if (!editingRateHistory) return;
+        setIsSavingHistoryEdit(true);
+
+        const { resource, id, mode, rate, unit_code, effective_from, effective_to, remarks } = editingRateHistory;
+        const resId = String(resource.resource_id ?? resource.id);
+        const isComputedMode = mode === 'computed';
+
+        try {
+            await projectApi.updateResourceRate(projectId, resource.resource_id, id, {
+                mode: isComputedMode ? 'computed' : 'manual',
+                rate: isComputedMode ? null : parseFloat(rate),
+                unit_code,
+                effective_from,
+                effective_to: effective_to || null,
+                remarks: remarks || (isComputedMode ? 'Dynamic recipe calculation' : undefined)
+            });
+
+            showToast('success', 'Rate Version Updated', isComputedMode ? 'Switched to dynamic computed recipe.' : `Historical rate record updated for ${resource.name}.`);
+            setEditingRateHistory(null);
+
+            // Reload row history and rate details
+            await loadInlineRateDetails(resource);
+
+            // Re-resolve rate for this item
+            const rateResp = await projectApi.getResolvedResourceRate(projectId, resource.resource_id, effectiveDate);
+            if (rateResp?.rate) {
+                setResolvedRates(prev => ({ ...prev, [resId]: rateResp.rate }));
+            }
+        } catch (err) {
+            showToast('error', 'Update Failed', err.response?.data?.message || err.message || 'Failed to update rate record');
+        } finally {
+            setIsSavingHistoryEdit(false);
+        }
+    }, [projectId, editingRateHistory, effectiveDate, loadInlineRateDetails, showToast]);
+
+    // ─── REVERT PROJECT ITEM TO COMPUTED RECIPE ────────────────────────────────
+    const handleRevertToComputedInline = useCallback(async (resource) => {
+        const resId = String(resource.resource_id ?? resource.id);
+        const detail = rowRateDetails[resId];
+        const effFrom = detail?.form?.effectiveFrom || effectiveDate;
+
+        setConfirmModal({
+            isOpen: true,
+            title: 'Revert to Computed Recipe Rate?',
+            message: `Are you sure you want to clear the manual rate override for "${resource.name}"? The project item will calculate dynamically from its composition recipe.`,
+            confirmText: 'Revert to Computed',
+            cancelText: 'Cancel',
+            variant: 'primary',
+            isLoading: false,
+            onConfirm: async () => {
+                setRowRateDetails(prev => ({
+                    ...prev,
+                    [resId]: { ...prev[resId], saving: true }
+                }));
+                try {
+                    await projectApi.clearResourceRate(projectId, resource.resource_id, effFrom, 'computed');
+                    showToast('success', 'Reverted to Computed Recipe', `Project item "${resource.name}" now calculates dynamically from recipe.`);
+                    closeConfirmModal();
+
+                    // Re-resolve rate for this item
+                    const rateResp = await projectApi.getResolvedResourceRate(projectId, resource.resource_id, effectiveDate);
+                    if (rateResp?.rate) {
+                        setResolvedRates(prev => ({ ...prev, [resId]: rateResp.rate }));
+                    }
+                    await loadInlineRateDetails(resource);
+                } catch (err) {
+                    showToast('error', 'Revert Failed', err.response?.data?.message || 'Failed to revert to computed rate');
+                    closeConfirmModal();
+                    setRowRateDetails(prev => ({
+                        ...prev,
+                        [resId]: { ...prev[resId], saving: false }
+                    }));
+                }
+            }
+        });
+    }, [projectId, rowRateDetails, effectiveDate, closeConfirmModal, loadInlineRateDetails, showToast]);
+
     // ─── HIGH SPEED ADD SINGLE RESOURCE (OPTIMISTIC & INSTANT) ─────────────────
     const handleAddResource = useCallback(async (resource) => {
         const resId = resource.id || resource.resource_id;
 
-        // Optimistically update local state immediately
-        setAllResources(prev => prev.map(item => item.id === resId ? { ...item, isImported: true } : item));
+        // Optimistically update local state immediately with type-tolerant comparisons
+        setAllResources(prev => {
+            const next = prev.map(item => String(item.id) === String(resId) ? { ...item, isImported: true } : item);
+            try {
+                const currentCache = JSON.parse(sessionStorage.getItem(`mano_proj_grid_${projectId}`) || '{}');
+                sessionStorage.setItem(`mano_proj_grid_${projectId}`, JSON.stringify({ ...currentCache, allResources: next }));
+            } catch (e) { }
+            return next;
+        });
+
         setResources(prev => {
-            if (prev.some(r => r.resource_id === resId)) return prev;
-            return [...prev, {
+            if (prev.some(r => String(r.resource_id) === String(resId))) return prev;
+            const next = [...prev, {
                 ...resource,
                 id: resId,
                 resource_id: resId,
                 isImported: true
             }];
+            try {
+                const currentCache = JSON.parse(sessionStorage.getItem(`mano_proj_grid_${projectId}`) || '{}');
+                sessionStorage.setItem(`mano_proj_grid_${projectId}`, JSON.stringify({ ...currentCache, resources: next }));
+            } catch (e) { }
+            return next;
         });
+
         showToast('success', 'Resource Imported', `${resource.name} added to project.`);
 
         try {
             await projectApi.importResource(projectId, resId, effectiveDate);
 
-            // Resolve rate in background for new item
-            const rateResp = await projectApi.getResolvedResourceRate(projectId, resId, effectiveDate);
-            if (rateResp?.rate) {
-                setResolvedRates(prev => ({ ...prev, [String(resId)]: rateResp.rate }));
+            // Notify parent to refresh counts without blocking UI
+            if (onRefreshResources) onRefreshResources();
+
+            // Resolve rate in background for new item (isolated try/catch so unresolved rate doesn't abort import)
+            try {
+                const rateResp = await projectApi.getResolvedResourceRate(projectId, resId, effectiveDate);
+                if (rateResp?.rate) {
+                    setResolvedRates(prev => ({ ...prev, [String(resId)]: rateResp.rate }));
+                }
+            } catch (rateErr) {
+                console.warn('Rate not yet configured for imported item:', rateErr);
             }
         } catch (err) {
             console.error('Failed to import resource into project:', err);
             showToast('error', 'Import Failed', err.response?.data?.message || 'Failed to import resource into project');
-            // Rollback on failure
-            setAllResources(prev => prev.map(item => item.id === resId ? { ...item, isImported: false } : item));
-            setResources(prev => prev.filter(r => r.resource_id !== resId));
+            // Rollback on genuine import failure
+            setAllResources(prev => prev.map(item => String(item.id) === String(resId) ? { ...item, isImported: false } : item));
+            setResources(prev => prev.filter(r => String(r.resource_id) !== String(resId)));
         }
-    }, [projectId, effectiveDate, showToast]);
+    }, [projectId, effectiveDate, showToast, onRefreshResources]);
 
     // ─── HIGH SPEED BULK IMPORT (SINGLE BATCH API CALL) ────────────────────────
     const handleBulkImport = useCallback(async () => {
@@ -1215,17 +1345,31 @@ const ProjectResourceList = ({ onBack, setExtraBreadcrumbs, canWrite }) => {
         }
 
         const idsToImport = unimportedSelected.map(r => r.resource_id);
-        const idsSet = new Set(idsToImport);
+        const idsSet = new Set(idsToImport.map(String));
 
         // Optimistically mark items as imported immediately!
-        setAllResources(prev => prev.map(item => idsSet.has(item.id) ? { ...item, isImported: true } : item));
-        setResources(prev => {
-            const existingIds = new Set(prev.map(r => r.resource_id));
-            const newItems = unimportedSelected
-                .filter(r => !existingIds.has(r.resource_id))
-                .map(r => ({ ...r, isImported: true }));
-            return [...prev, ...newItems];
+        setAllResources(prev => {
+            const next = prev.map(item => idsSet.has(String(item.id)) ? { ...item, isImported: true } : item);
+            try {
+                const currentCache = JSON.parse(sessionStorage.getItem(`mano_proj_grid_${projectId}`) || '{}');
+                sessionStorage.setItem(`mano_proj_grid_${projectId}`, JSON.stringify({ ...currentCache, allResources: next }));
+            } catch (e) { }
+            return next;
         });
+
+        setResources(prev => {
+            const existingIds = new Set(prev.map(r => String(r.resource_id)));
+            const newItems = unimportedSelected
+                .filter(r => !existingIds.has(String(r.resource_id)))
+                .map(r => ({ ...r, isImported: true }));
+            const next = [...prev, ...newItems];
+            try {
+                const currentCache = JSON.parse(sessionStorage.getItem(`mano_proj_grid_${projectId}`) || '{}');
+                sessionStorage.setItem(`mano_proj_grid_${projectId}`, JSON.stringify({ ...currentCache, resources: next }));
+            } catch (e) { }
+            return next;
+        });
+
         setSelectedIds(new Set());
         showToast('success', 'Importing Items...', `Importing ${idsToImport.length} item(s) in batch...`);
 
@@ -1233,17 +1377,24 @@ const ProjectResourceList = ({ onBack, setExtraBreadcrumbs, canWrite }) => {
             await projectApi.importResourcesBatch(projectId, idsToImport, effectiveDate);
             showToast('success', 'Bulk Import Complete', `Successfully imported ${idsToImport.length} item(s) to project.`);
 
-            // Resolve rates in background for imported batch
-            const ratesResp = await projectApi.getResolvedResourceRates(projectId, idsToImport, effectiveDate);
-            if (ratesResp?.rates) {
-                const newRates = Object.fromEntries((ratesResp.rates || []).map(r => [String(r.resourceId), r]));
-                setResolvedRates(prev => ({ ...prev, ...newRates }));
+            // Notify parent to refresh counts
+            if (onRefreshResources) onRefreshResources();
+
+            // Resolve rates in background for imported batch (isolated try/catch)
+            try {
+                const ratesResp = await projectApi.getResolvedResourceRates(projectId, idsToImport, effectiveDate);
+                if (ratesResp?.rates) {
+                    const newRates = Object.fromEntries((ratesResp.rates || []).map(r => [String(r.resourceId), r]));
+                    setResolvedRates(prev => ({ ...prev, ...newRates }));
+                }
+            } catch (ratesErr) {
+                console.warn('Failed resolving batch rates:', ratesErr);
             }
         } catch (err) {
             showToast('error', 'Bulk Import Error', err.response?.data?.message || 'Error occurred during bulk import.');
             fetchResources(true);
         }
-    }, [paginatedResources, selectedIds, projectId, effectiveDate, showToast, fetchResources]);
+    }, [paginatedResources, selectedIds, projectId, effectiveDate, showToast, fetchResources, onRefreshResources]);
 
     // Remove Single Resource from Project
     const handleRemoveResource = useCallback((resource) => {
@@ -1263,20 +1414,35 @@ const ProjectResourceList = ({ onBack, setExtraBreadcrumbs, canWrite }) => {
                     closeConfirmModal();
 
                     // Update state locally
-                    setResources(prev => prev.filter(r => r.resource_id !== resId));
-                    setAllResources(prev => prev.map(item => item.id === resId ? { ...item, isImported: false } : item));
+                    setResources(prev => {
+                        const next = prev.filter(r => String(r.resource_id) !== String(resId));
+                        try {
+                            const currentCache = JSON.parse(sessionStorage.getItem(`mano_proj_grid_${projectId}`) || '{}');
+                            sessionStorage.setItem(`mano_proj_grid_${projectId}`, JSON.stringify({ ...currentCache, resources: next }));
+                        } catch (e) { }
+                        return next;
+                    });
+                    setAllResources(prev => {
+                        const next = prev.map(item => String(item.id) === String(resId) ? { ...item, isImported: false } : item);
+                        try {
+                            const currentCache = JSON.parse(sessionStorage.getItem(`mano_proj_grid_${projectId}`) || '{}');
+                            sessionStorage.setItem(`mano_proj_grid_${projectId}`, JSON.stringify({ ...currentCache, allResources: next }));
+                        } catch (e) { }
+                        return next;
+                    });
                     setResolvedRates(prev => {
                         const next = { ...prev };
                         delete next[String(resId)];
                         return next;
                     });
+                    if (onRefreshResources) onRefreshResources();
                 } catch (err) {
                     showToast('error', 'Removal Failed', err.response?.data?.message || 'Failed to remove resource from project');
                     closeConfirmModal();
                 }
             }
         });
-    }, [projectId, closeConfirmModal, showToast]);
+    }, [projectId, closeConfirmModal, showToast, onRefreshResources]);
 
     // Bulk Remove Resources from Project
     const handleBulkRemove = useCallback(() => {
@@ -1531,18 +1697,7 @@ const ProjectResourceList = ({ onBack, setExtraBreadcrumbs, canWrite }) => {
                     </div>
                 </div>
 
-                {/* Right Side: Custom Date Picker for Effective Date */}
-                <div className="flex items-center gap-2 shrink-0">
-                    <div className="flex items-center gap-2">
-                        <span className="text-[11px] font-semibold text-gray-400 uppercase tracking-wider">Effective:</span>
-                        <div className="w-44">
-                            <CustomDatePicker
-                                value={effectiveDate}
-                                onChange={(e) => handleDateChange(e.target.value)}
-                            />
-                        </div>
-                    </div>
-                </div>
+
             </div>
 
             {/* Error banner if any */}
@@ -1637,9 +1792,6 @@ const ProjectResourceList = ({ onBack, setExtraBreadcrumbs, canWrite }) => {
                                 {/* Row # & Expand Header */}
                                 <th className="px-2 py-3 w-14 text-center border-r border-gray-150 dark:border-white/5">#</th>
 
-                                {/* Rate Status */}
-                                <th className="px-2 py-3 w-28 text-center border-r border-gray-150 dark:border-white/5">Status</th>
-
                                 {/* Item Code */}
                                 <th
                                     onClick={() => handleSort('code')}
@@ -1673,30 +1825,12 @@ const ProjectResourceList = ({ onBack, setExtraBreadcrumbs, canWrite }) => {
                                     </div>
                                 </th>
 
-                                {/* Master Rate (INR) */}
-                                <th
-                                    onClick={() => handleSort('master_rate')}
-                                    className="px-3 py-3 w-36 border-r border-gray-150 dark:border-white/5 cursor-pointer hover:bg-gray-100 dark:hover:bg-white/5 transition"
-                                >
-                                    <div className="flex items-center justify-between">
-                                        <span>Master Rate (₹)</span>
-                                        {sortConfig.key === 'master_rate' && (sortConfig.direction === 'asc' ? <ArrowUp size={12} /> : <ArrowDown size={12} />)}
-                                    </div>
-                                </th>
-
                                 {activeTab === 'project' && (
                                     <>
-                                        {/* Project Override Rate (INR) */}
-                                        <th className="px-3 py-3 w-48 border-r border-gray-150 dark:border-white/5">
-                                            <div className="flex items-center justify-between">
-                                                <span>Project Override (₹)</span>
-                                            </div>
-                                        </th>
-
                                         {/* Applied Effective Rate */}
                                         <th
                                             onClick={() => handleSort('rate')}
-                                            className="px-4 py-3 w-40 border-r border-gray-150 dark:border-white/5 cursor-pointer hover:bg-gray-100 dark:hover:bg-white/5 transition"
+                                            className="px-4 py-3 w-48 border-r border-gray-150 dark:border-white/5 cursor-pointer hover:bg-gray-100 dark:hover:bg-white/5 transition"
                                         >
                                             <div className="flex items-center justify-between">
                                                 <span>Applied Rate (₹)</span>
@@ -1718,15 +1852,28 @@ const ProjectResourceList = ({ onBack, setExtraBreadcrumbs, canWrite }) => {
                                 )}
 
                                 {activeTab === 'master' && (
-                                    <th
-                                        onClick={() => handleSort('isImported')}
-                                        className="px-3 py-3 w-36 border-r border-gray-150 dark:border-white/5 cursor-pointer hover:bg-gray-100 dark:hover:bg-white/5 transition"
-                                    >
-                                        <div className="flex items-center justify-between">
-                                            <span>Project Status</span>
-                                            {sortConfig.key === 'isImported' && (sortConfig.direction === 'asc' ? <ArrowUp size={12} /> : <ArrowDown size={12} />)}
-                                        </div>
-                                    </th>
+                                    <>
+                                        {/* Master Rate (INR) */}
+                                        <th
+                                            onClick={() => handleSort('master_rate')}
+                                            className="px-3 py-3 w-36 border-r border-gray-150 dark:border-white/5 cursor-pointer hover:bg-gray-100 dark:hover:bg-white/5 transition"
+                                        >
+                                            <div className="flex items-center justify-between">
+                                                <span>Master Rate (₹)</span>
+                                                {sortConfig.key === 'master_rate' && (sortConfig.direction === 'asc' ? <ArrowUp size={12} /> : <ArrowDown size={12} />)}
+                                            </div>
+                                        </th>
+
+                                        <th
+                                            onClick={() => handleSort('isImported')}
+                                            className="px-3 py-3 w-36 border-r border-gray-150 dark:border-white/5 cursor-pointer hover:bg-gray-100 dark:hover:bg-white/5 transition"
+                                        >
+                                            <div className="flex items-center justify-between">
+                                                <span>Project Status</span>
+                                                {sortConfig.key === 'isImported' && (sortConfig.direction === 'asc' ? <ArrowUp size={12} /> : <ArrowDown size={12} />)}
+                                            </div>
+                                        </th>
+                                    </>
                                 )}
 
                                 <th className="px-4 py-3 w-32 text-center">Actions</th>
@@ -1737,7 +1884,7 @@ const ProjectResourceList = ({ onBack, setExtraBreadcrumbs, canWrite }) => {
                             {loading ? (
                                 Array.from({ length: 8 }).map((_, i) => (
                                     <tr key={`skel-row-${i}`} className="animate-pulse">
-                                        {Array.from({ length: activeTab === 'project' ? 11 : 9 }).map((_, j) => (
+                                        {Array.from({ length: 8 }).map((_, j) => (
                                             <td key={`skel-cell-${i}-${j}`} className="px-3 py-3.5 border-r border-gray-100 dark:border-white/5">
                                                 <div className="h-3 bg-gray-100 dark:bg-white/5 rounded"></div>
                                             </td>
@@ -1746,7 +1893,7 @@ const ProjectResourceList = ({ onBack, setExtraBreadcrumbs, canWrite }) => {
                                 ))
                             ) : paginatedResources.length === 0 ? (
                                 <tr>
-                                    <td colSpan={activeTab === 'project' ? 11 : 9} className="py-24 text-center">
+                                    <td colSpan={8} className="py-24 text-center">
                                         <div className="flex flex-col items-center gap-3">
                                             <Package className="text-gray-300 dark:text-white/10" size={44} />
                                             <p className="text-sm font-semibold text-gray-500 dark:text-gray-400">
@@ -1793,8 +1940,10 @@ const ProjectResourceList = ({ onBack, setExtraBreadcrumbs, canWrite }) => {
                                                 onContextMenu={handleContextMenu}
                                                 onSaveInlineRate={handleSaveInlineRate}
                                                 onRevertInlineRate={handleRevertInlineRate}
+                                                onRevertToComputed={handleRevertToComputedInline}
                                                 onRemoveResource={handleRemoveResource}
                                                 onFormChange={handleFormChange}
+                                                onEditRateHistory={handleOpenEditRateHistory}
                                             />
                                         );
                                     } else {
@@ -1944,6 +2093,171 @@ const ProjectResourceList = ({ onBack, setExtraBreadcrumbs, canWrite }) => {
                             </>
                         );
                     })()}
+                </div>
+            )}
+
+            {/* Edit Historical Rate Modal with Warning Banner */}
+            {editingRateHistory && (
+                <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-xs">
+                    <motion.div
+                        initial={{ opacity: 0, scale: 0.95, y: 10 }}
+                        animate={{ opacity: 1, scale: 1, y: 0 }}
+                        className="w-full max-w-lg bg-white dark:bg-[#161b22] border border-gray-200 dark:border-white/10 rounded-2xl shadow-2xl overflow-hidden flex flex-col"
+                    >
+                        {/* Modal Header */}
+                        <div className="px-6 py-4 border-b border-gray-200 dark:border-white/10 flex items-center justify-between">
+                            <div>
+                                <h3 className="text-sm font-bold text-gray-900 dark:text-white">
+                                    Edit Project Rate Record
+                                </h3>
+                                <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">
+                                    {editingRateHistory.resource?.name}
+                                </p>
+                            </div>
+                            <button
+                                type="button"
+                                onClick={() => setEditingRateHistory(null)}
+                                className="p-1.5 text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 rounded-lg hover:bg-gray-100 dark:hover:bg-white/10 transition cursor-pointer"
+                            >
+                                <X size={16} />
+                            </button>
+                        </div>
+
+                        {/* Warning Alert Banner */}
+                        <div className="p-4 mx-6 mt-4 bg-amber-50 dark:bg-amber-950/30 border border-amber-300 dark:border-amber-500/40 rounded-xl flex items-start gap-3">
+                            <AlertTriangle size={18} className="text-amber-600 dark:text-amber-400 shrink-0 mt-0.5" />
+                            <div>
+                                <h4 className="text-xs font-bold text-amber-800 dark:text-amber-300">
+                                    Caution: Modifying Historical Rate Records
+                                </h4>
+                                <p className="text-[11px] text-amber-700/90 dark:text-amber-300/80 mt-0.5 leading-relaxed">
+                                    Directly updating an existing rate version alters historical records. Any calculations, purchase orders, or ledgers referencing this date period will recalculate based on these revised figures.
+                                </p>
+                            </div>
+                        </div>
+
+                        {/* Edit Form */}
+                        <form onSubmit={handleSaveRateHistoryEdit} className="p-6 space-y-4">
+                            {editingRateHistory.resource?.type === 'item' && (
+                                <div className="space-y-2">
+                                    <label className="block text-[10px] font-bold uppercase text-gray-400">Rate Calculation Mode</label>
+                                    <div className="flex items-center gap-2 p-1 bg-gray-100 dark:bg-[#0d1117] rounded-xl border border-gray-200 dark:border-white/10">
+                                        <button
+                                            type="button"
+                                            onClick={() => setEditingRateHistory(prev => ({ ...prev, mode: 'computed' }))}
+                                            className={`flex-1 py-2 px-3 rounded-lg text-xs font-bold transition flex items-center justify-center gap-1.5 cursor-pointer ${
+                                                editingRateHistory.mode === 'computed'
+                                                    ? 'bg-purple-600 text-white shadow-sm'
+                                                    : 'text-gray-500 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white'
+                                            }`}
+                                        >
+                                            <Calculator size={13} />
+                                            <span>Dynamic Computed Recipe</span>
+                                        </button>
+                                        <button
+                                            type="button"
+                                            onClick={() => setEditingRateHistory(prev => ({ ...prev, mode: 'manual' }))}
+                                            className={`flex-1 py-2 px-3 rounded-lg text-xs font-bold transition flex items-center justify-center gap-1.5 cursor-pointer ${
+                                                editingRateHistory.mode === 'manual'
+                                                    ? 'bg-blue-600 text-white shadow-sm'
+                                                    : 'text-gray-500 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white'
+                                            }`}
+                                        >
+                                            <Edit2 size={13} />
+                                            <span>Fixed Manual Override</span>
+                                        </button>
+                                    </div>
+                                </div>
+                            )}
+
+                            {editingRateHistory.mode === 'computed' ? (
+                                <div className="p-4 bg-purple-50 dark:bg-purple-950/30 border border-purple-200 dark:border-purple-500/30 rounded-xl space-y-1">
+                                    <div className="flex items-center gap-2 text-purple-700 dark:text-purple-300 font-bold text-xs">
+                                        <Calculator size={14} />
+                                        <span>Dynamic Recipe Calculation</span>
+                                    </div>
+                                    <p className="text-[11px] text-purple-700/80 dark:text-purple-300/80 leading-relaxed">
+                                        This rate version will dynamically compute its price from the constituent materials and labour active during this date range.
+                                    </p>
+                                </div>
+                            ) : (
+                                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                                    <div>
+                                        <label className="block text-[10px] font-bold uppercase text-gray-400 mb-1">Override Rate (₹)</label>
+                                        <input
+                                            type="number"
+                                            step="any"
+                                            required
+                                            min="0"
+                                            value={editingRateHistory.rate}
+                                            onChange={e => setEditingRateHistory(prev => ({ ...prev, rate: e.target.value }))}
+                                            className="w-full bg-gray-50 dark:bg-[#0d1117] border border-gray-200 dark:border-white/10 rounded-lg px-3 py-2 text-xs font-bold focus:ring-1 focus:ring-blue-500 outline-none text-gray-900 dark:text-gray-100"
+                                        />
+                                    </div>
+
+                                    <div>
+                                        <label className="block text-[10px] font-bold uppercase text-gray-400 mb-1">Unit</label>
+                                        <CustomSelect
+                                            options={UNIT_SELECT_OPTIONS}
+                                            value={editingRateHistory.unit_code}
+                                            onChange={val => setEditingRateHistory(prev => ({ ...prev, unit_code: val }))}
+                                            placeholder="Select unit"
+                                            direction="down"
+                                            alwaysOpenDownward={true}
+                                        />
+                                    </div>
+                                </div>
+                            )}
+
+                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                                <div>
+                                    <label className="block text-[10px] font-bold uppercase text-gray-400 mb-1">Effective From</label>
+                                    <CustomDatePicker
+                                        value={editingRateHistory.effective_from}
+                                        onChange={e => setEditingRateHistory(prev => ({ ...prev, effective_from: e.target.value }))}
+                                    />
+                                </div>
+
+                                <div>
+                                    <label className="block text-[10px] font-bold uppercase text-gray-400 mb-1">Effective To (Optional)</label>
+                                    <CustomDatePicker
+                                        value={editingRateHistory.effective_to}
+                                        onChange={e => setEditingRateHistory(prev => ({ ...prev, effective_to: e.target.value }))}
+                                    />
+                                </div>
+                            </div>
+
+                            <div>
+                                <label className="block text-[10px] font-bold uppercase text-gray-400 mb-1">Reason / Revision Remarks</label>
+                                <input
+                                    type="text"
+                                    placeholder="e.g. Corrected project site invoice typo"
+                                    value={editingRateHistory.remarks}
+                                    onChange={e => setEditingRateHistory(prev => ({ ...prev, remarks: e.target.value }))}
+                                    className="w-full bg-gray-50 dark:bg-[#0d1117] border border-gray-200 dark:border-white/10 rounded-lg px-3 py-2 text-xs focus:ring-1 focus:ring-blue-500 outline-none text-gray-900 dark:text-gray-100"
+                                />
+                            </div>
+
+                            {/* Modal Footer */}
+                            <div className="flex items-center justify-end gap-2.5 pt-4 border-t border-gray-200 dark:border-white/10">
+                                <button
+                                    type="button"
+                                    onClick={() => setEditingRateHistory(null)}
+                                    className="px-4 py-2 text-xs font-bold text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-white/5 rounded-lg transition cursor-pointer"
+                                >
+                                    Cancel
+                                </button>
+                                <button
+                                    type="submit"
+                                    disabled={isSavingHistoryEdit}
+                                    className="flex items-center gap-1.5 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-xs font-bold transition-colors shadow-xs disabled:opacity-50 cursor-pointer"
+                                >
+                                    {isSavingHistoryEdit ? <RefreshCw size={13} className="animate-spin" /> : <Check size={13} />}
+                                    <span>Save Changes</span>
+                                </button>
+                            </div>
+                        </form>
+                    </motion.div>
                 </div>
             )}
         </div>

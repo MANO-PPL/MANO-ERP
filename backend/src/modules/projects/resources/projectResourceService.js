@@ -49,6 +49,11 @@ export async function addRate(orgId, projectId, resourceId, rateData = {}) {
     return resourceService.addRate(orgId, resourceId, { ...rateData, project_id: projectId });
 }
 
+export async function updateRate(orgId, projectId, resourceId, rateId, rateData = {}) {
+    await ensureProject(orgId, projectId);
+    return resourceService.updateRate(orgId, resourceId, rateId, rateData, projectId);
+}
+
 export async function getRateHistory(orgId, projectId, resourceId) {
     await ensureProject(orgId, projectId);
     return resourceService.getRateHistory(orgId, resourceId, projectId);
@@ -57,8 +62,45 @@ export async function getRateHistory(orgId, projectId, resourceId) {
 export async function listProjectResources(orgId, projectId) {
     await ensureProject(orgId, projectId);
 
+    const compositionColumns = await getCompositionColumns(db);
+
+    // 1. Fetch all primary imported items for this project
+    const projectItems = await db('res_resources')
+        .where({ org_id: orgId, project_id: projectId, type: 'item' })
+        .select('id');
+
+    const projectItemIds = projectItems.map(item => item.id);
+    const usedComponentIds = new Set();
+
+    // 2. Find all component materials/labour used in the recipes of these project items
+    if (projectItemIds.length > 0) {
+        let currentItemIds = [...projectItemIds];
+        while (currentItemIds.length > 0) {
+            const compRows = await db('res_compositions')
+                .whereIn(compositionColumns.item, currentItemIds)
+                .select(compositionColumns.component);
+
+            const nextIds = [];
+            for (const row of compRows) {
+                const compId = row[compositionColumns.component];
+                if (compId && !usedComponentIds.has(compId)) {
+                    usedComponentIds.add(compId);
+                    nextIds.push(compId);
+                }
+            }
+            currentItemIds = nextIds;
+        }
+    }
+
+    // 3. Select only the project items and their constituent materials/labour
+    const allowedIds = [...new Set([...projectItemIds, ...usedComponentIds])];
+    if (allowedIds.length === 0) {
+        return [];
+    }
+
     return db('res_resources')
         .where({ org_id: orgId, project_id: projectId })
+        .whereIn('id', allowedIds)
         .select(
             'id as project_resource_id',
             'parent_id as resource_id',
@@ -88,21 +130,40 @@ export async function removeProjectResource(orgId, projectId, resourceId) {
     }
 
     await db.transaction(async trx => {
+        // If removing an item, find its child components
+        const itemCompositions = await trx('res_compositions')
+            .where(compositionColumns.item, copy.id)
+            .select(compositionColumns.component);
+        const childComponentIds = itemCompositions.map(c => c[compositionColumns.component]);
+
         await trx('res_compositions').where(compositionColumns.item, copy.id).del();
         await trx('res_rates').where('resource_id', copy.id).del();
         await trx('res_conversions').where('resource_id', copy.id).del();
         await trx('res_resources').where({ id: copy.id, org_id: orgId, project_id: projectId }).del();
+
+        // Clean up child components that are not used in any other remaining project item
+        for (const childId of childComponentIds) {
+            const stillUsed = await trx('res_compositions')
+                .where(compositionColumns.component, childId)
+                .count('id as count')
+                .first();
+            if (Number(stillUsed?.count || 0) === 0) {
+                await trx('res_rates').where('resource_id', childId).del();
+                await trx('res_conversions').where('resource_id', childId).del();
+                await trx('res_resources').where({ id: childId, org_id: orgId, project_id: projectId }).del();
+            }
+        }
     });
     return true;
 }
 
-export async function clearRate(orgId, projectId, resourceId, effectiveFrom) {
+export async function clearRate(orgId, projectId, resourceId, effectiveFrom, mode = null) {
     await ensureProject(orgId, projectId);
-    return resourceService.clearManualRate(orgId, resourceId, effectiveFrom, projectId);
+    return resourceService.clearManualRate(orgId, resourceId, effectiveFrom, projectId, mode);
 }
 
 export async function importResourceToProject(orgId, projectId, resourceId, effectiveFrom) {
-    return resourceService.importItemToProject(orgId, projectId, resourceId, effectiveFrom);
+    return resourceService.importResourceToProject(orgId, projectId, resourceId, effectiveFrom);
 }
 
 export async function importBatchResourcesToProject(orgId, projectId, resourceIds, effectiveFrom) {
@@ -110,7 +171,7 @@ export async function importBatchResourcesToProject(orgId, projectId, resourceId
     const results = [];
     for (const resId of resourceIds) {
         try {
-            const res = await resourceService.importItemToProject(orgId, projectId, resId, effectiveFrom);
+            const res = await resourceService.importResourceToProject(orgId, projectId, resId, effectiveFrom);
             results.push({ resourceId: resId, status: 'fulfilled', result: res });
         } catch (err) {
             results.push({ resourceId: resId, status: 'rejected', reason: err.message });
@@ -134,6 +195,7 @@ export default {
     getResolvedRate,
     getResolvedRates,
     addRate,
+    updateRate,
     getRateHistory,
     listProjectResources,
     removeProjectResource,

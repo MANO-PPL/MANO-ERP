@@ -27,6 +27,7 @@ router.delete('/:id/conversions/:conv_id', resourceController.removeConversion);
 
 // Rates
 router.post('/:id/rates', resourceController.addRate);
+router.put('/:id/rates/:rate_id', resourceController.updateRate);
 router.get('/:id/rates', resourceController.getRateHistory);
 router.get('/:id/rate', resourceController.getResolvedRate);
 router.post('/:id/clear-rate', resourceController.clearManualRate);

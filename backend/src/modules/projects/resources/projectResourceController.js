@@ -66,6 +66,29 @@ export const addRate = catchAsync(async (req, res) => {
     res.status(201).json({ success: true, message: 'Project rate added', id: rateId });
 });
 
+export const updateRate = catchAsync(async (req, res) => {
+    const projectId = parseId(req.params.id, 'Project ID');
+    const resourceId = parseId(req.params.resourceId, 'Resource ID');
+    const rateId = parseId(req.params.rateId, 'Rate ID');
+    const { rate, unit_id, unit_code, effective_from, effective_to, remarks, is_active } = req.body;
+    const rateData = {
+        rate,
+        unit_code: unit_code || unit_id,
+        effective_from,
+        effective_to,
+        remarks,
+        is_active
+    };
+    const updated = await projectResourceService.updateRate(
+        req.user.org_id,
+        projectId,
+        resourceId,
+        rateId,
+        rateData
+    );
+    res.json({ success: true, message: 'Project rate updated successfully', rate: updated });
+});
+
 export const getRateHistory = catchAsync(async (req, res) => {
     const projectId = parseId(req.params.id, 'Project ID');
     const resourceId = parseId(req.params.resourceId, 'Resource ID');
@@ -76,11 +99,14 @@ export const getRateHistory = catchAsync(async (req, res) => {
 export const clearRate = catchAsync(async (req, res) => {
     const projectId = parseId(req.params.id, 'Project ID');
     const resourceId = parseId(req.params.resourceId, 'Resource ID');
-    const { effective_from } = req.body;
+    const { effective_from, mode } = req.body;
     if (!effective_from) throw new AppError('effective_from date is required', 400);
 
-    await projectResourceService.clearRate(req.user.org_id, projectId, resourceId, effective_from);
-    res.json({ success: true, message: 'Project rate reverted to master rate' });
+    await projectResourceService.clearRate(req.user.org_id, projectId, resourceId, effective_from, mode);
+    res.json({
+        success: true,
+        message: mode === 'computed' ? 'Project item reverted to computed recipe rate' : 'Project rate reverted to master rate'
+    });
 });
 
 export const importResourceToProject = catchAsync(async (req, res) => {
@@ -139,6 +165,7 @@ export default {
     removeProjectResource,
     getResolvedRate,
     addRate,
+    updateRate,
     getRateHistory,
     clearRate,
     importResourceToProject,

@@ -297,7 +297,31 @@ export const clearProjectRate = catchAsync(async (req, res) => {
     res.json({ success: true, message: 'Project rate reverted to master rate' });
 });
 
+export const updateRate = catchAsync(async (req, res) => {
+    const { id, rate_id } = req.params;
+    if (!id || isNaN(parseInt(id))) throw new AppError('Invalid Resource ID', 400);
+    if (!rate_id || isNaN(parseInt(rate_id))) throw new AppError('Invalid Rate ID', 400);
 
+    const { rate, unit_id, unit_code, effective_from, effective_to, remarks, is_active, project_id } = req.body;
+    const rateData = {
+        rate,
+        unit_code: unit_code || unit_id,
+        effective_from,
+        effective_to,
+        remarks,
+        is_active
+    };
+
+    const updated = await resourceService.updateRate(
+        req.user.org_id,
+        parseInt(id),
+        parseInt(rate_id),
+        rateData,
+        project_id ? parseProjectId(project_id) : null
+    );
+
+    res.json({ success: true, message: 'Rate updated successfully', rate: updated });
+});
 
 export default {
     listResources,
@@ -311,6 +335,7 @@ export default {
     getCompositionHistory,
     addConversion,
     addRate,
+    updateRate,
     getRateHistory,
     removeConversion,
     bulkUpdateResources,

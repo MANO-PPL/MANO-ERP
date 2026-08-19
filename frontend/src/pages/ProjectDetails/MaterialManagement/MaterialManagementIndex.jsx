@@ -7,12 +7,12 @@ import ResourceConversionsTab from '../../Resources/ResourceConversionsTab';
 import { resourceApi } from '../../../services/resourceApi';
 import { projectApi } from '../../../services/projectApi';
 
-const ProjectMaterialSubNav = ({ activeTab, onChange, projectItemCount }) => {
+const ProjectMaterialSubNav = ({ activeTab, onChange, projectItemCount, totalResourceCount }) => {
     const tabs = [
         { id: 'grid', label: 'Resource Grid' },
         { id: 'recipes', label: `Recipes & History${projectItemCount !== undefined ? ` (${projectItemCount})` : ''}` },
-        { id: 'rates', label: `Rates${projectItemCount !== undefined ? ` (${projectItemCount})` : ''}` },
-        { id: 'conversions', label: `Conversions${projectItemCount !== undefined ? ` (${projectItemCount})` : ''}` }
+        { id: 'rates', label: `Rates${totalResourceCount !== undefined ? ` (${totalResourceCount})` : ''}` },
+        { id: 'conversions', label: `Conversions${totalResourceCount !== undefined ? ` (${totalResourceCount})` : ''}` }
     ];
 
     return (
@@ -67,6 +67,14 @@ const MaterialManagementIndex = ({
         return [];
     });
 
+    const [allProjectResources, setAllProjectResources] = useState(() => {
+        try {
+            const cached = sessionStorage.getItem(`mano_proj_${activeProjectId}_all_resources`);
+            if (cached) return JSON.parse(cached);
+        } catch (e) { }
+        return [];
+    });
+
     const [masterResources, setMasterResources] = useState(() => {
         try {
             const cached = sessionStorage.getItem('mano_master_resources_cache');
@@ -100,39 +108,43 @@ const MaterialManagementIndex = ({
         try {
             const [projectRes, masterRes] = await Promise.all([
                 projectApi.listProjectResources(activeProjectId),
-                resourceApi.getResources({ limit: 5000 })
+                resourceApi.getResources({ limit: 5000, include_details: 'false', include_rates: 'false' })
             ]);
 
             const pList = projectRes.resources || [];
             const mList = masterRes.resources || [];
             const masterById = new Map(mList.map(r => [String(r.id), r]));
 
-            // Filter strictly for the primary project items selected in this project
-            const itemsOnly = pList
-                .filter(p => p.type === 'item')
-                .map(p => {
-                    const resId = p.resource_id || p.id;
-                    const m = masterById.get(String(resId)) || {};
-                    return {
-                        ...m,
-                        ...p,
-                        id: resId,
-                        resource_id: resId,
-                        name: p.name || m.name || 'Unnamed Resource',
-                        code: p.code || m.code || '',
-                        type: 'item',
-                        base_unit_code: p.base_unit_code || m.base_unit_code || 'nos',
-                        base_unit_name: p.base_unit_name || m.base_unit_name,
-                        description: p.description || m.description || '',
-                        isImported: true
-                    };
-                });
+            // Map all project-scoped resources (materials, labour, items)
+            const allMapped = pList.map(p => {
+                const resId = p.id || p.project_resource_id;
+                const parentId = p.parent_id || p.resource_id;
+                const m = masterById.get(String(parentId)) || masterById.get(String(resId)) || {};
+                return {
+                    ...m,
+                    ...p,
+                    id: resId,
+                    resource_id: resId,
+                    parent_id: parentId,
+                    name: p.name || m.name || 'Unnamed Resource',
+                    code: p.code || m.code || '',
+                    type: p.type || m.type || 'material',
+                    base_unit_code: p.base_unit_code || m.base_unit_code || 'nos',
+                    base_unit_name: p.base_unit_name || m.base_unit_name,
+                    description: p.description || m.description || '',
+                    isImported: true
+                };
+            });
+
+            const itemsOnly = allMapped.filter(p => p.type === 'item');
 
             setProjectItems(itemsOnly);
+            setAllProjectResources(allMapped);
             setMasterResources(mList);
 
             try {
                 sessionStorage.setItem(`mano_proj_${activeProjectId}_items`, JSON.stringify(itemsOnly));
+                sessionStorage.setItem(`mano_proj_${activeProjectId}_all_resources`, JSON.stringify(allMapped));
                 sessionStorage.setItem('mano_master_resources_cache', JSON.stringify(mList));
             } catch (e) { }
         } catch (err) {
@@ -145,6 +157,13 @@ const MaterialManagementIndex = ({
     useEffect(() => {
         loadResources();
     }, [loadResources]);
+
+    // Combined components list mapping both master components and project components
+    const combinedComponents = useMemo(() => {
+        const masterComps = masterResources.filter(r => r.type === 'material' || r.type === 'labour');
+        const projectComps = allProjectResources.filter(r => r.type === 'material' || r.type === 'labour');
+        return [...masterComps, ...projectComps];
+    }, [masterResources, allProjectResources]);
 
     useEffect(() => {
         if (setExtraBreadcrumbs) {
@@ -166,6 +185,7 @@ const MaterialManagementIndex = ({
                 activeTab={activeTab}
                 onChange={tab => setActiveTab(tab, targetResourceId || null)}
                 projectItemCount={projectItems.length}
+                totalResourceCount={allProjectResources.length}
             />
 
             {/* Tab 1: Project Resource Grid */}
@@ -175,16 +195,17 @@ const MaterialManagementIndex = ({
                     setExtraBreadcrumbs={setExtraBreadcrumbs}
                     canWrite={canWrite}
                     showToast={showToast}
+                    onRefreshResources={loadResources}
                 />
             </div>
 
-            {/* Tab 2: Recipes & History (Strictly for Project's Selected Items) */}
+            {/* Tab 2: Recipes & History (With all project and master components resolved) */}
             {visitedTabs.has('recipes') && (
                 <div className={`flex-1 min-h-0 overflow-hidden ${activeTab === 'recipes' ? 'flex flex-col' : 'hidden'}`}>
                     <ResourceRecipesTab
                         initialResourceId={targetResourceId}
                         resources={projectItems}
-                        availableComponents={masterResources}
+                        availableComponents={combinedComponents}
                         initialProjectId={activeProjectId}
                         onRefreshResources={loadResources}
                         showToast={showToast}
@@ -192,12 +213,12 @@ const MaterialManagementIndex = ({
                 </div>
             )}
 
-            {/* Tab 3: Rates (Strictly for Project's Selected Items) */}
+            {/* Tab 3: Rates (All Project Materials, Labour, and Items) */}
             {visitedTabs.has('rates') && (
                 <div className={`flex-1 min-h-0 overflow-hidden ${activeTab === 'rates' ? 'flex flex-col' : 'hidden'}`}>
                     <ResourceRatesTab
                         initialResourceId={targetResourceId}
-                        resources={projectItems}
+                        resources={allProjectResources.length > 0 ? allProjectResources : projectItems}
                         initialProjectId={activeProjectId}
                         onRefreshResources={loadResources}
                         showToast={showToast}
@@ -205,12 +226,12 @@ const MaterialManagementIndex = ({
                 </div>
             )}
 
-            {/* Tab 4: Conversions (Strictly for Project's Selected Items) */}
+            {/* Tab 4: Conversions */}
             {visitedTabs.has('conversions') && (
                 <div className={`flex-1 min-h-0 overflow-hidden ${activeTab === 'conversions' ? 'flex flex-col' : 'hidden'}`}>
                     <ResourceConversionsTab
                         initialResourceId={targetResourceId}
-                        resources={projectItems}
+                        resources={allProjectResources.length > 0 ? allProjectResources : projectItems}
                         onRefreshResources={loadResources}
                         showToast={showToast}
                     />

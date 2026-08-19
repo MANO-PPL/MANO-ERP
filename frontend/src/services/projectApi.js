@@ -54,10 +54,13 @@ export const projectApi = {
 
     addResourceRate: (projectId, resourceId, data) => unwrap(api.post(`/projects/${projectId}/resources/${resourceId}/rates`, data)),
 
+    updateResourceRate: (projectId, resourceId, rateId, data) => unwrap(api.put(`/projects/${projectId}/resources/${resourceId}/rates/${rateId}`, data)),
+
     getResourceRateHistory: (projectId, resourceId) => unwrap(api.get(`/projects/${projectId}/resources/${resourceId}/rates`)),
 
-    clearResourceRate: (projectId, resourceId, effectiveFrom) => unwrap(api.post(`/projects/${projectId}/resources/${resourceId}/clear-rate`, {
-            effective_from: effectiveFrom
+    clearResourceRate: (projectId, resourceId, effectiveFrom, mode = null) => unwrap(api.post(`/projects/${projectId}/resources/${resourceId}/clear-rate`, {
+            effective_from: effectiveFrom,
+            mode
         })),
 
     setProjectCompositions: (projectId, resourceId, compositions, effectiveFrom) => unwrap(api.put(`/projects/${projectId}/resources/${resourceId}/compositions`, {

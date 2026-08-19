@@ -12,6 +12,7 @@ router.delete('/:resourceId', projectResourceController.removeProjectResource);
 // Project-scoped pricing stays inside the project module.
 router.get('/:resourceId/rate', projectResourceController.getResolvedRate);
 router.post('/:resourceId/rates', projectResourceController.addRate);
+router.put('/:resourceId/rates/:rateId', projectResourceController.updateRate);
 router.get('/:resourceId/rates', projectResourceController.getRateHistory);
 router.post('/:resourceId/clear-rate', projectResourceController.clearRate);
 

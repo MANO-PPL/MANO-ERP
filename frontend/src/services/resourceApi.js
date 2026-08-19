@@ -67,6 +67,12 @@ export const resourceApi = {
         ...(projectId ? { project_id: projectId } : {})
     })),
 
+    // Directly update an existing rate record (current or past).
+    updateRate: (id, rateId, data, projectId = null) => unwrap(api.put(`/resources/${id}/rates/${rateId}`, {
+        ...data,
+        ...(projectId ? { project_id: projectId } : {})
+    })),
+
     // Read all manual rate versions, newest first.
     getRateHistory: (id, projectId = null) => unwrap(api.get(`/resources/${id}/rates`, {
         params: projectId ? { project_id: projectId } : undefined

@@ -1,7 +1,8 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import {
     Search, Calendar, Save, RotateCcw, AlertCircle,
-    RefreshCw, Plus, Calculator, History
+    RefreshCw, Plus, Calculator, History, AlertTriangle,
+    Edit2, X, Check
 } from 'lucide-react';
 import { motion } from 'framer-motion';
 import { resourceApi } from '../../services/resourceApi';
@@ -52,6 +53,10 @@ const ResourceRatesTab = ({
     const [isReverting, setIsReverting] = useState(false);
     const [errorMsg, setErrorMsg] = useState('');
 
+    // Historical Rate Editing State
+    const [editingRate, setEditingRate] = useState(null);
+    const [isUpdatingRate, setIsUpdatingRate] = useState(false);
+
     useEffect(() => {
         projectApi.listProjects()
             .then(data => setProjects(data.projects || []))
@@ -64,10 +69,19 @@ const ResourceRatesTab = ({
         }
     }, [initialProjectId]);
 
-    const scopeOptions = useMemo(() => [
-        { label: 'Master / Organization', value: '' },
-        ...projects.map(p => ({ label: p.name, value: String(p.id) }))
-    ], [projects]);
+    const scopeOptions = useMemo(() => {
+        if (initialProjectId) {
+            const currentProj = projects.find(p => String(p.id) === String(initialProjectId));
+            return [
+                { label: currentProj ? `${currentProj.name} (Current Project)` : 'Current Project', value: String(initialProjectId) },
+                { label: 'Master / Organization', value: '' }
+            ];
+        }
+        return [
+            { label: 'Master / Organization', value: '' },
+            ...projects.map(p => ({ label: p.name, value: String(p.id) }))
+        ];
+    }, [projects, initialProjectId]);
 
     const unitOptions = useMemo(() => {
         const list = [];
@@ -146,9 +160,36 @@ const ResourceRatesTab = ({
         rateCacheRef.current = {};
     };
 
+    const activeManualRateRow = useMemo(
+        () => rateHistory.find(row => Number(row.is_active) === 1 && row.rate !== null && row.rate !== undefined),
+        [rateHistory]
+    );
+
+    const minNewRateDate = useMemo(() => {
+        if (!activeManualRateRow?.effective_from) return dateOnly();
+        const d = new Date(`${dateOnly(activeManualRateRow.effective_from)}T00:00:00.000Z`);
+        d.setUTCDate(d.getUTCDate() + 1);
+        return d.toISOString().slice(0, 10);
+    }, [activeManualRateRow]);
+
+    useEffect(() => {
+        if (minNewRateDate) {
+            setEffectiveFrom(prev => (prev < minNewRateDate ? minNewRateDate : prev));
+        }
+    }, [minNewRateDate]);
+
     const handleAddManualRate = async (e) => {
         e.preventDefault();
         if (!selectedResourceId || !manualRate) return;
+
+        if (activeManualRateRow && effectiveFrom <= dateOnly(activeManualRateRow.effective_from)) {
+            const minDate = minNewRateDate;
+            const msg = `New rate version start date (${effectiveFrom}) must be after current active rate (${dateOnly(activeManualRateRow.effective_from)}), starting from ${minDate}. To adjust the current rate, click "Edit Version".`;
+            setErrorMsg(msg);
+            if (showToast) showToast('error', 'Invalid Effective Date', msg);
+            return;
+        }
+
         setIsSavingRate(true);
         setErrorMsg('');
 
@@ -221,109 +262,144 @@ const ResourceRatesTab = ({
         }
     };
 
+    const handleOpenEditModal = (rateItem) => {
+        const isComputed = rateItem.rate === null || rateItem.rate === undefined || String(rateItem.remarks || '').toLowerCase().includes('computed');
+        setEditingRate({
+            id: rateItem.id,
+            mode: (selectedResource?.type === 'item' && isComputed) ? 'computed' : 'manual',
+            rate: rateItem.rate !== null && rateItem.rate !== undefined ? String(rateItem.rate) : '',
+            unit_code: rateItem.unit_code || selectedResource?.base_unit_code || 'kg',
+            effective_from: dateOnly(rateItem.effective_from),
+            effective_to: rateItem.effective_to ? dateOnly(rateItem.effective_to) : '',
+            remarks: rateItem.remarks || '',
+            versionNumber: rateItem.versionNumber
+        });
+    };
+
+    const handleSaveEditRate = async (e) => {
+        e.preventDefault();
+        if (!editingRate || !selectedResourceId) return;
+        
+        if (editingRate.effective_to && editingRate.effective_to < editingRate.effective_from) {
+            const msg = 'Effective To date cannot be earlier than Effective From date';
+            setErrorMsg(msg);
+            if (showToast) showToast('error', 'Invalid Date Range', msg);
+            return;
+        }
+
+        setIsUpdatingRate(true);
+        setErrorMsg('');
+
+        try {
+            const isComputedMode = editingRate.mode === 'computed';
+            const payload = {
+                mode: isComputedMode ? 'computed' : 'manual',
+                rate: isComputedMode ? null : parseFloat(editingRate.rate),
+                unit_code: editingRate.unit_code,
+                effective_from: editingRate.effective_from,
+                effective_to: editingRate.effective_to || null,
+                remarks: editingRate.remarks || (isComputedMode ? 'Dynamic recipe calculation' : undefined)
+            };
+
+            if (selectedProjectId) {
+                await projectApi.updateResourceRate(selectedProjectId, selectedResourceId, editingRate.id, payload);
+            } else {
+                await resourceApi.updateRate(selectedResourceId, editingRate.id, payload);
+            }
+
+            if (showToast) showToast('success', 'Rate Version Updated', isComputedMode ? 'Switched to dynamic computed recipe.' : 'Historical rate record has been updated.');
+            setEditingRate(null);
+            invalidateRateCache();
+            fetchRateData(true);
+            if (onRefreshResources) onRefreshResources();
+        } catch (err) {
+            console.error('Failed to update rate record', err);
+            const msg = err.response?.data?.message || err.message || 'Failed to update rate record';
+            setErrorMsg(msg);
+            if (showToast) showToast('error', 'Update Failed', msg);
+        } finally {
+            setIsUpdatingRate(false);
+        }
+    };
+
     const filteredResources = useMemo(() => {
         if (!searchQuery) return resources;
         const q = searchQuery.toLowerCase();
         return resources.filter(r => r.name.toLowerCase().includes(q) || (r.code && r.code.toLowerCase().includes(q)));
     }, [resources, searchQuery]);
 
-    const activeManualRateRow = useMemo(
-        () => rateHistory.find(row => Number(row.is_active) === 1 && row.rate !== null && row.rate !== undefined),
-        [rateHistory]
-    );
-
     return (
-        <div className="flex-1 flex flex-col md:flex-row h-full overflow-hidden bg-white dark:bg-[#0d1117] text-gray-900 dark:text-gray-100 font-sans">
-            {/* Left Sidebar: Resource Selector */}
-            <div className="w-full md:w-72 border-r border-gray-200 dark:border-white/10 flex flex-col bg-gray-50/50 dark:bg-[#161b22]/50 shrink-0">
-                {/* Header aligned to h-[88px] */}
-                <div className="h-[88px] px-4 py-3 border-b border-gray-200 dark:border-white/10 flex flex-col justify-center space-y-2 shrink-0">
-                    <div className="flex items-center justify-between">
-                        <h3 className="text-xs font-bold uppercase tracking-wider text-gray-500 dark:text-gray-400">
-                            Resources Rate Engine
-                        </h3>
-                        <span className="text-[10px] font-mono font-bold px-2 py-0.5 rounded bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20">
-                            {resources.length} Total
-                        </span>
-                    </div>
-
+        <div className="flex h-[calc(100vh-14rem)] bg-white dark:bg-[#0f1117] rounded-2xl border border-gray-200 dark:border-white/10 overflow-hidden shadow-xs">
+            {/* Left Column: Resource Selector */}
+            <div className="w-80 border-r border-gray-200 dark:border-white/10 flex flex-col bg-gray-50/50 dark:bg-[#0d1117]/50">
+                <div className="p-4 border-b border-gray-200 dark:border-white/10">
                     <div className="relative">
-                        <Search size={13} className="absolute left-2.5 top-2.5 text-gray-400" />
+                        <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
                         <input
                             type="text"
-                            placeholder="Filter resources by name/code..."
+                            placeholder="Filter resources..."
                             value={searchQuery}
                             onChange={e => setSearchQuery(e.target.value)}
-                            className="w-full pl-8 pr-7 py-1.5 bg-white dark:bg-[#0d1117] border border-gray-200 dark:border-white/10 rounded-lg text-xs focus:ring-1 focus:ring-emerald-500 focus:outline-none placeholder:text-gray-400 text-gray-900 dark:text-gray-100"
+                            className="w-full bg-white dark:bg-[#161b22] border border-gray-200 dark:border-white/10 rounded-xl pl-9 pr-3 py-2 text-xs focus:ring-1 focus:ring-blue-500 outline-none text-gray-900 dark:text-gray-100"
                         />
-                        {searchQuery && (
-                            <button
-                                onClick={() => setSearchQuery('')}
-                                className="absolute right-2 top-2 text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 text-xs"
-                            >
-                                ✕
-                            </button>
-                        )}
                     </div>
                 </div>
 
                 <div className="flex-1 overflow-y-auto custom-scrollbar p-2 space-y-1">
-                    {filteredResources.length === 0 ? (
-                        <div className="p-6 text-center text-xs text-gray-400">No resources found.</div>
-                    ) : (
-                        filteredResources.map(r => {
-                            const isSelected = String(r.id) === String(selectedResourceId);
-                            const badge = TYPE_BADGE[r.type] || TYPE_BADGE.material;
-                            return (
-                                <button
-                                    key={r.id}
-                                    onClick={() => setSelectedResourceId(String(r.id))}
-                                    className={`w-full text-left px-3 py-2 rounded-lg transition-all border ${isSelected
-                                        ? 'bg-emerald-50 dark:bg-emerald-950/40 border-emerald-300 dark:border-emerald-500/40 text-emerald-900 dark:text-emerald-200 font-semibold shadow-xs'
-                                        : 'bg-transparent border-transparent hover:bg-gray-100/70 dark:hover:bg-white/5 text-gray-700 dark:text-gray-300'
-                                        }`}
-                                >
-                                    <div className="flex items-center justify-between">
-                                        <p className="text-xs truncate pr-2">{r.name}</p>
-                                        <span className={`text-[9px] font-extrabold uppercase px-1.5 py-0.5 rounded ${badge.bg}`}>
-                                            {r.type}
-                                        </span>
-                                    </div>
-                                    <div className="flex items-center justify-between mt-0.5 text-[10px] text-gray-400 font-mono">
-                                        <span>Unit: {r.base_unit_code}</span>
-                                        {r.code && <span>#{r.code}</span>}
-                                    </div>
-                                </button>
-                            );
-                        })
+                    {filteredResources.map(res => {
+                        const isSelected = String(res.id) === String(selectedResourceId);
+                        const badge = TYPE_BADGE[res.type] || TYPE_BADGE.material;
+                        return (
+                            <button
+                                key={res.id}
+                                onClick={() => setSelectedResourceId(String(res.id))}
+                                className={`w-full text-left p-3 rounded-xl transition-all cursor-pointer ${isSelected
+                                    ? 'bg-blue-500/10 border border-blue-500/30 text-blue-700 dark:text-blue-300 shadow-xs'
+                                    : 'hover:bg-gray-100 dark:hover:bg-white/5 border border-transparent text-gray-700 dark:text-gray-300'
+                                    }`}
+                            >
+                                <div className="flex items-center justify-between">
+                                    <span className="font-semibold text-xs truncate max-w-[140px] text-gray-900 dark:text-white">
+                                        {res.name}
+                                    </span>
+                                    <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded uppercase tracking-wider ${badge.bg}`}>
+                                        {badge.label}
+                                    </span>
+                                </div>
+                                <div className="flex items-center justify-between mt-1 text-[11px] text-gray-400">
+                                    <span className="font-mono">{res.code || 'NO-CODE'}</span>
+                                    <span>{res.base_unit_code}</span>
+                                </div>
+                            </button>
+                        );
+                    })}
+
+                    {filteredResources.length === 0 && (
+                        <div className="p-6 text-center text-xs text-gray-400">
+                            No resources match search.
+                        </div>
                     )}
                 </div>
             </div>
 
-            {/* Right Workspace: Rate Resolution */}
-            <div className="flex-1 flex flex-col overflow-hidden bg-white dark:bg-[#0d1117]">
-                {!selectedResource ? (
-                    <div className="flex-1 flex items-center justify-center p-8 text-center text-gray-400">
-                        <p className="text-xs font-medium">Select a resource from the list to view or configure its rate.</p>
-                    </div>
-                ) : (
-                    <div className="flex-1 flex flex-col overflow-hidden">
-                        {/* Header aligned to h-[88px] */}
-                        <div className="h-[88px] px-5 py-3 border-b border-gray-200 dark:border-white/10 bg-gray-50/50 dark:bg-[#161b22]/40 flex items-center justify-between gap-4 shrink-0">
+            {/* Right Column: Rate Details & Management */}
+            <div className="flex-1 flex flex-col overflow-hidden bg-white dark:bg-[#0f1117]">
+                {selectedResource ? (
+                    <>
+                        {/* Header Panel */}
+                        <div className="p-6 border-b border-gray-200 dark:border-white/10 flex flex-col md:flex-row md:items-center justify-between gap-4 bg-gray-50/20 dark:bg-[#161b22]/30">
                             <div>
                                 <div className="flex items-center gap-2">
-                                    <span className={`px-2 py-0.5 rounded text-[10px] font-extrabold uppercase tracking-wider ${TYPE_BADGE[selectedResource.type]?.bg || ''}`}>
-                                        {selectedResource.type}
+                                    <h2 className="text-base font-bold text-gray-900 dark:text-white">
+                                        {selectedResource.name}
+                                    </h2>
+                                    <span className={`text-[10px] font-bold px-2 py-0.5 rounded ${TYPE_BADGE[selectedResource.type]?.bg || ''}`}>
+                                        {TYPE_BADGE[selectedResource.type]?.label || selectedResource.type}
                                     </span>
-                                    {selectedResource.code && (
-                                        <span className="text-[10px] font-mono text-gray-400">
-                                            Code: {selectedResource.code}
-                                        </span>
-                                    )}
+                                    <span className="text-xs text-gray-400 font-mono">
+                                        ({selectedResource.code})
+                                    </span>
                                 </div>
-                                <h2 className="text-base font-bold text-gray-900 dark:text-white mt-0.5">
-                                    {selectedResource.name}
-                                </h2>
                                 <p className="text-xs text-gray-500 dark:text-gray-400">
                                     Base Unit: <span className="font-semibold text-gray-700 dark:text-gray-300">{selectedResource.base_unit_name || selectedResource.base_unit_code} ({selectedResource.base_unit_code})</span>
                                 </p>
@@ -461,9 +537,37 @@ const ResourceRatesTab = ({
                             {/* Set New Rate Form */}
                             {canWrite && (
                                 <div className="p-5 border border-gray-200 dark:border-white/10 rounded-2xl bg-white dark:bg-[#0d1117] space-y-4">
-                                    <h4 className="text-xs font-black uppercase tracking-wider text-gray-400 flex items-center gap-1.5">
-                                        <Plus size={14} className="text-emerald-500" /> Set New {selectedProjectId ? 'Project' : 'Master'} Rate Version
-                                    </h4>
+                                    <div className="flex items-center justify-between flex-wrap gap-2">
+                                        <h4 className="text-xs font-black uppercase tracking-wider text-gray-400 flex items-center gap-1.5">
+                                            <Plus size={14} className="text-emerald-500" /> Set New {selectedProjectId ? 'Project' : 'Master'} Rate Version
+                                        </h4>
+
+                                        <div className="flex items-center gap-2 flex-wrap">
+                                            {selectedResource.type === 'item' && activeManualRateRow && (
+                                                <button
+                                                    type="button"
+                                                    onClick={handleRevertToComputed}
+                                                    disabled={isReverting}
+                                                    className="flex items-center gap-1.5 px-3 py-1.5 bg-purple-50 dark:bg-purple-950/40 text-purple-700 dark:text-purple-300 border border-purple-200 dark:border-purple-500/30 rounded-lg text-xs font-bold hover:bg-purple-100 transition cursor-pointer"
+                                                >
+                                                    {isReverting ? <RefreshCw size={12} className="animate-spin" /> : <Calculator size={12} />}
+                                                    <span>Revert to Computed Recipe</span>
+                                                </button>
+                                            )}
+
+                                            {selectedProjectId && activeManualRateRow && (
+                                                <button
+                                                    type="button"
+                                                    onClick={handleRevertToMaster}
+                                                    disabled={isReverting}
+                                                    className="flex items-center gap-1.5 px-3 py-1.5 bg-blue-50 dark:bg-blue-950/40 text-blue-700 dark:text-blue-300 border border-blue-200 dark:border-blue-500/30 rounded-lg text-xs font-bold hover:bg-blue-100 transition cursor-pointer"
+                                                >
+                                                    {isReverting ? <RefreshCw size={12} className="animate-spin" /> : <RotateCcw size={12} />}
+                                                    <span>Revert to Master Rate</span>
+                                                </button>
+                                            )}
+                                        </div>
+                                    </div>
 
                                     <form onSubmit={handleAddManualRate} className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-3 items-end">
                                         <div>
@@ -495,6 +599,7 @@ const ResourceRatesTab = ({
                                             <CustomDatePicker
                                                 value={effectiveFrom}
                                                 onChange={e => setEffectiveFrom(e.target.value)}
+                                                minDate={minNewRateDate}
                                             />
                                         </div>
 
@@ -518,88 +623,256 @@ const ResourceRatesTab = ({
                                     <History size={14} /> {selectedProjectId ? 'Project' : 'Master'} Rate Version History ({rateHistory.length})
                                 </h4>
 
-                                {rateHistory.length === 0 ? (
-                                    <div className="p-6 text-center text-xs text-gray-400 bg-gray-50/50 dark:bg-[#161b22]/30 border border-dashed border-gray-200 dark:border-white/10 rounded-xl">
-                                        No historical rate versions logged for this resource.
-                                    </div>
-                                ) : (
-                                    <div className="relative pl-6 space-y-5 before:absolute before:left-2 before:top-2.5 before:bottom-2.5 before:w-0.5 before:bg-gray-200 dark:before:bg-white/10">
-                                        {rateHistory.map((r, idx) => {
-                                            const isActive = Number(r.is_active) === 1;
-                                            const isComputedMarker = r.rate === null || r.rate === undefined;
-
-                                            let dotColor = "bg-gray-400 dark:bg-gray-500";
-                                            let badgeStyle = "bg-gray-100 dark:bg-white/10 text-gray-600 dark:text-gray-300";
-                                            let statusTitle = "ARCHIVED REVISION";
-
-                                            if (isActive) {
-                                                dotColor = "bg-emerald-500 shadow-xs shadow-emerald-500/50";
-                                                badgeStyle = "bg-emerald-100 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-300 border border-emerald-300 dark:border-emerald-500/30";
-                                                statusTitle = "LIVE RATE IN PRODUCTION";
-                                            } else if (idx === 0) {
-                                                dotColor = "bg-blue-500";
-                                                badgeStyle = "bg-blue-100 dark:bg-blue-950/40 text-blue-700 dark:text-blue-300 border border-blue-300 dark:border-blue-500/30";
-                                                statusTitle = "LATEST REVISION";
-                                            }
-
-                                            return (
-                                                <motion.div
-                                                    key={idx}
-                                                    initial={{ opacity: 0, y: 12 }}
-                                                    animate={{ opacity: 1, y: 0 }}
-                                                    transition={{ duration: 0.25, delay: idx * 0.05 }}
-                                                    className="relative"
-                                                >
-                                                    <div className={`absolute -left-[1.35rem] top-1.5 w-3 h-3 rounded-full ${dotColor} border-2 border-white dark:border-[#0d1117]`} />
-
-                                                    <div className={`p-4 rounded-xl border bg-white dark:bg-[#161b22] shadow-xs space-y-3 ${isActive
-                                                        ? 'border-emerald-300 dark:border-emerald-500/30'
-                                                        : 'border-gray-200 dark:border-white/10'
-                                                        }`}>
-
-                                                        <div className="flex items-center justify-between flex-wrap gap-2 pb-2.5 border-b border-gray-100 dark:border-white/5">
-                                                            <div className="flex items-center gap-2 flex-wrap">
-                                                                <span className={`px-2 py-0.5 rounded text-[9px] font-extrabold uppercase tracking-wider ${badgeStyle}`}>
-                                                                    {statusTitle}
+                                <div className="border border-gray-200 dark:border-white/10 rounded-2xl overflow-hidden bg-white dark:bg-[#0d1117]">
+                                    <table className="w-full text-left border-collapse text-xs">
+                                        <thead>
+                                            <tr className="border-b border-gray-200 dark:border-white/10 bg-gray-50/50 dark:bg-[#161b22]/50 text-[10px] uppercase font-bold text-gray-400">
+                                                <th className="py-2.5 px-4">Version</th>
+                                                <th className="py-2.5 px-4">Rate</th>
+                                                <th className="py-2.5 px-4">Unit</th>
+                                                <th className="py-2.5 px-4">Effective Range</th>
+                                                <th className="py-2.5 px-4">Status</th>
+                                                <th className="py-2.5 px-4">Remarks</th>
+                                                {canWrite && <th className="py-2.5 px-4 text-right">Actions</th>}
+                                            </tr>
+                                        </thead>
+                                        <tbody className="divide-y divide-gray-100 dark:divide-white/5">
+                                            {rateHistory.map((item, idx) => {
+                                                const isActive = Number(item.is_active) === 1;
+                                                const versionNumber = rateHistory.length - idx;
+                                                return (
+                                                    <tr key={item.id} className="hover:bg-gray-50/50 dark:hover:bg-white/5 transition-colors">
+                                                        <td className="py-3 px-4 font-mono font-bold text-gray-500">
+                                                            #{versionNumber}
+                                                        </td>
+                                                        <td className="py-3 px-4 font-mono font-bold text-gray-900 dark:text-white">
+                                                            {item.rate !== null && item.rate !== undefined ? (
+                                                                `₹${Number(item.rate).toLocaleString('en-IN', { minimumFractionDigits: 2 })}`
+                                                            ) : (
+                                                                <span className="inline-flex items-center gap-1 text-[10px] px-1.5 py-0.5 rounded font-bold bg-purple-50 dark:bg-purple-950/40 text-purple-700 dark:text-purple-300 border border-purple-200 dark:border-purple-500/30">
+                                                                    <Calculator size={10} />
+                                                                    Computed
                                                                 </span>
-                                                                <span className="text-xs font-mono font-bold text-gray-700 dark:text-gray-300">
-                                                                    Version #{rateHistory.length - idx}
-                                                                </span>
-                                                                <span className="text-xs font-bold text-gray-500 dark:text-gray-400">
-                                                                    Effective: <strong className="text-emerald-600 dark:text-emerald-400 font-mono">{formatOrdinalDate(r.effective_from)}</strong> → <span className="font-mono">{r.effective_to ? formatOrdinalDate(r.effective_to) : 'Present'}</span>
-                                                                </span>
-                                                            </div>
-                                                        </div>
-
-                                                        <div className="flex items-center justify-between flex-wrap gap-3">
-                                                            <div>
-                                                                <p className="text-[10px] font-bold uppercase tracking-wider text-gray-400 mb-0.5">Rate</p>
-                                                                <p className="text-lg font-mono font-black text-gray-900 dark:text-white">
-                                                                    {isComputedMarker ? (
-                                                                        <span className="text-purple-600 dark:text-purple-400 italic">Computed Recipe Rate</span>
-                                                                    ) : (
-                                                                        `₹${Number(r.rate).toLocaleString('en-IN', { minimumFractionDigits: 2 })} / ${r.unit_code}`
-                                                                    )}
-                                                                </p>
-                                                            </div>
-
-                                                            {r.remarks && (
-                                                                <div className="text-xs text-gray-500 dark:text-gray-400 italic bg-gray-50 dark:bg-[#0d1117] px-3 py-1.5 rounded-lg border border-gray-100 dark:border-white/5">
-                                                                    {r.remarks}
-                                                                </div>
                                                             )}
-                                                        </div>
-                                                    </div>
-                                                </motion.div>
-                                            );
-                                        })}
-                                    </div>
-                                )}
+                                                        </td>
+                                                        <td className="py-3 px-4 text-gray-600 dark:text-gray-400">
+                                                            {item.unit_code || selectedResource.base_unit_code}
+                                                        </td>
+                                                        <td className="py-3 px-4 text-gray-600 dark:text-gray-400 font-mono text-[11px]">
+                                                            {formatOrdinalDate(item.effective_from)} → {item.effective_to ? formatOrdinalDate(item.effective_to) : 'Present'}
+                                                        </td>
+                                                        <td className="py-3 px-4">
+                                                            <span className={`px-2 py-0.5 rounded text-[10px] font-bold ${isActive
+                                                                ? 'bg-emerald-100 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-500/30'
+                                                                : 'bg-gray-100 dark:bg-gray-800 text-gray-500'
+                                                                }`}>
+                                                                {isActive ? 'Active' : 'Archived'}
+                                                            </span>
+                                                        </td>
+                                                        <td className="py-3 px-4 text-gray-400 italic text-[11px] truncate max-w-[150px]">
+                                                            {item.remarks || '-'}
+                                                        </td>
+                                                        {canWrite && (
+                                                            <td className="py-3 px-4 text-right">
+                                                                <button
+                                                                    type="button"
+                                                                    onClick={() => handleOpenEditModal({ ...item, versionNumber })}
+                                                                    className="inline-flex items-center gap-1 px-2.5 py-1 text-[11px] font-semibold text-blue-600 dark:text-blue-400 hover:bg-blue-50 dark:hover:bg-blue-950/50 rounded-lg border border-transparent hover:border-blue-200 dark:hover:border-blue-500/30 transition cursor-pointer"
+                                                                    title="Edit historical version parameters"
+                                                                >
+                                                                    <Edit2 size={12} />
+                                                                    <span>Edit</span>
+                                                                </button>
+                                                            </td>
+                                                        )}
+                                                    </tr>
+                                                );
+                                            })}
+
+                                            {rateHistory.length === 0 && (
+                                                <tr>
+                                                    <td colSpan={canWrite ? 7 : 6} className="py-6 text-center text-xs text-gray-400">
+                                                        No rate version history recorded for this resource scope.
+                                                    </td>
+                                                </tr>
+                                            )}
+                                        </tbody>
+                                    </table>
+                                </div>
                             </div>
                         </div>
+                    </>
+                ) : (
+                    <div className="flex-1 flex flex-col items-center justify-center p-8 text-center text-gray-400">
+                        <AlertCircle size={32} className="mb-2 opacity-50" />
+                        <p className="text-sm font-semibold">No resource selected</p>
+                        <p className="text-xs">Choose a resource from the catalog sidebar on the left.</p>
                     </div>
                 )}
             </div>
+
+            {/* Edit Historical Rate Modal */}
+            {editingRate && (
+                <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-xs p-4">
+                    <motion.div
+                        initial={{ opacity: 0, scale: 0.95 }}
+                        animate={{ opacity: 1, scale: 1 }}
+                        className="w-full max-w-lg bg-white dark:bg-[#161b22] border border-gray-200 dark:border-white/10 rounded-2xl shadow-2xl overflow-hidden"
+                    >
+                        {/* Modal Header */}
+                        <div className="px-6 py-4 border-b border-gray-200 dark:border-white/10 flex items-center justify-between">
+                            <div>
+                                <h3 className="text-sm font-bold text-gray-900 dark:text-white">
+                                    Edit Historical Rate Version #{editingRate.versionNumber}
+                                </h3>
+                                <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">
+                                    {selectedResource?.name} {selectedProjectId ? '(Project Scope)' : '(Master Catalog)'}
+                                </p>
+                            </div>
+                            <button
+                                type="button"
+                                onClick={() => setEditingRate(null)}
+                                className="p-1.5 text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 rounded-lg hover:bg-gray-100 dark:hover:bg-white/10 transition cursor-pointer"
+                            >
+                                <X size={16} />
+                            </button>
+                        </div>
+
+                        {/* Warning Alert Banner */}
+                        <div className="p-4 mx-6 mt-4 bg-amber-50 dark:bg-amber-950/30 border border-amber-300 dark:border-amber-500/40 rounded-xl flex items-start gap-3">
+                            <AlertTriangle size={18} className="text-amber-600 dark:text-amber-400 shrink-0 mt-0.5" />
+                            <div>
+                                <h4 className="text-xs font-bold text-amber-800 dark:text-amber-300">
+                                    Caution: Modifying Historical Rate Records
+                                </h4>
+                                <p className="text-[11px] text-amber-700/90 dark:text-amber-300/80 mt-0.5 leading-relaxed">
+                                    Directly updating an existing rate version alters historical records. Any calculations, purchase orders, or ledgers referencing this date period will recalculate based on these revised figures.
+                                </p>
+                            </div>
+                        </div>
+
+                        {/* Edit Form */}
+                        <form onSubmit={handleSaveEditRate} className="p-6 space-y-4">
+                            {selectedResource?.type === 'item' && (
+                                <div className="space-y-2">
+                                    <label className="block text-[10px] font-bold uppercase text-gray-400">Rate Calculation Mode</label>
+                                    <div className="flex items-center gap-2 p-1 bg-gray-100 dark:bg-[#0d1117] rounded-xl border border-gray-200 dark:border-white/10">
+                                        <button
+                                            type="button"
+                                            onClick={() => setEditingRate(prev => ({ ...prev, mode: 'computed' }))}
+                                            className={`flex-1 py-2 px-3 rounded-lg text-xs font-bold transition flex items-center justify-center gap-1.5 cursor-pointer ${
+                                                editingRate.mode === 'computed'
+                                                    ? 'bg-purple-600 text-white shadow-sm'
+                                                    : 'text-gray-500 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white'
+                                            }`}
+                                        >
+                                            <Calculator size={13} />
+                                            <span>Dynamic Computed Recipe</span>
+                                        </button>
+                                        <button
+                                            type="button"
+                                            onClick={() => setEditingRate(prev => ({ ...prev, mode: 'manual' }))}
+                                            className={`flex-1 py-2 px-3 rounded-lg text-xs font-bold transition flex items-center justify-center gap-1.5 cursor-pointer ${
+                                                editingRate.mode === 'manual'
+                                                    ? 'bg-blue-600 text-white shadow-sm'
+                                                    : 'text-gray-500 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white'
+                                            }`}
+                                        >
+                                            <Edit2 size={13} />
+                                            <span>Fixed Manual Override</span>
+                                        </button>
+                                    </div>
+                                </div>
+                            )}
+
+                            {editingRate.mode === 'computed' ? (
+                                <div className="p-4 bg-purple-50 dark:bg-purple-950/30 border border-purple-200 dark:border-purple-500/30 rounded-xl space-y-1">
+                                    <div className="flex items-center gap-2 text-purple-700 dark:text-purple-300 font-bold text-xs">
+                                        <Calculator size={14} />
+                                        <span>Dynamic Recipe Calculation</span>
+                                    </div>
+                                    <p className="text-[11px] text-purple-700/80 dark:text-purple-300/80 leading-relaxed">
+                                        This rate version will dynamically compute its price from the constituent materials and labour active during this date range.
+                                    </p>
+                                </div>
+                            ) : (
+                                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                                    <div>
+                                        <label className="block text-[10px] font-bold uppercase text-gray-400 mb-1">Rate Amount (₹)</label>
+                                        <input
+                                            type="number"
+                                            step="any"
+                                            required
+                                            min="0"
+                                            value={editingRate.rate}
+                                            onChange={e => setEditingRate(prev => ({ ...prev, rate: e.target.value }))}
+                                            className="w-full bg-gray-50 dark:bg-[#0d1117] border border-gray-200 dark:border-white/10 rounded-lg px-3 py-2 text-xs font-bold focus:ring-1 focus:ring-blue-500 outline-none text-gray-900 dark:text-gray-100"
+                                        />
+                                    </div>
+
+                                    <div>
+                                        <label className="block text-[10px] font-bold uppercase text-gray-400 mb-1">Rate Unit</label>
+                                        <CustomSelect
+                                            value={editingRate.unit_code}
+                                            onChange={e => setEditingRate(prev => ({ ...prev, unit_code: e.target.value }))}
+                                            options={unitOptions}
+                                            placeholder="Select unit"
+                                        />
+                                    </div>
+                                </div>
+                            )}
+
+                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                                <div>
+                                    <label className="block text-[10px] font-bold uppercase text-gray-400 mb-1">Effective From</label>
+                                    <CustomDatePicker
+                                        value={editingRate.effective_from}
+                                        onChange={e => setEditingRate(prev => ({ ...prev, effective_from: e.target.value }))}
+                                    />
+                                </div>
+
+                                <div>
+                                    <label className="block text-[10px] font-bold uppercase text-gray-400 mb-1">Effective To (Optional)</label>
+                                    <CustomDatePicker
+                                        value={editingRate.effective_to}
+                                        onChange={e => setEditingRate(prev => ({ ...prev, effective_to: e.target.value }))}
+                                    />
+                                </div>
+                            </div>
+
+                            <div>
+                                <label className="block text-[10px] font-bold uppercase text-gray-400 mb-1">Reason / Revision Remarks</label>
+                                <input
+                                    type="text"
+                                    placeholder="e.g. Corrected invoice price typo"
+                                    value={editingRate.remarks}
+                                    onChange={e => setEditingRate(prev => ({ ...prev, remarks: e.target.value }))}
+                                    className="w-full bg-gray-50 dark:bg-[#0d1117] border border-gray-200 dark:border-white/10 rounded-lg px-3 py-2 text-xs focus:ring-1 focus:ring-blue-500 outline-none text-gray-900 dark:text-gray-100"
+                                />
+                            </div>
+
+                            {/* Modal Footer */}
+                            <div className="flex items-center justify-end gap-2.5 pt-4 border-t border-gray-200 dark:border-white/10">
+                                <button
+                                    type="button"
+                                    onClick={() => setEditingRate(null)}
+                                    className="px-4 py-2 text-xs font-bold text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-white/5 rounded-lg transition cursor-pointer"
+                                >
+                                    Cancel
+                                </button>
+                                <button
+                                    type="submit"
+                                    disabled={isUpdatingRate}
+                                    className="flex items-center gap-1.5 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-xs font-bold transition-colors shadow-xs disabled:opacity-50 cursor-pointer"
+                                >
+                                    {isUpdatingRate ? <RefreshCw size={13} className="animate-spin" /> : <Check size={13} />}
+                                    <span>Save Changes</span>
+                                </button>
+                            </div>
+                        </form>
+                    </motion.div>
+                </div>
+            )}
         </div>
     );
 };
