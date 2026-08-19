@@ -1,7 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { X, Users, UserMinus, Loader2, Upload, Image as ImageIcon, Trash2 } from 'lucide-react';
 import CustomDatePicker from './CustomDatePicker';
-import CustomSelect from './CustomSelect';
 import CustomInput from './CustomInput';
 import { adminApi } from '../services/adminApi';
 import { projectApi } from '../services/projectApi';
@@ -29,10 +28,8 @@ const NewProjectSlideOut = ({ isOpen, onClose, onProjectCreated, projectToEdit =
         projectCode: '',
         description: '',
         location: '',
-        employer: '',
         startDate: '',
-        endDate: '',
-        client: 'Select Client'
+        endDate: ''
     });
     const [isSubmitting, setIsSubmitting] = useState(false);
 
@@ -59,10 +56,8 @@ const NewProjectSlideOut = ({ isOpen, onClose, onProjectCreated, projectToEdit =
                     projectCode: projectToEdit.id || '',
                     description: projectToEdit.metadata?.description || '',
                     location: projectToEdit.location || '',
-                    employer: projectToEdit.metadata?.employer || projectToEdit.owner || '',
                     startDate: projectToEdit.startDateRaw || '',
-                    endDate: projectToEdit.endDateRaw || '',
-                    client: projectToEdit.metadata?.client || 'Select Client'
+                    endDate: projectToEdit.endDateRaw || ''
                 });
                 setLogoPreview(initialLogo);
                 setLogoFile(null);
@@ -83,10 +78,8 @@ const NewProjectSlideOut = ({ isOpen, onClose, onProjectCreated, projectToEdit =
                                 projectCode: p.project_code || prev.projectCode,
                                 description: meta.description || p.description || prev.description,
                                 location: p.location || prev.location,
-                                employer: meta.employer || prev.employer,
                                 startDate: p.start_date || prev.startDate,
-                                endDate: p.end_date || prev.endDate,
-                                client: meta.client || prev.client
+                                endDate: p.end_date || prev.endDate
                             }));
                             if (p.logo_url) {
                                 setLogoPreview(p.logo_url);
@@ -96,7 +89,7 @@ const NewProjectSlideOut = ({ isOpen, onClose, onProjectCreated, projectToEdit =
                 }
             } else {
                 setFormData({
-                    name: '', projectCode: '', description: '', location: '', employer: '', startDate: '', endDate: '', client: 'Select Client'
+                    name: '', projectCode: '', description: '', location: '', startDate: '', endDate: ''
                 });
                 setSelectedEmployees([]);
                 setLogoPreview('');
@@ -179,10 +172,9 @@ const NewProjectSlideOut = ({ isOpen, onClose, onProjectCreated, projectToEdit =
                 end_date: formData.endDate || null,
                 metadata: {
                     ...(projectToEdit ? projectToEdit.metadata : {}),
-                    description: formData.description,
-                    employer: formData.employer,
-                    client: formData.client === 'Select Client' ? '' : formData.client
-                }
+                    description: formData.description
+                },
+                ...(!projectToEdit ? { member_ids: selectedEmployees.map(e => e.id) } : {})
             };
 
             let res;
@@ -205,32 +197,31 @@ const NewProjectSlideOut = ({ isOpen, onClose, onProjectCreated, projectToEdit =
                     }
                 }
 
-                let currentMemberIds = [];
                 if (projectToEdit) {
+                    let currentMemberIds = [];
                     const membersRes = await projectApi.getProjectMembers(projectId);
                     if (membersRes.success) {
                         currentMemberIds = membersRes.members.map(m => m.user_id);
                     }
-                }
 
-                const toAdd = selectedEmployees.filter(e => !currentMemberIds.includes(e.id));
-                const selectedIds = selectedEmployees.map(e => e.id);
-                const toRemove = currentMemberIds.filter(id => !selectedIds.includes(id));
+                    const toAdd = selectedEmployees.filter(e => !currentMemberIds.includes(e.id));
+                    const selectedIds = selectedEmployees.map(e => e.id);
+                    const toRemove = currentMemberIds.filter(id => !selectedIds.includes(id));
 
-                for (const emp of toAdd) {
-                    await projectApi.assignProjectMember(projectId, {
-                        user_id: emp.id,
-                        permissions: { role: emp.role }
-                    });
-                }
+                    for (const emp of toAdd) {
+                        await projectApi.assignProjectMember(projectId, {
+                            user_id: emp.id
+                        });
+                    }
 
-                for (const userId of toRemove) {
-                    await projectApi.removeProjectMember(projectId, userId);
+                    for (const userId of toRemove) {
+                        await projectApi.removeProjectMember(projectId, userId);
+                    }
                 }
                 
                 customToast.success(projectToEdit ? 'Project updated successfully' : 'New project created successfully', projectToEdit ? 'Project Updated' : 'Project Created');
                 setFormData({
-                    name: '', projectCode: '', description: '', location: '', employer: '', startDate: '', endDate: '', client: 'Select Client'
+                    name: '', projectCode: '', description: '', location: '', startDate: '', endDate: ''
                 });
                 setSelectedEmployees([]);
                 setLogoFile(null);
@@ -239,8 +230,9 @@ const NewProjectSlideOut = ({ isOpen, onClose, onProjectCreated, projectToEdit =
                 else onClose();
             }
         } catch (error) {
-            console.error("Failed to create project", error);
-            customToast.error("Failed to save project details", "Save Failed");
+            console.error("Failed to save project", error);
+            const msg = error.response?.data?.message || "Failed to save project details";
+            customToast.error(msg, "Save Failed");
         } finally {
             setIsSubmitting(false);
         }
@@ -248,54 +240,53 @@ const NewProjectSlideOut = ({ isOpen, onClose, onProjectCreated, projectToEdit =
 
     return (
         <>
-            {/* Overlay */}
-            {isOpen && (
-                <div
-                    className="fixed inset-0 bg-gray-900/40 dark:bg-black/60 backdrop-blur-sm z-40 transition-all duration-300 ease-out"
-                    onClick={onClose}
-                />
-            )}
-
-            {/* Right Slide-out Drawer */}
+            {/* Backdrop */}
             <div
-                className={`fixed top-0 right-0 h-full w-[480px] max-w-full bg-white dark:bg-[#151A25] shadow-2xl z-50 transform transition-transform duration-300 flex flex-col border-l border-gray-200 dark:border-[#2A3445] ${isOpen ? 'translate-x-0' : 'translate-x-full'}`}
+                className={`fixed inset-0 bg-black/40 backdrop-blur-xs z-40 transition-opacity duration-300 ${
+                    isOpen ? 'opacity-100' : 'opacity-0 pointer-events-none'
+                }`}
+                onClick={onClose}
+            />
+
+            {/* Slide-out Panel */}
+            <div
+                className={`fixed top-0 right-0 h-full w-full max-w-[550px] bg-white dark:bg-[#0D1117] shadow-2xl z-50 transform transition-transform duration-300 ease-in-out flex flex-col border-l border-gray-200 dark:border-[#1E2640] ${
+                    isOpen ? 'translate-x-0' : 'translate-x-full'
+                }`}
             >
                 {/* Header */}
-                <div className="flex justify-between items-center px-6 py-5 border-b border-gray-200 dark:border-[#2A3445] bg-white dark:bg-[#151A25]">
-                    <h2 className="text-lg font-bold text-gray-900 dark:text-white">{projectToEdit ? 'Edit Project Details' : 'Create New Project'}</h2>
+                <div className="flex items-center justify-between px-6 py-5 border-b border-gray-100 dark:border-[#1E2640]">
+                    <h2 className="text-xl font-bold text-gray-900 dark:text-white">
+                        {projectToEdit ? 'Edit Project' : 'New Project'}
+                    </h2>
                     <button
                         onClick={onClose}
-                        className="p-1.5 text-gray-500 hover:text-gray-900 dark:text-[#7A8AAB] dark:hover:text-white hover:bg-gray-100 dark:hover:bg-[#2A3445] rounded-md transition-colors cursor-pointer"
+                        className="p-1 rounded-lg text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 hover:bg-gray-100 dark:hover:bg-[#1A2235] transition-colors"
                     >
-                        <X size={18} />
+                        <X size={20} />
                     </button>
                 </div>
 
                 {/* Body / Form */}
-                <div className="flex-1 overflow-y-auto p-6 space-y-6 [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden">
-                    {/* Project Organisation Logo Upload */}
+                <div className="flex-1 overflow-y-auto px-6 py-6 space-y-5">
+                    {/* Organization Logo Section */}
                     <div>
                         <label className="block text-xs font-semibold text-gray-500 dark:text-[#7A8AAB] uppercase tracking-wider mb-2">
-                            Project Organisation Logo
+                            Project Logo
                         </label>
-
                         <input
                             type="file"
                             ref={fileInputRef}
-                            accept="image/*"
                             onChange={handleLogoSelect}
+                            accept="image/png,image/jpeg,image/jpg,image/webp"
                             className="hidden"
                         />
-
                         {logoPreview ? (
-                            <div className="relative group w-full h-32 bg-gray-50 dark:bg-[#1A2235] border border-gray-200 dark:border-[#2A3445] rounded-xl flex items-center justify-center p-3 overflow-hidden shadow-inner">
+                            <div className="relative w-full h-32 rounded-xl overflow-hidden border border-gray-200 dark:border-[#2A3445] bg-gray-50 dark:bg-[#1A2235] flex items-center justify-center group">
                                 <img
                                     src={logoPreview}
                                     alt="Project Logo Preview"
-                                    className="max-h-full max-w-full object-contain rounded transition-transform group-hover:scale-105"
-                                    onError={(e) => {
-                                        console.error("Logo image failed to load:", logoPreview);
-                                    }}
+                                    className="max-h-full max-w-full object-contain p-2"
                                 />
                                 <div className="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-2">
                                     <button
@@ -325,7 +316,7 @@ const NewProjectSlideOut = ({ isOpen, onClose, onProjectCreated, projectToEdit =
                                     <Upload size={18} />
                                 </div>
                                 <span className="text-xs font-medium text-gray-600 dark:text-gray-300">
-                                    Click to upload Organisation Logo
+                                    Click to upload Project Logo
                                 </span>
                             </button>
                         )}
@@ -343,16 +334,13 @@ const NewProjectSlideOut = ({ isOpen, onClose, onProjectCreated, projectToEdit =
                     {/* Row 3: Location */}
                     <CustomInput label="Location" value={formData.location} onChange={(e) => handleInputChange('location', e.target.value)} />
 
-                    {/* Row 4: Employer */}
-                    <CustomInput label="Employer" value={formData.employer} onChange={(e) => handleInputChange('employer', e.target.value)} />
-
-                    {/* Row 5: Dates */}
+                    {/* Row 4: Dates */}
                     <div className="grid grid-cols-2 gap-5">
                         <CustomDatePicker label="Start Date" value={formData.startDate} onChange={(val) => handleInputChange('startDate', val.target.value)} />
                         <CustomDatePicker label="End Date" value={formData.endDate} onChange={(val) => handleInputChange('endDate', val.target.value)} />
                     </div>
 
-                    {/* Row 6: Add Employees */}
+                    {/* Row 5: Add Employees */}
                     <div className="relative" ref={employeeDropdownRef}>
                         <label className="block text-xs font-semibold text-gray-500 dark:text-[#7A8AAB] uppercase tracking-wider mb-2">
                             Add Employees
@@ -425,16 +413,6 @@ const NewProjectSlideOut = ({ isOpen, onClose, onProjectCreated, projectToEdit =
                                 ))}
                             </div>
                         )}
-                    </div>
-
-                    {/* Row 7: Clients */}
-                    <div className="pb-4">
-                        <CustomSelect
-                            label="Clients"
-                            value={formData.client}
-                            onChange={(e) => handleInputChange('client', e.target.value)}
-                            options={["Select Client", "Client A", "Client B"]}
-                        />
                     </div>
                 </div>
 

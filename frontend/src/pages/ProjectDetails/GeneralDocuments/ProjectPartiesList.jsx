@@ -46,10 +46,9 @@ const ProjectPartiesList = ({ onBack, setExtraBreadcrumbs, canWrite }) => {
 
     useEffect(() => {
         setExtraBreadcrumbs([
-            { label: 'General Documents', onClick: onBack },
             { label: 'Project Parties' },
         ]);
-    }, [onBack, projectId, setExtraBreadcrumbs]);
+    }, [projectId, setExtraBreadcrumbs]);
 
     const fetchParties = useCallback(async (silent = false) => {
         if (!silent) setLoading(true);
@@ -317,15 +316,24 @@ const ProjectPartiesList = ({ onBack, setExtraBreadcrumbs, canWrite }) => {
                         <div className="px-4 py-16 text-center text-sm text-gray-500">Loading project parties...</div>
                     ) : filteredParties.length === 0 ? (
                         <div className="px-4 py-16 text-center">
-                            <div className="mx-auto mb-3 w-12 h-12 rounded-full bg-gray-100 dark:bg-white/5 flex items-center justify-center text-gray-400">
-                                <Users size={22} />
+                            <div className="mx-auto mb-3 w-12 h-12 rounded-2xl bg-blue-500/10 dark:bg-blue-500/20 flex items-center justify-center text-blue-600 dark:text-blue-400 shadow-inner">
+                                <Users size={24} />
                             </div>
                             <p className="text-sm font-semibold text-gray-800 dark:text-gray-200">
                                 {parties.length === 0 ? 'No parties linked yet' : 'No matching parties'}
                             </p>
-                            <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
-                                {parties.length === 0 ? 'Add contacts from the CRM master to start this project directory.' : 'Try a different search or category filter.'}
+                            <p className="mt-1 text-xs text-gray-500 dark:text-gray-400 max-w-md mx-auto">
+                                {parties.length === 0 ? 'Add contacts from the CRM master to establish project parties and assign employers.' : 'Try a different search or category filter.'}
                             </p>
+                            {parties.length === 0 && canWrite && (
+                                <button
+                                    onClick={() => setIsAdding(true)}
+                                    className="mt-4 inline-flex items-center gap-2 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-xs font-semibold shadow-md shadow-blue-500/20 transition-all cursor-pointer"
+                                >
+                                    <Plus size={15} />
+                                    <span>Add First Party</span>
+                                </button>
+                            )}
                         </div>
                     ) : (
                         <table className="w-full min-w-[850px] text-left text-[12px]">

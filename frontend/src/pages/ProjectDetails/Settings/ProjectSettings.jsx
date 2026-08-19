@@ -9,7 +9,6 @@ import CustomDatePicker from '../../../components/CustomDatePicker';
 import CustomSelect from '../../../components/CustomSelect';
 import { adminApi } from '../../../services/adminApi';
 import { projectApi } from '../../../services/projectApi';
-import { clientApi } from '../../../services/clientApi';
 import { customToast } from '../../../utils/toast';
 
 const COLORS = [
@@ -32,7 +31,6 @@ const ProjectSettings = ({ project, canWrite, reloadProject }) => {
     const [dropdownOpen, setDropdownOpen] = useState(false);
     const [employeeOptions, setEmployeeOptions] = useState([]);
     const [memberSearchQuery, setMemberSearchQuery] = useState('');
-    const [clientOptions, setClientOptions] = useState(['Select Client']);
 
     const fileInputRef = useRef(null);
     const employeeDropdownRef = useRef(null);
@@ -42,8 +40,6 @@ const ProjectSettings = ({ project, canWrite, reloadProject }) => {
         projectCode: '',
         description: '',
         location: '',
-        employer: '',
-        client: 'Select Client',
         startDate: '',
         endDate: '',
         status: 'active'
@@ -82,8 +78,6 @@ const ProjectSettings = ({ project, canWrite, reloadProject }) => {
                 projectCode: project.project_code || project.id || '',
                 description: project.metadata?.description || '',
                 location: project.location || '',
-                employer: project.metadata?.employer || '',
-                client: project.metadata?.client || 'Select Client',
                 startDate: project.start_date ? project.start_date.split('T')[0] : '',
                 endDate: project.end_date ? project.end_date.split('T')[0] : '',
                 status: project.status || 'active'
@@ -91,26 +85,8 @@ const ProjectSettings = ({ project, canWrite, reloadProject }) => {
             setLogoPreview(project.logo_url || '');
             setLogoFile(null);
             fetchEmployees();
-            fetchClients();
         }
     }, [project]);
-
-    const fetchClients = async () => {
-        try {
-            const res = await clientApi.getClients({ limit: 100 });
-            const list = Array.isArray(res) ? res : (res?.clients || res?.data || []);
-            if (list.length > 0) {
-                const names = list.map(c => c.name || c.company_name || c.client_name).filter(Boolean);
-                const uniqueClients = ['Select Client', ...Array.from(new Set(names))];
-                setClientOptions(uniqueClients);
-            } else {
-                setClientOptions(['Select Client', 'Client A', 'Client B']);
-            }
-        } catch (error) {
-            console.error('Failed to fetch clients:', error);
-            setClientOptions(['Select Client', 'Client A', 'Client B']);
-        }
-    };
 
     const fetchEmployees = async () => {
         try {
@@ -254,9 +230,7 @@ const ProjectSettings = ({ project, canWrite, reloadProject }) => {
                 logo_url: logoFile ? undefined : (logoPreview || null),
                 metadata: {
                     ...(project.metadata || {}),
-                    description: formData.description,
-                    employer: formData.employer,
-                    client: formData.client === 'Select Client' ? '' : formData.client
+                    description: formData.description
                 }
             };
 
@@ -286,8 +260,7 @@ const ProjectSettings = ({ project, canWrite, reloadProject }) => {
 
                 for (const emp of toAdd) {
                     await projectApi.assignProjectMember(project.id, {
-                        user_id: emp.id,
-                        permissions: { role: emp.role }
+                        user_id: emp.id
                     });
                 }
 
@@ -300,7 +273,8 @@ const ProjectSettings = ({ project, canWrite, reloadProject }) => {
             }
         } catch (error) {
             console.error("Failed to update project settings", error);
-            customToast.error("Failed to update project settings", "Save Failed");
+            const msg = error.response?.data?.message || "Failed to update project settings";
+            customToast.error(msg, "Save Failed");
         } finally {
             setIsSubmitting(false);
         }
@@ -543,29 +517,12 @@ const ProjectSettings = ({ project, canWrite, reloadProject }) => {
                                 disabled={!canWrite}
                             />
 
-                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                            <div>
                                 <CustomInput
                                     label="Project Location"
                                     value={formData.location}
                                     onChange={(e) => handleInputChange('location', e.target.value)}
                                     placeholder="City / Site address"
-                                    disabled={!canWrite}
-                                />
-                                <CustomInput
-                                    label="Employer / Developer"
-                                    value={formData.employer}
-                                    onChange={(e) => handleInputChange('employer', e.target.value)}
-                                    placeholder="e.g. Horizon Commercial Developers"
-                                    disabled={!canWrite}
-                                />
-                            </div>
-
-                            <div>
-                                <CustomSelect
-                                    label="Primary Client"
-                                    value={formData.client}
-                                    onChange={(e) => handleInputChange('client', e.target.value)}
-                                    options={clientOptions}
                                     disabled={!canWrite}
                                 />
                             </div>

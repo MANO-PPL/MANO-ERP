@@ -223,7 +223,16 @@ const ProjectDetails = () => {
                     <ChevronRight size={12} className="text-gray-400 dark:text-gray-600" />
                     <span
                         className={`transition-colors ${extraBreadcrumbs.length === 0 ? 'text-gray-900 dark:text-white font-semibold' : 'text-blue-600 dark:text-blue-400 font-medium cursor-pointer'}`}
-                        onClick={() => extraBreadcrumbs.length > 0 && setExtraBreadcrumbs([])}
+                        onClick={() => {
+                            if (extraBreadcrumbs.length > 0) {
+                                setExtraBreadcrumbs([]);
+                                const newParams = new URLSearchParams(searchParams);
+                                newParams.delete('view');
+                                newParams.delete('aid');
+                                newParams.delete('mid');
+                                setSearchParams(newParams);
+                            }
+                        }}
                     >
                         {activeTab}
                     </span>

@@ -62,32 +62,37 @@ body {
 
 /* ===== Visible Custom Table Scrollbar ===== */
 .table-scrollbar::-webkit-scrollbar {
-  height: 10px;
-  width: 10px;
+  height: 8px;
+  width: 8px;
 }
 .table-scrollbar::-webkit-scrollbar-track {
-  background: rgba(0, 0, 0, 0.05);
-  border-radius: 6px;
+  background: rgba(0, 0, 0, 0.04);
+  border-radius: 4px;
 }
 .dark .table-scrollbar::-webkit-scrollbar-track {
-  background: rgba(255, 255, 255, 0.05);
+  background: rgba(255, 255, 255, 0.04);
 }
 .table-scrollbar::-webkit-scrollbar-thumb {
-  background: rgba(59, 130, 246, 0.5);
-  border-radius: 6px;
-  border: 2px solid transparent;
+  background: rgba(148, 163, 184, 0.5);
+  border-radius: 4px;
+  border: 1px solid transparent;
   background-clip: content-box;
+}
+.dark .table-scrollbar::-webkit-scrollbar-thumb {
+  background: rgba(100, 116, 139, 0.5);
 }
 .table-scrollbar::-webkit-scrollbar-thumb:hover {
   background: rgba(59, 130, 246, 0.8);
-  background-clip: content-box;
+}
+.dark .table-scrollbar::-webkit-scrollbar-thumb:hover {
+  background: rgba(96, 165, 250, 0.8);
 }
 .table-scrollbar {
   scrollbar-width: thin;
-  scrollbar-color: rgba(59, 130, 246, 0.5) rgba(0, 0, 0, 0.05);
+  scrollbar-color: rgba(148, 163, 184, 0.5) rgba(0, 0, 0, 0.04);
 }
 .dark .table-scrollbar {
-  scrollbar-color: rgba(59, 130, 246, 0.5) rgba(255, 255, 255, 0.05);
+  scrollbar-color: rgba(100, 116, 139, 0.5) rgba(255, 255, 255, 0.04);
 }
 
 

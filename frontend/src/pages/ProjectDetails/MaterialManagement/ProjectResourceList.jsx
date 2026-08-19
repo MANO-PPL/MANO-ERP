@@ -1310,10 +1310,9 @@ const ProjectResourceList = ({ onBack, setExtraBreadcrumbs, canWrite, projectId:
             return next;
         });
 
-        showToast('success', 'Resource Imported', `${resource.name} added to project.`);
-
         try {
             await projectApi.importResource(projectId, resId, effectiveDate);
+            showToast('success', 'Resource Imported', `${resource.name} added to project.`);
 
             // Notify parent to refresh counts without blocking UI
             if (onRefreshResources) onRefreshResources();

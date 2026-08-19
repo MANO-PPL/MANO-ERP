@@ -1,6 +1,6 @@
-import React, { useEffect, useState, useRef } from 'react';
+import React, { useEffect, useState, useRef, useMemo } from 'react';
 import { createPortal } from 'react-dom';
-import { Plus, Edit2, GripVertical, Trash2, Info, X, Clock, ArrowLeft, Search, ChevronDown } from 'lucide-react';
+import { Plus, Edit2, GripVertical, Trash2, Info, X, Clock, ArrowLeft, Search, ChevronDown, Users, Loader2, Building2 } from 'lucide-react';
 import { Reorder, AnimatePresence, motion } from 'framer-motion';
 import { useParams } from 'react-router-dom';
 import { generalDocsApi } from '../../../services/generalDocsApi';
@@ -8,12 +8,17 @@ import WorkflowPanel from '../../../components/WorkflowPanel';
 import { workflowApi } from '../../../services/workflowApi';
 import { toast } from 'react-toastify';
 
+import SearchableDropdownPortal, { rankAndFilter, HighlightMatch } from '../../../components/SearchableDropdownPortal';
+
 /* ---- Inline Party Dropdown for Project Parties ---- */
 const PartySelector = ({ value, onChange, projectParties }) => {
     const [open, setOpen] = useState(false);
     const [search, setSearch] = useState('');
+    const [activeIndex, setActiveIndex] = useState(0);
     const [coords, setCoords] = useState({ top: 0, left: 0, width: 0 });
     const ref = useRef(null);
+    const inputRef = useRef(null);
+    const listRef = useRef(null);
 
     useEffect(() => {
         const handler = (e) => { 
@@ -29,34 +34,70 @@ const PartySelector = ({ value, onChange, projectParties }) => {
             setCoords({ 
                 top: rect.bottom + window.scrollY, 
                 left: rect.left + window.scrollX, 
-                width: Math.max(rect.width, 280) 
+                width: Math.max(rect.width, 300) 
             });
+            setSearch('');
+            setActiveIndex(0);
         }
         setOpen(!open);
     };
 
-    const filtered = projectParties.filter(v =>
-        v.name?.toLowerCase().includes(search.toLowerCase()) ||
-        v.job_nature?.toLowerCase().includes(search.toLowerCase()) ||
-        v.category?.toLowerCase().includes(search.toLowerCase())
-    );
+    const filtered = useMemo(() => {
+        return rankAndFilter(projectParties, search, v => `${v.name || ''} ${v.category || ''} ${v.job_nature || ''}`);
+    }, [projectParties, search]);
+
+    useEffect(() => {
+        setActiveIndex(0);
+    }, [search]);
+
+    useEffect(() => {
+        if (!listRef.current) return;
+        const activeElem = listRef.current.querySelector(`[data-index="${activeIndex}"]`);
+        if (activeElem) {
+            activeElem.scrollIntoView({ block: 'nearest' });
+        }
+    }, [activeIndex]);
+
+    const handleKeyDown = (e) => {
+        if (e.key === 'Escape') {
+            e.preventDefault();
+            setOpen(false);
+        } else if (e.key === 'ArrowDown') {
+            e.preventDefault();
+            if (filtered.length > 0) {
+                setActiveIndex(prev => (prev + 1) % filtered.length);
+            }
+        } else if (e.key === 'ArrowUp') {
+            e.preventDefault();
+            if (filtered.length > 0) {
+                setActiveIndex(prev => (prev - 1 + filtered.length) % filtered.length);
+            }
+        } else if (e.key === 'Enter') {
+            e.preventDefault();
+            if (filtered.length > 0 && activeIndex >= 0 && activeIndex < filtered.length) {
+                onChange(filtered[activeIndex]);
+                setOpen(false);
+                setSearch('');
+            }
+        }
+    };
 
     return (
-        <div ref={ref} className="relative min-w-[160px]">
+        <div ref={ref} className="relative w-full">
             <button
                 type="button"
                 onClick={handleToggle}
-                className="flex items-center justify-between w-full px-2 py-1 bg-white dark:bg-[#161b22] border border-blue-500/50 focus:border-blue-500 rounded text-xs outline-none dark:text-white transition-all min-h-[26px] gap-2"
+                className="flex items-center justify-between w-full h-8 px-2.5 bg-white dark:bg-[#161b22] border border-blue-500/60 focus:border-blue-500 focus:ring-1 focus:ring-blue-500/20 rounded-md text-xs outline-none dark:text-white transition-all gap-2 cursor-pointer shadow-2xs"
             >
-                <span className="truncate max-w-[140px] text-left">{value || <span className="text-gray-400">Select party…</span>}</span>
-                <ChevronDown size={12} className={`shrink-0 text-gray-400 transition-transform ${open ? 'rotate-180' : ''}`} />
+                <span className="truncate max-w-[160px] text-left font-medium">{value || <span className="text-gray-400 font-normal">Select party…</span>}</span>
+                <ChevronDown size={13} className={`shrink-0 text-gray-400 transition-transform ${open ? 'rotate-180 text-blue-500' : ''}`} />
             </button>
 
             {open && createPortal(
                 <motion.div
                     initial={{ opacity: 0, y: 6 }}
                     animate={{ opacity: 1, y: 0 }}
-                    className="portal-dropdown fixed bg-white dark:bg-[#161b22] border border-gray-200 dark:border-white/10 rounded-xl shadow-2xl z-[9999] overflow-hidden flex flex-col"
+                    className="portal-dropdown fixed bg-white dark:bg-[#161b22] border border-gray-200 dark:border-white/10 rounded-xl shadow-2xl z-[9999] overflow-hidden flex flex-col p-1.5"
                     style={{ 
                         top: coords.top - window.scrollY, 
                         left: coords.left - window.scrollX, 
@@ -64,33 +105,58 @@ const PartySelector = ({ value, onChange, projectParties }) => {
                         maxHeight: '300px'
                     }}
                 >
-                    <div className="p-2 border-b border-gray-100 dark:border-white/5">
+                    <div className="p-1 border-b border-gray-100 dark:border-white/5 mb-1">
                         <div className="relative">
                             <Search size={12} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-400" />
                             <input
+                                ref={inputRef}
                                 autoFocus
                                 type="text"
                                 placeholder="Search project parties…"
-                                className="w-full pl-7 pr-3 py-1.5 bg-gray-50 dark:bg-[#0d1117] border border-gray-200 dark:border-white/10 rounded-lg text-xs outline-none focus:border-blue-500 transition-all dark:text-white"
+                                className="w-full pl-7 pr-7 py-1.5 bg-gray-50 dark:bg-[#0d1117] border border-gray-200 dark:border-white/10 rounded-lg text-xs outline-none focus:border-blue-500 transition-all dark:text-white"
                                 value={search}
                                 onChange={e => setSearch(e.target.value)}
+                                onKeyDown={handleKeyDown}
                             />
+                            {search && (
+                                <button
+                                    type="button"
+                                    onClick={() => {
+                                        setSearch('');
+                                        inputRef.current?.focus();
+                                    }}
+                                    className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 p-0.5"
+                                >
+                                    <X size={12} />
+                                </button>
+                            )}
                         </div>
                     </div>
-                    <div className="overflow-y-auto custom-scrollbar flex-1">
-                        {filtered.length > 0 ? filtered.map(v => (
-                            <button
-                                key={v.pv_id}
-                                type="button"
-                                onClick={() => { onChange(v); setOpen(false); setSearch(''); }}
-                                className="w-full px-3 py-2.5 flex flex-col items-start hover:bg-blue-50 dark:hover:bg-blue-900/20 border-b border-gray-50 dark:border-white/5 text-left group transition-colors"
-                            >
-                                <span className="text-xs font-semibold text-gray-900 dark:text-white group-hover:text-blue-600 transition-colors uppercase tracking-tight">{v.name}</span>
-                                <span className="text-[10px] text-gray-400 mt-0.5 font-medium">
-                                    {[v.category || 'Uncategorized', v.job_nature].filter(Boolean).join(' · ')}
-                                </span>
-                            </button>
-                        )) : (
+                    <div ref={listRef} className="overflow-y-auto custom-scrollbar flex-1 space-y-0.5">
+                        {filtered.length > 0 ? filtered.map((v, idx) => {
+                            const isActive = activeIndex === idx;
+                            return (
+                                <button
+                                    key={v.pv_id || idx}
+                                    data-index={idx}
+                                    type="button"
+                                    onMouseEnter={() => setActiveIndex(idx)}
+                                    onClick={() => { onChange(v); setOpen(false); setSearch(''); }}
+                                    className={`w-full px-2.5 py-2 flex flex-col items-start rounded-lg text-left transition-colors cursor-pointer ${
+                                        isActive
+                                            ? 'bg-blue-50 dark:bg-blue-900/30'
+                                            : 'hover:bg-gray-50 dark:hover:bg-white/5'
+                                    }`}
+                                >
+                                    <span className="text-xs font-semibold text-gray-900 dark:text-white uppercase tracking-tight">
+                                        <HighlightMatch text={v.name} query={search} />
+                                    </span>
+                                    <span className="text-[10px] text-gray-400 mt-0.5 font-medium">
+                                        {[v.category || 'Uncategorized', v.job_nature].filter(Boolean).join(' · ')}
+                                    </span>
+                                </button>
+                            );
+                        }) : (
                             <div className="px-3 py-6 text-center text-xs text-gray-400">No project parties found</div>
                         )}
                     </div>
@@ -101,18 +167,24 @@ const PartySelector = ({ value, onChange, projectParties }) => {
     );
 };
 
-const ResizableInput = ({ value, onChange, autoFocus, className = "", minW = "50px" }) => (
-    <div className="inline-grid w-fit max-w-full items-center align-middle relative">
-        <span className={`invisible col-start-1 row-start-1 whitespace-pre pointer-events-none min-h-[26px] flex items-center ${className}`} style={{ minWidth: minW }}>
-            {value || ' '}
-        </span>
-        <input
-            autoFocus={autoFocus}
-            className={`absolute inset-0 w-full h-full bg-white dark:bg-[#161b22] border border-blue-500/50 focus:border-blue-500 focus:ring-1 focus:ring-blue-500/20 rounded outline-none shadow-sm dark:text-white transition-all ${className}`}
-            value={value || ''}
-            onChange={onChange}
-        />
-    </div>
+const StandardInput = ({ value, onChange, placeholder, autoFocus, type = "text", className = "" }) => (
+    <input
+        type={type}
+        autoFocus={autoFocus}
+        placeholder={placeholder}
+        value={value || ''}
+        onChange={onChange}
+        className={`w-full h-8 px-2.5 text-xs bg-white dark:bg-[#161b22] border border-blue-500/60 focus:border-blue-500 focus:ring-1 focus:ring-blue-500/20 rounded-md outline-none dark:text-white transition-all ${className}`}
+    />
+);
+
+const StandardTextarea = ({ value, onChange, placeholder, className = "" }) => (
+    <textarea
+        placeholder={placeholder}
+        value={value || ''}
+        onChange={onChange}
+        className={`w-full bg-white dark:bg-[#161b22] border border-blue-500/60 focus:border-blue-500 focus:ring-1 focus:ring-blue-500/20 rounded-md outline-none dark:text-white transition-all px-2.5 py-1.5 text-xs min-h-[60px] resize-none ${className}`}
+    />
 );
 
 const ProjectDirectory = ({ onBack, setExtraBreadcrumbs, canWrite }) => {
@@ -190,10 +262,9 @@ const ProjectDirectory = ({ onBack, setExtraBreadcrumbs, canWrite }) => {
 
     useEffect(() => {
         setExtraBreadcrumbs([
-            { label: 'General Documents', onClick: onBack },
             { label: 'Project Directory' }
         ]);
-    }, [onBack, setExtraBreadcrumbs, projectId]);
+    }, [setExtraBreadcrumbs, projectId]);
 
     useEffect(() => {
         const load = async () => {
@@ -357,8 +428,8 @@ const ProjectDirectory = ({ onBack, setExtraBreadcrumbs, canWrite }) => {
             ...prev,
             pv_id: party.pv_id,
             name: party.name || '',
-            category: party.category || 'Uncategorized',
-            nature: party.job_nature || ''
+            category: party.category || party.contact_category || party.party_category || 'Uncategorized',
+            nature: party.job_nature || party.jobNature || ''
         }));
     };
 
@@ -470,218 +541,242 @@ const ProjectDirectory = ({ onBack, setExtraBreadcrumbs, canWrite }) => {
                 />
 
                 {loading ? (
-                    <div className="flex items-center justify-center h-48 opacity-50 dark:text-white">Loading data...</div>
-                ) : (
-                        <div className="overflow-x-auto mt-4">
-                            <table className="w-full text-left text-[13px] border-collapse bg-white dark:bg-[#0d1117] table-fixed min-w-[1200px]">
-                                <colgroup>
-                                    <col className="w-[50px]" />
-                                    <col className="w-[60px]" />
-                                    <col className="w-[220px]" />
-                                    <col className="w-[120px]" />
-                                    <col className="w-[180px]" />
-                                    <col className="w-[180px]" />
-                                    <col className="w-[160px]" />
-                                    <col className="w-[200px]" />
-                                    <col className="w-[140px]" />
-                                    <col className="w-[200px]" />
-                                    <col className="w-[220px]" />
-                                    {isEditable && <col className="w-[120px]" />}
-                                </colgroup>
-                                <thead className="bg-[#f9fafb] dark:bg-[#161b22] text-gray-500 dark:text-gray-400 sticky top-0 z-10 border-b border-gray-200 dark:border-white/5 tracking-wide">
-                                    <tr>
-                                        <th className="px-3 py-3 text-center"></th>
-                                        <th className="px-4 py-3 font-medium capitalize text-[10px] tracking-widest text-center">Sl No.</th>
-                                        <th className="px-4 py-3 font-medium capitalize text-[10px] tracking-widest">Company Name</th>
-                                        <th className="px-4 py-3 font-medium capitalize text-[10px] tracking-widest">Category</th>
-                                        <th className="px-4 py-3 font-medium capitalize text-[10px] tracking-widest">Job Nature</th>
-                                        <th className="px-4 py-3 font-medium capitalize text-[10px] tracking-widest">Person Name</th>
-                                        <th className="px-4 py-3 font-medium capitalize text-[10px] tracking-widest">Designation</th>
-                                        <th className="px-4 py-3 font-medium capitalize text-[10px] tracking-widest">Responsibilities</th>
-                                        <th className="px-4 py-3 font-medium capitalize text-[10px] tracking-widest">Mobile No</th>
-                                        <th className="px-4 py-3 font-medium capitalize text-[10px] tracking-widest">Email ID</th>
-                                        <th className="px-4 py-3 font-medium capitalize text-[10px] tracking-widest">Address</th>
-                                        {isEditable && <th className="px-4 py-3 font-medium capitalize text-[10px] tracking-widest text-center">Actions</th>}
-                                    </tr>
-                                </thead>
-                                <Reorder.Group axis="y" values={contacts} onReorder={isEditable ? setContacts : () => {}} as="tbody" className="divide-y divide-gray-100 dark:divide-white/[0.03]">
-                                    <AnimatePresence initial={false}>
-                                        {contacts.map((contact, idx) => {
-                                            const isEditing = editingId === contact.id;
-                                            return (
-                                                <Reorder.Item
-                                                    key={contact.id}
-                                                    value={contact}
-                                                    as="tr"
-                                                    onMouseEnter={() => setHoveredRow(contact.id)}
-                                                    onMouseLeave={() => setHoveredRow(null)}
-                                                    className={`${isEditing ? 'bg-blue-50/10 dark:bg-blue-900/5' : 'hover:bg-blue-50/10 dark:hover:bg-blue-900/10'} transition-colors group/row h-[48px] cursor-default relative align-top`}
-                                                >
-                                                    <td className="px-3 py-4 text-center">
-                                                        <div className="flex items-center justify-center">
-                                                            <GripVertical size={14} className={`text-gray-300 dark:text-gray-700 group-hover/row:text-blue-500 transition-colors ${isEditable ? 'cursor-grab active:cursor-grabbing' : 'pointer-events-none'}`} />
-                                                        </div>
-                                                    </td>
-                                                    <td className="px-4 py-5 text-gray-500 dark:text-gray-600 font-mono text-[11px] text-center">
-                                                        {String(idx + 1)}
-                                                    </td>
-
-                                                    {/* Company Name */}
-                                                    <td className="px-4 py-4" onClick={() => isEditable && !isEditing && handleEdit(contact)}>
-                                                        {isEditing ? (
-                                                            <PartySelector
-                                                                value={editData.name}
-                                                                onChange={handlePartySelect}
-                                                                projectParties={projectParties}
-                                                            />
-                                                        ) : (
-                                                            <div className="text-gray-900 dark:text-gray-200 cursor-pointer font-medium py-1">
-                                                                {contact.name || '-'}
-                                                            </div>
-                                                        )}
-                                                    </td>
-
-                                                    {/* Party Category */}
-                                                    <td className="px-4 py-4" onClick={() => isEditable && !isEditing && handleEdit(contact)}>
-                                                        <span className="inline-flex px-2 py-1 rounded-full border border-blue-500/20 bg-blue-500/10 text-blue-600 dark:text-blue-300 text-[9px] font-semibold uppercase tracking-wide">
-                                                            {contact.category || 'Uncategorized'}
-                                                        </span>
-                                                    </td>
-
-                                                    {/* Job Nature */}
-                                                    <td className="px-4 py-4" onClick={() => isEditable && !isEditing && handleEdit(contact)}>
-                                                        {isEditing ? (
-                                                            <div className={`px-2 py-1.5 text-[11px] rounded border ${editData.nature ? 'text-blue-500 border-blue-500/30 bg-blue-500/10 dark:bg-blue-900/20 font-bold' : 'text-gray-400 border-gray-200 dark:border-white/10 italic'}`}>
-                                                                {editData.nature || 'Auto-filled'}
-                                                            </div>
-                                                        ) : (
-                                                            <div className="text-gray-600 dark:text-gray-400 cursor-pointer py-1 font-medium">{contact.nature || '-'}</div>
-                                                        )}
-                                                    </td>
-
-                                                    {/* Person Name */}
-                                                    <td className="px-4 py-4" onClick={() => isEditable && !isEditing && handleEdit(contact)}>
-                                                        {isEditing ? (
-                                                            <ResizableInput
-                                                                className="px-2 py-1 text-xs font-medium"
-                                                                value={editData.person}
-                                                                onChange={(e) => setEditData({ ...editData, person: e.target.value })}
-                                                            />
-                                                        ) : (
-                                                            <div className="text-gray-600 dark:text-gray-400 cursor-pointer py-1">{contact.person || '-'}</div>
-                                                        )}
-                                                    </td>
-
-                                                    {/* Designation */}
-                                                    <td className="px-4 py-4" onClick={() => isEditable && !isEditing && handleEdit(contact)}>
-                                                        {isEditing ? (
-                                                            <ResizableInput
-                                                                className="px-2 py-1 text-xs"
-                                                                value={editData.designation}
-                                                                onChange={(e) => setEditData({ ...editData, designation: e.target.value })}
-                                                            />
-                                                        ) : (
-                                                            <div className="text-gray-600 dark:text-gray-400 cursor-pointer py-1">{contact.designation || '-'}</div>
-                                                        )}
-                                                    </td>
-
-                                                    {/* Responsibilities */}
-                                                    <td className="px-4 py-4" onClick={() => isEditable && !isEditing && handleEdit(contact)}>
-                                                        {isEditing ? (
-                                                            <textarea
-                                                                className="w-full bg-white dark:bg-[#161b22] border border-blue-500/50 focus:border-blue-500 focus:ring-1 focus:ring-blue-500/20 rounded outline-none shadow-sm dark:text-white transition-all px-2 py-1 text-xs min-h-[60px] resize-none"
-                                                                value={editData.responsibilities}
-                                                                onChange={(e) => setEditData({ ...editData, responsibilities: e.target.value })}
-                                                                placeholder="Enter responsibilities..."
-                                                            />
-                                                        ) : (
-                                                            <div className="text-gray-600 dark:text-gray-400 cursor-pointer py-1 whitespace-pre-wrap leading-relaxed">{contact.responsibilities || '-'}</div>
-                                                        )}
-                                                    </td>
-
-                                                    {/* Mobile No */}
-                                                    <td className="px-4 py-4" onClick={() => isEditable && !isEditing && handleEdit(contact)}>
-                                                        {isEditing ? (
-                                                            <ResizableInput
-                                                                className="px-2 py-1 text-xs"
-                                                                value={editData.phone}
-                                                                onChange={(e) => setEditData({ ...editData, phone: e.target.value })}
-                                                            />
-                                                        ) : (
-                                                            <div className="text-gray-600 dark:text-gray-400 cursor-pointer py-1 font-mono">{contact.phone || '-'}</div>
-                                                        )}
-                                                    </td>
-
-                                                    {/* Email ID */}
-                                                    <td className="px-4 py-4" onClick={() => isEditable && !isEditing && handleEdit(contact)}>
-                                                        {isEditing ? (
-                                                            <ResizableInput
-                                                                className="px-2 py-1 text-xs"
-                                                                value={editData.email}
-                                                                onChange={(e) => setEditData({ ...editData, email: e.target.value })}
-                                                            />
-                                                        ) : (
-                                                            <div className="text-blue-500 hover:underline cursor-pointer py-1 truncate">{contact.email || '-'}</div>
-                                                        )}
-                                                    </td>
-
-                                                    {/* Address */}
-                                                    <td className="px-4 py-4" onClick={() => isEditable && !isEditing && handleEdit(contact)}>
-                                                        {isEditing ? (
-                                                            <textarea
-                                                                className="w-full bg-white dark:bg-[#161b22] border border-blue-500/50 focus:border-blue-500 focus:ring-1 focus:ring-blue-500/20 rounded outline-none shadow-sm dark:text-white transition-all px-2 py-1 text-xs min-h-[60px] resize-none"
-                                                                value={editData.address}
-                                                                onChange={(e) => setEditData({ ...editData, address: e.target.value })}
-                                                                placeholder="Enter address..."
-                                                            />
-                                                        ) : (
-                                                            <div className="text-gray-600 dark:text-gray-400 cursor-pointer py-1 whitespace-pre-wrap leading-relaxed">{contact.address || '-'}</div>
-                                                        )}
-                                                    </td>
-
-                                                    {/* Actions */}
-                                                    {isEditable && (
-                                                        <td className="px-4 py-4 text-center">
-                                                            {isEditing ? (
-                                                                <div className="flex flex-col items-center justify-center space-y-2">
-                                                                    <button
-                                                                        onClick={(e) => { e.stopPropagation(); handleSave(); }}
-                                                                        className="w-16 py-1 bg-blue-600 text-white rounded text-[11px] font-bold hover:bg-blue-700 transition-all shadow-md"
-                                                                    >
-                                                                        Save
-                                                                    </button>
-                                                                    <button
-                                                                        onClick={(e) => { e.stopPropagation(); handleCancel(); }}
-                                                                        className="w-16 py-1 bg-gray-100 dark:bg-white/5 text-gray-600 dark:text-gray-400 rounded text-[11px] font-bold hover:bg-gray-200 transition-all"
-                                                                    >
-                                                                        Cancel
-                                                                    </button>
-                                                                </div>
-                                                            ) : (
-                                                                <div className="flex items-center justify-center space-x-3 transition-opacity duration-200">
-                                                                    <button
-                                                                        onClick={(e) => { e.stopPropagation(); handleEdit(contact); }}
-                                                                        className="text-gray-400 hover:text-blue-500 transition-colors p-1 cursor-pointer"
-                                                                    >
-                                                                        <Edit2 size={15} />
-                                                                    </button>
-                                                                    <button
-                                                                        onClick={(e) => { e.stopPropagation(); handleDelete(contact.id); }}
-                                                                        className="text-gray-400 hover:text-red-500 transition-colors p-1 cursor-pointer"
-                                                                    >
-                                                                        <Trash2 size={15} />
-                                                                    </button>
-                                                                </div>
-                                                            )}
-                                                        </td>
-                                                    )}
-                                                </Reorder.Item>
-                                            );
-                                        })}
-                                    </AnimatePresence>
-                                </Reorder.Group>
-                            </table>
+                    <div className="flex flex-col items-center justify-center h-64 text-gray-400">
+                        <Loader2 className="animate-spin mb-3 text-blue-500" size={28} />
+                        <p className="text-xs font-medium text-gray-500 dark:text-gray-400">Loading project directory contacts...</p>
+                    </div>
+                ) : contacts.length === 0 ? (
+                    <div className="rounded-2xl border border-dashed border-gray-200 dark:border-white/10 bg-gray-50/50 dark:bg-[#161b22]/30 p-12 text-center my-4">
+                        <div className="w-14 h-14 mx-auto mb-3 rounded-2xl bg-blue-500/10 dark:bg-blue-500/20 flex items-center justify-center text-blue-600 dark:text-blue-400 shadow-inner">
+                            <Users size={26} />
                         </div>
+                        <h3 className="text-base font-semibold text-gray-900 dark:text-white">No Directory Contacts Added</h3>
+                        <p className="mt-1 text-xs text-gray-500 dark:text-gray-400 max-w-md mx-auto">
+                            There are currently no contacts in this project directory. Add parties and staff members to build the communication tree.
+                        </p>
+                        {isEditable && (
+                            <button
+                                onClick={handleAdd}
+                                className="mt-4 inline-flex items-center gap-2 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-xs font-semibold shadow-md shadow-blue-500/20 transition-all cursor-pointer"
+                            >
+                                <Plus size={15} />
+                                <span>Add First Contact</span>
+                            </button>
+                        )}
+                    </div>
+                ) : (
+                    <div className="mt-4 rounded-xl border border-gray-200 dark:border-white/10 bg-white dark:bg-[#0d1117] shadow-xs overflow-x-auto">
+                        <table className="w-full text-left text-xs border-collapse table-fixed min-w-[1200px]">
+                            <colgroup>
+                                <col className="w-[45px]" />
+                                <col className="w-[55px]" />
+                                <col className="w-[200px]" />
+                                <col className="w-[120px]" />
+                                <col className="w-[150px]" />
+                                <col className="w-[160px]" />
+                                <col className="w-[150px]" />
+                                <col className="w-[220px]" />
+                                <col className="w-[140px]" />
+                                <col className="w-[190px]" />
+                                <col className="w-[200px]" />
+                                {isEditable && <col className="w-[110px]" />}
+                            </colgroup>
+                            <thead className="bg-gray-50/80 dark:bg-[#161b22] text-gray-600 dark:text-gray-300 sticky top-0 z-10 border-b border-gray-200 dark:border-white/10">
+                                <tr>
+                                    <th className="px-2 py-3 text-center"></th>
+                                    <th className="px-3 py-3 font-semibold text-[11px] uppercase tracking-wider text-center text-gray-500 dark:text-gray-400">Sl No.</th>
+                                    <th className="px-3 py-3 font-semibold text-[11px] uppercase tracking-wider text-gray-500 dark:text-gray-400">Company Name</th>
+                                    <th className="px-3 py-3 font-semibold text-[11px] uppercase tracking-wider text-gray-500 dark:text-gray-400">Category</th>
+                                    <th className="px-3 py-3 font-semibold text-[11px] uppercase tracking-wider text-gray-500 dark:text-gray-400">Job Nature</th>
+                                    <th className="px-3 py-3 font-semibold text-[11px] uppercase tracking-wider text-gray-500 dark:text-gray-400">Person Name</th>
+                                    <th className="px-3 py-3 font-semibold text-[11px] uppercase tracking-wider text-gray-500 dark:text-gray-400">Designation</th>
+                                    <th className="px-3 py-3 font-semibold text-[11px] uppercase tracking-wider text-gray-500 dark:text-gray-400">Responsibilities</th>
+                                    <th className="px-3 py-3 font-semibold text-[11px] uppercase tracking-wider text-gray-500 dark:text-gray-400">Mobile No</th>
+                                    <th className="px-3 py-3 font-semibold text-[11px] uppercase tracking-wider text-gray-500 dark:text-gray-400">Email ID</th>
+                                    <th className="px-3 py-3 font-semibold text-[11px] uppercase tracking-wider text-gray-500 dark:text-gray-400">Address</th>
+                                    {isEditable && <th className="px-3 py-3 font-semibold text-[11px] uppercase tracking-wider text-center text-gray-500 dark:text-gray-400">Actions</th>}
+                                </tr>
+                            </thead>
+                            <Reorder.Group axis="y" values={contacts} onReorder={isEditable ? setContacts : () => {}} as="tbody" className="divide-y divide-gray-100 dark:divide-white/[0.04]">
+                                <AnimatePresence initial={false}>
+                                    {contacts.map((contact, idx) => {
+                                        const isEditing = editingId === contact.id;
+                                        return (
+                                            <Reorder.Item
+                                                key={contact.id}
+                                                value={contact}
+                                                as="tr"
+                                                onMouseEnter={() => setHoveredRow(contact.id)}
+                                                onMouseLeave={() => setHoveredRow(null)}
+                                                className={`${isEditing ? 'bg-blue-50/20 dark:bg-blue-900/10' : 'hover:bg-gray-50/70 dark:hover:bg-white/[0.02]'} transition-colors group/row cursor-default align-top`}
+                                            >
+                                                <td className="px-2 py-3 text-center">
+                                                    <div className="flex items-center justify-center pt-1.5">
+                                                        <GripVertical size={14} className={`text-gray-300 dark:text-gray-600 group-hover/row:text-blue-500 transition-colors ${isEditable ? 'cursor-grab active:cursor-grabbing' : 'pointer-events-none'}`} />
+                                                    </div>
+                                                </td>
+                                                <td className="px-3 py-4 text-gray-500 dark:text-gray-500 font-mono text-[11px] text-center">
+                                                    {String(idx + 1)}
+                                                </td>
+
+                                                {/* Company Name */}
+                                                <td className="px-3 py-3" onClick={() => isEditable && !isEditing && handleEdit(contact)}>
+                                                    {isEditing ? (
+                                                        <PartySelector
+                                                            value={editData.name}
+                                                            onChange={handlePartySelect}
+                                                            projectParties={projectParties}
+                                                        />
+                                                    ) : (
+                                                        <div className="text-gray-900 dark:text-white font-medium py-1">
+                                                            {contact.name || '-'}
+                                                        </div>
+                                                    )}
+                                                </td>
+
+                                                {/* Party Category */}
+                                                <td className="px-3 py-3" onClick={() => isEditable && !isEditing && handleEdit(contact)}>
+                                                    <span className="inline-flex px-2 py-0.5 rounded-full border border-blue-500/20 bg-blue-500/10 text-blue-600 dark:text-blue-400 text-[10px] font-semibold uppercase tracking-wide">
+                                                        {(isEditing ? editData.category : contact.category) || 'Uncategorized'}
+                                                    </span>
+                                                </td>
+
+                                                {/* Job Nature */}
+                                                <td className="px-3 py-3" onClick={() => isEditable && !isEditing && handleEdit(contact)}>
+                                                    {isEditing ? (
+                                                        <div className={`h-8 px-2.5 flex items-center text-xs rounded-md border ${editData.nature ? 'text-blue-600 dark:text-blue-400 border-blue-500/30 bg-blue-500/5 font-semibold' : 'text-gray-400 border-gray-200 dark:border-white/10 italic'}`}>
+                                                            {editData.nature || 'Auto-filled'}
+                                                        </div>
+                                                    ) : (
+                                                        <div className="text-gray-600 dark:text-gray-400 py-1 font-medium">{contact.nature || '-'}</div>
+                                                    )}
+                                                </td>
+
+                                                {/* Person Name */}
+                                                <td className="px-3 py-3" onClick={() => isEditable && !isEditing && handleEdit(contact)}>
+                                                    {isEditing ? (
+                                                        <StandardInput
+                                                            autoFocus
+                                                            placeholder="Contact Person..."
+                                                            value={editData.person}
+                                                            onChange={(e) => setEditData({ ...editData, person: e.target.value })}
+                                                        />
+                                                    ) : (
+                                                        <div className="text-gray-900 dark:text-gray-200 py-1 font-medium">{contact.person || '-'}</div>
+                                                    )}
+                                                </td>
+
+                                                {/* Designation */}
+                                                <td className="px-3 py-3" onClick={() => isEditable && !isEditing && handleEdit(contact)}>
+                                                    {isEditing ? (
+                                                        <StandardInput
+                                                            placeholder="Designation..."
+                                                            value={editData.designation}
+                                                            onChange={(e) => setEditData({ ...editData, designation: e.target.value })}
+                                                        />
+                                                    ) : (
+                                                        <div className="text-gray-600 dark:text-gray-400 py-1">{contact.designation || '-'}</div>
+                                                    )}
+                                                </td>
+
+                                                {/* Responsibilities */}
+                                                <td className="px-3 py-3" onClick={() => isEditable && !isEditing && handleEdit(contact)}>
+                                                    {isEditing ? (
+                                                        <StandardTextarea
+                                                            placeholder="Enter responsibilities..."
+                                                            value={editData.responsibilities}
+                                                            onChange={(e) => setEditData({ ...editData, responsibilities: e.target.value })}
+                                                        />
+                                                    ) : (
+                                                        <div className="text-gray-600 dark:text-gray-400 py-1 whitespace-pre-wrap leading-relaxed">{contact.responsibilities || '-'}</div>
+                                                    )}
+                                                </td>
+
+                                                {/* Mobile No */}
+                                                <td className="px-3 py-3" onClick={() => isEditable && !isEditing && handleEdit(contact)}>
+                                                    {isEditing ? (
+                                                        <StandardInput
+                                                            placeholder="Mobile Number..."
+                                                            value={editData.phone}
+                                                            onChange={(e) => setEditData({ ...editData, phone: e.target.value })}
+                                                        />
+                                                    ) : (
+                                                        <div className="text-gray-600 dark:text-gray-400 py-1 font-mono">{contact.phone || '-'}</div>
+                                                    )}
+                                                </td>
+
+                                                {/* Email ID */}
+                                                <td className="px-3 py-3" onClick={() => isEditable && !isEditing && handleEdit(contact)}>
+                                                    {isEditing ? (
+                                                        <StandardInput
+                                                            type="email"
+                                                            placeholder="Email ID..."
+                                                            value={editData.email}
+                                                            onChange={(e) => setEditData({ ...editData, email: e.target.value })}
+                                                        />
+                                                    ) : (
+                                                        <div className="text-blue-500 hover:underline cursor-pointer py-1 truncate">{contact.email || '-'}</div>
+                                                    )}
+                                                </td>
+
+                                                {/* Address */}
+                                                <td className="px-3 py-3" onClick={() => isEditable && !isEditing && handleEdit(contact)}>
+                                                    {isEditing ? (
+                                                        <StandardTextarea
+                                                            placeholder="Enter address..."
+                                                            value={editData.address}
+                                                            onChange={(e) => setEditData({ ...editData, address: e.target.value })}
+                                                        />
+                                                    ) : (
+                                                        <div className="text-gray-600 dark:text-gray-400 py-1 whitespace-pre-wrap leading-relaxed">{contact.address || '-'}</div>
+                                                    )}
+                                                </td>
+
+                                                {/* Actions */}
+                                                {isEditable && (
+                                                    <td className="px-3 py-3 text-center">
+                                                        {isEditing ? (
+                                                            <div className="flex flex-col items-center justify-center space-y-1.5 pt-1">
+                                                                <button
+                                                                    onClick={(e) => { e.stopPropagation(); handleSave(); }}
+                                                                    className="w-full py-1.5 bg-blue-600 text-white rounded-md text-[11px] font-semibold hover:bg-blue-700 transition-all shadow-sm cursor-pointer"
+                                                                >
+                                                                    Save
+                                                                </button>
+                                                                <button
+                                                                    onClick={(e) => { e.stopPropagation(); handleCancel(); }}
+                                                                    className="w-full py-1.5 bg-gray-100 dark:bg-white/5 text-gray-600 dark:text-gray-400 rounded-md text-[11px] font-medium hover:bg-gray-200 dark:hover:bg-white/10 transition-all cursor-pointer"
+                                                                >
+                                                                    Cancel
+                                                                </button>
+                                                            </div>
+                                                        ) : (
+                                                            <div className="flex items-center justify-center space-x-2 pt-1">
+                                                                <button
+                                                                    onClick={(e) => { e.stopPropagation(); handleEdit(contact); }}
+                                                                    className="p-1.5 rounded-md text-gray-400 hover:text-blue-500 hover:bg-blue-500/10 transition-colors cursor-pointer"
+                                                                    title="Edit contact"
+                                                                >
+                                                                    <Edit2 size={14} />
+                                                                </button>
+                                                                <button
+                                                                    onClick={(e) => { e.stopPropagation(); handleDelete(contact.id); }}
+                                                                    className="p-1.5 rounded-md text-gray-400 hover:text-red-500 hover:bg-red-500/10 transition-colors cursor-pointer"
+                                                                    title="Delete contact"
+                                                                >
+                                                                    <Trash2 size={14} />
+                                                                </button>
+                                                            </div>
+                                                        )}
+                                                    </td>
+                                                )}
+                                            </Reorder.Item>
+                                        );
+                                    })}
+                                </AnimatePresence>
+                            </Reorder.Group>
+                        </table>
+                    </div>
                 )}
             </div>
 

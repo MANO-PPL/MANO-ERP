@@ -17,6 +17,7 @@ import DuplicateResolverModal from '../../components/DuplicateResolverModal';
 import Toast from '../../components/Toast';
 import { useAuth } from '../../context/AuthContext';
 import { motion, AnimatePresence } from 'framer-motion';
+import SearchableDropdownPortal from '../../components/SearchableDropdownPortal';
 
 const CATEGORY_OPTIONS = [
     'Consultant',
@@ -1909,9 +1910,16 @@ const VendorsList = () => {
             return next;
         });
 
+        const targetPage = pageSize !== 'All' ? Math.floor(sortedRowIdx / Number(pageSize)) + 1 : 1;
+        if (pageSize !== 'All' && targetPage !== currentPage) {
+            setCurrentPage(targetPage);
+            showToast('info', 'Rows Added', `Added ${count} new vendor row(s) on Page ${targetPage} (Row ${sortedRowIdx + 1}).`);
+        } else {
+            showToast('info', 'Rows Added', `Added ${count} new vendor row(s) below selection.`);
+        }
+
         setSelectionAnchor({ r: sortedRowIdx, c: 0 });
         setSelectionFocus({ r: sortedRowIdx + count - 1, c: 0 });
-        showToast('info', 'Rows Added', `Added ${count} new vendor row(s) below selection.`);
     };
 
     // Duplicate Row (inserted right below duplicated row)
@@ -1948,9 +1956,16 @@ const VendorsList = () => {
             return next;
         });
 
+        const targetPage = pageSize !== 'All' ? Math.floor(sortedIdx / Number(pageSize)) + 1 : 1;
+        if (pageSize !== 'All' && targetPage !== currentPage) {
+            setCurrentPage(targetPage);
+            showToast('sparkle', 'Row Duplicated', `Duplicated "${row.name || 'vendor'}" to Page ${targetPage} (Row ${sortedIdx + 1}).`);
+        } else {
+            showToast('sparkle', 'Row Duplicated', `Duplicated "${row.name || 'vendor'}" right below.`);
+        }
+
         setSelectionAnchor({ r: sortedIdx, c: 0 });
         setSelectionFocus({ r: sortedIdx, c: 0 });
-        showToast('sparkle', 'Row Duplicated', `Duplicated "${row.name || 'vendor'}" right below.`);
     };
 
     // Remove Duplicate Vendors Modal Handler
@@ -2577,7 +2592,7 @@ const VendorsList = () => {
             {/* Main Content Layout */}
             <div ref={tableContainerRef} className="flex-1 min-h-0 flex overflow-hidden w-full relative">
                 {/* Spreadsheet Grid Table */}
-                <div className="flex-1 min-h-0 overflow-auto no-scrollbar">
+                <div className="flex-1 min-h-0 overflow-auto table-scrollbar">
                     <table className="w-full min-w-[1500px] text-left whitespace-nowrap text-sm border-collapse bg-white dark:bg-[#0d1117] select-none">
                         <thead className="bg-[#f9fafb] dark:bg-[#161b22] text-gray-500 dark:text-gray-400 sticky top-0 z-20 border-b border-gray-200 dark:border-white/5 tracking-wider text-[10px] uppercase font-bold select-none shadow-sm">
                             <tr>
@@ -3202,67 +3217,33 @@ const VendorsList = () => {
             )}
         </div>
 
-            {/* ── Job Nature Portal Dropdown ── renders at document.body, never clipped by table cells ── */}
-            {dropdownPortalProps && dropdownPortalProps.colName === 'job_name' && ReactDOM.createPortal(
-                <div
-                    style={{ position: 'fixed', top: dropdownPortalProps.top, left: dropdownPortalProps.left, width: 256, zIndex: 9999 }}
-                    className="bg-white dark:bg-[#161b22] border border-gray-200 dark:border-white/10 rounded-lg shadow-2xl p-2"
-                    onMouseDown={e => e.stopPropagation()}
-                >
-                    <input
-                        type="text"
-                        autoFocus
-                        placeholder="Search or enter job nature..."
-                        className="w-full px-2 py-1 bg-gray-50 dark:bg-[#0d1117] border border-gray-200 dark:border-white/10 rounded text-xs focus:outline-none mb-1 font-semibold text-gray-900 dark:text-white"
-                        value={jobNatureSearch}
-                        onChange={e => setJobNatureSearch(e.target.value)}
-                        onKeyDown={e => {
-                            if (e.key === 'Escape') {
-                                e.preventDefault();
-                                e.stopPropagation();
-                                closeDropdown();
-                            } else {
-                                e.stopPropagation();
-                            }
-                        }}
-                    />
-                    <div style={{ maxHeight: 192, overflowY: 'auto', scrollbarWidth: 'none' }}>
-                        {allJobNatures
-                            .filter(j => (j.job_name || '').toLowerCase().includes(jobNatureSearch.toLowerCase()))
-                            .slice(0, 5)
-                            .map(j => (
-                                <button
-                                    key={j.job_id || j.job_name}
-                                    onMouseDown={e => {
-                                        e.preventDefault();
-                                        e.stopPropagation();
-                                        handleCellChange(dropdownPortalProps.rowIndex, 'job_name', j.job_name, true);
-                                        setDropdownPortalProps(null);
-                                        setJobNatureSearch('');
-                                    }}
-                                    className="w-full text-left px-2.5 py-1.5 hover:bg-gray-100 dark:hover:bg-white/5 rounded text-xs font-semibold text-gray-800 dark:text-gray-200"
-                                >
-                                    {j.job_name}
-                                </button>
-                            ))
-                        }
-                        {jobNatureSearch.trim() && !allJobNatures.some(j => (j.job_name || '').toLowerCase() === jobNatureSearch.trim().toLowerCase()) && (
-                            <button
-                                onMouseDown={e => {
-                                    e.preventDefault();
-                                    e.stopPropagation();
-                                    handleCellChange(dropdownPortalProps.rowIndex, 'job_name', jobNatureSearch.trim(), true);
-                                    setDropdownPortalProps(null);
-                                    setJobNatureSearch('');
-                                }}
-                                className="w-full text-left px-2.5 py-1.5 bg-blue-50 dark:bg-blue-900/20 text-blue-600 dark:text-blue-400 rounded text-xs font-bold mt-1"
-                            >
-                                + Add "{jobNatureSearch.trim()}"
-                            </button>
-                        )}
-                    </div>
-                </div>,
-                document.body
+            {/* ── Job Nature Portal Dropdown ── */}
+            {dropdownPortalProps && dropdownPortalProps.colName === 'job_name' && (
+                <SearchableDropdownPortal
+                    coords={{ top: dropdownPortalProps.top, left: dropdownPortalProps.left, width: 280 }}
+                    items={allJobNatures}
+                    getLabel={(j) => j.job_name || ''}
+                    getKey={(j, idx) => j.job_id || j.job_name || idx}
+                    selectedValue={vendors[dropdownPortalProps.rowIndex]?.job_name || ''}
+                    placeholder="Search or enter job nature..."
+                    allowCreate={true}
+                    createLabel="Add"
+                    onSelect={(selected) => {
+                        const name = typeof selected === 'object' ? selected.job_name : selected;
+                        handleCellChange(dropdownPortalProps.rowIndex, 'job_name', name, true);
+                        setDropdownPortalProps(null);
+                        setJobNatureSearch('');
+                    }}
+                    onCreate={(val) => {
+                        handleCellChange(dropdownPortalProps.rowIndex, 'job_name', val, true);
+                        setDropdownPortalProps(null);
+                        setJobNatureSearch('');
+                    }}
+                    onClose={() => {
+                        setDropdownPortalProps(null);
+                        setJobNatureSearch('');
+                    }}
+                />
             )}
         </>
     );

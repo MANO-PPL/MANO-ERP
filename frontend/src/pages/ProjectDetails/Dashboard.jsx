@@ -44,7 +44,14 @@ const Dashboard = ({ project, setActiveTab, canWrite }) => {
 
     const completion = meta.completion !== undefined ? meta.completion : 45;
     const projectIssues = meta.issues || 'None';
-    const owner = meta.employer || 'System / Owner';
+    const [employerName, setEmployerName] = useState(project?.employer || meta.employer || '');
+    const owner = employerName || project?.employer || meta.employer || 'System / Owner';
+
+    useEffect(() => {
+        if (project?.employer) {
+            setEmployerName(project.employer);
+        }
+    }, [project?.employer]);
 
     useEffect(() => {
         const fetchDashboardData = async () => {
@@ -107,6 +114,10 @@ const Dashboard = ({ project, setActiveTab, canWrite }) => {
                 const partiesRes = await generalDocsApi.getParties(targetId);
                 const partiesList = partiesRes?.parties || (Array.isArray(partiesRes) ? partiesRes : []);
                 setPartyCount(partiesList.length);
+                const clientParty = partiesList.find(p => (p.category || '').toLowerCase() === 'client');
+                if (clientParty?.name) {
+                    setEmployerName(clientParty.name);
+                }
             } catch (err) {
                 console.error("Failed to load dashboard parties data", err);
             }

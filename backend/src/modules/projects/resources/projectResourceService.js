@@ -168,15 +168,14 @@ export async function importResourceToProject(orgId, projectId, resourceId, effe
 
 export async function importBatchResourcesToProject(orgId, projectId, resourceIds, effectiveFrom) {
     await ensureProject(orgId, projectId);
-    const results = [];
-    for (const resId of resourceIds) {
+    const results = await Promise.all(resourceIds.map(async (resId) => {
         try {
             const res = await resourceService.importResourceToProject(orgId, projectId, resId, effectiveFrom);
-            results.push({ resourceId: resId, status: 'fulfilled', result: res });
+            return { resourceId: resId, status: 'fulfilled', result: res };
         } catch (err) {
-            results.push({ resourceId: resId, status: 'rejected', reason: err.message });
+            return { resourceId: resId, status: 'rejected', reason: err.message };
         }
-    }
+    }));
     return results;
 }
 

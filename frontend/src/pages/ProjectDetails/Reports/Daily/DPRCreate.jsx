@@ -1923,7 +1923,7 @@ const DPRCreate = ({ onBack, initialData = null, isReadOnly = false, project = n
                                     </tr>
                                     <tr>
                                         <td className="bg-gray-50 dark:bg-[#1f242c] p-1.5 font-bold border-b border-r border-gray-400 text-gray-700 dark:text-zinc-300">Employer:</td>
-                                        <td colSpan={3} className="p-1.5 border-b border-r border-gray-400 bg-white dark:bg-[#161b22] text-gray-900 dark:text-gray-100">{project?.metadata?.employer || 'Glowmex Processing LLP'}</td>
+                                        <td colSpan={3} className="p-1.5 border-b border-r border-gray-400 bg-white dark:bg-[#161b22] text-gray-900 dark:text-gray-100">{project?.employer || project?.metadata?.employer || 'N/A'}</td>
                                         <td colSpan={2} className="bg-gray-50 dark:bg-[#1f242c] p-1.5 font-bold border-b border-r border-gray-400 text-gray-700 dark:text-zinc-300 text-center leading-tight">Project Completion</td>
                                         <td className="p-1.5 border-b border-gray-400 bg-white dark:bg-[#161b22] text-gray-900 dark:text-gray-100 text-center font-bold">{formatDateToExcel(metrics.end)}</td>
                                     </tr>

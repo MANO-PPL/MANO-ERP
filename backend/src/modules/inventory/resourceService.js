@@ -1245,9 +1245,9 @@ export async function updateResource(orgId, id, {
             await _replaceConversions(orgId, id, conversions, baseUnit, trx);
         }
 
-        // Replace compositions if provided (items only)
-        if (compositions !== undefined && activeType === 'item') {
-            await _replaceCompositions(orgId, id, compositions, trx, effective_from);
+        // Replace compositions if provided (all resource types allowed)
+        if (compositions !== undefined) {
+            await _forceReplaceCompositions(orgId, id, compositions, trx, effective_from);
         }
 
         if (rate !== undefined && rate !== null && rate !== '') {
@@ -1364,11 +1364,7 @@ async function _replaceCompositions(orgId, parentResourceId, compositions, dbCli
             throw new AppError(`Component resource "${comp.name}" has an unsupported type`, 400);
         }
 
-        // Validate that the recipe unit matches the child component's unit category
-        const compBaseUnit = getUnit(comp.base_unit_code);
-        if (inputUnit.type !== compBaseUnit.type) {
-            throw new AppError(`Incompatible unit category: Recipe unit "${c.unit_code}" (${inputUnit.type}) must match component base unit "${comp.base_unit_code}" (${compBaseUnit.type})`, 400);
-        }
+        // Unit category restriction removed — any unit is allowed in compositions
 
         // This check runs before any delete/insert and uses the same
         // transaction client as the eventual write.
@@ -1409,6 +1405,61 @@ async function _replaceCompositions(orgId, parentResourceId, compositions, dbCli
     }
 }
 
+/**
+ * Force-replace compositions for a resource by wiping all existing rows and
+ * reinserting. Used by the bulk grid-save flow where the user edits the
+ * ingredient list inline and just wants the current state persisted — no
+ * versioned history required.
+ */
+async function _forceReplaceCompositions(orgId, parentResourceId, compositions, dbClient = db, requestedEffectiveFrom) {
+    const compositionColumns = await getCompositionColumns(dbClient);
+    const effectiveFrom = toDateOnly(requestedEffectiveFrom) || toDateOnly(new Date());
+
+    // Validate each component (no date check, no cycle check bypass — still safe)
+    const componentIds = new Set();
+    for (const c of compositions) {
+        if (!c.component_resource_id || c.quantity === undefined || c.quantity === null || c.quantity === '' || !c.unit_code) {
+            throw new AppError('Each composition row must have component_resource_id, quantity, and unit_code', 400);
+        }
+        if (!Number.isFinite(Number(c.quantity)) || Number(c.quantity) < 0) {
+            throw new AppError('Composition quantity must be a non-negative number', 400);
+        }
+        if (componentIds.has(Number(c.component_resource_id))) {
+            throw new AppError(
+                `Component resource id ${c.component_resource_id} appears more than once in the same composition version`,
+                400
+            );
+        }
+        componentIds.add(Number(c.component_resource_id));
+
+        const comp = await dbClient('res_resources').where({ id: c.component_resource_id, org_id: orgId }).first();
+        if (!comp) throw new AppError(`Component resource id ${c.component_resource_id} not found in your organization`, 400);
+
+        if (await detectCycle(parentResourceId, c.component_resource_id, dbClient, effectiveFrom)) {
+            throw new AppError(
+                `Composition would create a circular reference: ${parentResourceId} -> ${c.component_resource_id}`,
+                400
+            );
+        }
+    }
+
+    // Wipe all existing compositions for this resource and reinsert
+    await dbClient('res_compositions').where(compositionColumns.item, parentResourceId).del();
+
+    if (compositions.length > 0) {
+        const rows = compositions.map(c => ({
+            [compositionColumns.item]: parentResourceId,
+            [compositionColumns.component]: c.component_resource_id,
+            quantity: c.quantity,
+            unit_code: c.unit_code,
+            effective_from: effectiveFrom,
+            effective_to: null,
+            is_active: 1
+        }));
+        await dbClient('res_compositions').insert(rows);
+    }
+}
+
 async function ensureProjectRateFromMaster(orgId, masterResource, projectResourceId, importDate, trx) {
     const existingRate = await trx('res_rates')
         .where({ resource_id: projectResourceId, is_active: 1 })
@@ -1416,21 +1467,13 @@ async function ensureProjectRateFromMaster(orgId, masterResource, projectResourc
         .first('id');
     if (existingRate) return;
 
+    // 1. Direct fast lookup for manual rate (instant indexed query for materials/labour)
     let resolvedRate = null;
-    // 1. Try resolving for project copy
     try {
-        resolvedRate = await resolveRateInternal(
-            orgId,
-            projectResourceId,
-            importDate,
-            trx,
-            new Set(),
-            null,
-            null
-        );
+        resolvedRate = await findEffectiveManualRate(orgId, masterResource.id, importDate, trx, null);
     } catch { }
 
-    // 2. Try resolving for master resource
+    // 2. If no manual rate (e.g. composite item computed from recipes), resolve computed rate
     if (!resolvedRate || resolvedRate.rate === null || resolvedRate.rate === undefined) {
         try {
             resolvedRate = await resolveRateInternal(
@@ -1442,13 +1485,6 @@ async function ensureProjectRateFromMaster(orgId, masterResource, projectResourc
                 null,
                 null
             );
-        } catch { }
-    }
-
-    // 3. Try finding manual rate
-    if (!resolvedRate || resolvedRate.rate === null || resolvedRate.rate === undefined) {
-        try {
-            resolvedRate = await findEffectiveManualRate(orgId, masterResource.id, importDate, trx, null);
         } catch { }
     }
 
@@ -1482,68 +1518,71 @@ export async function importResourceToProject(orgId, projectId, masterResourceId
         const compositionColumns = await getCompositionColumns(trx);
         const projectResourceId = await findOrCreateProjectResource(orgId, masterResource.id, projectId, trx);
 
-        // If it's an item with compositions, snapshot composition recipe
-        if (masterResource.type === 'item') {
-            const copyItemComposition = async (masterId, projectIdForItem, path = new Set()) => {
-                if (path.has(Number(masterId))) {
-                    throw new AppError(`Circular composition detected while importing item ${masterId}`, 400);
-                }
+        // 1. Track all resources created/referenced during this import
+        const importedPairs = [[masterResource, projectResourceId]];
 
-                const existingProjectComposition = await trx('res_compositions')
-                    .where(compositionColumns.item, projectIdForItem)
-                    .first('id');
-                if (existingProjectComposition) return;
+        // 2. Snapshot composition recipes first
+        const copyItemComposition = async (masterId, projectIdForItem, path = new Set()) => {
+            if (path.has(Number(masterId))) {
+                throw new AppError(`Circular composition detected while importing resource ${masterId}`, 400);
+            }
 
-                const masterComposition = await trx('res_compositions')
-                    .where(compositionColumns.item, masterId)
-                    .andWhere('effective_from', '<=', importDate)
-                    .andWhere(function () {
-                        this.whereNull('effective_to').orWhere('effective_to', '>=', importDate);
-                    })
-                    .select(
-                        `${compositionColumns.component} as component_resource_id`,
-                        'quantity',
-                        'unit_code'
-                    );
+            const existingProjectComposition = await trx('res_compositions')
+                .where(compositionColumns.item, projectIdForItem)
+                .first('id');
+            if (existingProjectComposition) return;
 
-                if (masterComposition.length === 0) return;
+            const masterComposition = await trx('res_compositions')
+                .where(compositionColumns.item, masterId)
+                .andWhere('effective_from', '<=', importDate)
+                .andWhere(function () {
+                    this.whereNull('effective_to').orWhere('effective_to', '>=', importDate);
+                })
+                .select(
+                    `${compositionColumns.component} as component_resource_id`,
+                    'quantity',
+                    'unit_code'
+                );
 
-                const nextPath = new Set(path);
-                nextPath.add(Number(masterId));
-                const rows = [];
-                for (const composition of masterComposition) {
-                    const component = await ensureResourceExists(orgId, composition.component_resource_id, trx);
-                    const projectComponentId = await findOrCreateProjectResource(
-                        orgId,
-                        component.id,
-                        projectId,
-                        trx
-                    );
+            if (masterComposition.length === 0) return;
 
-                    await ensureProjectRateFromMaster(orgId, component, projectComponentId, importDate, trx);
+            const nextPath = new Set(path);
+            nextPath.add(Number(masterId));
+            const rows = [];
+            for (const composition of masterComposition) {
+                const component = await ensureResourceExists(orgId, composition.component_resource_id, trx);
+                const projectComponentId = await findOrCreateProjectResource(
+                    orgId,
+                    component.id,
+                    projectId,
+                    trx
+                );
 
-                    if (component.type === 'item') {
-                        await copyItemComposition(component.id, projectComponentId, nextPath);
-                    }
+                importedPairs.push([component, projectComponentId]);
 
-                    rows.push({
-                        [compositionColumns.item]: projectIdForItem,
-                        [compositionColumns.component]: projectComponentId,
-                        quantity: composition.quantity,
-                        unit_code: composition.unit_code,
-                        effective_from: importDate,
-                        effective_to: null,
-                        is_active: 1
-                    });
-                }
+                await copyItemComposition(component.id, projectComponentId, nextPath);
 
-                await trx('res_compositions').insert(rows);
-            };
+                rows.push({
+                    [compositionColumns.item]: projectIdForItem,
+                    [compositionColumns.component]: projectComponentId,
+                    quantity: composition.quantity,
+                    unit_code: composition.unit_code,
+                    effective_from: importDate,
+                    effective_to: null,
+                    is_active: 1
+                });
+            }
 
-            await copyItemComposition(masterResource.id, projectResourceId);
+            await trx('res_compositions').insert(rows);
+        };
+
+        await copyItemComposition(masterResource.id, projectResourceId);
+
+        // 3. Resolve and copy rates for all imported resources now that the composition tree is fully in place
+        for (const [res, projId] of importedPairs) {
+            await ensureProjectRateFromMaster(orgId, res, projId, importDate, trx);
         }
 
-        await ensureProjectRateFromMaster(orgId, masterResource, projectResourceId, importDate, trx);
         return projectResourceId;
     });
 }
@@ -1559,9 +1598,7 @@ export async function setCompositions(orgId, resourceId, compositions, effective
         ? await resolveProjectResourceId(orgId, resourceId, projectId)
         : resourceId;
     const resource = await ensureResourceExists(orgId, scopedItemId);
-    if (resource.type !== 'item') {
-        throw new AppError('Compositions can only be set for resources of type "item"', 400);
-    }
+    // Type restriction removed — compositions allowed for any resource type
 
     if (projectId) {
         const imported = await db('res_resources')
@@ -1773,8 +1810,8 @@ export async function bulkInsertResources(orgId, resources) {
                     }
                 }
 
-                // Handle compositions if provided (items only)
-                if (type === 'item' && Array.isArray(compositions) && compositions.length > 0) {
+                // Handle compositions if provided (all resource types allowed)
+                if (Array.isArray(compositions) && compositions.length > 0) {
                     // All composition writes go through the same validator as
                     // normal create/update requests. This includes the
                     // transaction-scoped cycle check and effective-date logic.
@@ -1896,8 +1933,8 @@ export async function bulkUpdateResources(orgId, resources) {
                     await trx('res_resources').where({ id, org_id: orgId }).update(updates);
                 }
 
-                if (compositions !== undefined && activeType === 'item') {
-                    await _replaceCompositions(orgId, id, compositions, trx, effective_from);
+                if (compositions !== undefined) {
+                    await _forceReplaceCompositions(orgId, id, compositions, trx, effective_from);
                 }
 
                 if (rate !== undefined && rate !== null && rate !== '') {

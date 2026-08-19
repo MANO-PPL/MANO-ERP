@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { Plus, Edit2, GripVertical, Trash2, Info, X, Clock, ArrowLeft } from 'lucide-react';
+import { Plus, Edit2, GripVertical, Trash2, Info, X, Clock, ArrowLeft, Calendar, Loader2, Flag } from 'lucide-react';
 import { Reorder, AnimatePresence, motion } from 'framer-motion';
 import { useParams } from 'react-router-dom';
 import { generalDocsApi } from '../../../services/generalDocsApi';
@@ -7,18 +7,15 @@ import WorkflowPanel from '../../../components/WorkflowPanel';
 import { workflowApi } from '../../../services/workflowApi';
 import { toast } from 'react-toastify';
 
-const ResizableInput = ({ value, onChange, autoFocus, className = "", minW = "50px" }) => (
-    <div className="inline-grid w-fit max-w-full items-center align-middle relative">
-        <span className={`invisible col-start-1 row-start-1 whitespace-pre pointer-events-none min-h-[26px] flex items-center ${className}`} style={{ minWidth: minW }}>
-            {value || ' '}
-        </span>
-        <input
-            autoFocus={autoFocus}
-            className={`absolute inset-0 w-full h-full bg-white dark:bg-[#161b22] border border-blue-500/50 focus:border-blue-500 focus:ring-1 focus:ring-blue-500/20 rounded outline-none shadow-sm dark:text-white transition-all ${className}`}
-            value={value || ''}
-            onChange={onChange}
-        />
-    </div>
+const StandardInput = ({ value, onChange, placeholder, autoFocus, type = "text", className = "" }) => (
+    <input
+        type={type}
+        autoFocus={autoFocus}
+        placeholder={placeholder}
+        value={value || ''}
+        onChange={onChange}
+        className={`w-full h-8 px-2.5 text-xs bg-white dark:bg-[#161b22] border border-blue-500/60 focus:border-blue-500 focus:ring-1 focus:ring-blue-500/20 rounded-md outline-none dark:text-white transition-all ${className}`}
+    />
 );
 
 const ProjectSummary = ({ onBack, setExtraBreadcrumbs, canWrite }) => {
@@ -94,10 +91,9 @@ const ProjectSummary = ({ onBack, setExtraBreadcrumbs, canWrite }) => {
 
     useEffect(() => {
         setExtraBreadcrumbs([
-            { label: 'General Documents', onClick: onBack },
             { label: 'Project Summary' }
         ]);
-    }, [onBack, setExtraBreadcrumbs, projectId]);
+    }, [setExtraBreadcrumbs, projectId]);
 
     useEffect(() => {
         if (workflowState.loading) return;
@@ -309,22 +305,53 @@ const ProjectSummary = ({ onBack, setExtraBreadcrumbs, canWrite }) => {
                 />
 
                 {loading ? (
-                    <div className="flex items-center justify-center h-48 opacity-50 dark:text-white">Loading data...</div>
+                    <div className="flex flex-col items-center justify-center h-64 text-gray-400">
+                        <Loader2 className="animate-spin mb-3 text-blue-500" size={28} />
+                        <p className="text-xs font-medium text-gray-500 dark:text-gray-400">Loading project milestones...</p>
+                    </div>
+                ) : milestones.length === 0 ? (
+                    <div className="rounded-2xl border border-dashed border-gray-200 dark:border-white/10 bg-gray-50/50 dark:bg-[#161b22]/30 p-12 text-center my-4">
+                        <div className="w-14 h-14 mx-auto mb-3 rounded-2xl bg-blue-500/10 dark:bg-blue-500/20 flex items-center justify-center text-blue-600 dark:text-blue-400 shadow-inner">
+                            <Flag size={26} />
+                        </div>
+                        <h3 className="text-base font-semibold text-gray-900 dark:text-white">No Project Milestones Found</h3>
+                        <p className="mt-1 text-xs text-gray-500 dark:text-gray-400 max-w-md mx-auto">
+                            No milestone activities or key target dates have been added for this project yet.
+                        </p>
+                        {isEditable && (
+                            <button
+                                onClick={handleAdd}
+                                className="mt-4 inline-flex items-center gap-2 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-xs font-semibold shadow-md shadow-blue-500/20 transition-all cursor-pointer"
+                            >
+                                <Plus size={15} />
+                                <span>Add First Milestone</span>
+                            </button>
+                        )}
+                    </div>
                 ) : (
-                    <div className="min-w-full inline-block align-middle pb-20 mt-4">
-                        <table className="w-full text-left whitespace-nowrap text-[13px] border-collapse bg-white dark:bg-[#0d1117]">
-                            <thead className="bg-[#f9fafb] dark:bg-[#161b22] text-gray-500 dark:text-gray-400 sticky top-0 z-10 border-b border-gray-200 dark:border-white/5 tracking-wide">
+                    <div className="mt-4 rounded-xl border border-gray-200 dark:border-white/10 bg-white dark:bg-[#0d1117] shadow-xs overflow-x-auto">
+                        <table className="w-full text-left text-xs border-collapse table-fixed min-w-[850px]">
+                            <colgroup>
+                                <col className="w-[45px]" />
+                                <col className="w-[55px]" />
+                                <col className="w-[280px]" />
+                                <col className="w-[140px]" />
+                                <col className="w-[140px]" />
+                                <col className="w-[240px]" />
+                                {isEditable && <col className="w-[110px]" />}
+                            </colgroup>
+                            <thead className="bg-gray-50/80 dark:bg-[#161b22] text-gray-600 dark:text-gray-300 sticky top-0 z-10 border-b border-gray-200 dark:border-white/10">
                                 <tr>
-                                    <th className="px-3 py-3 w-6 text-center"></th>
-                                    <th className="px-4 py-3 font-medium capitalize text-[10px] tracking-widest border-r border-gray-100 dark:border-white/5 w-16 text-center">S. no.</th>
-                                    <th className="px-4 py-3 font-medium capitalize text-[10px] tracking-widest border-r border-gray-100 dark:border-white/5">Activity / milestone</th>
-                                    <th className="px-4 py-3 font-medium capitalize text-[10px] tracking-widest border-r border-gray-100 dark:border-white/5">Date</th>
-                                    <th className="px-4 py-3 font-medium capitalize text-[10px] tracking-widest border-r border-gray-100 dark:border-white/5">Status</th>
-                                    <th className="px-4 py-3 font-medium capitalize text-[10px] tracking-widest border-r border-gray-100 dark:border-white/5">Remarks</th>
-                                    {isEditable && <th className="px-4 py-3 font-medium capitalize text-[10px] tracking-widest text-center">Actions</th>}
+                                    <th className="px-2 py-3 text-center"></th>
+                                    <th className="px-3 py-3 font-semibold text-[11px] uppercase tracking-wider text-center text-gray-500 dark:text-gray-400">Sl No.</th>
+                                    <th className="px-3 py-3 font-semibold text-[11px] uppercase tracking-wider text-gray-500 dark:text-gray-400">Activity / Milestone</th>
+                                    <th className="px-3 py-3 font-semibold text-[11px] uppercase tracking-wider text-gray-500 dark:text-gray-400">Target Date</th>
+                                    <th className="px-3 py-3 font-semibold text-[11px] uppercase tracking-wider text-gray-500 dark:text-gray-400">Status</th>
+                                    <th className="px-3 py-3 font-semibold text-[11px] uppercase tracking-wider text-gray-500 dark:text-gray-400">Remarks</th>
+                                    {isEditable && <th className="px-3 py-3 font-semibold text-[11px] uppercase tracking-wider text-center text-gray-500 dark:text-gray-400">Actions</th>}
                                 </tr>
                             </thead>
-                            <Reorder.Group axis="y" values={milestones} onReorder={isEditable ? setMilestones : () => {}} as="tbody" className="divide-y divide-gray-100 dark:divide-white/[0.03]">
+                            <Reorder.Group axis="y" values={milestones} onReorder={isEditable ? setMilestones : () => {}} as="tbody" className="divide-y divide-gray-100 dark:divide-white/[0.04]">
                                 <AnimatePresence initial={false}>
                                     {milestones.map((milestone, idx) => {
                                         const isEditing = editingId === milestone.id;
@@ -336,52 +363,52 @@ const ProjectSummary = ({ onBack, setExtraBreadcrumbs, canWrite }) => {
                                                 as="tr"
                                                 onMouseEnter={() => setHoveredRow(milestone.id)}
                                                 onMouseLeave={() => setHoveredRow(null)}
-                                                className={`${isEditing ? 'bg-blue-50/10 dark:bg-blue-900/5' : 'hover:bg-blue-50/10 dark:hover:bg-blue-900/10'} transition-colors group/row h-[52px] cursor-default relative`}
+                                                className={`${isEditing ? 'bg-blue-50/20 dark:bg-blue-900/10' : 'hover:bg-gray-50/70 dark:hover:bg-white/[0.02]'} transition-colors group/row cursor-default align-top`}
                                             >
-                                                <td className="px-3 py-2 text-center w-6 min-w-[40px]">
-                                                    <div className="flex items-center justify-center">
-                                                        <GripVertical size={14} className={`text-gray-300 dark:text-gray-700 group-hover/row:text-blue-500 transition-colors ${isEditable ? 'cursor-grab active:cursor-grabbing' : 'pointer-events-none'}`} />
+                                                <td className="px-2 py-3 text-center">
+                                                    <div className="flex items-center justify-center pt-1.5">
+                                                        <GripVertical size={14} className={`text-gray-300 dark:text-gray-600 group-hover/row:text-blue-500 transition-colors ${isEditable ? 'cursor-grab active:cursor-grabbing' : 'pointer-events-none'}`} />
                                                     </div>
                                                 </td>
-                                                <td className="px-4 py-2 text-gray-500 dark:text-gray-600 font-mono text-[11px] border-r border-gray-100 dark:border-white/[0.03] text-center w-16">
+                                                <td className="px-3 py-4 text-gray-500 dark:text-gray-500 font-mono text-[11px] text-center">
                                                     {String(idx + 1)}
                                                 </td>
 
                                                 {/* Activity Field */}
-                                                <td className="px-4 py-2 border-r border-gray-100 dark:border-white/[0.03]" onClick={() => !isEditing && handleEdit(milestone)}>
+                                                <td className="px-3 py-3" onClick={() => !isEditing && handleEdit(milestone)}>
                                                     {isEditing ? (
-                                                        <ResizableInput
+                                                        <StandardInput
                                                             autoFocus
-                                                            className="px-2 py-1 text-xs"
+                                                            placeholder="Activity / milestone description..."
                                                             value={editData.activity}
                                                             onChange={(e) => setEditData({ ...editData, activity: e.target.value })}
                                                         />
                                                     ) : (
-                                                        <span className="text-gray-900 dark:text-gray-200 cursor-pointer font-medium">
+                                                        <span className="text-gray-900 dark:text-white font-medium py-1 inline-block">
                                                             {milestone.activity || '-'}
                                                         </span>
                                                     )}
                                                 </td>
 
                                                 {/* Date Field */}
-                                                <td className="px-4 py-2 border-r border-gray-100 dark:border-white/[0.03]" onClick={() => !isEditing && handleEdit(milestone)}>
+                                                <td className="px-3 py-3" onClick={() => !isEditing && handleEdit(milestone)}>
                                                     {isEditing ? (
                                                         <input
                                                             type="date"
-                                                            className="px-2 py-1 text-xs bg-white dark:bg-[#161b22] border border-blue-500/50 rounded outline-none text-gray-900 dark:text-white"
+                                                            className="w-full h-8 px-2.5 text-xs bg-white dark:bg-[#161b22] border border-blue-500/60 focus:border-blue-500 rounded-md outline-none text-gray-900 dark:text-white"
                                                             value={editData.date ? editData.date.split('T')[0] : ''}
                                                             onChange={(e) => setEditData({ ...editData, date: e.target.value })}
                                                         />
                                                     ) : (
-                                                        <span className="text-gray-600 dark:text-gray-400 cursor-pointer">{displayDate || '-'}</span>
+                                                        <span className="text-gray-600 dark:text-gray-400 py-1 inline-block">{displayDate || '-'}</span>
                                                     )}
                                                 </td>
 
                                                 {/* Status Field */}
-                                                <td className="px-4 py-2 border-r border-gray-100 dark:border-white/[0.03]" onClick={() => !isEditing && handleEdit(milestone)}>
+                                                <td className="px-3 py-3" onClick={() => !isEditing && handleEdit(milestone)}>
                                                     {isEditing ? (
                                                         <select
-                                                            className="px-2 py-1 text-xs bg-white dark:bg-[#161b22] border border-blue-500/50 rounded outline-none text-gray-900 dark:text-white"
+                                                            className="w-full h-8 px-2.5 text-xs bg-white dark:bg-[#161b22] border border-blue-500/60 focus:border-blue-500 rounded-md outline-none text-gray-900 dark:text-white"
                                                             value={editData.status || 'pending'}
                                                             onChange={(e) => setEditData({ ...editData, status: e.target.value })}
                                                         >
@@ -390,12 +417,12 @@ const ProjectSummary = ({ onBack, setExtraBreadcrumbs, canWrite }) => {
                                                             <option value="pending">Pending</option>
                                                         </select>
                                                     ) : (
-                                                        <span className={`px-2.5 py-1 rounded-md text-[10px] font-bold uppercase tracking-wider border shadow-sm transition-all ${
+                                                        <span className={`inline-flex px-2.5 py-0.5 rounded-full text-[10px] font-semibold uppercase tracking-wider border shadow-2xs ${
                                                             milestone.status === 'completed' 
-                                                                ? 'bg-emerald-500/10 text-emerald-500 border-emerald-500/30' :
+                                                                ? 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-500/25' :
                                                             milestone.status === 'in_progress' 
-                                                                ? 'bg-blue-500/10 text-blue-500 border-blue-500/30' :
-                                                                'bg-amber-500/10 text-amber-500 border-amber-500/30'
+                                                                ? 'bg-blue-500/10 text-blue-600 dark:text-blue-400 border-blue-500/25' :
+                                                                'bg-amber-500/10 text-amber-600 dark:text-amber-400 border-amber-500/25'
                                                             }`}>
                                                             {milestone.status?.replace('_', ' ') || '-'}
                                                         </span>
@@ -403,50 +430,49 @@ const ProjectSummary = ({ onBack, setExtraBreadcrumbs, canWrite }) => {
                                                 </td>
 
                                                 {/* Remarks Field */}
-                                                <td className="px-4 py-2 border-r border-gray-100 dark:border-white/[0.03]" onClick={() => !isEditing && handleEdit(milestone)}>
+                                                <td className="px-3 py-3" onClick={() => !isEditing && handleEdit(milestone)}>
                                                     {isEditing ? (
-                                                        <ResizableInput
-                                                            className="px-2 py-1 text-xs"
-                                                            minW="150px"
+                                                        <StandardInput
+                                                            placeholder="Remarks / notes..."
                                                             value={editData.remarks}
                                                             onChange={(e) => setEditData({ ...editData, remarks: e.target.value })}
                                                         />
                                                     ) : (
-                                                        <span className="text-gray-600 dark:text-gray-400 cursor-pointer">{milestone.remarks || '-'}</span>
+                                                        <span className="text-gray-600 dark:text-gray-400 py-1 inline-block">{milestone.remarks || '-'}</span>
                                                     )}
                                                 </td>
 
                                                 {/* Actions Column */}
                                                 {isEditable && (
-                                                    <td className="px-4 py-2 text-center min-w-[120px]">
+                                                    <td className="px-3 py-3 text-center">
                                                         {isEditing ? (
-                                                            <div className="flex items-center justify-center space-x-2">
+                                                            <div className="flex flex-col items-center justify-center space-y-1.5 pt-1">
                                                                 <button
                                                                     onClick={(e) => { e.stopPropagation(); handleSave(); }}
-                                                                    className="px-2.5 py-1 bg-blue-600 text-white rounded text-[11px] font-medium hover:bg-blue-700 transition-all shadow-md shadow-blue-500/20 cursor-pointer"
+                                                                    className="w-full py-1.5 bg-blue-600 text-white rounded-md text-[11px] font-semibold hover:bg-blue-700 transition-all shadow-sm cursor-pointer"
                                                                 >
                                                                     Save
                                                                 </button>
                                                                 <button
                                                                     onClick={(e) => { e.stopPropagation(); handleCancel(); }}
-                                                                    className="px-2.5 py-1 bg-gray-100 dark:bg-white/5 text-gray-600 dark:text-gray-400 rounded text-[11px] font-medium hover:bg-gray-200 dark:hover:bg-white/10 transition-all cursor-pointer"
+                                                                    className="w-full py-1.5 bg-gray-100 dark:bg-white/5 text-gray-600 dark:text-gray-400 rounded-md text-[11px] font-medium hover:bg-gray-200 dark:hover:bg-white/10 transition-all cursor-pointer"
                                                                 >
                                                                     Cancel
                                                                 </button>
                                                             </div>
                                                         ) : (
-                                                            <div className={`flex items-center justify-center space-x-3 transition-opacity duration-200 opacity-100`}>
+                                                            <div className="flex items-center justify-center space-x-2 pt-1">
                                                                 <button
                                                                     onClick={(e) => { e.stopPropagation(); handleEdit(milestone); }}
-                                                                    className="text-gray-400 hover:text-blue-500 transition-colors p-1 cursor-pointer"
-                                                                    title="Edit"
+                                                                    className="p-1.5 rounded-md text-gray-400 hover:text-blue-500 hover:bg-blue-500/10 transition-colors cursor-pointer"
+                                                                    title="Edit milestone"
                                                                 >
                                                                     <Edit2 size={14} />
                                                                 </button>
                                                                 <button
                                                                     onClick={(e) => { e.stopPropagation(); handleDelete(milestone.id); }}
-                                                                    className="text-gray-400 hover:text-red-500 transition-colors p-1 cursor-pointer"
-                                                                    title="Delete"
+                                                                    className="p-1.5 rounded-md text-gray-400 hover:text-red-500 hover:bg-red-500/10 transition-colors cursor-pointer"
+                                                                    title="Delete milestone"
                                                                 >
                                                                     <Trash2 size={14} />
                                                                 </button>

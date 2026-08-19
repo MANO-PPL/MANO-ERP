@@ -368,7 +368,7 @@ const ResourceList = () => {
     }, [gridData, deletedIds]);
 
     const hasPendingCompositionChanges = useMemo(() => gridData.some(row => (
-        row._compositionModified && row.type === 'item'
+        row._compositionModified
     )), [gridData]);
 
     const hasPendingRateChanges = useMemo(() => gridData.some(row => row._rateModified), [gridData]);
@@ -840,7 +840,7 @@ const ResourceList = () => {
             setResources(fetchedList);
 
             setGridData(prevGrid => {
-                const newUnsaved = prevGrid.filter(r => String(r.id).startsWith('temp_'));
+                const newUnsaved = prevGrid.filter(r => String(r.id).startsWith('temp_') && r._status === 'new');
                 const modifiedMap = new Map(
                     prevGrid.filter(r => r._status === 'modified' || r._status === 'error').map(r => [r.id, r])
                 );
@@ -886,7 +886,7 @@ const ResourceList = () => {
             ...payload
         } = row;
 
-        if (_compositionModified && row.type === 'item') {
+        if (_compositionModified) {
             payload.compositions = (row.compositions || [])
                 .filter(comp => comp.component_resource_id && Number(comp.quantity) > 0 && comp.unit_code)
                 .map(comp => ({
@@ -947,7 +947,7 @@ const ResourceList = () => {
                 }
             });
 
-            let createdResults = [];
+            let insertedIds = [];
             if (newPayloadRows.length > 0) {
                 const cleanPayload = newPayloadRows.map(row => {
                     const payload = prepareResourcePayload(row);
@@ -955,7 +955,8 @@ const ResourceList = () => {
                     return payload;
                 });
                 const res = await resourceApi.bulkCreateResources(cleanPayload);
-                createdResults = res?.resources || res?.data || (Array.isArray(res) ? res : []);
+                // Backend returns { success, report: { successCount, insertedIds, errors } }
+                insertedIds = res?.report?.insertedIds || res?.insertedIds || [];
             }
 
             if (validModifiedRows.length > 0) {
@@ -963,53 +964,73 @@ const ResourceList = () => {
                 await resourceApi.bulkUpdateResources(cleanPayload);
             }
 
-            setGridData(prevGrid => {
-                const createdMap = new Map();
-                if (createdResults.length > 0) {
-                    newPayloadRows.forEach((nr, i) => {
-                        if (createdResults[i]) createdMap.set(nr.id, createdResults[i]);
-                    });
-                }
-
-                return prevGrid.map(row => {
-                    if (validModifiedRows.some(m => m.id === row.id)) {
-                        return { ...row, _status: 'saved', _errors: {}, _compositionModified: false, _rateModified: false };
-                    }
-                    if (createdMap.has(row.id)) {
-                        const realRes = createdMap.get(row.id);
-                        return {
-                            ...row,
-                            id: realRes.id,
-                            code: realRes.code || row.code,
-                            _status: 'saved',
-                            _errors: {},
-                            _compositionModified: false,
-                            _rateModified: false
-                        };
-                    }
-                    return row;
-                });
+            // Build a map from temp IDs → real server IDs
+            const tempToRealIdMap = new Map();
+            newPayloadRows.forEach((nr, i) => {
+                if (insertedIds[i]) tempToRealIdMap.set(nr.id, insertedIds[i]);
             });
 
-            setResources(prev => {
-                const updated = prev.filter(r => !pendingDeleteIds.includes(r.id));
-                validModifiedRows.forEach(mod => {
-                    const idx = updated.findIndex(r => r.id === mod.id);
-                    if (idx !== -1) updated[idx] = {
-                        ...updated[idx],
-                        ...mod,
+            // Re-fetch from server to get authoritative data (with codes, rates, etc.)
+            try {
+                const resData = await resourceApi.getResources();
+                const fetchedList = resData.resources || [];
+
+                try {
+                    sessionStorage.setItem('mano_resources_cache', JSON.stringify(fetchedList));
+                } catch (e) { }
+
+                // Clear session draft since save succeeded
+                try {
+                    sessionStorage.removeItem('mano_resources_draft_grid');
+                    sessionStorage.removeItem('mano_resources_draft_deleted');
+                } catch (e) { }
+
+                setResources(fetchedList);
+
+                // Rebuild grid from server data, preserving any remaining unsaved rows
+                setGridData(prevGrid => {
+                    // Keep only temp rows that were NOT part of this save
+                    const savedTempIds = new Set(newPayloadRows.map(r => r.id));
+                    const remainingUnsaved = prevGrid.filter(
+                        r => String(r.id).startsWith('temp_') && !savedTempIds.has(r.id)
+                    );
+
+                    const serverGrid = fetchedList.map(fetched => ({
+                        ...fetched,
                         _status: 'saved',
+                        _errors: {},
                         _compositionModified: false,
                         _rateModified: false
-                    };
+                    }));
+
+                    return [...serverGrid, ...remainingUnsaved];
                 });
-                if (createdResults.length > 0) {
-                    createdResults.forEach(c => {
-                        if (!updated.some(r => r.id === c.id)) updated.push(c);
+            } catch (refetchErr) {
+                // If re-fetch fails, do best-effort local update
+                console.warn('Post-save re-fetch failed, updating locally', refetchErr);
+                setGridData(prevGrid => {
+                    return prevGrid.map(row => {
+                        if (validModifiedRows.some(m => m.id === row.id)) {
+                            return { ...row, _status: 'saved', _errors: {}, _compositionModified: false, _rateModified: false };
+                        }
+                        if (tempToRealIdMap.has(row.id)) {
+                            return {
+                                ...row,
+                                id: tempToRealIdMap.get(row.id),
+                                _status: 'saved',
+                                _errors: {},
+                                _compositionModified: false,
+                                _rateModified: false
+                            };
+                        }
+                        return row;
                     });
-                }
-                return updated;
-            });
+                });
+                setResources(prev => {
+                    const updated = prev.filter(r => !pendingDeleteIds.includes(r.id));
+                    return updated;
+                });
+            }
 
             const timeStr = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
             setLastSavedTime(timeStr);
@@ -2334,9 +2355,17 @@ const ResourceList = () => {
             return next;
         });
 
+        // Compute which page the inserted row is on and auto-navigate
+        const targetPage = pageSize !== 'All' ? Math.floor(sortedRowIdx / Number(pageSize)) + 1 : 1;
+        if (pageSize !== 'All' && targetPage !== currentPage) {
+            setCurrentPage(targetPage);
+            showToast('info', 'Rows Added', `Added ${count} new resource row(s) on Page ${targetPage} (Row ${sortedRowIdx + 1}).`);
+        } else {
+            showToast('info', 'Rows Added', `Added ${count} new resource row(s) below selection.`);
+        }
+
         setSelectionAnchor({ r: sortedRowIdx, c: 0 });
         setSelectionFocus({ r: sortedRowIdx + count - 1, c: 0 });
-        showToast('info', 'Rows Added', `Added ${count} new resource row(s) below selection.`);
     };
 
     // â”€â”€â”€ Duplicate Row (inserted right below duplicated row) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
@@ -2381,9 +2410,16 @@ const ResourceList = () => {
             return next;
         });
 
+        const targetPage = pageSize !== 'All' ? Math.floor(sortedIdx / Number(pageSize)) + 1 : 1;
+        if (pageSize !== 'All' && targetPage !== currentPage) {
+            setCurrentPage(targetPage);
+            showToast('sparkle', 'Row Duplicated', `Duplicated "${row.name || 'resource'}" to Page ${targetPage} (Row ${sortedIdx + 1}).`);
+        } else {
+            showToast('sparkle', 'Row Duplicated', `Duplicated "${row.name || 'resource'}" right below.`);
+        }
+
         setSelectionAnchor({ r: sortedIdx, c: 0 });
         setSelectionFocus({ r: sortedIdx, c: 0 });
-        showToast('sparkle', 'Row Duplicated', `Duplicated "${row.name || 'resource'}" right below.`);
     };
 
     // Remove Duplicate Resources Modal Handler
@@ -3133,7 +3169,7 @@ const ResourceList = () => {
                                     >
                                         <div className="flex items-center justify-between">
                                             <span className="flex items-center gap-1 text-emerald-600 dark:text-emerald-400">
-                                                <DollarSign size={12} /> Rate (â‚¹)
+                                                <DollarSign size={12} /> Rate (₹)
                                             </span>
                                             {sortConfig.key === 'rate' && (sortConfig.direction === 'asc' ? <ArrowUp size={12} /> : <ArrowDown size={12} />)}
                                         </div>
@@ -3747,9 +3783,9 @@ const ResourceList = () => {
                                                                 </button>
                                                             </div>
 
-                                                            <div className={resource.type === 'item' ? "grid grid-cols-1 lg:grid-cols-2 gap-6" : "grid grid-cols-1 gap-6"}>
-                                                                {/* Section 1: Recipe Ingredients (Composite Items Only) */}
-                                                                {resource.type === 'item' && (
+                                                            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                                                                {/* Section 1: Recipe Ingredients */}
+                                                                {(
                                                                     <div className="space-y-3">
                                                                         <div className="flex items-center justify-between">
                                                                             <span className="text-xs font-bold text-purple-700 dark:text-purple-400 uppercase tracking-wider flex items-center gap-1.5">
@@ -3810,11 +3846,24 @@ const ResourceList = () => {
                                                                                     <select
                                                                                         className="flex-1 px-2 py-1 bg-white dark:bg-[#0d1117] border border-gray-300 dark:border-white/10 rounded text-xs font-medium text-gray-800 dark:text-white"
                                                                                         value={newCompForm.component_resource_id}
-                                                                                        onChange={e => setNewCompForm(prev => ({ ...prev, component_resource_id: e.target.value }))}
+                                                                                        onChange={e => {
+                                                                                            const selectedId = e.target.value;
+                                                                                            const selectedResource = resourcesRef.current.find(r => String(r.id) === String(selectedId));
+                                                                                            setNewCompForm(prev => ({
+                                                                                                ...prev,
+                                                                                                component_resource_id: selectedId,
+                                                                                                unit_code: selectedResource?.base_unit_code || prev.unit_code
+                                                                                            }));
+                                                                                        }}
                                                                                     >
                                                                                         <option value="">Select component resource...</option>
-                                                                                        {resourcesRef.current
-                                                                                            .filter(r => String(r.id) !== String(resource.id))
+                                                                                        {(() => {
+                                                                                            const existingCompIds = new Set(
+                                                                                                (resource.compositions || []).map(c => String(c.component_resource_id))
+                                                                                            );
+                                                                                            return resourcesRef.current
+                                                                                                .filter(r => String(r.id) !== String(resource.id) && !existingCompIds.has(String(r.id)));
+                                                                                        })()
                                                                                             .map(r => (
                                                                                                 <option key={r.id} value={r.id}>
                                                                                                     {r.name} ({r.base_unit_code})
@@ -4055,7 +4104,7 @@ const ResourceList = () => {
                                 className="px-2 py-1 rounded border border-gray-200 dark:border-white/10 text-gray-600 dark:text-gray-300 disabled:opacity-30 disabled:cursor-not-allowed hover:bg-gray-100 dark:hover:bg-white/5 font-semibold text-[11px]"
                                 title="First Page"
                             >
-                                Â« First
+                                « First
                             </button>
                             <button
                                 onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
@@ -4063,7 +4112,7 @@ const ResourceList = () => {
                                 className="px-2 py-1 rounded border border-gray-200 dark:border-white/10 text-gray-600 dark:text-gray-300 disabled:opacity-30 disabled:cursor-not-allowed hover:bg-gray-100 dark:hover:bg-white/5 font-semibold text-[11px]"
                                 title="Previous Page"
                             >
-                                â€¹ Prev
+                                ‹ Prev
                             </button>
 
                             <span className="px-3 text-xs font-bold text-gray-700 dark:text-gray-300">
@@ -4076,7 +4125,7 @@ const ResourceList = () => {
                                 className="px-2 py-1 rounded border border-gray-200 dark:border-white/10 text-gray-600 dark:text-gray-300 disabled:opacity-30 disabled:cursor-not-allowed hover:bg-gray-100 dark:hover:bg-white/5 font-semibold text-[11px]"
                                 title="Next Page"
                             >
-                                Next â€º
+                                Next ›
                             </button>
                             <button
                                 onClick={() => setCurrentPage(totalPages)}
@@ -4084,7 +4133,7 @@ const ResourceList = () => {
                                 className="px-2 py-1 rounded border border-gray-200 dark:border-white/10 text-gray-600 dark:text-gray-300 disabled:opacity-30 disabled:cursor-not-allowed hover:bg-gray-100 dark:hover:bg-white/5 font-semibold text-[11px]"
                                 title="Last Page"
                             >
-                                Last Â»
+                                Last »
                             </button>
                         </div>
                     )}

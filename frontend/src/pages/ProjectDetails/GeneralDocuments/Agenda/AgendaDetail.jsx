@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { createPortal } from 'react-dom';
 import { useParams, useNavigate } from 'react-router-dom';
 import { X, Plus, Trash2, ChevronRight, Pencil, Save, ArrowLeft, Search, ChevronDown, Info, Clock, Shield, Play, Loader2 } from 'lucide-react';
@@ -8,12 +8,17 @@ import WorkflowPanel from '../../../../components/WorkflowPanel';
 import { workflowApi } from '../../../../services/workflowApi';
 import { toast } from 'react-toastify';
 
+import SearchableDropdownPortal, { rankAndFilter, HighlightMatch } from '../../../../components/SearchableDropdownPortal';
+
 // --- Party Selector Dropdown ---
 const PartySelector = ({ value, onChange, projectParties }) => {
     const [open, setOpen] = useState(false);
     const [search, setSearch] = useState('');
+    const [activeIndex, setActiveIndex] = useState(0);
     const [coords, setCoords] = useState({ top: 0, left: 0, width: 0 });
     const ref = useRef(null);
+    const inputRef = useRef(null);
+    const listRef = useRef(null);
 
     useEffect(() => {
         const handler = (e) => { if (ref.current && !ref.current.contains(e.target) && !e.target.closest('.portal-dropdown')) setOpen(false); };
@@ -24,34 +29,69 @@ const PartySelector = ({ value, onChange, projectParties }) => {
     const handleToggle = () => {
         if (!open && ref.current) {
             const rect = ref.current.getBoundingClientRect();
-            setCoords({ top: rect.bottom + window.scrollY, left: rect.left + window.scrollX, width: Math.max(rect.width, 280) });
+            setCoords({ top: rect.bottom + window.scrollY, left: rect.left + window.scrollX, width: Math.max(rect.width, 300) });
+            setSearch('');
+            setActiveIndex(0);
         }
         setOpen(!open);
     };
 
-    const filtered = projectParties.filter(v =>
-        v.company_name?.toLowerCase().includes(search.toLowerCase()) ||
-        v.job_nature?.toLowerCase().includes(search.toLowerCase()) ||
-        v.contact_person?.toLowerCase().includes(search.toLowerCase()) ||
-        v.category?.toLowerCase().includes(search.toLowerCase())
-    );
+    const filtered = useMemo(() => {
+        return rankAndFilter(projectParties, search, v => `${v.company_name || v.name || ''} ${v.category || ''} ${v.contact_person || ''} ${v.job_nature || ''}`);
+    }, [projectParties, search]);
+
+    useEffect(() => {
+        setActiveIndex(0);
+    }, [search]);
+
+    useEffect(() => {
+        if (!listRef.current) return;
+        const activeElem = listRef.current.querySelector(`[data-index="${activeIndex}"]`);
+        if (activeElem) {
+            activeElem.scrollIntoView({ block: 'nearest' });
+        }
+    }, [activeIndex]);
+
+    const handleKeyDown = (e) => {
+        if (e.key === 'Escape') {
+            e.preventDefault();
+            setOpen(false);
+        } else if (e.key === 'ArrowDown') {
+            e.preventDefault();
+            if (filtered.length > 0) {
+                setActiveIndex(prev => (prev + 1) % filtered.length);
+            }
+        } else if (e.key === 'ArrowUp') {
+            e.preventDefault();
+            if (filtered.length > 0) {
+                setActiveIndex(prev => (prev - 1 + filtered.length) % filtered.length);
+            }
+        } else if (e.key === 'Enter') {
+            e.preventDefault();
+            if (filtered.length > 0 && activeIndex >= 0 && activeIndex < filtered.length) {
+                onChange(filtered[activeIndex]);
+                setOpen(false);
+                setSearch('');
+            }
+        }
+    };
 
     return (
         <div ref={ref} className="relative w-full">
             <button
                 type="button"
                 onClick={handleToggle}
-                className="flex items-center justify-between w-full px-2 py-1 bg-transparent border border-blue-500/40 hover:border-blue-500 rounded text-xs outline-none dark:text-white transition-all min-h-[26px] gap-2"
+                className="flex items-center justify-between w-full px-2.5 py-1.5 bg-white dark:bg-[#161b22] border border-blue-500/40 hover:border-blue-500 rounded text-xs outline-none dark:text-white transition-all min-h-[28px] gap-2 cursor-pointer shadow-2xs"
             >
-                <span className="truncate text-left flex-1">{value || <span className="text-gray-400">Select party…</span>}</span>
-                <ChevronDown size={12} className={`shrink-0 text-gray-400 transition-transform ${open ? 'rotate-180' : ''}`} />
+                <span className="truncate text-left flex-1 font-medium">{value || <span className="text-gray-400">Select party…</span>}</span>
+                <ChevronDown size={13} className={`shrink-0 text-gray-400 transition-transform ${open ? 'rotate-180 text-blue-500' : ''}`} />
             </button>
             
             {open && createPortal(
                 <motion.div
                     initial={{ opacity: 0, y: 6 }}
                     animate={{ opacity: 1, y: 0 }}
-                    className="portal-dropdown fixed bg-white dark:bg-[#161b22] border border-gray-200 dark:border-white/10 rounded-xl shadow-2xl z-[9999] overflow-hidden flex flex-col"
+                    className="portal-dropdown fixed bg-white dark:bg-[#161b22] border border-gray-200 dark:border-white/10 rounded-xl shadow-2xl z-[9999] overflow-hidden flex flex-col p-1.5"
                     style={{ 
                         top: coords.top - window.scrollY, 
                         left: coords.left - window.scrollX, 
@@ -59,33 +99,56 @@ const PartySelector = ({ value, onChange, projectParties }) => {
                         maxHeight: '300px'
                     }}
                 >
-                    <div className="p-2 border-b border-gray-100 dark:border-white/5">
+                    <div className="p-1 border-b border-gray-100 dark:border-white/5 mb-1">
                         <div className="relative">
                             <Search size={12} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-400" />
                             <input
+                                ref={inputRef}
                                 autoFocus
                                 type="text"
                                 placeholder="Search parties…"
-                                className="w-full pl-7 pr-3 py-1.5 bg-gray-50 dark:bg-[#0d1117] border border-gray-200 dark:border-white/10 rounded-lg text-xs outline-none focus:border-blue-500 transition-all dark:text-white"
+                                className="w-full pl-7 pr-7 py-1.5 bg-gray-50 dark:bg-[#0d1117] border border-gray-200 dark:border-white/10 rounded-lg text-xs outline-none focus:border-blue-500 transition-all dark:text-white"
                                 value={search}
                                 onChange={e => setSearch(e.target.value)}
+                                onKeyDown={handleKeyDown}
                             />
+                            {search && (
+                                <button
+                                    type="button"
+                                    onClick={() => {
+                                        setSearch('');
+                                        inputRef.current?.focus();
+                                    }}
+                                    className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 p-0.5"
+                                >
+                                    <X size={12} />
+                                </button>
+                            )}
                         </div>
                     </div>
-                    <div className="overflow-y-auto custom-scrollbar flex-1">
-                        {filtered.length > 0 ? filtered.map((v, idx) => (
-                            <button
-                                key={v.id ?? v.party_id ?? v._id ?? v.company_name ?? idx}
-                                type="button"
-                                onClick={() => { onChange(v); setOpen(false); setSearch(''); }}
-                                className="w-full px-3 py-2.5 flex flex-col items-start hover:bg-blue-50 dark:hover:bg-blue-900/20 border-b border-gray-50 dark:border-white/5 text-left group transition-colors"
-                            >
-                                <span className="text-xs font-semibold text-gray-900 dark:text-white group-hover:text-blue-600 transition-colors uppercase tracking-tight">{v.company_name}</span>
-                                <span className="text-[10px] text-gray-400 mt-0.5 font-medium">
-                                    {[v.category || 'Uncategorized', v.contact_person, v.job_nature].filter(Boolean).join(' — ')}
-                                </span>
-                            </button>
-                        )) : (
+                    <div ref={listRef} className="overflow-y-auto custom-scrollbar flex-1 space-y-0.5">
+                        {filtered.length > 0 ? filtered.map((v, idx) => {
+                            const isActive = activeIndex === idx;
+                            return (
+                                <button
+                                    key={v.id ?? v.party_id ?? v._id ?? v.company_name ?? idx}
+                                    data-index={idx}
+                                    type="button"
+                                    onMouseEnter={() => setActiveIndex(idx)}
+                                    onClick={() => { onChange(v); setOpen(false); setSearch(''); }}
+                                    className={`w-full px-2.5 py-2 flex flex-col items-start rounded-lg text-left transition-colors cursor-pointer ${
+                                        isActive ? 'bg-blue-50 dark:bg-blue-900/30' : 'hover:bg-gray-50 dark:hover:bg-white/5'
+                                    }`}
+                                >
+                                    <span className="text-xs font-semibold text-gray-900 dark:text-white uppercase tracking-tight">
+                                        <HighlightMatch text={v.company_name || v.name} query={search} />
+                                    </span>
+                                    <span className="text-[10px] text-gray-400 mt-0.5 font-medium">
+                                        {[v.category || 'Uncategorized', v.contact_person, v.job_nature].filter(Boolean).join(' — ')}
+                                    </span>
+                                </button>
+                            );
+                        }) : (
                             <div className="px-3 py-6 text-center text-xs text-gray-400">No parties found</div>
                         )}
                     </div>
@@ -537,7 +600,6 @@ const AgendaDetail = ({ onBack, setExtraBreadcrumbs, agendaId: id, canWrite }) =
 
     useEffect(() => {
         setExtraBreadcrumbs([
-            { label: 'General Documents', onClick: onBack },
             { label: 'Agenda of Meeting', onClick: onBack },
             { label: id === 'new' ? 'New Agenda' : details.subject || 'Edit Agenda' }
         ]);

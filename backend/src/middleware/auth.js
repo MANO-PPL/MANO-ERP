@@ -57,12 +57,19 @@ export const authenticateJWT = catchAsync(async (req, res, next) => {
 });
 
 const hasAccess = (userRole, requiredLevel) => {
-    if (!userRole || userRole === 'none') return false;
+    if (userRole === null || userRole === undefined || userRole === 'none' || userRole === 0) return false;
+    if (typeof userRole === 'number') {
+        // Numeric levels: 1 = view, 2 = edit, 3 = admin/full
+        if (requiredLevel === 'view') return userRole >= 1;
+        if (requiredLevel === 'edit') return userRole >= 2;
+    }
+    const roleStr = String(userRole).toLowerCase().trim();
+    if (roleStr === 'admin' || roleStr === 'full') return true;
     if (requiredLevel === 'view') {
-        return userRole === 'view' || userRole === 'edit';
+        return roleStr === 'view' || roleStr === 'edit';
     }
     if (requiredLevel === 'edit') {
-        return userRole === 'edit';
+        return roleStr === 'edit';
     }
     return false;
 };
@@ -94,7 +101,7 @@ export const requireSystemPermission = (module) => {
             }
         }
 
-        const userRole = permissions?.[module] || 'none';
+        const userRole = permissions?.[module] ?? 'edit';
 
         if (hasAccess(userRole, requiredLevel)) {
             return next();
@@ -182,7 +189,7 @@ export const requireProjectPermission = (module) => {
                 try {
                     projectPerms = JSON.parse(projectPerms);
                 } catch (e) {
-                    projectPerms = {};
+                    projectPerms = null;
                 }
             }
 
@@ -199,7 +206,8 @@ export const requireProjectPermission = (module) => {
             };
 
             const mappedModule = generalDocsMapping[module] || module;
-            const userRole = projectPerms?.[module] || projectPerms?.[mappedModule] || 'none';
+            const hasExplicitPerms = projectPerms && typeof projectPerms === 'object' && Object.keys(projectPerms).length > 0;
+            const userRole = projectPerms?.[module] ?? projectPerms?.[mappedModule] ?? (!hasExplicitPerms ? 'edit' : 'none');
 
             if (hasAccess(userRole, requiredLevel)) {
                 return next();

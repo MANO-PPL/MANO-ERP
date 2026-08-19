@@ -37,15 +37,22 @@ export async function getProjectOrgChart(projectId) {
         .leftJoin('crm_contacts as c', 'pp.party_id', 'c.id')
         .leftJoin('crm_job_nature as jn', 'c.job_nature_id', 'jn.job_id')
         .where('pp.project_id', projectId)
+        .whereNull('pp.deleted_at')
         .select([
             'pp.pv_id',
             'pp.party_id as party_id',
             'c.name as company_name',
+            'c.category',
             'jn.job_name as job_nature',
             'c.mobile',
             'c.email'
         ])
         .orderBy('c.name', 'asc');
+
+    if (!clientName && parties && parties.length > 0) {
+        const clientParty = parties.find(p => (p.category || '').toLowerCase() === 'client');
+        if (clientParty) clientName = clientParty.company_name;
+    }
 
     // 3. Fetch Directory (Project Directory + Contacts Join)
     const directory = await db('pdoc_directory as pd')

@@ -32,7 +32,7 @@ const GeneralDocumentsIndex = ({ setExtraBreadcrumbs, canWrite }) => {
 
     React.useEffect(() => {
         if (currentView === 'grid') {
-            setExtraBreadcrumbs([{ label: 'General Documents' }]);
+            setExtraBreadcrumbs([]);
         }
     }, [currentView, setExtraBreadcrumbs]);
 

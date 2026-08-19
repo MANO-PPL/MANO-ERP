@@ -50,7 +50,10 @@ export const getProject = catchAsync(async (req, res) => {
 });
 
 export const createProject = catchAsync(async (req, res) => {
-    const newId = await projectService.createProject(req.user.org_id, req.body);
+    const newId = await projectService.createProject(req.user.org_id, {
+        ...req.body,
+        creator_id: req.user.user_id
+    });
     res.status(201).json({ success: true, message: 'Project created successfully', project_id: newId });
 });
 
@@ -86,8 +89,8 @@ export const uploadProjectLogo = catchAsync(async (req, res) => {
 
     res.json({
         success: true,
-        message: 'Project organization logo uploaded successfully',
-        logo_url: presignedUrl || rawLogoUrl
+        message: 'Project logo uploaded successfully',
+        logo_url: presignedUrl
     });
 });
 

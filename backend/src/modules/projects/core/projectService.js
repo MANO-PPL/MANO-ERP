@@ -72,26 +72,74 @@ export async function initializeProjectSchema() {
     }
 }
 
-export async function createProject(orgId, { name, location, status = 'active', project_code, start_date, end_date, metadata, logo_url }) {
-    if (!name) throw new AppError('Project name is required', 400);
+export async function createProject(orgId, { name, location, status = 'active', project_code, start_date, end_date, metadata, logo_url, member_ids, creator_id }) {
+    if (!name || !name.trim()) throw new AppError('Project name is required', 400);
 
-    const [insertId] = await db('proj_projects').insert({
-        org_id: orgId,
-        name,
-        location,
-        status,
-        project_code,
-        start_date,
-        end_date,
-        logo_url: logo_url || null,
-        metadata: metadata ? JSON.stringify(metadata) : null
+    const trimmedCode = project_code ? String(project_code).trim() : null;
+
+    if (trimmedCode) {
+        const existing = await db('proj_projects')
+            .where({ org_id: orgId, project_code: trimmedCode })
+            .first();
+        if (existing) {
+            throw new AppError(`Project code '${trimmedCode}' is already taken in your organization. Please choose a unique code.`, 400);
+        }
+    }
+
+    return await db.transaction(async (trx) => {
+        const [insertId] = await trx('proj_projects').insert({
+            org_id: orgId,
+            name: name.trim(),
+            location: location ? location.trim() : null,
+            status: status || 'active',
+            project_code: trimmedCode || null,
+            start_date: start_date || null,
+            end_date: end_date || null,
+            logo_url: logo_url || null,
+            metadata: metadata ? (typeof metadata === 'string' ? metadata : JSON.stringify(metadata)) : null
+        });
+
+        const allMemberIds = new Set();
+        if (creator_id) allMemberIds.add(creator_id);
+        if (Array.isArray(member_ids)) {
+            member_ids.forEach(id => {
+                if (id) allMemberIds.add(id);
+            });
+        }
+
+        if (allMemberIds.size > 0) {
+            const validUsers = await trx('iam_users')
+                .where('org_id', orgId)
+                .whereIn('user_id', Array.from(allMemberIds))
+                .select('user_id');
+
+            if (validUsers.length > 0) {
+                const memberRows = validUsers.map(u => ({
+                    project_id: insertId,
+                    user_id: u.user_id,
+                    org_id: orgId,
+                    project_permissions: null
+                }));
+
+                await trx('proj_members').insert(memberRows);
+            }
+        }
+
+        return insertId;
     });
-
-    return insertId;
 }
 
 export async function getProjects(orgId, userId, userType) {
     const isUserAdmin = isAdmin(userType);
+    const employerSubquery = db.raw(`(
+        SELECT GROUP_CONCAT(c.name SEPARATOR ', ')
+        FROM pdoc_parties pp
+        JOIN crm_contacts c ON pp.party_id = c.id
+        WHERE pp.project_id = p.id 
+          AND LOWER(c.category) = 'client'
+          AND pp.deleted_at IS NULL
+    ) as employer`);
+
     let projects = [];
     if (isUserAdmin) {
         projects = await db('proj_projects as p')
@@ -99,7 +147,8 @@ export async function getProjects(orgId, userId, userType) {
             .where('p.org_id', orgId)
             .select(
                 'p.*',
-                db.raw('COUNT(pu.user_id) as member_count')
+                db.raw('COUNT(DISTINCT pu.user_id) as member_count'),
+                employerSubquery
             )
             .groupBy('p.id')
             .orderBy('p.created_at', 'desc');
@@ -115,7 +164,8 @@ export async function getProjects(orgId, userId, userType) {
             )
             .select(
                 'p.*',
-                db.raw('COUNT(pu.user_id) as member_count')
+                db.raw('COUNT(DISTINCT pu.user_id) as member_count'),
+                employerSubquery
             )
             .groupBy('p.id')
             .orderBy('p.created_at', 'desc');
@@ -131,8 +181,19 @@ export async function getProjects(orgId, userId, userType) {
 }
 
 export async function getProjectById(orgId, projectId) {
-    const project = await db('proj_projects')
-        .where({ id: projectId, org_id: orgId })
+    const project = await db('proj_projects as p')
+        .where({ 'p.id': projectId, 'p.org_id': orgId })
+        .select(
+            'p.*',
+            db.raw(`(
+                SELECT GROUP_CONCAT(c.name SEPARATOR ', ')
+                FROM pdoc_parties pp
+                JOIN crm_contacts c ON pp.party_id = c.id
+                WHERE pp.project_id = p.id 
+                  AND LOWER(c.category) = 'client'
+                  AND pp.deleted_at IS NULL
+            ) as employer`)
+        )
         .first();
 
     if (!project) throw new AppError('Project not found', 404);
@@ -145,15 +206,28 @@ export async function getProjectById(orgId, projectId) {
 }
 
 export async function updateProject(orgId, projectId, updateData) {
+    if (updateData.project_code) {
+        const trimmedCode = String(updateData.project_code).trim();
+        const existing = await db('proj_projects')
+            .where({ org_id: orgId, project_code: trimmedCode })
+            .whereNot({ id: projectId })
+            .first();
+        if (existing) {
+            throw new AppError(`Project code '${trimmedCode}' is already taken in your organization. Please choose a unique code.`, 400);
+        }
+    }
+
     const updates = {};
-    if (updateData.name) updates.name = updateData.name;
-    if (updateData.location) updates.location = updateData.location;
+    if (updateData.name) updates.name = updateData.name.trim();
+    if (updateData.location !== undefined) updates.location = updateData.location ? updateData.location.trim() : null;
     if (updateData.status) updates.status = updateData.status;
-    if (updateData.project_code !== undefined) updates.project_code = updateData.project_code;
-    if (updateData.start_date !== undefined) updates.start_date = updateData.start_date;
-    if (updateData.end_date !== undefined) updates.end_date = updateData.end_date;
+    if (updateData.project_code !== undefined) updates.project_code = updateData.project_code ? String(updateData.project_code).trim() : null;
+    if (updateData.start_date !== undefined) updates.start_date = updateData.start_date || null;
+    if (updateData.end_date !== undefined) updates.end_date = updateData.end_date || null;
     if (updateData.logo_url !== undefined) updates.logo_url = updateData.logo_url;
-    if (updateData.metadata !== undefined) updates.metadata = updateData.metadata ? JSON.stringify(updateData.metadata) : null;
+    if (updateData.metadata !== undefined) {
+        updates.metadata = updateData.metadata ? (typeof updateData.metadata === 'string' ? updateData.metadata : JSON.stringify(updateData.metadata)) : null;
+    }
 
     if (Object.keys(updates).length > 0) {
         const affected = await db('proj_projects')

@@ -302,10 +302,9 @@ const OrganisationChart = ({ onBack, setExtraBreadcrumbs, canWrite }) => {
 
     useEffect(() => {
         setExtraBreadcrumbs([
-            { label: 'General Documents', onClick: onBack },
             { label: 'Organisation Chart' }
         ]);
-    }, [onBack, setExtraBreadcrumbs, projectId]);
+    }, [setExtraBreadcrumbs, projectId]);
 
     const fetchAvailableParties = async () => {
         try {

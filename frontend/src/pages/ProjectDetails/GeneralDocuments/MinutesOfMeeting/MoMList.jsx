@@ -1,15 +1,8 @@
 import React, { useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
-import { FileText, Plus, ChevronRight, Calendar, ArrowLeft, Info, X, Clock, User, ClipboardCheck } from 'lucide-react';
+import { FileText, Plus, ChevronRight, Calendar, ArrowLeft, Info, X, Clock, User, ClipboardCheck, Loader2 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { generalDocsApi } from '../../../../services/generalDocsApi';
-
-const defaultMoMs = [
-    { id: 10, title: 'kakooos', meetingNo: '23', venue: 'con room', date: '12 January 2026' },
-    { id: 11, title: 'Gundu Mali rendu rubai', meetingNo: '70', venue: 'Residency Sarovar Portico, Mexico, dixico', date: '26 December 2025' },
-    { id: 12, title: 'test mom creation', meetingNo: '69', venue: 'dadar office', date: '26 December 2025' },
-    { id: 13, title: 'Gundu Mali', meetingNo: '12', venue: 'Residency Sarovar Portico', date: '12 December 2022' },
-];
 
 const MoMList = ({ onBack, setExtraBreadcrumbs, onSelect, canWrite }) => {
     const { id: projectId } = useParams();
@@ -20,7 +13,6 @@ const MoMList = ({ onBack, setExtraBreadcrumbs, onSelect, canWrite }) => {
 
     React.useEffect(() => {
         setExtraBreadcrumbs([
-            { label: 'General Documents', onClick: onBack },
             { label: 'Minutes of Meeting' }
         ]);
 
@@ -40,11 +32,11 @@ const MoMList = ({ onBack, setExtraBreadcrumbs, onSelect, canWrite }) => {
                     }));
                     setMoms(mappedMoms);
                 } else {
-                    setMoms(defaultMoMs);
+                    setMoms([]);
                 }
             } catch (err) {
-                console.error("Failed to fetch MoMs, falling back to dummy", err);
-                setMoms(defaultMoMs);
+                console.error("Failed to fetch MoMs:", err);
+                setMoms([]);
             } finally {
                 setLoading(false);
             }
@@ -72,7 +64,7 @@ const MoMList = ({ onBack, setExtraBreadcrumbs, onSelect, canWrite }) => {
                 {canWrite && (
                     <button
                         onClick={() => onSelect('new')}
-                        className="flex items-center space-x-2 bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-md font-medium text-sm transition-colors shadow-sm"
+                        className="flex items-center space-x-2 bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-md font-medium text-sm transition-colors shadow-sm cursor-pointer"
                     >
                         <Plus size={18} />
                         <span>New MoM</span>
@@ -81,80 +73,88 @@ const MoMList = ({ onBack, setExtraBreadcrumbs, onSelect, canWrite }) => {
             </div>
 
             {/* List Content */}
-            <div className="flex-1 overflow-y-auto p-8 custom-scrollbar">
-                <div className="w-full grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
-                    {moms.map((mom, i) => (
-                        <motion.div
-                            initial={{ opacity: 0, y: 10 }}
-                            animate={{ opacity: 1, y: 0 }}
-                            transition={{ delay: i * 0.05 }}
-                            key={mom.id}
-                            onClick={() => onSelect(mom.id)}
-                            className="group flex flex-col p-6 bg-gray-50 dark:bg-[#161b22] border border-gray-200 dark:border-white/10 hover:border-blue-500/50 rounded-xl cursor-pointer transition-all duration-300 shadow-sm hover:shadow-lg hover:shadow-blue-900/10 min-h-[160px]"
-                        >
-                            <div className="flex items-start justify-between">
-                                <div className="flex items-center space-x-3">
-                                    <div className="p-3 bg-gray-100 dark:bg-gray-800/50 group-hover:bg-blue-500/20 group-hover:text-blue-400 rounded-lg text-gray-600 dark:text-gray-400 transition-colors">
-                                        <FileText size={24} />
-                                    </div>
-                                    {mom.instance_status && (
-                                        <span className={`px-2 py-0.5 text-[9px] font-bold rounded border ${
-                                            mom.instance_status === 'approved' ? 'bg-emerald-500/10 text-emerald-500 border-emerald-500/20' :
-                                            mom.instance_status === 'in_review' ? 'bg-blue-500/10 text-blue-500 border-blue-500/20' :
-                                            mom.instance_status === 'rejected' ? 'bg-rose-500/10 text-rose-500 border-rose-500/20' :
-                                            mom.instance_status === 'cancelled' ? 'bg-gray-500/10 text-gray-500 border-gray-500/20' :
-                                            'bg-amber-500/10 text-amber-500 border-amber-500/20' // drafting
-                                        }`}>
-                                            {mom.instance_status === 'drafting' ? 'DRAFT' :
-                                             mom.instance_status === 'in_review' ? 'UNDER REVIEW' :
-                                             mom.instance_status.toUpperCase()}
-                                        </span>
-                                    )}
-                                </div>
-                                <div className="flex items-center space-x-2">
-                                    <div className="flex items-center space-x-2 text-xs bg-gray-50 dark:bg-gray-800/30 px-2 py-1.5 rounded-md border border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-500 dark:text-gray-400 group-hover:text-gray-900 dark:group-hover:text-gray-800 dark:text-gray-200 transition-colors">
-                                        <Calendar size={13} />
-                                        <span>{mom.date ? mom.date.split('T')[0] : 'No date'}</span>
-                                    </div>
-                                    <button
-                                        onClick={(e) => {
-                                            e.stopPropagation();
-                                            setSelectedMoM(mom);
-                                            setInfoDrawerOpen(true);
-                                        }}
-                                        className="p-1.5 text-gray-500 hover:text-blue-400 hover:bg-blue-500/10 rounded-md transition-all active:scale-90"
-                                    >
-                                        <Info size={18} />
-                                    </button>
-                                </div>
-                            </div>
-
-                            <div className="mt-5 mb-2 flex-grow">
-                                <h3 className="text-lg font-bold text-gray-900 dark:text-white group-hover:text-blue-400 transition-colors line-clamp-1">
-                                    {mom.title}
-                                </h3>
-                            </div>
-
-                            <div className="mt-4 pt-4 border-t border-gray-200 dark:border-white/10/50 flex flex-wrap gap-2 text-xs text-gray-600 dark:text-gray-400">
-                                <span className="bg-white dark:bg-[#0d1117] px-2 py-1 rounded border border-gray-200 dark:border-white/10 whitespace-nowrap">
-                                    No: {mom.meeting_no || mom.meetingNo}
-                                </span>
-                                <span className="bg-white dark:bg-[#0d1117] px-2 py-1 rounded border border-gray-200 dark:border-white/10 line-clamp-1 text-ellipsis flex-1 w-0 min-w-[80px]">
-                                    {mom.venue}
-                                </span>
-                            </div>
-                        </motion.div>
-                    ))}
-
-                    {loading && (
-                        <div className="col-span-full text-center py-20 text-gray-500">Loading MoMs...</div>
-                    )}
-                    {!loading && moms.length === 0 && (
-                        <div className="col-span-full text-center py-20 text-gray-500">
-                            No MoMs found. Create a new one to get started.
+            <div className="flex-1 overflow-y-auto p-6 md:p-8 custom-scrollbar">
+                {loading ? (
+                    <div className="flex flex-col items-center justify-center h-64 text-gray-400">
+                        <Loader2 className="animate-spin mb-3 text-blue-500" size={28} />
+                        <p className="text-xs font-medium text-gray-500 dark:text-gray-400">Loading minutes of meeting...</p>
+                    </div>
+                ) : moms.length === 0 ? (
+                    <div className="rounded-2xl border border-dashed border-gray-200 dark:border-white/10 bg-gray-50/50 dark:bg-[#161b22]/30 p-12 text-center my-4">
+                        <div className="w-14 h-14 mx-auto mb-3 rounded-2xl bg-blue-500/10 dark:bg-blue-500/20 flex items-center justify-center text-blue-600 dark:text-blue-400 shadow-inner">
+                            <ClipboardCheck size={26} />
                         </div>
-                    )}
-                </div>
+                        <h3 className="text-base font-semibold text-gray-900 dark:text-white">No Minutes of Meeting Recorded</h3>
+                        <p className="mt-1 text-xs text-gray-500 dark:text-gray-400 max-w-md mx-auto">
+                            No meeting minutes have been documented for this project yet.
+                        </p>
+                        {canWrite && (
+                            <button
+                                onClick={() => onSelect('new')}
+                                className="mt-4 inline-flex items-center gap-2 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-xs font-semibold shadow-md shadow-blue-500/20 transition-all cursor-pointer"
+                            >
+                                <Plus size={15} />
+                                <span>Record First MoM</span>
+                            </button>
+                        )}
+                    </div>
+                ) : (
+                    <div className="w-full grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
+                        {moms.map((mom, i) => (
+                            <motion.div
+                                initial={{ opacity: 0, y: 10 }}
+                                animate={{ opacity: 1, y: 0 }}
+                                transition={{ delay: i * 0.05 }}
+                                key={mom.id}
+                                onClick={() => onSelect(mom.id)}
+                                className="group flex flex-col p-6 bg-gray-50 dark:bg-[#161b22] border border-gray-200 dark:border-white/10 hover:border-blue-500/50 rounded-xl cursor-pointer transition-all duration-300 shadow-sm hover:shadow-lg hover:shadow-blue-900/10 min-h-[160px]"
+                            >
+                                <div className="flex items-start justify-between">
+                                    <div className="flex items-center space-x-3">
+                                        <div className="p-3 bg-gray-100 dark:bg-gray-800/50 group-hover:bg-blue-500/20 group-hover:text-blue-400 rounded-lg text-gray-600 dark:text-gray-400 transition-colors">
+                                            <FileText size={24} />
+                                        </div>
+                                        {mom.instance_status && (
+                                            <span className={`px-2 py-0.5 text-[9px] font-bold rounded border ${
+                                                mom.instance_status === 'approved' ? 'bg-emerald-500/10 text-emerald-500 border-emerald-500/20' :
+                                                mom.instance_status === 'in_review' ? 'bg-blue-500/10 text-blue-500 border-blue-500/20' :
+                                                mom.instance_status === 'rejected' ? 'bg-rose-500/10 text-rose-500 border-rose-500/20' :
+                                                mom.instance_status === 'cancelled' ? 'bg-gray-500/10 text-gray-500 border-gray-500/20' :
+                                                'bg-amber-500/10 text-amber-500 border-amber-500/20'
+                                            }`}>
+                                                {mom.instance_status === 'drafting' ? 'DRAFT' :
+                                                 mom.instance_status === 'in_review' ? 'UNDER REVIEW' :
+                                                 mom.instance_status.toUpperCase()}
+                                            </span>
+                                        )}
+                                    </div>
+                                    <div className="p-1 rounded-full text-gray-400 group-hover:text-blue-400 group-hover:translate-x-1 transition-all">
+                                        <ChevronRight size={18} />
+                                    </div>
+                                </div>
+
+                                <div className="mt-4">
+                                    <div className="flex items-center space-x-2">
+                                        <span className="text-[11px] font-semibold text-blue-600 dark:text-blue-400 uppercase tracking-wider">
+                                            {mom.meeting_no ? `Meeting #${mom.meeting_no}` : 'Meeting'}
+                                        </span>
+                                    </div>
+                                    <h3 className="text-base font-bold text-gray-900 dark:text-white mt-1 group-hover:text-blue-500 transition-colors line-clamp-1">
+                                        {mom.title || 'Untitled MoM'}
+                                    </h3>
+                                </div>
+
+                                <div className="mt-6 pt-4 border-t border-gray-200 dark:border-white/5 flex items-center justify-between text-xs text-gray-500 dark:text-gray-400">
+                                    <div className="flex items-center space-x-1.5">
+                                        <Calendar size={14} className="text-gray-400" />
+                                        <span>{mom.date || 'Date TBD'}</span>
+                                    </div>
+                                    <span className="truncate max-w-[120px] font-medium">{mom.venue || 'No venue specified'}</span>
+                                </div>
+                            </motion.div>
+                        ))}
+                    </div>
+                )}
             </div>
             {/* Info / Version Control Drawer */}
             <AnimatePresence>
