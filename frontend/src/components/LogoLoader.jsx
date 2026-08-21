@@ -1,32 +1,10 @@
 import React from 'react';
+import { ShieldAlert } from 'lucide-react';
 import { motion } from 'framer-motion';
 
-const LogoLoader = ({ text = "Loading data...", size = "md", fullPage = true }) => {
-    const sizeMap = {
-        sm: {
-            box: "w-10 h-10 rounded-lg p-2",
-            ringOuter: "w-14 h-14 rounded-[1.2rem]",
-            ringBorder: "w-12 h-12 rounded-[0.8rem]",
-            title: "text-[10px] tracking-[0.25em]",
-            sub: "text-[8px]"
-        },
-        md: {
-            box: "w-12 h-12 rounded-xl p-2.5",
-            ringOuter: "w-20 h-20 rounded-[1.5rem]",
-            ringBorder: "w-16 h-16 rounded-[1rem]",
-            title: "text-xs tracking-[0.35em]",
-            sub: "text-[9px]"
-        },
-        lg: {
-            box: "w-14 h-14 rounded-2xl p-3",
-            ringOuter: "w-24 h-24 rounded-[1.8rem]",
-            ringBorder: "w-20 h-20 rounded-[1.2rem]",
-            title: "text-xs md:text-sm tracking-[0.35em]",
-            sub: "text-[9px] md:text-[10px]"
-        }
-    };
-
-    const s = sizeMap[size] || sizeMap.md;
+const LogoLoader = ({ text = "Loading data...", message, size = "md", fullPage = true, fullScreen, isSuperAdmin = false }) => {
+    const isFullScreen = fullScreen !== undefined ? fullScreen : fullPage;
+    const displayMessage = message || text;
 
     return (
         <motion.div 
@@ -34,7 +12,7 @@ const LogoLoader = ({ text = "Loading data...", size = "md", fullPage = true }) 
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
             className={
-                fullPage 
+                isFullScreen 
                     ? "fixed inset-0 z-[9999] flex flex-col items-center justify-center bg-slate-50 dark:bg-[#010404] transition-colors duration-500 font-sans select-none"
                     : "w-full h-full min-h-[250px] flex flex-col items-center justify-center bg-transparent transition-colors duration-500 font-sans select-none p-6 relative overflow-hidden"
             }
@@ -52,7 +30,7 @@ const LogoLoader = ({ text = "Loading data...", size = "md", fullPage = true }) 
                         ease: "easeInOut"
                     }}
                     className={
-                        fullPage 
+                        isFullScreen 
                             ? "absolute top-[-10%] left-[-10%] w-[60%] h-[60%] bg-indigo-600/5 dark:bg-indigo-600/10 blur-[120px] rounded-full"
                             : "absolute top-[10%] left-[10%] w-[40%] h-[40%] bg-indigo-600/5 dark:bg-indigo-600/10 blur-[60px] rounded-full"
                     }
@@ -69,29 +47,29 @@ const LogoLoader = ({ text = "Loading data...", size = "md", fullPage = true }) 
                         delay: 2
                     }}
                     className={
-                        fullPage 
+                        isFullScreen 
                             ? "absolute bottom-[-10%] right-[-10%] w-[50%] h-[50%] bg-violet-600/5 dark:bg-violet-600/10 blur-[100px] rounded-full"
                             : "absolute bottom-[10%] right-[10%] w-[35%] h-[35%] bg-violet-600/5 dark:bg-violet-600/10 blur-[50px] rounded-full"
                     }
                 />
             </div>
 
-            {/* Core Brand Icon & Status Container */}
-            <div className="relative z-10 flex flex-col items-center justify-center gap-4 text-center px-4 max-w-sm">
+            {/* Core Loading Container */}
+            <div className="relative z-10 flex flex-col items-center gap-4 text-center px-4 max-w-sm">
                 {/* Brand Icon Outer Container */}
                 <div className="relative flex items-center justify-center">
                     {/* Pulsing Outer Gradient Ring */}
                     <motion.div 
                         animate={{ 
                             scale: [1, 1.2, 1],
-                            opacity: [0.2, 0.45, 0.2]
+                            opacity: [0.2, 0.4, 0.2]
                         }}
                         transition={{
                             duration: 3,
                             repeat: Infinity,
                             ease: "easeInOut"
                         }}
-                        className={`absolute ${s.ringOuter} bg-gradient-to-tr from-indigo-500 to-violet-500 opacity-25 dark:opacity-35 blur-md`}
+                        className="absolute w-20 h-20 rounded-[1.5rem] bg-gradient-to-tr from-indigo-500 to-violet-500 opacity-20 dark:opacity-30 blur-md" 
                     />
                     
                     {/* Rotating Spinner Border */}
@@ -102,31 +80,35 @@ const LogoLoader = ({ text = "Loading data...", size = "md", fullPage = true }) 
                             repeat: Infinity,
                             ease: "linear"
                         }}
-                        className={`absolute ${s.ringBorder} border-2 border-indigo-500/20 border-t-indigo-500 dark:border-indigo-400/20 dark:border-t-indigo-400`}
+                        className="absolute w-16 h-16 rounded-[1rem] border-2 border-indigo-500/10 border-t-indigo-500 dark:border-indigo-400/10 dark:border-t-indigo-400" 
                     />
                     
-                    {/* Central Logo - Clean and transparent without black background card */}
+                    {/* Central Icon Box */}
                     <motion.div 
-                        initial={{ scale: 0.8, y: 5 }}
+                        initial={{ scale: 0.8, y: 10 }}
                         animate={{ scale: 1, y: 0 }}
                         transition={{ type: "spring", stiffness: 100, damping: 15 }}
-                        className={`${s.box} flex items-center justify-center relative`}
+                        className="w-12 h-12 bg-white dark:bg-[#0d1117] rounded-xl flex items-center justify-center border border-slate-200/80 dark:border-[#30363d] shadow-2xl relative overflow-hidden p-2.5"
                     >
-                        <img src="/mano-logo.svg" alt="MANO" className="w-full h-full object-contain filter drop-shadow-[0_2px_10px_rgba(99,102,241,0.4)]" />
+                        {isSuperAdmin ? (
+                            <ShieldAlert className="w-6 h-6 text-amber-500 dark:text-amber-400" />
+                        ) : (
+                            <img src="/mano-logo.svg" alt="MANO" className="w-full h-full object-contain" />
+                        )}
                     </motion.div>
                 </div>
 
-                {/* Loading Header & Message */}
-                <div className="space-y-1.5 mt-1">
+                {/* Loading Status Information */}
+                <div className="space-y-1.5 mt-2">
                     <motion.h2 
                         initial={{ opacity: 0, y: 5 }}
                         animate={{ opacity: 1, y: 0 }}
                         transition={{ delay: 0.2 }}
-                        className={`${s.title} font-black text-slate-800 dark:text-white uppercase`}
+                        className="text-xs font-black text-slate-800 dark:text-white uppercase tracking-[0.35em]"
                     >
-                        MANO <span className="text-indigo-600 dark:text-indigo-400 font-medium">ERP PLATFORM</span>
+                        MANO <span className="text-indigo-600 dark:text-indigo-400 font-medium">{isSuperAdmin ? 'INTERNAL' : 'ERP PLATFORM'}</span>
                     </motion.h2>
-                    {text && (
+                    {displayMessage && (
                         <motion.p 
                             animate={{ opacity: [0.4, 1, 0.4] }}
                             transition={{
@@ -134,9 +116,9 @@ const LogoLoader = ({ text = "Loading data...", size = "md", fullPage = true }) 
                                 repeat: Infinity,
                                 ease: "easeInOut"
                             }}
-                            className={`${s.sub} text-slate-400 dark:text-slate-500 font-bold tracking-widest uppercase`}
+                            className="text-[9px] text-slate-400 dark:text-slate-500 font-bold tracking-widest uppercase"
                         >
-                            {text}
+                            {displayMessage}
                         </motion.p>
                     )}
                 </div>

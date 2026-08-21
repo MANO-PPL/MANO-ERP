@@ -4,7 +4,6 @@ import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-d
 import MainLayout from './components/layout/MainLayout';
 import PageSkeleton from './components/PageSkeleton';
 import LoadingScreen from './components/LoadingScreen';
-import LogoLoader from './components/LogoLoader';
 import { AuthProvider, useAuth } from './context/AuthContext';
 import { ToastProvider } from './context/ToastContext';
 import { customToast } from './utils/toast';
@@ -95,7 +94,7 @@ function App() {
             } />
             <Route path="projects/:id" element={
               <ProtectedRoute pageId="projects">
-                <Suspense fallback={<LogoLoader text="Rendering Project Workspace..." size="lg" fullPage={true} />}>
+                <Suspense fallback={<PageSkeleton variant="grid" />}>
                   <ProjectDetails />
                 </Suspense>
               </ProtectedRoute>

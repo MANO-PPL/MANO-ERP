@@ -100,7 +100,9 @@ export const useGridState = ({ config, initialData = [] }) => {
 
                 // Mark modified status & re-validate
                 const original = originalRowsMap.get(targetRow[primaryKey]);
-                targetRow._isModified = original ? String(original[key] ?? '') !== String(value ?? '') : false;
+                targetRow._isModified = original
+                    ? columns.some((col) => String(targetRow[col.key] ?? '') !== String(original[col.key] ?? ''))
+                    : false;
                 targetRow._errors = validateRow(targetRow);
 
                 newRows[rowIndex] = targetRow;
@@ -108,7 +110,7 @@ export const useGridState = ({ config, initialData = [] }) => {
                 return newRows;
             });
         },
-        [originalRowsMap, primaryKey, validateRow, pushHistory, deletedRowIds]
+        [originalRowsMap, primaryKey, columns, validateRow, pushHistory, deletedRowIds]
     );
 
     // Paste matrix starting from selected cell
@@ -156,7 +158,7 @@ export const useGridState = ({ config, initialData = [] }) => {
                     targetRow._errors = validateRow(targetRow);
                     const original = originalRowsMap.get(targetRow[primaryKey]);
                     if (!targetRow._isNew && original) {
-                        targetRow._isModified = true;
+                        targetRow._isModified = columns.some((col) => String(targetRow[col.key] ?? '') !== String(original[col.key] ?? ''));
                     }
 
                     newRows[targetRowIndex] = targetRow;
@@ -278,12 +280,16 @@ export const useGridState = ({ config, initialData = [] }) => {
                     }
                 }
                 row._errors = validateRow(row);
+                const original = originalRowsMap.get(row[primaryKey]);
+                if (!row._isNew && original) {
+                    row._isModified = columns.some((col) => String(row[col.key] ?? '') !== String(original[col.key] ?? ''));
+                }
                 newRows[r] = row;
             }
 
             return newRows;
         });
-    }, [selectionBounds, columns, validateRow, pushHistory, deletedRowIds]);
+    }, [selectionBounds, columns, primaryKey, originalRowsMap, validateRow, pushHistory, deletedRowIds]);
 
     // Undo action
     const undo = useCallback(() => {

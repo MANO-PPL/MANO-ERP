@@ -1,13 +1,16 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { workflowApi } from '../services/workflowApi';
 import { 
     Shield, CheckCircle2, AlertCircle, Clock, Play, 
-    Send, Check, RotateCcw, X, Lock, Unlock, Loader2, Save 
+    Send, Check, RotateCcw, X, Lock, Unlock, Loader2, Save,
+    History, FileText, ChevronRight, UserCheck,
+    MessageSquare, AlertTriangle, ArrowRight, Eye, CheckCheck
 } from 'lucide-react';
+import { AnimatePresence, motion } from 'framer-motion';
 import { toast } from 'react-toastify';
 
-const WorkflowPanel = ({ projectId, templateName, instanceId: propInstanceId, onStateChange, onRefreshContent }) => {
+const WorkflowPanel = ({ projectId, templateName, instanceId: propInstanceId, onStateChange, onRefreshContent, onActionComplete }) => {
     const { user, isAdmin: isUserAdmin } = useAuth();
     const [loading, setLoading] = useState(true);
     const [actionLoading, setActionLoading] = useState(false);
@@ -19,45 +22,50 @@ const WorkflowPanel = ({ projectId, templateName, instanceId: propInstanceId, on
     const [templateDetail, setTemplateDetail] = useState(null);
     const [loadedKey, setLoadedKey] = useState('');
 
-    // Modals & Comment states
+    const lastEmittedStateRef = useRef(null);
+    const loadedDocKeyRef = useRef('');
+
+    // Modals & Version History Drawer states
+    const [isHistoryDrawerOpen, setIsHistoryDrawerOpen] = useState(false);
     const [modalOpen, setModalOpen] = useState(false);
     const [modalAction, setModalAction] = useState(''); // 'submit', 'approve', 'request-revision', 'reject', 'cancel'
     const [comments, setComments] = useState('');
     const [changesSummary, setChangesSummary] = useState('');
 
+    const triggerRefresh = (silent = true) => {
+        if (onRefreshContent) onRefreshContent(silent);
+        if (onActionComplete) onActionComplete(silent);
+    };
+
     const loadWorkflowData = async (silent = false) => {
-        const key = `${projectId}-${templateName}`;
-        const isNewDoc = loadedKey !== key;
+        if (!projectId || !templateName) {
+            setLoading(false);
+            return;
+        }
+
+        const key = `${projectId}-${templateName}-${propInstanceId || ''}`;
+        const isNewDoc = loadedDocKeyRef.current !== key;
 
         if (isNewDoc && !silent) {
             setLoading(true);
-            setTemplate(null);
-            setInstance(null);
-            setCurrentCycle(null);
         }
 
         try {
             const res = await workflowApi.getTemplateWorkflowStatus(projectId, templateName, propInstanceId);
-            if (res.success) {
-                if (res.notConfigured) {
-                    setTemplate(null);
-                    setTemplateDetail(null);
-                    setInstance(null);
-                    setCurrentCycle(null);
-                    setVersions([]);
-                    setAllCycles([]);
-                } else {
-                    setTemplate(res.template);
-                    setTemplateDetail(res.templateDetail);
-                    setInstance(res.instance);
-                    setCurrentCycle(res.instance?.current_cycle || null);
-                    setVersions(res.versions || []);
-                    setAllCycles(res.allCycles || []);
-                }
+            if (res && res.success) {
+                setTemplate(res.template || { name: templateName, doc_type: 'singleton' });
+                setTemplateDetail(res.templateDetail);
+                setInstance(res.instance);
+                setCurrentCycle(res.instance?.current_cycle || null);
+                setVersions(res.versions || []);
+                setAllCycles(res.allCycles || []);
+                loadedDocKeyRef.current = key;
                 setLoadedKey(key);
             }
         } catch (error) {
             console.error('Error loading workflow status:', error);
+            // Default fallback template so the workflow bar is always visible and functional
+            setTemplate({ name: templateName, doc_type: 'singleton' });
         } finally {
             setLoading(false);
         }
@@ -68,42 +76,62 @@ const WorkflowPanel = ({ projectId, templateName, instanceId: propInstanceId, on
     };
 
     useEffect(() => {
-        if (projectId && templateName) {
-            // Avoid redundant fetches if the instance ID matches the currently loaded instance
-            if (propInstanceId && instance && propInstanceId === instance.instance_id) {
-                return;
-            }
-            loadWorkflowData();
+        if (!projectId || !templateName) {
+            setLoading(false);
+            return;
         }
+
+        if (propInstanceId && instance && String(propInstanceId) === String(instance.instance_id)) {
+            return;
+        }
+
+        const key = `${projectId}-${templateName}-${propInstanceId || ''}`;
+        if (loadedDocKeyRef.current === key && instance) {
+            return;
+        }
+
+        loadWorkflowData();
     }, [projectId, templateName, propInstanceId]);
 
-    // Push states to parent document component
+    // Push states to parent document component safely without redundant state updates
     useEffect(() => {
         if (!onStateChange) return;
 
+        let nextState;
         if (loading) {
-            onStateChange({ mode: 'read', cycleId: null, loading: true });
-            return;
-        }
-
-        if (!template || !instance) {
-            onStateChange({ mode: 'read', cycleId: null, loading: false, notConfigured: !template, notInitialized: !!template && !instance });
-            return;
-        }
-
-        // If a cycle is active and current user is holder:
-        if (currentCycle) {
-            const isHolder = currentCycle.current_holder_id === user?.user_id || currentCycle.current_holder_id === user?.id;
+            nextState = { mode: 'read', cycleId: null, loading: true };
+        } else if (!instance) {
+            nextState = { mode: 'read', cycleId: null, loading: false, notConfigured: false, notInitialized: true };
+        } else if (currentCycle) {
+            const currentUserId = user?.user_id ?? user?.id;
+            const isHolder = String(currentCycle.current_holder_id) === String(currentUserId);
             const isEditingState = ['drafting', 'revision_requested'].includes(currentCycle.status);
-            
+
             if (isHolder && isEditingState) {
-                onStateChange({ mode: 'edit', cycleId: currentCycle.cycle_id, instanceId: instance.instance_id, loading: false });
-                return;
+                nextState = { mode: 'edit', cycleId: currentCycle.cycle_id, instanceId: instance.instance_id, loading: false };
+            } else {
+                nextState = { mode: 'read', cycleId: currentCycle.cycle_id || null, instanceId: instance.instance_id, loading: false };
             }
+        } else {
+            nextState = { mode: 'read', cycleId: null, instanceId: instance.instance_id, loading: false };
         }
 
-        onStateChange({ mode: 'read', cycleId: currentCycle?.cycle_id || null, instanceId: instance.instance_id, loading: false });
-    }, [loading, template, instance, currentCycle, user]);
+        const prev = lastEmittedStateRef.current;
+        if (
+            prev &&
+            prev.mode === nextState.mode &&
+            prev.cycleId === nextState.cycleId &&
+            prev.instanceId === nextState.instanceId &&
+            prev.loading === nextState.loading &&
+            prev.notConfigured === nextState.notConfigured &&
+            prev.notInitialized === nextState.notInitialized
+        ) {
+            return;
+        }
+
+        lastEmittedStateRef.current = nextState;
+        onStateChange(nextState);
+    }, [loading, instance, currentCycle, user, onStateChange]);
 
     // Handle initializing singleton document instance
     const handleInitializeInstance = async () => {
@@ -125,16 +153,19 @@ const WorkflowPanel = ({ projectId, templateName, instanceId: propInstanceId, on
         }
     };
 
-    // Initiate approval cycle
+    // Initiate approval revision cycle (Google Docs "Edit" / "Start Revision")
     const handleStartRevision = async () => {
-        if (!instance) return;
+        if (!instance) {
+            await handleInitializeInstance();
+            return;
+        }
         try {
             setActionLoading(true);
             const res = await workflowApi.initiateCycle(instance.instance_id);
             if (res.success) {
-                toast.success('New draft cycle initiated');
+                toast.success('Drafting mode enabled. Make your edits and submit for approval.');
                 await loadInstanceData(instance.instance_id, true);
-                if (onRefreshContent) onRefreshContent(true);
+                triggerRefresh(true);
             }
         } catch (error) {
             toast.error(error.response?.data?.message || 'Failed to start revision');
@@ -152,7 +183,7 @@ const WorkflowPanel = ({ projectId, templateName, instanceId: propInstanceId, on
             if (res.success) {
                 toast.success('Revision cycle claimed successfully');
                 await loadInstanceData(instance.instance_id, true);
-                if (onRefreshContent) onRefreshContent(true);
+                triggerRefresh(true);
             }
         } catch (error) {
             toast.error(error.response?.data?.message || 'Failed to claim revision');
@@ -168,9 +199,9 @@ const WorkflowPanel = ({ projectId, templateName, instanceId: propInstanceId, on
             setActionLoading(true);
             const res = await workflowApi.saveDraft(currentCycle.cycle_id, {});
             if (res.success) {
-                toast.success('Draft changes saved successfully');
+                toast.success('Draft saved successfully');
                 await loadInstanceData(instance.instance_id, true);
-                if (onRefreshContent) onRefreshContent(true);
+                triggerRefresh(true);
             }
         } catch (error) {
             toast.error(error.response?.data?.message || 'Failed to save changes');
@@ -211,10 +242,10 @@ const WorkflowPanel = ({ projectId, templateName, instanceId: propInstanceId, on
             }
 
             if (res && res.success) {
-                toast.success(`Cycle ${modalAction} completed successfully`);
+                toast.success(`Workflow ${modalAction === 'submit' ? 'submitted for approval' : modalAction} successfully`);
                 setModalOpen(false);
                 await loadInstanceData(instance.instance_id, true);
-                if (onRefreshContent) onRefreshContent(true);
+                triggerRefresh(true);
             }
         } catch (error) {
             toast.error(error.response?.data?.message || `Failed to ${modalAction}`);
@@ -223,47 +254,7 @@ const WorkflowPanel = ({ projectId, templateName, instanceId: propInstanceId, on
         }
     };
 
-    if (loading) {
-        return (
-            <div className="min-h-[72px] p-4 bg-gray-50/50 dark:bg-white/5 border border-gray-100 dark:border-white/5 rounded-2xl flex items-center justify-center text-xs text-gray-500">
-                <Loader2 size={14} className="animate-spin mr-2" /> Loading approval workflow panel...
-            </div>
-        );
-    }
-
-    if (!template) {
-        return (
-            <div className="min-h-[72px] p-4 bg-yellow-500/5 border border-yellow-500/10 rounded-2xl flex items-center justify-between text-xs text-yellow-600 dark:text-yellow-400">
-                <div className="flex items-center gap-2">
-                    <AlertCircle size={15} />
-                    <span>Approval workflow is not yet configured for this section. Please configure it in the Approvals tab.</span>
-                </div>
-            </div>
-        );
-    }
-
-    if (!instance) {
-        if (template.doc_type === 'singleton') {
-            return (
-                <div className="min-h-[72px] p-4 bg-blue-500/5 border border-blue-500/10 rounded-2xl flex items-center justify-between text-xs text-blue-600 dark:text-blue-400">
-                    <div className="flex items-center gap-2">
-                        <span>Workflow setup ready. The document template needs to be initialized.</span>
-                    </div>
-                    <button
-                        disabled={actionLoading}
-                        onClick={handleInitializeInstance}
-                        className="px-3 py-1 bg-blue-600 hover:bg-blue-700 text-white rounded font-bold transition-all active:scale-95 text-[11px] disabled:opacity-50 cursor-pointer"
-                    >
-                        {actionLoading ? 'Initializing...' : 'Initialize Document'}
-                    </button>
-                </div>
-            );
-        } else {
-            return null; // Episodic workflows only show banner once detail instance is open
-        }
-    }
-
-    // Determine workflow state elements
+    // Determine state
     const currentUserId = user?.user_id ?? user?.id;
     const isHolder = String(currentCycle?.current_holder_id) === String(currentUserId);
     const isCycleAuthor = String(currentCycle?.initiated_by) === String(currentUserId);
@@ -272,183 +263,335 @@ const WorkflowPanel = ({ projectId, templateName, instanceId: propInstanceId, on
     const reporterRoles = documentRoles.filter(role => role.role === 'reporter');
     const isUserReporter = reporterRoles.length > 0
         ? reporterRoles.some(role => String(role.user_id) === String(currentUserId))
-        : isUserAdmin;
+        : true; // Default allow write / initiate
 
-    let badgeColor = 'bg-gray-100 text-gray-800 dark:bg-white/5 dark:text-gray-400';
-    let statusText = 'Finalized / Read Only';
-    let statusDesc = instance?.latest_approved_version_id
-        ? 'Latest approved content is published and locked. Revisions must be initiated by a reporter.'
-        : 'Latest approved content is published and visible.';
-    let icon = null;
+    const latestVersionNumber = versions.length > 0 ? `v${versions[0].version_number}.0` : 'v1.0';
+
+    if (loading) {
+        return (
+            <div className="flex items-center gap-2 select-none">
+                <div className="h-7 w-28 bg-gray-100 dark:bg-white/5 rounded-lg animate-pulse" />
+                <div className="h-7 w-36 bg-gray-100 dark:bg-white/5 rounded-lg animate-pulse" />
+            </div>
+        );
+    }
+
+    // Status Badge Configuration (Google Docs / Google Sheets Style)
+    let statusBadge = {
+        label: 'Approved & Live',
+        version: latestVersionNumber,
+        icon: <CheckCircle2 size={13} className="text-emerald-500" />,
+        badgeClass: 'bg-emerald-50 text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-300 border-emerald-200 dark:border-emerald-500/30',
+        helperText: 'Document is published and verified.',
+        isDrafting: false,
+        isInReview: false
+    };
 
     if (currentCycle) {
         if (currentCycle.status === 'drafting') {
-            badgeColor = 'bg-blue-500/15 text-blue-600 dark:text-blue-400 border border-blue-500/30';
-            statusText = isHolder ? 'Drafting Mode (You)' : 'Drafting Mode';
-            statusDesc = isHolder 
-                ? 'You are currently drafting revisions. Edits will save as draft content.'
-                : `Locked by ${currentCycle.holder_name || 'author'} for editing.`;
-            icon = null;
+            statusBadge = {
+                label: 'Draft in Progress',
+                version: `${latestVersionNumber} (Draft)`,
+                icon: <Unlock size={13} className="text-blue-500" />,
+                badgeClass: 'bg-blue-50 text-blue-700 dark:bg-blue-950/40 dark:text-blue-300 border-blue-200 dark:border-blue-500/30',
+                helperText: isHolder ? 'Editing in draft mode. Changes will be saved.' : `Locked by ${currentCycle.holder_name || 'author'} for editing.`,
+                isDrafting: true,
+                isInReview: false
+            };
         } else if (currentCycle.status === 'in_review') {
-            badgeColor = 'bg-yellow-500/15 text-yellow-600 dark:text-yellow-400 border border-yellow-500/30';
-            statusText = isHolder ? 'Pending Your Review' : 'In Review';
-            statusDesc = isHolder 
-                ? 'Review is pending your action. You can Approve, Reject, or Request Revision.'
-                : `Level ${currentCycle.current_level}: Pending review from ${currentCycle.holder_name}.`;
-            icon = <Clock size={16} className="text-yellow-500 animate-spin" style={{ animationDuration: '3s' }} />;
+            statusBadge = {
+                label: `Review Pending (Level ${currentCycle.current_level || 1})`,
+                version: `${latestVersionNumber} (Review)`,
+                icon: <Clock size={13} className="text-amber-500 animate-spin" style={{ animationDuration: '4s' }} />,
+                badgeClass: 'bg-amber-50 text-amber-700 dark:bg-amber-950/40 dark:text-amber-300 border-amber-200 dark:border-amber-500/30',
+                helperText: isHolder ? 'Action required: Review and approve changes.' : `Awaiting approval from ${currentCycle.holder_name || 'reviewers'}.`,
+                isDrafting: false,
+                isInReview: true
+            };
         } else if (currentCycle.status === 'revision_requested') {
-            badgeColor = 'bg-orange-500/15 text-orange-600 dark:text-orange-400 border border-orange-500/30';
-            statusText = isHolder ? 'Revision Required (You)' : 'Revision Required';
-            statusDesc = isHolder 
-                ? `Revision requested: "${currentCycle.last_comments || 'No comments'}"`
-                : `Pending revision claim by author. Current holder: ${currentCycle.holder_name}.`;
-            icon = <AlertCircle size={16} className="text-orange-500 animate-pulse" />;
+            statusBadge = {
+                label: 'Revision Requested',
+                version: `${latestVersionNumber} (Needs Revision)`,
+                icon: <AlertTriangle size={13} className="text-orange-500" />,
+                badgeClass: 'bg-orange-50 text-orange-700 dark:bg-orange-950/40 dark:text-orange-300 border-orange-200 dark:border-orange-500/30',
+                helperText: isHolder ? `Feedback: "${currentCycle.last_comments || 'Please revise document'}"` : `Pending revisions from ${currentCycle.holder_name}.`,
+                isDrafting: false,
+                isInReview: false
+            };
         }
     }
 
     return (
-        <div className="min-h-[72px] mb-4 bg-white dark:bg-[#161b22] border border-gray-200 dark:border-white/5 rounded-2xl shadow-sm overflow-hidden anim-fade-in text-left">
-            <div className="px-5 py-4 flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
-                <div className="flex items-center gap-3">
-                    <div>
-                        <div className="flex items-center gap-2 flex-wrap">
-                            <span className="text-xs font-bold text-gray-900 dark:text-white uppercase tracking-tight">{templateName} Workflow</span>
-                            <span className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider ${badgeColor}`}>
-                                {statusText}
-                            </span>
-                        </div>
-                        <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5 flex items-center gap-1.5">
-                            {icon}
-                            <span>{statusDesc}</span>
-                        </p>
-                    </div>
-                </div>
+        <>
+            {/* Version History & Google Docs Approval Controls */}
+            <div className="flex items-center gap-2">
+                {/* Version History Button (Positioned directly to the left of Request Approval / Edit) */}
+                <button
+                    type="button"
+                    onClick={() => setIsHistoryDrawerOpen(true)}
+                    className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold text-gray-600 dark:text-gray-300 hover:text-blue-600 dark:hover:text-blue-400 hover:bg-gray-100 dark:hover:bg-white/5 border border-gray-200 dark:border-white/10 transition cursor-pointer"
+                    title="View version history"
+                >
+                    <History size={13} />
+                    <span>Version history ({versions.length})</span>
+                </button>
 
-                {/* Actions */}
-                <div className="flex items-center gap-2 shrink-0">
-                    {!currentCycle && (!instance?.latest_approved_version_id || isUserReporter) && (
+                    {/* State 1: Live / No Active Draft -> Start Revision / Request Approval */}
+                    {!currentCycle && (
                         <button
                             disabled={actionLoading}
                             onClick={handleStartRevision}
-                            className="flex items-center gap-1.5 px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-xs font-bold transition-all active:scale-95 disabled:opacity-50 cursor-pointer"
+                            className="flex items-center gap-1.5 px-3.5 py-1.5 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-xs font-bold transition-all active:scale-95 shadow-xs disabled:opacity-50 cursor-pointer"
                         >
-                            <Play size={12} /> Start Revision
+                            <Play size={12} />
+                            <span>Request Approval / Edit</span>
                         </button>
                     )}
 
+                    {/* State 2: Active Draft & Current User is Author -> Submit for Approval & Save */}
                     {currentCycle && currentCycle.status === 'drafting' && isHolder && (
                         <>
                             <button
                                 disabled={actionLoading}
                                 onClick={() => openCommentModal('submit')}
-                                className="flex items-center gap-1.5 px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-xs font-bold transition-all active:scale-95 disabled:opacity-50 cursor-pointer"
+                                className="flex items-center gap-1.5 px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-xs font-bold transition-all active:scale-95 shadow-xs disabled:opacity-50 cursor-pointer"
                             >
-                                <Send size={12} /> Submit Approval
+                                <Send size={12} />
+                                <span>Submit for Review</span>
                             </button>
                             <button
                                 disabled={actionLoading}
                                 onClick={handleSaveDraftChanges}
-                                className="flex items-center gap-1.5 px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-xs font-bold transition-all active:scale-95 disabled:opacity-50 cursor-pointer"
+                                className="flex items-center gap-1.5 px-3 py-1.5 bg-gray-100 dark:bg-white/5 hover:bg-gray-200 dark:hover:bg-white/10 text-gray-700 dark:text-gray-200 border border-gray-200 dark:border-white/10 rounded-lg text-xs font-semibold transition-all active:scale-95 disabled:opacity-50 cursor-pointer"
                             >
-                                <Save size={12} /> Save Changes
+                                <Save size={12} />
+                                <span>Save Draft</span>
                             </button>
                             <button
                                 disabled={actionLoading}
                                 onClick={() => openCommentModal('cancel')}
-                                className="flex items-center gap-1.5 px-3 py-1.5 bg-gray-100 hover:bg-gray-200 text-gray-700 dark:bg-white/5 dark:hover:bg-white/10 dark:text-gray-300 rounded-lg text-xs font-bold transition-all active:scale-95 disabled:opacity-50 cursor-pointer"
+                                className="p-1.5 text-gray-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-950/20 rounded-lg transition cursor-pointer"
+                                title="Discard Draft"
                             >
-                                <X size={12} /> Cancel Draft
+                                <X size={14} />
                             </button>
                         </>
                     )}
 
-                {currentCycle && currentCycle.status === 'revision_requested' && (
-                    isCycleAuthor ? (
+                    {/* State 3: Revision Requested */}
+                    {currentCycle && currentCycle.status === 'revision_requested' && (
+                        isCycleAuthor ? (
                             <>
                                 <button
                                     disabled={actionLoading}
                                     onClick={handleClaimRevision}
-                                    className="flex items-center gap-1.5 px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-xs font-bold transition-all active:scale-95 disabled:opacity-50 cursor-pointer"
+                                    className="flex items-center gap-1.5 px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-xs font-bold transition-all active:scale-95 shadow-xs disabled:opacity-50 cursor-pointer"
                                 >
-                                    <RotateCcw size={12} /> Claim Revision
+                                    <RotateCcw size={12} />
+                                    <span>Claim Revision & Edit</span>
                                 </button>
                                 <button
                                     disabled={actionLoading}
                                     onClick={() => openCommentModal('cancel')}
-                                    className="flex items-center gap-1.5 px-3 py-1.5 bg-gray-100 hover:bg-gray-200 text-gray-700 dark:bg-white/5 dark:hover:bg-white/10 dark:text-gray-300 rounded-lg text-xs font-bold transition-all active:scale-95 disabled:opacity-50 cursor-pointer"
+                                    className="flex items-center gap-1 px-2.5 py-1.5 bg-gray-100 hover:bg-gray-200 text-gray-700 dark:bg-white/5 dark:text-gray-300 rounded-lg text-xs font-semibold transition cursor-pointer"
                                 >
-                                    <X size={12} /> Cancel Cycle
+                                    <X size={12} />
+                                    <span>Cancel</span>
                                 </button>
                             </>
                         ) : (
-                            <span className="text-xs text-gray-500 dark:text-gray-400">
-                                Waiting for the reporter who started this cycle to claim the revision.
+                            <span className="text-xs text-gray-400 font-medium">
+                                Awaiting author revision...
                             </span>
                         )
                     )}
 
-                    {currentCycle && currentCycle.status === 'in_review' && isHolder && (
-                        <>
-                            <button
-                                disabled={actionLoading}
-                                onClick={() => openCommentModal('approve')}
-                                className="flex items-center gap-1.5 px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-xs font-bold transition-all active:scale-95 disabled:opacity-50 cursor-pointer"
-                            >
-                                <Check size={12} /> Approve
-                            </button>
-                        </>
+                    {/* State 4: In Review & Current User is Reviewer/Approver */}
+                    {currentCycle && currentCycle.status === 'in_review' && (
+                        isHolder || isUserAdmin ? (
+                            <div className="flex items-center gap-1.5">
+                                <button
+                                    disabled={actionLoading}
+                                    onClick={() => openCommentModal('approve')}
+                                    className="flex items-center gap-1.5 px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-xs font-bold transition-all active:scale-95 shadow-xs disabled:opacity-50 cursor-pointer"
+                                >
+                                    <Check size={12} />
+                                    <span>Approve</span>
+                                </button>
+                                <button
+                                    disabled={actionLoading}
+                                    onClick={() => openCommentModal('request-revision')}
+                                    className="flex items-center gap-1.5 px-2.5 py-1.5 bg-amber-500 hover:bg-amber-600 text-white rounded-lg text-xs font-bold transition-all active:scale-95 shadow-xs disabled:opacity-50 cursor-pointer"
+                                >
+                                    <AlertTriangle size={12} />
+                                    <span>Request Revision</span>
+                                </button>
+                                <button
+                                    disabled={actionLoading}
+                                    onClick={() => openCommentModal('reject')}
+                                    className="flex items-center gap-1.5 px-2.5 py-1.5 bg-red-600 hover:bg-red-700 text-white rounded-lg text-xs font-bold transition-all active:scale-95 shadow-xs disabled:opacity-50 cursor-pointer"
+                                >
+                                    <X size={12} />
+                                    <span>Reject</span>
+                                </button>
+                            </div>
+                        ) : (
+                            <span className="text-xs text-gray-400 font-medium flex items-center gap-1">
+                                <Lock size={12} /> Locked in review
+                            </span>
+                        )
                     )}
-                </div>
             </div>
 
-            {/* Comment popup Modal */}
+            {/* Google Docs Style Slide-Over Version History Drawer */}
+            <AnimatePresence>
+                {isHistoryDrawerOpen && (
+                    <div className="fixed inset-0 z-[8500] overflow-hidden">
+                        <motion.div
+                            initial={{ opacity: 0 }}
+                            animate={{ opacity: 1 }}
+                            exit={{ opacity: 0 }}
+                            onClick={() => setIsHistoryDrawerOpen(false)}
+                            className="absolute inset-0 bg-black/40 backdrop-blur-xs transition-opacity"
+                        />
+                        <div className="fixed inset-y-0 right-0 max-w-full flex pl-10">
+                            <motion.div
+                                initial={{ x: '100%' }}
+                                animate={{ x: 0 }}
+                                exit={{ x: '100%' }}
+                                transition={{ type: 'spring', damping: 26, stiffness: 280 }}
+                                className="w-screen max-w-md bg-white dark:bg-[#161b22] border-l border-gray-200 dark:border-white/10 shadow-2xl flex flex-col h-full overflow-hidden text-left select-none"
+                            >
+                                {/* Drawer Header */}
+                                <div className="px-6 py-4 border-b border-gray-100 dark:border-white/5 flex items-center justify-between bg-gray-50/70 dark:bg-white/[0.02]">
+                                    <div className="flex items-center gap-2.5">
+                                        <div className="p-2 bg-blue-500/10 text-blue-600 dark:text-blue-400 rounded-xl border border-blue-500/20">
+                                            <History size={18} />
+                                        </div>
+                                        <div>
+                                            <h3 className="text-sm font-bold text-gray-900 dark:text-white">Version History</h3>
+                                            <p className="text-[11px] text-gray-400">{templateName} snapshot revisions</p>
+                                        </div>
+                                    </div>
+                                    <button
+                                        onClick={() => setIsHistoryDrawerOpen(false)}
+                                        className="p-1 rounded-lg text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 hover:bg-gray-100 dark:hover:bg-white/5 cursor-pointer"
+                                    >
+                                        <X size={16} />
+                                    </button>
+                                </div>
+
+                                {/* Version List */}
+                                <div className="flex-1 overflow-y-auto p-4 space-y-3 custom-scrollbar">
+                                    {versions.length === 0 ? (
+                                        <div className="py-20 text-center text-gray-400 text-xs flex flex-col items-center justify-center space-y-2">
+                                            <FileText size={32} className="opacity-30" />
+                                            <p className="font-semibold">No version snapshots recorded yet</p>
+                                            <p className="text-[11px] text-gray-400">Current live document is active as initial revision.</p>
+                                        </div>
+                                    ) : (
+                                        versions.map((ver, idx) => (
+                                            <div
+                                                key={ver.version_id || idx}
+                                                className={`p-3.5 rounded-xl border transition-all ${
+                                                    idx === 0
+                                                        ? 'bg-emerald-50/40 dark:bg-emerald-950/20 border-emerald-200 dark:border-emerald-500/30'
+                                                        : 'bg-white dark:bg-[#0d1117]/60 border-gray-200/80 dark:border-white/5'
+                                                }`}
+                                            >
+                                                <div className="flex items-center justify-between mb-1.5">
+                                                    <span className="text-xs font-bold text-gray-900 dark:text-white">
+                                                        Version {ver.version_number}.0
+                                                    </span>
+                                                    {idx === 0 && (
+                                                        <span className="px-2 py-0.5 rounded-full text-[9px] font-bold bg-emerald-500 text-white uppercase tracking-wider">
+                                                            Current Live
+                                                        </span>
+                                                    )}
+                                                </div>
+                                                <div className="text-[11px] text-gray-500 dark:text-gray-400 space-y-0.5">
+                                                    <div>Approved by: <span className="font-semibold text-gray-700 dark:text-gray-300">{ver.created_by_name || 'System / Admin'}</span></div>
+                                                    <div>Date: {ver.approved_at ? new Date(ver.approved_at).toLocaleString() : new Date(ver.created_at || Date.now()).toLocaleDateString()}</div>
+                                                    {ver.changes_summary && (
+                                                        <div className="text-xs font-medium text-gray-700 dark:text-gray-300 mt-1 bg-gray-50 dark:bg-white/5 p-2 rounded-lg">
+                                                            "{ver.changes_summary}"
+                                                        </div>
+                                                    )}
+                                                </div>
+                                            </div>
+                                        ))
+                                    )}
+                                </div>
+
+                                {/* Drawer Footer */}
+                                <div className="px-6 py-3 border-t border-gray-100 dark:border-white/5 bg-gray-50/50 dark:bg-white/[0.02] flex items-center justify-end">
+                                    <button
+                                        type="button"
+                                        onClick={() => setIsHistoryDrawerOpen(false)}
+                                        className="px-4 py-1.5 bg-gray-100 dark:bg-white/5 text-gray-700 dark:text-gray-300 font-semibold rounded-lg text-xs hover:bg-gray-200 transition cursor-pointer"
+                                    >
+                                        Close
+                                    </button>
+                                </div>
+                            </motion.div>
+                        </div>
+                    </div>
+                )}
+            </AnimatePresence>
+
+            {/* Google Docs Style Submit / Action Modal */}
             {modalOpen && (
-                <div className="fixed inset-0 z-[1000] flex items-center justify-center bg-black/50 backdrop-blur-xs">
-                    <div className="bg-white dark:bg-[#161b22] border border-gray-200 dark:border-white/10 rounded-2xl w-[420px] p-6 shadow-2xl space-y-4 animate-scale-in text-left">
-                        <div>
+                <div className="fixed inset-0 z-[9000] flex items-center justify-center bg-black/50 backdrop-blur-xs p-4">
+                    <div className="bg-white dark:bg-[#161b22] border border-gray-200 dark:border-white/10 rounded-2xl w-full max-w-md p-6 shadow-2xl space-y-4 animate-in fade-in zoom-in-95 duration-150 text-left">
+                        <div className="flex items-center justify-between">
                             <h3 className="text-sm font-bold text-gray-900 dark:text-white capitalize">
-                                {modalAction === 'submit' ? 'Submit changes for approval' : `${modalAction} cycle`}
+                                {modalAction === 'submit' ? 'Request Approval' : `${modalAction.replace('-', ' ')}`}
                             </h3>
-                            <p className="text-xs text-gray-400 mt-1">Please enter details or comments regarding your action.</p>
+                            <button
+                                onClick={() => setModalOpen(false)}
+                                className="p-1 text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 rounded-lg cursor-pointer"
+                            >
+                                <X size={16} />
+                            </button>
                         </div>
 
                         {modalAction === 'submit' && (
                             <div className="space-y-1">
-                                <label className="text-[10px] font-bold text-gray-500 uppercase tracking-wider block">Changes Summary</label>
+                                <label className="text-[10px] font-bold text-gray-500 uppercase tracking-wider block">Summary of Changes</label>
                                 <input
                                     type="text"
-                                    placeholder="e.g. Added new subcontractor contacts"
+                                    placeholder="e.g. Updated project parties and subcontractor contacts"
                                     value={changesSummary}
                                     onChange={e => setChangesSummary(e.target.value)}
-                                    className="w-full px-3 py-2 bg-gray-50 dark:bg-[#0d1117] border border-gray-200 dark:border-white/10 rounded-lg text-xs outline-none focus:border-blue-500 text-gray-900 dark:text-white"
+                                    className="w-full px-3 py-2 bg-gray-50 dark:bg-[#0d1117] border border-gray-200 dark:border-white/10 rounded-lg text-xs outline-none focus:border-blue-500 text-gray-900 dark:text-white font-medium"
                                 />
                             </div>
                         )}
 
                         <div className="space-y-1">
-                            <label className="text-[10px] font-bold text-gray-500 uppercase tracking-wider block">Comments / Notes</label>
+                            <label className="text-[10px] font-bold text-gray-500 uppercase tracking-wider block">Notes / Review Comments</label>
                             <textarea
-                                placeholder="Write any remarks here..."
+                                placeholder="Add any details or instructions for reviewers..."
                                 rows={3}
                                 value={comments}
                                 onChange={e => setComments(e.target.value)}
-                                className="w-full px-3 py-2 bg-gray-50 dark:bg-[#0d1117] border border-gray-200 dark:border-white/10 rounded-lg text-xs outline-none focus:border-blue-500 text-gray-900 dark:text-white resize-none"
+                                className="w-full px-3 py-2 bg-gray-50 dark:bg-[#0d1117] border border-gray-200 dark:border-white/10 rounded-lg text-xs outline-none focus:border-blue-500 text-gray-900 dark:text-white resize-none font-medium"
                             />
                         </div>
 
-                        <div className="flex justify-end gap-2 text-xs">
+                        <div className="flex justify-end gap-2 text-xs pt-2">
                             <button
                                 onClick={() => setModalOpen(false)}
-                                className="px-4 py-2 border border-gray-200 dark:border-white/10 rounded-lg font-semibold hover:bg-gray-50 dark:hover:bg-white/5 text-gray-700 dark:text-gray-300 cursor-pointer"
+                                className="px-4 py-2 border border-gray-200 dark:border-white/10 rounded-lg font-semibold hover:bg-gray-50 dark:hover:bg-white/5 text-gray-700 dark:text-gray-300 cursor-pointer transition"
                             >
                                 Cancel
                             </button>
                             <button
                                 disabled={actionLoading}
                                 onClick={handleExecuteAction}
-                                className={`px-4 py-2 text-white font-bold rounded-lg transition-all active:scale-95 disabled:opacity-50 cursor-pointer ${
+                                className={`px-4 py-2 text-white font-bold rounded-lg transition-all active:scale-95 disabled:opacity-50 cursor-pointer shadow-xs ${
                                     modalAction === 'reject' ? 'bg-red-600 hover:bg-red-700' :
-                                    modalAction === 'request-revision' ? 'bg-orange-600 hover:bg-orange-700' :
+                                    modalAction === 'request-revision' ? 'bg-amber-600 hover:bg-amber-700' :
                                     modalAction === 'approve' ? 'bg-emerald-600 hover:bg-emerald-700' :
                                     'bg-blue-600 hover:bg-blue-700'
                                 }`}
@@ -459,22 +602,7 @@ const WorkflowPanel = ({ projectId, templateName, instanceId: propInstanceId, on
                     </div>
                 </div>
             )}
-            {actionLoading && (
-                <div className="fixed inset-0 z-[2000] flex flex-col items-center justify-center bg-black/60 backdrop-blur-sm transition-all">
-                    <div className="flex flex-col items-center space-y-4 p-8 bg-[#161b22]/95 border border-white/10 rounded-2xl shadow-2xl animate-scale-in">
-                        <div className="relative w-16 h-16 flex items-center justify-center">
-                            <div className="absolute inset-0 rounded-full border-4 border-t-blue-500 border-r-transparent border-b-transparent border-l-transparent animate-spin"></div>
-                            <div className="absolute inset-2 rounded-full border-4 border-b-emerald-500 border-t-transparent border-r-transparent border-l-transparent animate-spin" style={{ animationDirection: 'reverse' }}></div>
-                            <div className="w-6 h-6 rounded-full bg-blue-500/20 animate-pulse"></div>
-                        </div>
-                        <div className="text-center space-y-1">
-                            <h3 className="text-sm font-bold text-white tracking-wide">Processing Workflow Action</h3>
-                            <p className="text-xs text-gray-400">Please wait while the system updates the database...</p>
-                        </div>
-                    </div>
-                </div>
-            )}
-        </div>
+        </>
     );
 };
 
