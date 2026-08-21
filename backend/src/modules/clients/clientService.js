@@ -723,17 +723,27 @@ function applyContactSearch(queryBuilder, query = {}) {
 async function eligibleContacts(orgId, projectId, query = {}, connection = db) {
     await getScopedProject(connection, projectId, orgId);
     let builder = connection('crm_contacts as c')
-        .leftJoin('crm_job_nature as jn', 'c.job_nature_id', 'jn.job_id')
-        .where('c.org_id', orgId)
-        .where(function () {
-            this.where('c.scope', 'master').orWhereExists(function () {
+        .leftJoin('crm_job_nature as jn', 'c.job_nature_id', 'jn.job_id');
+
+    if (orgId) {
+        builder = builder.where(function () {
+            this.where('c.org_id', orgId).orWhereNull('c.org_id');
+        });
+    }
+
+    builder = builder.where(function () {
+        this.where('c.scope', 'master')
+            .orWhereNull('c.scope')
+            .orWhere('c.scope', '')
+            .orWhereExists(function () {
                 this.select(connection.raw('1'))
                     .from('pdoc_parties as own_pp')
                     .whereRaw('own_pp.party_id = c.id')
                     .andWhere('own_pp.project_id', projectId)
                     .whereNull('own_pp.deleted_at');
             });
-        });
+    });
+
     builder = applyContactSearch(builder, query);
     return builder
         .select(

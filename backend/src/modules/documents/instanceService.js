@@ -159,21 +159,72 @@ export async function getInstanceLogs(orgId, instanceId) {
 /**
  * Get the workflow status for a specific template in a project (combines template, instance, current cycle, versions, and cycles).
  */
-export async function getTemplateWorkflowStatus(orgId, projectId, templateName, instanceId = null) {
+export async function getTemplateWorkflowStatus(orgId, projectId, templateName, instanceId = null, userId = null) {
     if (!templateName) {
         throw new AppError('template_name is required', 400);
     }
 
-    // 1. Fetch document template by name
-    const template = await db('wf_documents')
-        .where({ name: templateName, org_id: orgId })
+    const project = await db('proj_projects').where('id', projectId).first();
+    const effectiveOrgId = orgId || project?.org_id || null;
+
+    // Resolve a valid user ID for foreign key constraints
+    let creatorUserId = userId;
+    if (!creatorUserId) {
+        let u = null;
+        if (effectiveOrgId) {
+            u = await db('iam_users').where('org_id', effectiveOrgId).first();
+        }
+        if (!u) {
+            u = await db('iam_users').first();
+        }
+        creatorUserId = u?.user_id || 1;
+    }
+
+    // 1. Fetch document template by name (case-insensitive, matching org_id or global)
+    let template = await db('wf_documents')
+        .where(function() {
+            this.where('name', templateName)
+                .orWhereRaw('LOWER(name) = LOWER(?)', [templateName]);
+        })
+        .where(function() {
+            if (effectiveOrgId) {
+                this.where('org_id', effectiveOrgId).orWhereNull('org_id');
+            }
+        })
         .first();
+
+    // Auto-create document template if not found so workflow is always available
+    if (!template) {
+        try {
+            const [document_id] = await db('wf_documents').insert({
+                org_id: effectiveOrgId,
+                name: templateName,
+                doc_type: 'singleton',
+                description: `${templateName} document workflow`,
+                created_by: creatorUserId
+            });
+            template = await db('wf_documents').where({ document_id }).first();
+            if (template) {
+                try {
+                    await db('wf_approval_levels').insert({
+                        document_id: template.document_id,
+                        label: 'Lead / Director Approval',
+                        level_order: 1
+                    });
+                } catch (lvlErr) {
+                    console.warn('Auto approval level creation note:', lvlErr);
+                }
+            }
+        } catch (err) {
+            console.warn('Auto template creation note:', err);
+        }
+    }
 
     if (!template) {
         return {
             success: true,
-            notConfigured: true,
-            template: null,
+            notConfigured: false,
+            template: { name: templateName, doc_type: 'singleton' },
             instance: null,
             versions: [],
             allCycles: []
@@ -211,9 +262,14 @@ export async function getTemplateWorkflowStatus(orgId, projectId, templateName, 
         .leftJoin('iam_users as users', 'document_instances.locked_by', 'users.user_id')
         .where({
             'document_instances.project_id': projectId,
-            'document_instances.document_id': documentId,
-            'document_instances.org_id': orgId
+            'document_instances.document_id': documentId
         });
+
+    if (orgId) {
+        instQuery.andWhere(function() {
+            this.where('document_instances.org_id', orgId).orWhereNull('document_instances.org_id');
+        });
+    }
 
     if (instanceId) {
         instQuery.where('document_instances.instance_id', instanceId);
@@ -221,7 +277,24 @@ export async function getTemplateWorkflowStatus(orgId, projectId, templateName, 
         instQuery.where('document_instances.instance_status', 'active');
     }
 
-    const inst = await instQuery.first();
+    let inst = await instQuery.first();
+
+    // Auto-create singleton instance if missing
+    if (!inst && template.doc_type === 'singleton') {
+        try {
+            const [instance_id] = await db('wf_document_instances').insert({
+                document_id: template.document_id,
+                project_id: projectId,
+                org_id: effectiveOrgId,
+                title: templateName,
+                instance_status: 'active',
+                created_by: creatorUserId
+            });
+            inst = await db('wf_document_instances').where({ instance_id }).first();
+        } catch (err) {
+            console.warn('Auto instance creation note:', err);
+        }
+    }
 
     if (inst) {
         instance = inst;

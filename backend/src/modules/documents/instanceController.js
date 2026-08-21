@@ -54,11 +54,14 @@ export const getTemplateWorkflowStatus = catchAsync(async (req, res) => {
         throw new AppError('template_name is required', 400);
     }
 
+    const userId = req.user?.user_id ?? req.user?.id;
+
     const data = await instanceService.getTemplateWorkflowStatus(
         req.user.org_id, 
         projectId, 
         template_name, 
-        instance_id ? parseInt(instance_id) : null
+        instance_id ? parseInt(instance_id) : null,
+        userId
     );
 
     res.json(data);

@@ -77,7 +77,7 @@ export const AuthProvider = ({ children }) => {
     };
 
     const userType = (user?.user_type || '').toLowerCase();
-    const isAdmin = userType === 'admin';
+    const isAdmin = userType === 'admin' || userType === 'superadmin' || Boolean(user?.is_super_admin) || Boolean(user?.isAdmin);
     const isClient = userType === 'client';
     const isEmployee = userType === 'employee';
 
@@ -86,8 +86,8 @@ export const AuthProvider = ({ children }) => {
     const hasPermission = (pageId, requiredLevel = 1) => {
         if (!user) return false;
         
-        // Dashboard is universal for all users
-        if (pageId === 'dashboard' || pageId === 'Dashboard') {
+        // Dashboard is universal for all authenticated users who have access to ERP
+        if (!pageId || pageId === 'dashboard' || pageId === 'Dashboard') {
             return true;
         }
 
@@ -96,14 +96,43 @@ export const AuthProvider = ({ children }) => {
             return true;
         }
 
-        // Check configured system_permissions matrix
-        const permissions = user.system_permissions || {};
-        let userLevel = permissions[pageId] ?? 0;
-        if (typeof userLevel === 'string') {
-            const map = { 'none': 0, 'view': 1, 'edit': 2, 'read': 1, 'write': 2 };
-            userLevel = map[userLevel.toLowerCase()] ?? 0;
+        // Parse system_permissions if stored as string JSON
+        let permissions = user.system_permissions || {};
+        if (typeof permissions === 'string') {
+            try {
+                permissions = JSON.parse(permissions);
+            } catch (e) {
+                permissions = {};
+            }
         }
-        return userLevel >= requiredLevel;
+
+        // Case-insensitive key resolution
+        const normKey = String(pageId).toLowerCase().trim();
+        let userLevel = permissions[pageId] ?? permissions[normKey];
+
+        // Also check if stored under alternative naming (e.g. employee vs admin)
+        if (userLevel === undefined) {
+            if (normKey === 'admin' || normKey === 'employee') {
+                userLevel = permissions['admin'] ?? permissions['employee'] ?? 0;
+            } else {
+                userLevel = 0;
+            }
+        }
+
+        if (typeof userLevel === 'string') {
+            const map = { 
+                'none': 0, '0': 0,
+                'view': 1, 'read': 1, '1': 1,
+                'edit': 2, 'write': 2, '2': 2,
+                'full': 3, 'admin': 3, '3': 3,
+                'true': 1
+            };
+            userLevel = map[userLevel.toLowerCase().trim()] ?? 0;
+        } else if (typeof userLevel === 'boolean') {
+            userLevel = userLevel ? 1 : 0;
+        }
+
+        return Number(userLevel) >= Number(requiredLevel);
     };
 
     return (
