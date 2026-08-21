@@ -69,7 +69,7 @@ const PlanningIndex = ({ setExtraBreadcrumbs, canWrite }) => {
 
     useEffect(() => {
         if (view === 'grid') {
-            setExtraBreadcrumbs([{ label: 'Planning' }]);
+            setExtraBreadcrumbs([]);
         }
     }, [view, setExtraBreadcrumbs]);
 

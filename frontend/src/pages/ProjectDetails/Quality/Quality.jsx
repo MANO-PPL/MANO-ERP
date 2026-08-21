@@ -1484,32 +1484,25 @@ const QualityIndex = ({ setExtraBreadcrumbs, project, projectPermissions, isAdmi
 
     useEffect(() => {
         if (currentView === 'grid') {
-            setExtraBreadcrumbs([
-                { label: 'Quality' }
-            ]);
+            setExtraBreadcrumbs([]);
         } else if (currentView === 'control') {
             setExtraBreadcrumbs([
-                { label: 'Quality', onClick: () => handleSelectView('grid'), path: `/projects/${project.id}?tab=quality` },
                 { label: 'QA-QC Control' }
             ]);
         } else if (currentView === 'methodology') {
             setExtraBreadcrumbs([
-                { label: 'Quality', onClick: () => handleSelectView('grid'), path: `/projects/${project.id}?tab=quality` },
                 { label: 'Methodology' }
             ]);
         } else if (currentView === 'matrix') {
             setExtraBreadcrumbs([
-                { label: 'Quality', onClick: () => handleSelectView('grid'), path: `/projects/${project.id}?tab=quality` },
                 { label: 'QA-QC Matrix' }
             ]);
         } else if (currentView === 'assurance-plan') {
             setExtraBreadcrumbs([
-                { label: 'Quality', onClick: () => handleSelectView('grid'), path: `/projects/${project.id}?tab=quality` },
                 { label: 'QA-QC Assurance Plan' }
             ]);
         } else if (currentView === 'check-snag') {
             setExtraBreadcrumbs([
-                { label: 'Quality', onClick: () => handleSelectView('grid'), path: `/projects/${project.id}?tab=quality` },
                 { label: 'Checklist & Snaglist' }
             ]);
         }

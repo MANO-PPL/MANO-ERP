@@ -46,7 +46,7 @@ const GDCard = ({ name, desc, icon: Icon, type = 'Single Instance', onClick }) =
 );
 
 const SafetyIndex = ({ setExtraBreadcrumbs }) => {
-    useEffect(() => { setExtraBreadcrumbs([{ label: 'Safety' }]); }, [setExtraBreadcrumbs]);
+    useEffect(() => { setExtraBreadcrumbs([]); }, [setExtraBreadcrumbs]);
 
     const docs = [
         { 

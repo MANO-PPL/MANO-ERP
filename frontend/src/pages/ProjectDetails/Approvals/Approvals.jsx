@@ -860,14 +860,13 @@ const Approvals = ({ setExtraBreadcrumbs, project, projectPermissions, isAdmin }
     };
 
     useEffect(() => {
-        setExtraBreadcrumbs([
-            { label: 'Approvals', onClick: () => setCurrentConfigView('main') },
-            ...(currentConfigView !== 'main' ? [{ label: currentConfigView }] : [])
-        ]);
+        setExtraBreadcrumbs(
+            currentConfigView !== 'main' ? [{ label: currentConfigView }] : []
+        );
         if (id) {
             loadData();
         }
-    }, [id, currentConfigView]);
+    }, [id, currentConfigView, setExtraBreadcrumbs]);
 
     const updateConfig = (section, cfg) =>
         setConfigs(prev => ({ ...prev, [section]: cfg }));
