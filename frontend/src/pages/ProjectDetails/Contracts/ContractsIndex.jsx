@@ -55,7 +55,7 @@ const GDCard = ({ name, desc, icon: Icon, type = 'Single Instance', onClick }) =
 
 const ContractsIndex = ({ setExtraBreadcrumbs }) => {
     useEffect(() => {
-        setExtraBreadcrumbs([{ label: 'Contracts' }]);
+        setExtraBreadcrumbs([]);
     }, [setExtraBreadcrumbs]);
 
     const docs = [

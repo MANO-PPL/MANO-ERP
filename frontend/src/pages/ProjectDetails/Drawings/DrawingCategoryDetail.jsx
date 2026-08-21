@@ -8,7 +8,6 @@ import { Reorder, AnimatePresence, motion } from 'framer-motion';
 import { toast } from 'react-toastify';
 import CustomSelect from '../../../components/CustomSelect';
 import ConfirmModal from '../../../components/ConfirmModal';
-import LogoLoader from '../../../components/LogoLoader';
 
 const DrawingCategoryDetail = ({ category, projectId, onBack, setExtraBreadcrumbs, canWrite }) => {
     const [activeTab, setActiveTab] = useState('management'); // 'management' or 'planned'
@@ -691,7 +690,10 @@ const DrawingCategoryDetail = ({ category, projectId, onBack, setExtraBreadcrumb
             {/* Content Area */}
             <div className="flex-1 overflow-y-auto bg-[#f9fafb] dark:bg-gh-bg">
                 {loading ? (
-                    <LogoLoader text="Rendering Category Blueprints..." size="md" fullPage={false} />
+                    <div className="flex flex-col items-center justify-center min-h-[300px] text-gray-400">
+                        <Loader2 className="animate-spin mb-2.5 text-blue-500" size={24} />
+                        <span className="text-xs font-semibold">Loading drawings...</span>
+                    </div>
                 ) : activeTab === 'management' ? (
                     drawings.length === 0 ? (
                         <div className="flex flex-col items-center justify-center min-h-[300px] border-2 border-dashed border-gray-200 dark:border-gh-border rounded-lg m-6 p-8 bg-white dark:bg-[#0d1117]">

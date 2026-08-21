@@ -20,7 +20,7 @@ const Tasks = ({ setExtraBreadcrumbs, projectPermissions, isAdmin }) => {
     const canWrite = isAdmin || (projectPermissions && projectPermissions['Tasks'] >= 2);
 
     useEffect(() => {
-        setExtraBreadcrumbs([{ label: 'Tasks' }]);
+        setExtraBreadcrumbs([]);
     }, [setExtraBreadcrumbs]);
 
     const [searchParams, setSearchParams] = useSearchParams();

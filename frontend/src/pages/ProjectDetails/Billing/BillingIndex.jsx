@@ -46,7 +46,7 @@ const GDCard = ({ name, desc, icon: Icon, type = 'Single Instance', onClick }) =
 );
 
 const BillingIndex = ({ setExtraBreadcrumbs }) => {
-    useEffect(() => { setExtraBreadcrumbs([{ label: 'Billing' }]); }, [setExtraBreadcrumbs]);
+    useEffect(() => { setExtraBreadcrumbs([]); }, [setExtraBreadcrumbs]);
 
     const docs = [
         { 

@@ -149,7 +149,6 @@ const WIP = ({ setExtraBreadcrumbs, projectPermissions, isAdmin, user }) => {
             const emp = employees.find(e => e.id === selectedEmployeeId);
             if (emp) {
                 setExtraBreadcrumbs([
-                    { label: 'Work in Progress' },
                     { label: emp.name }
                 ]);
             }

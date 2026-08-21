@@ -2,13 +2,12 @@ import React, { useState, useEffect } from 'react';
 import { 
     ChevronRight, PenTool, Layers, Droplets, Zap, Flame, Plus, X, Check, FolderPlus,
     Building2, Wrench, Construction, Ruler, Lightbulb, Shield, Edit2, Trash2, Search,
-    FileText, Layers3, Folder
+    FileText, Layers3, Folder, Loader2
 } from 'lucide-react';
 import { useSearchParams } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import { toast } from 'react-toastify';
 import ConfirmModal from '../../../components/ConfirmModal';
-import LogoLoader from '../../../components/LogoLoader';
 import DrawingsDetail from './DrawingCategoryDetail';
 
 // Icon options for new/edited categories
@@ -308,7 +307,7 @@ const DrawingsIndex = ({ setExtraBreadcrumbs, project, canWrite }) => {
 
     useEffect(() => {
         if (currentView === 'grid') {
-            setExtraBreadcrumbs([{ label: 'Drawings' }]);
+            setExtraBreadcrumbs([]);
         }
     }, [currentView, setExtraBreadcrumbs]);
 
@@ -367,7 +366,10 @@ const DrawingsIndex = ({ setExtraBreadcrumbs, project, canWrite }) => {
             {/* CATEGORY GRID */}
             <div className="flex-1 overflow-y-auto p-4 custom-scrollbar bg-[#f9fafb] dark:bg-gh-bg">
                 {loading ? (
-                    <LogoLoader text="Rendering Drawing Categories..." size="md" fullPage={false} />
+                    <div className="flex flex-col items-center justify-center min-h-[300px] text-gray-400">
+                        <Loader2 className="animate-spin mb-2.5 text-blue-500" size={24} />
+                        <span className="text-xs font-semibold">Loading drawing categories...</span>
+                    </div>
                 ) : filteredCategories.length === 0 ? (
                     <div className="flex flex-col items-center justify-center min-h-[300px] border-2 border-dashed border-gray-200 dark:border-gh-border rounded-lg p-8 bg-white dark:bg-[#0d1117]">
                         <FolderPlus className="text-gray-300 dark:text-gray-600 mb-3" size={44} />
