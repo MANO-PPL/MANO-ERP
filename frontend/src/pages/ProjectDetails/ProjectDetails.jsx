@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { useParams, useNavigate, useSearchParams } from 'react-router-dom';
 import { ChevronRight } from 'lucide-react';
 import { toast } from 'react-toastify';
@@ -36,6 +36,12 @@ const ProjectDetails = () => {
     const [projectPermissions, setProjectPermissions] = useState(null);
     const [loading, setLoading] = useState(true);
     const [extraBreadcrumbs, setExtraBreadcrumbs] = useState([]); // Array of { label, onClick }
+
+    // Sanitize extraBreadcrumbs to remove duplicates of activeTab
+    const sanitizedExtraBreadcrumbs = useMemo(() => {
+        if (!Array.isArray(extraBreadcrumbs)) return [];
+        return extraBreadcrumbs.filter(bc => bc && bc.label && bc.label.trim().toLowerCase() !== activeTab.trim().toLowerCase());
+    }, [extraBreadcrumbs, activeTab]);
 
     const loadProject = async () => {
         // Seed initial project data from cached project list for instant UI load
@@ -185,12 +191,12 @@ const ProjectDetails = () => {
     return (
         <div className="flex flex-col h-full w-full text-gray-900 dark:text-gray-300 bg-white dark:bg-[#0d1117] font-sans">
             {/* Sub-Navigation Tabs (Dashboard, WIP, Material Management, etc.) */}
-            <div className="flex px-2 pt-1 border-b border-gray-200 dark:border-gh-border bg-[#f9fafb] dark:bg-gh-bg transition-colors overflow-x-auto custom-scrollbar shrink-0">
+            <div className="h-10 flex items-center px-3 border-b border-gray-200 dark:border-gh-border bg-[#f9fafb] dark:bg-gh-bg transition-colors overflow-x-auto custom-scrollbar shrink-0 select-none">
                 {allowedTabs.map((tab) => (
                     <button
                         key={tab}
                         onClick={() => setActiveTab(tab)}
-                        className={`pb-2 px-3 text-xs font-semibold border-b-2 transition-colors duration-200 whitespace-nowrap cursor-pointer ${activeTab === tab
+                        className={`h-full inline-flex items-center justify-center px-3.5 text-xs font-semibold border-b-2 -mb-px transition-colors duration-200 whitespace-nowrap cursor-pointer ${activeTab === tab
                             ? 'border-blue-600 text-blue-600 dark:border-blue-500 dark:text-blue-400'
                             : 'border-transparent text-gray-500 dark:text-gray-400 hover:text-gray-800 dark:hover:text-gray-200 hover:border-gray-300 dark:hover:border-gray-500'
                             }`}
@@ -221,13 +227,15 @@ const ProjectDetails = () => {
                         {project?.project_code || id} {project?.name ? `- ${project.name}` : ''}
                     </span>
                     <ChevronRight size={12} className="text-gray-400 dark:text-gray-600" />
+                    {/* Active Main Tab Breadcrumb */}
                     <span
-                        className={`transition-colors ${extraBreadcrumbs.length === 0 ? 'text-gray-900 dark:text-white font-semibold' : 'text-blue-600 dark:text-blue-400 font-medium cursor-pointer'}`}
+                        className={`transition-colors ${sanitizedExtraBreadcrumbs.length === 0 ? 'text-gray-900 dark:text-white font-semibold' : 'text-blue-600 dark:text-blue-400 font-medium cursor-pointer'}`}
                         onClick={() => {
-                            if (extraBreadcrumbs.length > 0) {
+                            if (sanitizedExtraBreadcrumbs.length > 0) {
                                 setExtraBreadcrumbs([]);
                                 const newParams = new URLSearchParams(searchParams);
                                 newParams.delete('view');
+                                newParams.delete('report');
                                 newParams.delete('aid');
                                 newParams.delete('mid');
                                 setSearchParams(newParams);
@@ -236,11 +244,11 @@ const ProjectDetails = () => {
                     >
                         {activeTab}
                     </span>
-                    {extraBreadcrumbs.map((bc, index) => (
+                    {sanitizedExtraBreadcrumbs.map((bc, index) => (
                         <React.Fragment key={index}>
                             <ChevronRight size={12} className="text-gray-400 dark:text-gray-600" />
                             <span
-                                className={`transition-colors ${index === extraBreadcrumbs.length - 1 ? 'text-gray-900 dark:text-white font-semibold' : 'text-blue-600 dark:text-blue-400 font-medium cursor-pointer'}`}
+                                className={`transition-colors ${index === sanitizedExtraBreadcrumbs.length - 1 ? 'text-gray-900 dark:text-white font-semibold' : 'text-blue-600 dark:text-blue-400 font-medium cursor-pointer'}`}
                                 onClick={() => {
                                     if (bc.onClick) bc.onClick();
                                     else if (bc.path) navigate(bc.path);

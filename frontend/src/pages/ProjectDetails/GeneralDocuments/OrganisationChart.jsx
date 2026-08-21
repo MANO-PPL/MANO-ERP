@@ -439,7 +439,7 @@ const OrganisationChart = ({ onBack, setExtraBreadcrumbs, canWrite }) => {
         } finally {
             setLoadingChart(false);
         }
-    }, [projectId, mapOrgApiToTree, workflowState]);
+    }, [projectId, mapOrgApiToTree, workflowState.instanceId, workflowState.cycleId]);
 
     useEffect(() => {
         if (workflowState.loading) return;

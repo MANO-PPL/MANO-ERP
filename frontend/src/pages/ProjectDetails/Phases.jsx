@@ -3,13 +3,13 @@ import { useParams } from 'react-router-dom';
 import { 
     Milestone, Plus, Trash2, ChevronUp, ChevronDown, Pencil, Calendar, Percent, 
     CheckCircle2, Clock, AlertTriangle, Search, Filter, LayoutList, BarChart3, Grid, 
-    X, Layers, TrendingUp, Check, Info, ShieldCheck, ArrowRight, PieChart, Activity
+    X, Layers, TrendingUp, Check, Info, ShieldCheck, ArrowRight, PieChart, Activity,
+    Loader2
 } from 'lucide-react';
 import { toast } from 'react-toastify';
 import { projectApi } from '../../services/projectApi';
 import CustomDatePicker from '../../components/CustomDatePicker';
 import CustomInput from '../../components/CustomInput';
-import LogoLoader from '../../components/LogoLoader';
 
 const Phases = ({ setExtraBreadcrumbs, canWrite }) => {
     const { id: projectId } = useParams();
@@ -37,9 +37,7 @@ const Phases = ({ setExtraBreadcrumbs, canWrite }) => {
     });
 
     useEffect(() => {
-        setExtraBreadcrumbs([
-            { label: 'Phases' }
-        ]);
+        setExtraBreadcrumbs([]);
         fetchProjectData();
     }, [projectId, setExtraBreadcrumbs]);
 
@@ -311,7 +309,12 @@ const Phases = ({ setExtraBreadcrumbs, canWrite }) => {
     }, [phases, searchQuery, statusFilter]);
 
     if (loading) {
-        return <LogoLoader text="Loading project roadmap & Gantt chart..." size="md" fullPage={false} />;
+        return (
+            <div className="flex-1 flex flex-col items-center justify-center min-h-[350px] text-gray-400">
+                <Loader2 className="animate-spin mb-2.5 text-blue-500" size={26} />
+                <span className="text-xs font-semibold">Loading project roadmap & Gantt chart...</span>
+            </div>
+        );
     }
 
     return (
@@ -624,25 +627,23 @@ const Phases = ({ setExtraBreadcrumbs, canWrite }) => {
 
                 {/* Content View Modes */}
                 {filteredPhases.length === 0 ? (
-                    /* Empty State */
-                    <div className="bg-white dark:bg-[#161b22] border border-gray-200 dark:border-white/10 rounded-md py-12 px-6 text-center shadow-sm max-w-2xl mx-auto space-y-3">
-                        <div className="w-12 h-12 mx-auto rounded-md bg-blue-500/10 flex items-center justify-center text-blue-500">
+                    /* Seamless Centered Empty State */
+                    <div className="flex flex-col items-center justify-center py-20 text-center px-4">
+                        <div className="w-14 h-14 rounded-2xl bg-blue-500/10 border border-blue-500/20 flex items-center justify-center text-blue-600 dark:text-blue-400 mb-3.5 shadow-xs">
                             <Milestone size={26} />
                         </div>
-                        <div>
-                            <h3 className="text-sm font-bold text-gray-900 dark:text-white">
-                                {searchQuery || statusFilter !== 'ALL' ? 'No matching phases found' : 'No project phases configured'}
-                            </h3>
-                            <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5 max-w-sm mx-auto">
-                                {searchQuery || statusFilter !== 'ALL' ? 'Try adjusting your search criteria or status filter.' : 'Define project milestones and schedule weights to track completion.'}
-                            </p>
-                        </div>
+                        <h3 className="text-sm font-bold text-gray-900 dark:text-white">
+                            {searchQuery || statusFilter !== 'ALL' ? 'No matching phases found' : 'No project phases configured'}
+                        </h3>
+                        <p className="text-xs text-gray-500 dark:text-gray-400 max-w-sm mt-1 mb-5">
+                            {searchQuery || statusFilter !== 'ALL' ? 'Try adjusting your search criteria or status filter.' : 'Define project milestones and schedule weights to track completion.'}
+                        </p>
                         {canWrite && !searchQuery && statusFilter === 'ALL' && (
                             <button
                                 onClick={handleOpenCreateDrawer}
-                                className="px-3.5 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-md text-xs font-semibold inline-flex items-center gap-1.5 shadow-sm"
+                                className="flex items-center gap-1.5 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-xs font-bold shadow-sm transition active:scale-95 cursor-pointer shadow-blue-500/20"
                             >
-                                <Plus size={14} />
+                                <Plus size={14} className="stroke-[2.5]" />
                                 <span>Create First Phase</span>
                             </button>
                         )}
