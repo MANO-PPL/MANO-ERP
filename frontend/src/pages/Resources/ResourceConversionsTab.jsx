@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import {
     Search, Plus, Trash2, Save, RefreshCw, AlertCircle,
-    ArrowRight
+    ArrowRight, Loader2
 } from 'lucide-react';
 import { motion } from 'framer-motion';
 import { resourceApi } from '../../services/resourceApi';
@@ -9,7 +9,6 @@ import { UNIT_GROUPS, UNIT_REGISTRY, convert } from './resourceConstants';
 import { useAuth } from '../../context/AuthContext';
 import ConfirmModal from '../../components/ConfirmModal';
 import CustomSelect from '../../components/CustomSelect';
-import LogoLoader from '../../components/LogoLoader';
 import { formatOrdinalDate } from '../../utils/dateUtils';
 
 const ResourceConversionsTab = ({
@@ -374,8 +373,9 @@ const ResourceConversionsTab = ({
                                 </h4>
 
                                 {isLoadingDetail ? (
-                                    <div className="py-12 border border-gray-200 dark:border-white/10 rounded-xl bg-gray-50/50 dark:bg-[#161b22]/30 flex items-center justify-center text-center">
-                                        <LogoLoader text="Rendering Unit Conversions..." size="sm" fullPage={false} />
+                                    <div className="py-12 border border-gray-200 dark:border-white/10 rounded-xl bg-gray-50/50 dark:bg-[#161b22]/30 flex flex-col items-center justify-center text-center">
+                                        <Loader2 className="animate-spin mb-2 text-blue-500" size={24} />
+                                        <span className="text-xs font-semibold text-gray-500 dark:text-gray-400">Loading Unit Conversions...</span>
                                     </div>
                                 ) : !resourceDetail?.conversions || resourceDetail.conversions.length === 0 ? (
                                     <div className="p-6 text-center text-xs text-gray-400 bg-gray-50/50 dark:bg-[#161b22]/30 border border-dashed border-gray-200 dark:border-white/10 rounded-xl">

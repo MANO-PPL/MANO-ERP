@@ -1,9 +1,12 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import ReactDOM from 'react-dom';
+import * as XLSX from 'xlsx';
+import Papa from 'papaparse';
 import {
     Search, Plus, Trash2, Info, RefreshCw, Layers, Users, X, UploadCloud,
     Download, Save, RotateCcw, AlertCircle, ChevronDown, Copy, Eye, CheckSquare,
-    Square, ArrowUp, ArrowDown, Filter, Sparkles, Check, Building, Briefcase, Globe, Phone, Mail
+    Square, ArrowUp, ArrowDown, Filter, Sparkles, Check, Building, Briefcase, Globe, Phone, Mail,
+    ClipboardPaste, FileSpreadsheet, FileText, CheckCircle
 } from 'lucide-react';
 import { format } from 'date-fns';
 import { useNavigate } from 'react-router-dom';
@@ -19,6 +22,62 @@ import Toast from '../../components/Toast';
 import { useAuth } from '../../context/AuthContext';
 import { motion, AnimatePresence } from 'framer-motion';
 import SearchableDropdownPortal from '../../components/SearchableDropdownPortal';
+
+const COLUMN_ALIASES = {
+    name: ['company name', 'client name', 'client', 'firm', 'agency', 'organization', 'name', 'party name', 'title'],
+    job_name: ['nature of job', 'job nature', 'scope of work', 'scope', 'trade', 'nature', 'work nature', 'service', 'job', 'project type'],
+    sector_name: ['sector', 'sector name', 'industry', 'domain', 'business sector', 'category', 'type'],
+    contact_person: ['contact person', 'contact name', 'poc', 'representative', 'person', 'contact'],
+    designation: ['designation', 'position', 'title', 'job title', 'role / designation'],
+    telephone_no: ['contact no', 'phone no', 'mobile no', 'telephone', 'phone', 'mobile', 'cell', 'contact number', 'telephone no', 'tel'],
+    email: ['email id', 'email', 'e-mail', 'mail', 'email address', 'mail id'],
+    address: ['address', 'office address', 'site address', 'full address', 'street'],
+    location: ['location', 'city', 'state', 'area', 'branch'],
+    remarks: ['remarks', 'notes', 'comments', 'description', 'remark', 'note']
+};
+
+const matchColumnHeader = (headerText) => {
+    if (!headerText || typeof headerText !== 'string') return null;
+    const clean = headerText.trim().toLowerCase().replace(/[*_#]/g, '').replace(/\s+/g, ' ');
+    for (const [colKey, aliases] of Object.entries(COLUMN_ALIASES)) {
+        if (aliases.some(a => clean === a || clean.startsWith(a) || a.startsWith(clean))) {
+            return colKey;
+        }
+    }
+    return null;
+};
+
+const downloadExcelTemplateFile = () => {
+    const headers = [
+        'Company Name',
+        'Nature of Job',
+        'Sector',
+        'Contact Person',
+        'Designation',
+        'Contact No',
+        'Email ID',
+        'Address',
+        'Location',
+        'Remarks'
+    ];
+    const data = [headers];
+    const ws = XLSX.utils.aoa_to_sheet(data);
+    ws['!cols'] = [
+        { wch: 30 },
+        { wch: 25 },
+        { wch: 20 },
+        { wch: 22 },
+        { wch: 20 },
+        { wch: 18 },
+        { wch: 28 },
+        { wch: 35 },
+        { wch: 20 },
+        { wch: 30 }
+    ];
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, 'Clients');
+    XLSX.writeFile(wb, 'Clients_Template.xlsx');
+};
 
 const GRID_COLUMNS = [
     'name',
@@ -44,6 +103,19 @@ const COLUMN_LABELS = {
     address: 'Address',
     location: 'Location',
     remarks: 'Remarks'
+};
+
+const COLUMN_WIDTH_CLASSES = {
+    name: 'w-[220px] min-w-[200px]',
+    job_name: 'w-[180px] min-w-[170px]',
+    sector_name: 'w-[160px] min-w-[150px]',
+    contact_person: 'w-[160px] min-w-[150px]',
+    designation: 'w-[150px] min-w-[140px]',
+    telephone_no: 'w-[140px] min-w-[140px]',
+    email: 'w-[190px] min-w-[180px]',
+    address: 'w-[240px] min-w-[220px]',
+    location: 'w-[150px] min-w-[140px]',
+    remarks: 'w-[200px] min-w-[180px]'
 };
 
 const parseExcelClipboardText = (text) => {
@@ -218,16 +290,11 @@ const ClientsList = () => {
 
     const tableContainerRef = useRef(null);
 
-    // Helper to load initial state or draft cache from sessionStorage
+    // Helper to load initial state from sessionStorage cache
     const getInitialDraftState = () => {
         try {
-            const draftGridStr = sessionStorage.getItem('mano_clients_draft_grid');
-            const draftDeletedStr = sessionStorage.getItem('mano_clients_draft_deleted');
-            if (draftGridStr) {
-                const draftGrid = JSON.parse(draftGridStr);
-                const draftDeleted = draftDeletedStr ? new Set(JSON.parse(draftDeletedStr)) : new Set();
-                return { draftGrid, draftDeleted };
-            }
+            sessionStorage.removeItem('mano_clients_draft_grid');
+            sessionStorage.removeItem('mano_clients_draft_deleted');
         } catch (e) { }
 
         let cached = [];
@@ -237,7 +304,7 @@ const ClientsList = () => {
         } catch (e) { }
 
         return {
-            draftGrid: cached.map(c => ({ ...c, _status: 'saved', _errors: {} })),
+            draftGrid: Array.isArray(cached) ? cached.map(c => ({ ...c, _status: 'saved', _errors: {} })) : [],
             draftDeleted: new Set()
         };
     };
@@ -262,39 +329,60 @@ const ClientsList = () => {
     const deletedIdsRef = useRef(deletedIds);
     deletedIdsRef.current = deletedIds;
 
-    // Auto-sync local unsaved changes to sessionStorage
-    useEffect(() => {
-        try {
-            const hasDraft = gridData.some(r => r._status === 'modified' || r._status === 'new') || deletedIds.size > 0;
-            if (hasDraft) {
-                sessionStorage.setItem('mano_clients_draft_grid', JSON.stringify(gridData));
-                sessionStorage.setItem('mano_clients_draft_deleted', JSON.stringify(Array.from(deletedIds)));
-            } else {
-                sessionStorage.removeItem('mano_clients_draft_grid');
-                sessionStorage.removeItem('mano_clients_draft_deleted');
+    // Original database data map for dirty comparison
+    const originalClientsMap = useMemo(() => {
+        const map = new Map();
+        clients.forEach(c => {
+            if (c && c.id) map.set(c.id, c);
+        });
+        return map;
+    }, [clients]);
+
+    // Check if a row differs from its original database record
+    const isClientRowDirty = (row, originalClient) => {
+        if (!row) return false;
+        if (!originalClient) {
+            // New row: dirty if marked as new and user has entered non-empty data
+            return row._status === 'new' && Boolean(row.name && row.name.trim());
+        }
+        if (row._status === 'new') {
+            return Boolean(row.name && row.name.trim());
+        }
+        return GRID_COLUMNS.some(col => {
+            const curVal = String(row[col] ?? '').trim();
+            const origVal = String(originalClient[col] ?? '').trim();
+            return curVal !== origVal;
+        });
+    };
+
+    const { hasUnsavedChanges, unsavedCount } = useMemo(() => {
+        if (deletedIds.size === 0 && gridData.length === clients.length && gridData.every(r => r._status === 'saved')) {
+            return { hasUnsavedChanges: false, unsavedCount: 0 };
+        }
+        let dirtyCount = 0;
+        for (let i = 0; i < gridData.length; i++) {
+            const row = gridData[i];
+            if (row._status === 'new') {
+                if (row.name && row.name.trim()) dirtyCount++;
+            } else if (row._status === 'modified' || row._status === 'error') {
+                const original = originalClientsMap.get(row.id);
+                if (isClientRowDirty(row, original)) dirtyCount++;
             }
-        } catch (e) { }
-    }, [gridData, deletedIds]);
-
-    const hasUnsavedChanges = useMemo(() => {
-        const hasModified = gridData.some(r => (r._status === 'modified' || r._status === 'new') && r.name && r.name.trim());
-        return hasModified || deletedIds.size > 0;
-    }, [gridData, deletedIds]);
-
-    const unsavedCount = useMemo(() => {
-        const count = gridData.filter(r => (r._status === 'modified' || r._status === 'new') && r.name && r.name.trim()).length;
-        return count + deletedIds.size;
-    }, [gridData, deletedIds]);
+        }
+        const total = dirtyCount + deletedIds.size;
+        return { hasUnsavedChanges: total > 0, unsavedCount: total };
+    }, [gridData, originalClientsMap, deletedIds, clients.length]);
 
     // Undo / Redo Stacks
     const undoStackRef = useRef([]);
     const redoStackRef = useRef([]);
+    const cellEditInitialStateRef = useRef(null);
 
     const pushUndoState = (gridSnapshot) => {
         if (!gridSnapshot) return;
         const snapshotCopy = gridSnapshot.map(r => ({ ...r, _errors: r._errors ? { ...r._errors } : {} }));
         undoStackRef.current.push(snapshotCopy);
-        if (undoStackRef.current.length > 30) undoStackRef.current.shift();
+        if (undoStackRef.current.length > 50) undoStackRef.current.shift();
         redoStackRef.current = [];
     };
 
@@ -316,6 +404,17 @@ const ClientsList = () => {
     const [isSectorModalOpen, setIsSectorModalOpen] = useState(false);
     const [isManageDropdownOpen, setIsManageDropdownOpen] = useState(false);
     const dropdownRef = useRef(null);
+
+    // Excel Tools & Right Sidebar Drawer State
+    const [isExcelModalOpen, setIsExcelModalOpen] = useState(false);
+    const [isExcelDropdownOpen, setIsExcelDropdownOpen] = useState(false);
+    const excelDropdownRef = useRef(null);
+    const fileInputRef = useRef(null);
+    const [excelPasteText, setExcelPasteText] = useState('');
+    const [excelParsedClients, setExcelParsedClients] = useState([]);
+    const [excelSourceFileName, setExcelSourceFileName] = useState('');
+    const [excelImportMode, setExcelImportMode] = useState('append'); // 'append' | 'replace'
+    const [excelModalTab, setExcelModalTab] = useState('upload'); // 'upload' | 'paste'
 
     // Selection & Bulk State
     const [selectedIds, setSelectedIds] = useState(new Set());
@@ -587,7 +686,7 @@ const ClientsList = () => {
                 navigator.clipboard.writeText(tsvData).catch(err => console.warn(err));
             }
             const numCells = tsvLines.length * (maxCol - minCol + 1);
-            showToast('sparkle', 'Copied to Clipboard', `Copied ${numCells} cell(s) across ${tsvLines.length} row(s)`);
+            showToast('sparkle', '', numCells === 1 ? 'Copied 1 cell to clipboard' : `Copied ${numCells} cells to clipboard`);
         }
     };
 
@@ -625,7 +724,7 @@ const ClientsList = () => {
 
         if (numCleared > 0) {
             setGridData(updatedGrid);
-            showToast('sparkle', 'Cut to Clipboard', `Cut values from ${numCleared} cell(s).`);
+            showToast('sparkle', '', numCleared === 1 ? 'Cut 1 cell to clipboard' : `Cut ${numCleared} cells to clipboard`);
         }
     };
 
@@ -661,15 +760,237 @@ const ClientsList = () => {
         showToast('sparkle', 'Auto-Fill Down', `Auto-filled values down to bottom of table (${totalRows} rows).`);
     };
 
+    const parseRawRowsToClients = (rawRows) => {
+        if (!rawRows || rawRows.length === 0) return [];
+        let parsedList = [];
+
+        if (Array.isArray(rawRows[0])) {
+            let headerRowIdx = -1;
+            let colMap = {};
+
+            for (let i = 0; i < Math.min(rawRows.length, 10); i++) {
+                const row = rawRows[i];
+                let matches = 0;
+                const tempMap = {};
+                row.forEach((cell, cIdx) => {
+                    const matched = matchColumnHeader(String(cell || ''));
+                    if (matched) {
+                        tempMap[cIdx] = matched;
+                        matches++;
+                    }
+                });
+                if (matches >= 2 || (row.length === 1 && matches === 1)) {
+                    headerRowIdx = i;
+                    colMap = tempMap;
+                    break;
+                }
+            }
+
+            const dataRows = headerRowIdx !== -1 ? rawRows.slice(headerRowIdx + 1) : rawRows;
+
+            dataRows.forEach((row, rIdx) => {
+                if (!row || !row.some(c => String(c || '').trim() !== '')) return;
+
+                const item = {
+                    id: `temp_${Date.now()}_${Math.random().toString(36).substring(2, 9)}_${rIdx}`,
+                    name: '',
+                    job_name: '',
+                    sector_name: '',
+                    contact_person: '',
+                    designation: '',
+                    telephone_no: '',
+                    email: '',
+                    address: '',
+                    location: '',
+                    remarks: '',
+                    _status: 'new',
+                    _errors: {}
+                };
+
+                row.forEach((cellVal, cIdx) => {
+                    const val = String(cellVal ?? '').trim();
+                    const targetCol = headerRowIdx !== -1 ? colMap[cIdx] : GRID_COLUMNS[cIdx];
+                    if (targetCol && GRID_COLUMNS.includes(targetCol)) {
+                        if (targetCol === 'job_name') {
+                            const matchedJob = allJobNatures.find(j =>
+                                (j.job_name || '').toLowerCase() === val.toLowerCase()
+                            );
+                            item.job_name = matchedJob ? matchedJob.job_name : val;
+                        } else if (targetCol === 'sector_name') {
+                            const matchedSec = allSectors.find(s =>
+                                (s.sector_name || '').toLowerCase() === val.toLowerCase()
+                            );
+                            item.sector_name = matchedSec ? matchedSec.sector_name : val;
+                        } else {
+                            item[targetCol] = val;
+                        }
+                    }
+                });
+
+                if (!item.name) {
+                    const firstNonEmpty = row.find(c => String(c || '').trim() !== '');
+                    if (firstNonEmpty) item.name = String(firstNonEmpty).trim();
+                }
+
+                if (item.name) {
+                    parsedList.push(item);
+                }
+            });
+        } else {
+            rawRows.forEach((r, rIdx) => {
+                const item = {
+                    id: `temp_${Date.now()}_${Math.random().toString(36).substring(2, 9)}_${rIdx}`,
+                    name: '',
+                    job_name: '',
+                    sector_name: '',
+                    contact_person: '',
+                    designation: '',
+                    telephone_no: '',
+                    email: '',
+                    address: '',
+                    location: '',
+                    remarks: '',
+                    _status: 'new',
+                    _errors: {}
+                };
+
+                Object.entries(r).forEach(([key, val]) => {
+                    const cleanVal = String(val ?? '').trim();
+                    const targetCol = matchColumnHeader(key) || (GRID_COLUMNS.includes(key) ? key : null);
+                    if (targetCol && GRID_COLUMNS.includes(targetCol)) {
+                        if (targetCol === 'job_name') {
+                            const matchedJob = allJobNatures.find(j =>
+                                (j.job_name || '').toLowerCase() === cleanVal.toLowerCase()
+                            );
+                            item.job_name = matchedJob ? matchedJob.job_name : cleanVal;
+                        } else if (targetCol === 'sector_name') {
+                            const matchedSec = allSectors.find(s =>
+                                (s.sector_name || '').toLowerCase() === cleanVal.toLowerCase()
+                            );
+                            item.sector_name = matchedSec ? matchedSec.sector_name : cleanVal;
+                        } else {
+                            item[targetCol] = cleanVal;
+                        }
+                    }
+                });
+
+                if (!item.name) {
+                    const fallbackName = r['Company Name'] || r['Client Name'] || r['Company'] || r['name'] || r['Name'] || '';
+                    if (fallbackName) item.name = String(fallbackName).trim();
+                }
+
+                if (item.name) {
+                    parsedList.push(item);
+                }
+            });
+        }
+
+        return parsedList;
+    };
+
+    const handleFileUpload = (e) => {
+        const file = e.target.files?.[0];
+        if (!file) return;
+
+        setExcelSourceFileName(file.name);
+        const fileName = file.name.toLowerCase();
+
+        if (fileName.endsWith('.xlsx') || fileName.endsWith('.xls')) {
+            const reader = new FileReader();
+            reader.onload = (evt) => {
+                try {
+                    const data = new Uint8Array(evt.target.result);
+                    const workbook = XLSX.read(data, { type: 'array' });
+                    
+                    let targetSheetName = workbook.SheetNames[0];
+                    for (const name of workbook.SheetNames) {
+                        const sheet = workbook.Sheets[name];
+                        if (sheet && sheet['!ref']) {
+                            targetSheetName = name;
+                            break;
+                        }
+                    }
+
+                    const sheet = workbook.Sheets[targetSheetName];
+                    const rawAoa = XLSX.utils.sheet_to_json(sheet, { header: 1, defval: '' });
+                    const parsed = parseRawRowsToClients(rawAoa);
+                    setExcelParsedClients(parsed);
+                    setExcelModalTab('upload');
+                    setIsExcelModalOpen(true);
+                } catch (err) {
+                    console.error('Failed to parse Excel file:', err);
+                    showToast('error', 'Import Failed', 'Failed to read Excel spreadsheet data. Please check the file.');
+                }
+            };
+            reader.readAsArrayBuffer(file);
+        } else {
+            Papa.parse(file, {
+                skipEmptyLines: true,
+                complete: (results) => {
+                    if (!results.data || results.data.length === 0) {
+                        showToast('error', 'Import Failed', 'Uploaded CSV contains no valid data.');
+                        return;
+                    }
+                    const parsed = parseRawRowsToClients(results.data);
+                    setExcelParsedClients(parsed);
+                    setExcelModalTab('upload');
+                    setIsExcelModalOpen(true);
+                },
+                error: (err) => {
+                    console.error('Failed to parse CSV file:', err);
+                    showToast('error', 'Import Failed', 'Failed to read CSV spreadsheet data.');
+                }
+            });
+        }
+        e.target.value = '';
+    };
+
+    const handleCommitExcelImport = () => {
+        if (!excelParsedClients || excelParsedClients.length === 0) {
+            showToast('info', 'No Rows', 'No valid client rows to import.');
+            return;
+        }
+
+        pushUndoState(gridDataRef.current);
+
+        if (excelImportMode === 'append') {
+            setGridData(prev => [...excelParsedClients, ...prev]);
+        } else {
+            setGridData(excelParsedClients);
+        }
+
+        setIsExcelModalOpen(false);
+        setExcelParsedClients([]);
+        setExcelPasteText('');
+        showToast('sparkle', 'Clients Imported', `Successfully imported ${excelParsedClients.length} client row(s). Click "Save Changes" to save to database.`);
+    };
+
     const executePaste = (pastedText, forcedStartRow, forcedStartCol) => {
         const textToPaste = pastedText || internalClipboardRef.current;
         if (!textToPaste || !textToPaste.trim()) {
-            showToast('info', 'Clipboard Empty', 'No content available to paste.');
+            showToast('info', '', 'Clipboard is empty');
             return;
         }
 
         const parsedRows = parseExcelClipboardText(textToPaste);
         if (parsedRows.length === 0) return;
+
+        // Check if top row is header row
+        if (parsedRows.length > 1 && forcedStartRow === undefined) {
+            let headerMatches = 0;
+            parsedRows[0].forEach(cell => {
+                if (matchColumnHeader(String(cell || ''))) headerMatches++;
+            });
+            if (headerMatches >= 2) {
+                const parsedClients = parseRawRowsToClients(parsedRows);
+                if (parsedClients.length > 0) {
+                    pushUndoState(gridDataRef.current);
+                    setGridData(prev => [...parsedClients, ...prev]);
+                    showToast('sparkle', 'Pasted Clients', `Mapped & added ${parsedClients.length} client row(s) from Excel.`);
+                    return;
+                }
+            }
+        }
 
         pushUndoState(gridDataRef.current);
 
@@ -811,9 +1132,9 @@ const ClientsList = () => {
             setSelectionFocus({ r: endRow, c: endCol });
 
             if (newRowsAddedCount > 0) {
-                showToast('sparkle', 'Pasted Data', `Pasted values into ${numCellsUpdated} cell(s) and created ${newRowsAddedCount} new row(s).`);
+                showToast('sparkle', '', `Pasted ${numCellsUpdated} cell${numCellsUpdated > 1 ? 's' : ''} (${newRowsAddedCount} new row${newRowsAddedCount > 1 ? 's' : ''})`);
             } else {
-                showToast('sparkle', 'Paste Success', `Pasted content into ${numCellsUpdated} cell(s). Click "Save Changes" to apply.`);
+                showToast('sparkle', '', numCellsUpdated === 1 ? 'Pasted 1 cell successfully' : `Pasted ${numCellsUpdated} cells successfully`);
             }
         }
     };
@@ -979,11 +1300,14 @@ const ClientsList = () => {
         fetchClients();
     }, []);
 
-    // Close Manage dropdown on click outside
+    // Close dropdowns on click outside
     useEffect(() => {
         const handleClickOutside = (event) => {
             if (dropdownRef.current && !dropdownRef.current.contains(event.target)) {
                 setIsManageDropdownOpen(false);
+            }
+            if (excelDropdownRef.current && !excelDropdownRef.current.contains(event.target)) {
+                setIsExcelDropdownOpen(false);
             }
         };
         document.addEventListener('mousedown', handleClickOutside);
@@ -993,8 +1317,12 @@ const ClientsList = () => {
     // ─── Manual Batch Save Engine ──────────────────────────────────────────────
     const saveGridRows = async () => {
         const targetGrid = gridDataRef.current;
-        const newRows = targetGrid.filter(r => r._status === 'new' && r.name && r.name.trim());
-        const modifiedRows = targetGrid.filter(r => r._status === 'modified' && r.name && r.name.trim());
+        const dirtyRows = targetGrid.filter(r => {
+            const original = originalClientsMap.get(r.id);
+            return isClientRowDirty(r, original);
+        });
+        const newRows = dirtyRows.filter(r => (!originalClientsMap.has(r.id) || r._status === 'new') && r.name && r.name.trim());
+        const modifiedRows = dirtyRows.filter(r => originalClientsMap.has(r.id) && r._status !== 'new' && r.name && r.name.trim());
         const pendingDeleteIds = Array.from(deletedIds);
 
         if (newRows.length === 0 && modifiedRows.length === 0 && pendingDeleteIds.length === 0) {
@@ -1088,40 +1416,64 @@ const ClientsList = () => {
         }
     };
 
-    // Filter & Sort Grid Data
+    // Filter & Sort Grid Data (High-performance fast execution)
     const filteredGridData = useMemo(() => {
-        if (!searchTerm && activeFilters.jobs.length === 0 && activeFilters.sectors.length === 0) {
+        const hasJobs = activeFilters.jobs.length > 0;
+        const hasSectors = activeFilters.sectors.length > 0;
+        const hasSearch = Boolean(searchTerm && searchTerm.trim());
+
+        if (!hasSearch && !hasJobs && !hasSectors) {
             return gridData;
         }
-        const lowerSearch = searchTerm.toLowerCase();
+
+        const lowerSearch = hasSearch ? searchTerm.toLowerCase().trim() : '';
+        const jobSet = hasJobs ? new Set(activeFilters.jobs) : null;
+        const sectorSet = hasSectors ? new Set(activeFilters.sectors) : null;
+
         return gridData.filter(r => {
-            const matchesSearch = !searchTerm ||
-                (r.name || '').toLowerCase().includes(lowerSearch) ||
-                (r.job_name || '').toLowerCase().includes(lowerSearch) ||
-                (r.sector_name || '').toLowerCase().includes(lowerSearch) ||
-                (r.contact_person || '').toLowerCase().includes(lowerSearch) ||
-                (r.telephone_no || '').toLowerCase().includes(lowerSearch) ||
-                (r.email || '').toLowerCase().includes(lowerSearch) ||
-                (r.address || '').toLowerCase().includes(lowerSearch);
+            if (jobSet && !jobSet.has(r.job_name)) return false;
+            if (sectorSet && !sectorSet.has(r.sector_name)) return false;
+            if (lowerSearch) {
+                const name = r.name ? r.name.toLowerCase() : '';
+                const job = r.job_name ? r.job_name.toLowerCase() : '';
+                const sector = r.sector_name ? r.sector_name.toLowerCase() : '';
+                const contact = r.contact_person ? r.contact_person.toLowerCase() : '';
+                const phone = r.telephone_no ? r.telephone_no.toLowerCase() : '';
+                const email = r.email ? r.email.toLowerCase() : '';
+                const addr = r.address ? r.address.toLowerCase() : '';
+                const loc = r.location ? r.location.toLowerCase() : '';
 
-            const matchesJobFilter = activeFilters.jobs.length === 0 || activeFilters.jobs.includes(r.job_name);
-            const matchesSectorFilter = activeFilters.sectors.length === 0 || activeFilters.sectors.includes(r.sector_name);
-
-            return matchesSearch && matchesJobFilter && matchesSectorFilter;
+                return name.includes(lowerSearch) ||
+                    job.includes(lowerSearch) ||
+                    sector.includes(lowerSearch) ||
+                    contact.includes(lowerSearch) ||
+                    phone.includes(lowerSearch) ||
+                    email.includes(lowerSearch) ||
+                    addr.includes(lowerSearch) ||
+                    loc.includes(lowerSearch);
+            }
+            return true;
         });
     }, [gridData, searchTerm, activeFilters]);
 
     const sortedGridData = useMemo(() => {
-        if (!sortConfig.key) return filteredGridData;
-        return [...filteredGridData].sort((a, b) => {
-            let aVal = a[sortConfig.key] || '';
-            let bVal = b[sortConfig.key] || '';
-            if (typeof aVal === 'string') aVal = aVal.toLowerCase();
-            if (typeof bVal === 'string') bVal = bVal.toLowerCase();
+        if (!sortConfig.key || filteredGridData.length <= 1) return filteredGridData;
+        const key = sortConfig.key;
+        const isAsc = sortConfig.direction === 'asc';
 
-            if (aVal < bVal) return sortConfig.direction === 'asc' ? -1 : 1;
-            if (aVal > bVal) return sortConfig.direction === 'asc' ? 1 : -1;
-            return 0;
+        return [...filteredGridData].sort((a, b) => {
+            const aVal = a[key];
+            const bVal = b[key];
+            if (aVal === bVal) return 0;
+            if (aVal == null || aVal === '') return 1;
+            if (bVal == null || bVal === '') return -1;
+
+            if (typeof aVal === 'number' && typeof bVal === 'number') {
+                return isAsc ? aVal - bVal : bVal - aVal;
+            }
+
+            const cmp = String(aVal).localeCompare(String(bVal), undefined, { numeric: true, sensitivity: 'base' });
+            return isAsc ? cmp : -cmp;
         });
     }, [filteredGridData, sortConfig]);
 
@@ -1515,6 +1867,9 @@ const ClientsList = () => {
             });
             const tsvData = tsvLines.join('\n');
             e.clipboardData.setData('text/plain', tsvData);
+            internalClipboardRef.current = tsvData;
+            const numCells = tsvLines.length * (maxCol - minCol + 1);
+            showToast('sparkle', '', numCells === 1 ? 'Copied 1 cell to clipboard' : `Copied ${numCells} cells to clipboard`);
         };
 
         const handleNativePaste = (e) => {
@@ -1586,8 +1941,12 @@ const ClientsList = () => {
     };
 
     // Cell Management
-    const handleCellChange = (rowIndex, field, value, shouldAutoSave = false) => {
-        pushUndoState(gridDataRef.current);
+    const handleCellChange = (rowIndex, field, value, isAtomic = false) => {
+        if (isAtomic) {
+            pushUndoState(gridDataRef.current);
+        } else if (!cellEditInitialStateRef.current) {
+            cellEditInitialStateRef.current = gridDataRef.current.map(r => ({ ...r, _errors: r._errors ? { ...r._errors } : {} }));
+        }
         let updatedGridData = [];
         setGridData(prev => {
             const updated = [...prev];
@@ -1605,10 +1964,14 @@ const ClientsList = () => {
             }
 
             row._errors = errors;
+            const original = originalClientsMap.get(row.id);
             if (Object.keys(errors).length === 0) {
                 delete row._errors;
-                if (row._status !== 'new') {
-                    row._status = 'modified';
+                if (!original || row._status === 'new') {
+                    row._status = 'new';
+                } else {
+                    const isDirty = isClientRowDirty(row, original);
+                    row._status = isDirty ? 'modified' : 'saved';
                 }
             } else {
                 row._status = 'error';
@@ -1621,6 +1984,15 @@ const ClientsList = () => {
     };
 
     const handleCellBlur = () => {
+        if (cellEditInitialStateRef.current) {
+            const initial = cellEditInitialStateRef.current;
+            const current = gridDataRef.current;
+            const isChanged = initial.length !== current.length || initial.some((r, i) => r !== current[i]);
+            if (isChanged) {
+                pushUndoState(initial);
+            }
+            cellEditInitialStateRef.current = null;
+        }
         setEditingCell(null);
     };
 
@@ -1653,16 +2025,32 @@ const ClientsList = () => {
         const isModifier = e.ctrlKey || e.metaKey;
 
         if (editingCell?.rowIndex === rowIndex && editingCell?.colName === colName) {
+            const inputEl = e.target;
+            const isInput = inputEl?.tagName?.toLowerCase() === 'input' || inputEl?.tagName?.toLowerCase() === 'textarea';
+            const selStart = isInput ? (inputEl.selectionStart ?? 0) : 0;
+            const selEnd = isInput ? (inputEl.selectionEnd ?? 0) : 0;
+            const valLen = isInput ? (inputEl.value?.length ?? 0) : 0;
+
             if (e.key === 'Enter') {
                 e.preventDefault();
                 handleCellBlur();
                 const nextRow = e.shiftKey ? Math.max(0, rowIndex - 1) : Math.min(totalRows - 1, rowIndex + 1);
                 setSelectionAnchor({ r: nextRow, c: colIndex });
                 setSelectionFocus({ r: nextRow, c: colIndex });
-            } else if (e.key === 'Escape') {
+                return;
+            }
+
+            if (e.key === 'Escape') {
                 e.preventDefault();
+                if (cellEditInitialStateRef.current) {
+                    setGridData(cellEditInitialStateRef.current);
+                    cellEditInitialStateRef.current = null;
+                }
                 setEditingCell(null);
-            } else if (e.key === 'Tab') {
+                return;
+            }
+
+            if (e.key === 'Tab') {
                 e.preventDefault();
                 handleCellBlur();
                 let nextCol = e.shiftKey ? colIndex - 1 : colIndex + 1;
@@ -1684,7 +2072,89 @@ const ClientsList = () => {
                 }
                 setSelectionAnchor({ r: nextRow, c: nextCol });
                 setSelectionFocus({ r: nextRow, c: nextCol });
+                return;
             }
+
+            // ArrowUp: Commit edit and move up
+            if (e.key === 'ArrowUp') {
+                e.preventDefault();
+                handleCellBlur();
+                const targetRow = isModifier ? 0 : Math.max(0, rowIndex - 1);
+                setSelectionAnchor({ r: targetRow, c: colIndex });
+                setSelectionFocus({ r: targetRow, c: colIndex });
+                return;
+            }
+
+            // ArrowDown: Commit edit and move down
+            if (e.key === 'ArrowDown') {
+                e.preventDefault();
+                handleCellBlur();
+                const targetRow = isModifier ? Math.max(0, totalRows - 1) : Math.min(totalRows - 1, rowIndex + 1);
+                setSelectionAnchor({ r: targetRow, c: colIndex });
+                setSelectionFocus({ r: targetRow, c: colIndex });
+                return;
+            }
+
+            // ArrowLeft: If cursor is at the start (pos 0) or modifier pressed, navigate left
+            if (e.key === 'ArrowLeft') {
+                if (isModifier || (selStart === 0 && selEnd === 0)) {
+                    e.preventDefault();
+                    handleCellBlur();
+                    const targetCol = isModifier ? 0 : Math.max(0, colIndex - 1);
+                    setSelectionAnchor({ r: rowIndex, c: targetCol });
+                    setSelectionFocus({ r: rowIndex, c: targetCol });
+                    return;
+                }
+            }
+
+            // ArrowRight: If cursor is at the end (pos valLen) or modifier pressed, navigate right
+            if (e.key === 'ArrowRight') {
+                if (isModifier || (selStart === valLen && selEnd === valLen)) {
+                    e.preventDefault();
+                    handleCellBlur();
+                    const targetCol = isModifier ? totalCols - 1 : Math.min(totalCols - 1, colIndex + 1);
+                    setSelectionAnchor({ r: rowIndex, c: targetCol });
+                    setSelectionFocus({ r: rowIndex, c: targetCol });
+                    return;
+                }
+            }
+
+            // PageUp & PageDown while editing
+            if (e.key === 'PageUp') {
+                e.preventDefault();
+                handleCellBlur();
+                const targetRow = Math.max(0, rowIndex - 10);
+                setSelectionAnchor({ r: targetRow, c: colIndex });
+                setSelectionFocus({ r: targetRow, c: colIndex });
+                return;
+            }
+
+            if (e.key === 'PageDown') {
+                e.preventDefault();
+                handleCellBlur();
+                const targetRow = Math.min(Math.max(0, totalRows - 1), rowIndex + 10);
+                setSelectionAnchor({ r: targetRow, c: colIndex });
+                setSelectionFocus({ r: targetRow, c: colIndex });
+                return;
+            }
+
+            // Ctrl+Home / Ctrl+End while editing
+            if (isModifier && e.key === 'Home') {
+                e.preventDefault();
+                handleCellBlur();
+                setSelectionAnchor({ r: 0, c: 0 });
+                setSelectionFocus({ r: 0, c: 0 });
+                return;
+            }
+
+            if (isModifier && e.key === 'End') {
+                e.preventDefault();
+                handleCellBlur();
+                setSelectionAnchor({ r: Math.max(0, totalRows - 1), c: totalCols - 1 });
+                setSelectionFocus({ r: Math.max(0, totalRows - 1), c: totalCols - 1 });
+                return;
+            }
+
             return;
         }
 
@@ -1911,6 +2381,7 @@ const ClientsList = () => {
                 if (colName === 'job_name' || colName === 'sector_name') {
                     setActiveDropdownCell({ rowIndex: curFocus.r, colName });
                 } else {
+                    cellEditInitialStateRef.current = gridDataRef.current.map(r => ({ ...r, _errors: r._errors ? { ...r._errors } : {} }));
                     setEditingCell({ rowIndex: curFocus.r, colName });
                 }
             }
@@ -1920,6 +2391,7 @@ const ClientsList = () => {
         // Direct typing replaces cell content
         if (canWrite && e.key.length === 1 && !isModifier && !e.altKey) {
             if (colName !== 'job_name' && colName !== 'sector_name') {
+                cellEditInitialStateRef.current = gridDataRef.current.map(r => ({ ...r, _errors: r._errors ? { ...r._errors } : {} }));
                 setEditingCell({ rowIndex: curFocus.r, colName });
                 handleCellChange(curFocus.r, colName, e.key);
             }
@@ -2436,10 +2908,70 @@ const ClientsList = () => {
                         <span>Remove Duplicates</span>
                     </button>
 
+                    {/* Minimal Import & Excel Dropdown */}
+                    {canWrite && (
+                        <div className="relative inline-block" ref={excelDropdownRef}>
+                            <button
+                                type="button"
+                                onClick={() => setIsExcelDropdownOpen(!isExcelDropdownOpen)}
+                                className="flex items-center gap-1.5 px-3 py-1.5 border border-gray-200 dark:border-white/10 hover:bg-gray-100 dark:hover:bg-white/5 rounded-lg text-xs font-semibold text-gray-700 dark:text-gray-200 transition cursor-pointer whitespace-nowrap"
+                                title="Import spreadsheet, paste from Excel, or download template"
+                            >
+                                <UploadCloud size={13} className="text-blue-600 dark:text-blue-400" />
+                                <span>Import / Excel</span>
+                                <ChevronDown size={12} className={`transition-transform ${isExcelDropdownOpen ? 'rotate-180' : ''}`} />
+                            </button>
+
+                            {isExcelDropdownOpen && (
+                                <div className="absolute right-0 mt-1.5 w-52 bg-white dark:bg-[#161b22] border border-gray-200 dark:border-white/10 rounded-xl shadow-2xl z-[7000] py-1.5 text-xs text-gray-700 dark:text-gray-300 font-semibold overflow-hidden animate-in fade-in zoom-in-95 duration-100 select-none flex flex-col">
+                                    <button
+                                        type="button"
+                                        onClick={() => {
+                                            setIsExcelDropdownOpen(false);
+                                            setExcelModalTab('upload');
+                                            setIsExcelModalOpen(true);
+                                        }}
+                                        className="w-full text-left px-3.5 py-2 hover:bg-blue-50 dark:hover:bg-white/5 text-gray-800 dark:text-gray-200 flex items-center gap-2.5 transition cursor-pointer"
+                                    >
+                                        <UploadCloud size={14} className="text-blue-600 dark:text-blue-400 shrink-0" />
+                                        <span>Import Spreadsheet</span>
+                                    </button>
+
+                                    <button
+                                        type="button"
+                                        onClick={() => {
+                                            setIsExcelDropdownOpen(false);
+                                            setExcelModalTab('paste');
+                                            setIsExcelModalOpen(true);
+                                        }}
+                                        className="w-full text-left px-3.5 py-2 hover:bg-blue-50 dark:hover:bg-white/5 text-gray-800 dark:text-gray-200 flex items-center gap-2.5 transition cursor-pointer"
+                                    >
+                                        <ClipboardPaste size={14} className="text-emerald-600 dark:text-emerald-400 shrink-0" />
+                                        <span>Paste from Excel</span>
+                                    </button>
+
+                                    <div className="border-t border-gray-100 dark:border-white/5 my-1"></div>
+
+                                    <button
+                                        type="button"
+                                        onClick={() => {
+                                            setIsExcelDropdownOpen(false);
+                                            downloadExcelTemplateFile();
+                                        }}
+                                        className="w-full text-left px-3.5 py-2 hover:bg-blue-50 dark:hover:bg-white/5 text-gray-800 dark:text-gray-200 flex items-center gap-2.5 transition cursor-pointer"
+                                    >
+                                        <Download size={14} className="text-gray-500 shrink-0" />
+                                        <span>Download Template</span>
+                                    </button>
+                                </div>
+                            )}
+                        </div>
+                    )}
+
                     {/* Export CSV */}
                     <button
                         onClick={handleExportCSV}
-                        className="flex items-center gap-1.5 px-3 py-1.5 text-gray-600 hover:text-gray-800 border border-gray-200 dark:text-gray-400 dark:hover:text-white dark:border-white/10 bg-transparent rounded-lg text-xs font-semibold hover:bg-gray-100 dark:hover:bg-white/5 transition"
+                        className="flex items-center gap-1.5 px-3 py-1.5 text-gray-600 hover:text-gray-800 border border-gray-200 dark:text-gray-400 dark:hover:text-white dark:border-white/10 bg-transparent rounded-lg text-xs font-semibold hover:bg-gray-100 dark:hover:bg-white/5 transition cursor-pointer"
                         title="Export CSV"
                     >
                         <Download size={13} />
@@ -2449,7 +2981,7 @@ const ClientsList = () => {
                     {/* Refresh */}
                     <button
                         onClick={() => fetchClients(true)}
-                        className="p-2 text-gray-400 hover:text-blue-600 transition-colors rounded-lg hover:bg-gray-100 dark:hover:bg-white/5 border border-gray-200 dark:border-white/10"
+                        className="p-2 text-gray-400 hover:text-blue-600 transition-colors rounded-lg hover:bg-gray-100 dark:hover:bg-white/5 border border-gray-200 dark:border-white/10 cursor-pointer"
                         title="Refresh"
                     >
                         <RefreshCw size={14} className={isLoading ? 'animate-spin' : ''} />
@@ -2679,11 +3211,11 @@ const ClientsList = () => {
             <div ref={tableContainerRef} className="flex-1 min-h-0 flex overflow-hidden w-full relative">
                 {/* Spreadsheet Grid Table */}
                 <div className="flex-1 min-h-0 overflow-auto table-scrollbar">
-                    <table className="w-full min-w-[1500px] text-left whitespace-nowrap text-sm border-collapse bg-white dark:bg-[#0d1117] select-none">
+                    <table className="w-full min-w-[1500px] table-fixed text-left whitespace-nowrap text-sm border-collapse bg-white dark:bg-[#0d1117] select-none">
                         <thead className="bg-[#f9fafb] dark:bg-[#161b22] text-gray-500 dark:text-gray-400 sticky top-0 z-20 border-b border-gray-200 dark:border-white/5 tracking-wider text-[10px] uppercase font-bold select-none shadow-sm">
                             <tr>
                                 {/* Master Checkbox */}
-                                <th className="px-3 py-3 w-10 text-center border-r border-gray-150 dark:border-white/5">
+                                <th className="px-3 py-3 w-10 min-w-10 max-w-10 text-center border-r border-gray-150 dark:border-white/5">
                                     <div className="flex justify-center">
                                         <CustomCheckbox
                                             checked={sortedGridData.length > 0 && selectedIds.size === sortedGridData.length}
@@ -2692,18 +3224,18 @@ const ClientsList = () => {
                                         />
                                     </div>
                                 </th>
-                                <th className="px-3 py-3 w-10 text-center border-r border-gray-150 dark:border-white/5">#</th>
-                                <th className="px-2 py-3 w-16 text-center border-r border-gray-150 dark:border-white/5">Status</th>
+                                <th className="px-3 py-3 w-10 min-w-10 max-w-10 text-center border-r border-gray-150 dark:border-white/5">#</th>
+                                <th className="px-1 py-3 w-[82px] min-w-[82px] max-w-[82px] text-center border-r border-gray-150 dark:border-white/5">Status</th>
 
                                 {/* Sortable Columns */}
                                 {GRID_COLUMNS.map(colName => (
                                     <th
                                         key={colName}
                                         onClick={() => handleSort(colName)}
-                                        className="px-3 py-3 border-r border-gray-150 dark:border-white/5 cursor-pointer hover:bg-gray-100 dark:hover:bg-white/5 transition"
+                                        className={`px-3 py-3 border-r border-gray-150 dark:border-white/5 cursor-pointer hover:bg-gray-100 dark:hover:bg-white/5 transition ${COLUMN_WIDTH_CLASSES[colName] || 'w-[160px] min-w-[150px]'}`}
                                     >
                                         <div className="flex items-center justify-between">
-                                            <span>
+                                            <span className="truncate">
                                                 {COLUMN_LABELS[colName]}
                                                 {colName === 'name' && <span className="text-red-500 ml-0.5">*</span>}
                                             </span>
@@ -2712,7 +3244,7 @@ const ClientsList = () => {
                                     </th>
                                 ))}
 
-                                <th className="px-3 py-3 w-28 text-center">Actions</th>
+                                <th className="px-3 py-3 w-28 min-w-28 max-w-28 text-center">Actions</th>
                             </tr>
                         </thead>
                         <tbody className="divide-y divide-gray-100 dark:divide-white/5">
@@ -2733,16 +3265,53 @@ const ClientsList = () => {
                                             <Building className="text-gray-300 dark:text-white/10" size={44} />
                                             <p className="text-sm font-semibold text-gray-500 dark:text-gray-400">No clients found</p>
                                             <p className="text-xs text-gray-400">
-                                                {searchTerm || activeFilters.jobs.length || activeFilters.sectors.length ? 'Adjust your search or filters' : 'Copy rows from Excel and press Ctrl+V to paste instantly'}
+                                                {searchTerm || activeFilters.jobs.length || activeFilters.sectors.length
+                                                    ? 'Adjust your search or filters'
+                                                    : 'Import an Excel spreadsheet, paste copied cells from Excel, or click below to start.'}
                                             </p>
+                                            {canWrite && (
+                                                <div className="flex flex-wrap items-center justify-center gap-2 pt-1">
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => handleAddRows(1)}
+                                                        className="px-3.5 py-1.5 bg-blue-600 text-white rounded-lg text-xs font-bold hover:bg-blue-700 transition cursor-pointer shadow-xs"
+                                                    >
+                                                        + Add First Client
+                                                    </button>
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => {
+                                                            setExcelModalTab('upload');
+                                                            setIsExcelModalOpen(true);
+                                                        }}
+                                                        className="px-3.5 py-1.5 bg-gray-100 dark:bg-white/5 text-gray-700 dark:text-gray-300 border border-gray-200 dark:border-white/10 hover:bg-gray-200 dark:hover:bg-white/10 rounded-lg text-xs font-bold transition cursor-pointer flex items-center gap-1.5"
+                                                    >
+                                                        <UploadCloud size={13} />
+                                                        <span>Import Spreadsheet</span>
+                                                    </button>
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => {
+                                                            setExcelModalTab('paste');
+                                                            setIsExcelModalOpen(true);
+                                                        }}
+                                                        className="px-3.5 py-1.5 bg-gray-100 dark:bg-white/5 text-gray-700 dark:text-gray-300 border border-gray-200 dark:border-white/10 hover:bg-gray-200 dark:hover:bg-white/10 rounded-lg text-xs font-bold transition cursor-pointer flex items-center gap-1.5"
+                                                    >
+                                                        <ClipboardPaste size={13} />
+                                                        <span>Paste from Excel</span>
+                                                    </button>
+                                                </div>
+                                            )}
                                         </div>
                                     </td>
                                 </tr>
                             ) : (
                                 paginatedGridData.map((client, index) => {
                                     const rowIndex = pageSize === 'All' ? index : (currentPage - 1) * Number(pageSize) + index;
-                                    const isNew = client._status === 'new';
+                                    const originalClient = originalClientsMap.get(client.id);
+                                    const isNew = client._status === 'new' || String(client.id).startsWith('temp_');
                                     const isError = client._status === 'error';
+                                    const isDirty = (client._status === 'modified') || (originalClient && isClientRowDirty(client, originalClient));
                                     const rowErrors = client._errors || {};
                                     const isRowSelected = selectedIds.has(client.id);
 
@@ -2750,6 +3319,7 @@ const ClientsList = () => {
                                         <tr
                                             key={client.id || `row-${rowIndex}`}
                                             onContextMenu={(e) => handleContextMenu(e, rowIndex, 0)}
+                                            style={{ contentVisibility: 'auto', containIntrinsicSize: 'auto 42px' }}
                                             className={`hover:bg-blue-50/20 dark:hover:bg-white/[0.02] transition-colors group/row text-gray-700 dark:text-gray-300 ${isRowSelected ? 'bg-blue-50/30 dark:bg-blue-900/10' : ''
                                                 }`}
                                         >
@@ -2770,22 +3340,26 @@ const ClientsList = () => {
                                             </td>
 
                                             {/* Status Badge */}
-                                            <td className="px-2 py-3 text-center border-r border-gray-100 dark:border-white/5 select-none">
-                                                {isNew && (
-                                                    <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[9px] font-bold bg-emerald-50 text-emerald-600 dark:bg-emerald-950/20 dark:text-emerald-400 border border-emerald-200/50 dark:border-emerald-500/10">
+                                            <td className="px-1 py-2.5 text-center border-r border-gray-100 dark:border-white/5 select-none">
+                                                {isNew ? (
+                                                    <span className="inline-flex items-center justify-center px-1.5 py-0.5 rounded text-[9px] font-bold bg-blue-50 text-blue-600 dark:bg-blue-950/30 dark:text-blue-400 border border-blue-200 dark:border-blue-500/20 whitespace-nowrap">
                                                         NEW
                                                     </span>
-                                                )}
-                                                {isError && (
+                                                ) : isError ? (
                                                     <span
-                                                        className="inline-flex items-center px-1.5 py-0.5 rounded text-[9px] font-bold bg-red-50 text-red-600 dark:bg-red-950/20 dark:text-red-400 border border-red-200/50 dark:border-red-500/10 cursor-help"
+                                                        className="inline-flex items-center justify-center px-1.5 py-0.5 rounded text-[9px] font-bold bg-red-50 text-red-600 dark:bg-red-950/30 dark:text-red-400 border border-red-200 dark:border-red-500/20 whitespace-nowrap cursor-help"
                                                         title={rowErrors.name || 'Validation error'}
                                                     >
                                                         ERROR
                                                     </span>
-                                                )}
-                                                {client._status === 'saved' && (
-                                                    <span className="text-emerald-500 dark:text-emerald-400/80 text-[10px] font-bold">SAVED</span>
+                                                ) : isDirty ? (
+                                                    <span className="inline-flex items-center justify-center px-1.5 py-0.5 rounded text-[9px] font-bold bg-amber-50 text-amber-600 dark:bg-amber-950/30 dark:text-amber-400 border border-amber-200 dark:border-amber-500/20 whitespace-nowrap">
+                                                        MODIFIED
+                                                    </span>
+                                                ) : (
+                                                    <span className="inline-flex items-center justify-center px-1.5 py-0.5 rounded text-[9px] font-bold bg-emerald-50 text-emerald-600 dark:bg-emerald-950/30 dark:text-emerald-400 border border-emerald-200 dark:border-emerald-500/20 whitespace-nowrap">
+                                                        SAVED
+                                                    </span>
                                                 )}
                                             </td>
 
@@ -2835,6 +3409,12 @@ const ClientsList = () => {
                                                                     setSelectionAnchor({ r: rowIndex, c: colIndex });
                                                                     setSelectionFocus({ r: rowIndex, c: colIndex });
                                                                 }
+                                                                if (colName === 'job_name' || colName === 'sector_name') {
+                                                                    setActiveDropdownCell({ rowIndex, colName });
+                                                                } else {
+                                                                    cellEditInitialStateRef.current = gridDataRef.current.map(r => ({ ...r, _errors: r._errors ? { ...r._errors } : {} }));
+                                                                    setEditingCell({ rowIndex, colName });
+                                                                }
                                                             }
                                                         }}
                                                         onDoubleClick={() => {
@@ -2842,13 +3422,14 @@ const ClientsList = () => {
                                                                 if (colName === 'job_name' || colName === 'sector_name') {
                                                                     setActiveDropdownCell({ rowIndex, colName });
                                                                 } else {
+                                                                    cellEditInitialStateRef.current = gridDataRef.current.map(r => ({ ...r, _errors: r._errors ? { ...r._errors } : {} }));
                                                                     setEditingCell({ rowIndex, colName });
                                                                 }
                                                             }
                                                         }}
                                                         onKeyDown={(e) => handleCellKeyDown(e, rowIndex, colName)}
                                                         onContextMenu={(e) => handleContextMenu(e, rowIndex, colIndex)}
-                                                        className={`px-3 py-2 border-r border-b border-gray-100 dark:border-white/5 relative outline-none select-none cursor-pointer ${isEditing
+                                                        className={`px-3 py-2 border-r border-b border-gray-100 dark:border-white/5 relative outline-none select-none cursor-pointer overflow-hidden ${COLUMN_WIDTH_CLASSES[colName] || 'w-[160px] min-w-[150px]'} ${isEditing
                                                             ? 'bg-white dark:bg-[#161b22]'
                                                             : isInRange
                                                                 ? 'bg-blue-50/50 dark:bg-blue-900/20'
@@ -2889,25 +3470,27 @@ const ClientsList = () => {
 
                                                         {/* In-Cell Text Editing Input */}
                                                         {isEditing ? (
-                                                            <input
-                                                                type="text"
-                                                                autoFocus
-                                                                value={rawValue}
-                                                                onChange={(e) => handleCellChange(rowIndex, colName, e.target.value)}
-                                                                onBlur={handleCellBlur}
-                                                                onKeyDown={(e) => handleCellKeyDown(e, rowIndex, colName)}
-                                                                onPaste={(e) => {
-                                                                    const text = e.clipboardData?.getData('text/plain');
-                                                                    if (text && (text.includes('\t') || text.includes('\n') || text.includes('\r'))) {
-                                                                        e.preventDefault();
-                                                                        setEditingCell(null);
-                                                                        setSelectionAnchor({ r: rowIndex, c: colIndex });
-                                                                        setSelectionFocus({ r: rowIndex, c: colIndex });
-                                                                        executePasteRef.current(text, rowIndex, colIndex);
-                                                                    }
-                                                                }}
-                                                                className={`w-full bg-transparent border-0 outline-none focus:outline-none focus:ring-0 p-0 text-sm ${colName === 'name' ? 'font-bold' : 'font-semibold'} text-gray-900 dark:text-white relative z-10`}
-                                                            />
+                                                            <div className="w-full flex items-center min-w-0 overflow-hidden">
+                                                                <input
+                                                                    type="text"
+                                                                    autoFocus
+                                                                    value={rawValue}
+                                                                    onChange={(e) => handleCellChange(rowIndex, colName, e.target.value)}
+                                                                    onBlur={handleCellBlur}
+                                                                    onKeyDown={(e) => handleCellKeyDown(e, rowIndex, colName)}
+                                                                    onPaste={(e) => {
+                                                                        const text = e.clipboardData?.getData('text/plain');
+                                                                        if (text && (text.includes('\t') || text.includes('\n') || text.includes('\r'))) {
+                                                                            e.preventDefault();
+                                                                            setEditingCell(null);
+                                                                            setSelectionAnchor({ r: rowIndex, c: colIndex });
+                                                                            setSelectionFocus({ r: rowIndex, c: colIndex });
+                                                                            executePasteRef.current(text, rowIndex, colIndex);
+                                                                        }
+                                                                    }}
+                                                                    className={`w-full min-w-0 max-w-full bg-transparent border-0 outline-none focus:outline-none focus:ring-0 p-0 text-sm ${colName === 'name' ? 'font-bold' : 'font-semibold'} text-gray-900 dark:text-white relative z-10`}
+                                                                />
+                                                            </div>
                                                         ) : colName === 'job_name' ? (
                                                             /* Nature of Job — portal trigger */
                                                             <div className="group/cell flex items-center justify-between w-full">
@@ -3321,6 +3904,313 @@ const ClientsList = () => {
                 </div>
             )}
         </div>
+
+            {/* Smart Excel Import & Paste Right Sidebar Drawer */}
+            <AnimatePresence>
+                {isExcelModalOpen && (
+                    <div className="fixed inset-0 z-[8500] overflow-hidden">
+                        {/* Backdrop */}
+                        <motion.div
+                            initial={{ opacity: 0 }}
+                            animate={{ opacity: 1 }}
+                            exit={{ opacity: 0 }}
+                            onClick={() => setIsExcelModalOpen(false)}
+                            className="absolute inset-0 bg-black/40 backdrop-blur-xs transition-opacity"
+                        />
+
+                        {/* Slide-Over Right Drawer */}
+                        <div className="fixed inset-y-0 right-0 max-w-full flex pl-10">
+                            <motion.div
+                                initial={{ x: '100%' }}
+                                animate={{ x: 0 }}
+                                exit={{ x: '100%' }}
+                                transition={{ type: 'spring', damping: 28, stiffness: 300 }}
+                                className="w-screen max-w-2xl bg-white dark:bg-[#161b22] border-l border-gray-200 dark:border-white/10 shadow-2xl flex flex-col justify-between overflow-hidden"
+                            >
+                                {/* Drawer Header */}
+                                <div className="p-6 border-b border-gray-100 dark:border-white/5 flex items-center justify-between shrink-0 bg-gray-50/50 dark:bg-white/[0.02]">
+                                    <div className="flex items-center gap-3">
+                                        <div className="p-2.5 bg-blue-50 dark:bg-blue-900/20 text-blue-600 dark:text-blue-400 rounded-xl border border-blue-100 dark:border-blue-500/20">
+                                            <FileSpreadsheet size={22} />
+                                        </div>
+                                        <div>
+                                            <h2 className="text-base font-bold text-gray-900 dark:text-white">Excel Import & Smart Paste</h2>
+                                            <p className="text-xs text-gray-500 dark:text-gray-400">Import client files or paste cells directly with real-time preview</p>
+                                        </div>
+                                    </div>
+                                    <button
+                                        type="button"
+                                        onClick={() => setIsExcelModalOpen(false)}
+                                        className="p-2 hover:bg-gray-100 dark:hover:bg-white/10 rounded-full text-gray-400 hover:text-gray-700 dark:hover:text-white transition cursor-pointer"
+                                    >
+                                        <X size={18} />
+                                    </button>
+                                </div>
+
+                                {/* Drawer Tab Navigation & Download Template Bar */}
+                                <div className="px-6 pt-4 pb-3 border-b border-gray-100 dark:border-white/5 flex items-center justify-between gap-4 shrink-0 bg-white dark:bg-[#161b22]">
+                                    <div className="flex p-1 bg-gray-100 dark:bg-white/5 rounded-xl border border-gray-200 dark:border-white/10 text-xs font-semibold">
+                                        <button
+                                            type="button"
+                                            onClick={() => setExcelModalTab('upload')}
+                                            className={`px-3.5 py-1.5 rounded-lg flex items-center gap-2 transition cursor-pointer ${excelModalTab === 'upload'
+                                                ? 'bg-white dark:bg-white/10 text-blue-600 dark:text-blue-400 shadow-xs font-bold'
+                                                : 'text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white'
+                                                }`}
+                                        >
+                                            <UploadCloud size={14} />
+                                            <span>Upload Spreadsheet</span>
+                                        </button>
+                                        <button
+                                            type="button"
+                                            onClick={() => setExcelModalTab('paste')}
+                                            className={`px-3.5 py-1.5 rounded-lg flex items-center gap-2 transition cursor-pointer ${excelModalTab === 'paste'
+                                                ? 'bg-white dark:bg-white/10 text-blue-600 dark:text-blue-400 shadow-xs font-bold'
+                                                : 'text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white'
+                                                }`}
+                                        >
+                                            <ClipboardPaste size={14} />
+                                            <span>Paste from Excel</span>
+                                        </button>
+                                    </div>
+
+                                    <button
+                                        type="button"
+                                        onClick={downloadExcelTemplateFile}
+                                        className="text-xs font-bold text-blue-600 dark:text-blue-400 hover:underline flex items-center gap-1.5 cursor-pointer py-1"
+                                        title="Download blank client spreadsheet template"
+                                    >
+                                        <Download size={13} />
+                                        <span>Download Template (.xlsx)</span>
+                                    </button>
+                                </div>
+
+                                {/* Drawer Body */}
+                                <div className="flex-1 overflow-y-auto p-6 space-y-5 table-scrollbar">
+                                    {excelModalTab === 'upload' && (
+                                        <div className="space-y-4">
+                                            {/* Drag & Drop Upload Zone */}
+                                            <div
+                                                onClick={() => fileInputRef.current?.click()}
+                                                className="border-2 border-dashed border-gray-300 dark:border-white/20 hover:border-blue-500 dark:hover:border-blue-400 bg-gray-50/50 dark:bg-white/[0.01] hover:bg-blue-50/20 dark:hover:bg-blue-950/10 rounded-2xl p-6 text-center cursor-pointer transition flex flex-col items-center gap-2 group"
+                                            >
+                                                <div className="p-3 bg-blue-50 dark:bg-white/5 text-blue-600 dark:text-blue-400 rounded-xl group-hover:scale-105 transition">
+                                                    <UploadCloud size={24} />
+                                                </div>
+                                                <div>
+                                                    <p className="text-xs font-bold text-gray-800 dark:text-gray-200">
+                                                        Click to browse or drop your spreadsheet here
+                                                    </p>
+                                                    <p className="text-[11px] text-gray-400 mt-0.5">
+                                                        Supports Microsoft Excel (.xlsx, .xls) and CSV (.csv) files
+                                                    </p>
+                                                </div>
+                                                {excelSourceFileName && (
+                                                    <div className="mt-1 px-3 py-1 bg-blue-100/70 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300 rounded-lg text-xs font-semibold flex items-center gap-1.5">
+                                                        <FileSpreadsheet size={13} />
+                                                        <span>{excelSourceFileName}</span>
+                                                    </div>
+                                                )}
+                                            </div>
+                                        </div>
+                                    )}
+
+                                    {excelModalTab === 'paste' && (
+                                        <div className="space-y-3">
+                                            <div className="flex items-center justify-between">
+                                                <label className="text-xs font-bold text-gray-700 dark:text-gray-300 flex items-center gap-1.5">
+                                                    <ClipboardPaste size={14} className="text-blue-600 dark:text-blue-400" />
+                                                    <span>Paste copied cells from Excel / Google Sheets</span>
+                                                </label>
+                                                <button
+                                                    type="button"
+                                                    onClick={async () => {
+                                                        try {
+                                                            const text = await navigator.clipboard.readText();
+                                                            if (text && text.trim()) {
+                                                                setExcelPasteText(text);
+                                                                const parsed = parseRawRowsToClients(parseExcelClipboardText(text));
+                                                                setExcelParsedClients(parsed);
+                                                                setExcelSourceFileName('Pasted from clipboard');
+                                                            } else {
+                                                                showToast('info', 'Clipboard Empty', 'No content found on your clipboard.');
+                                                            }
+                                                        } catch (e) {
+                                                            showToast('error', 'Clipboard Access', 'Could not read clipboard. Please paste manually into the box below.');
+                                                        }
+                                                    }}
+                                                    className="text-[11px] font-bold text-blue-600 dark:text-blue-400 hover:underline flex items-center gap-1 cursor-pointer"
+                                                >
+                                                    <ClipboardPaste size={12} />
+                                                    <span>Paste from Clipboard</span>
+                                                </button>
+                                            </div>
+                                            <textarea
+                                                rows={5}
+                                                value={excelPasteText}
+                                                onChange={(e) => {
+                                                    const text = e.target.value;
+                                                    setExcelPasteText(text);
+                                                    const parsed = parseRawRowsToClients(parseExcelClipboardText(text));
+                                                    setExcelParsedClients(parsed);
+                                                    setExcelSourceFileName(text.trim() ? 'Pasted text' : '');
+                                                }}
+                                                placeholder="Paste your copied rows here (Ctrl+V)... Header columns like 'Company Name', 'Nature of Job', 'Sector', 'Contact Person', 'Contact No', 'Email ID' will be automatically mapped."
+                                                className="w-full p-3 bg-gray-50 dark:bg-white/[0.02] border border-gray-200 dark:border-white/10 rounded-xl text-xs font-mono text-gray-900 dark:text-white focus:outline-none focus:ring-1 focus:ring-blue-500/50 resize-y transition"
+                                            />
+                                        </div>
+                                    )}
+
+                                    {/* Live Data Preview Section */}
+                                    <div className="space-y-3 pt-2">
+                                        <div className="flex items-center justify-between">
+                                            <div className="flex items-center gap-2">
+                                                <h3 className="text-xs font-bold uppercase tracking-wider text-gray-500 dark:text-gray-400">
+                                                    Live Parsed Data Preview
+                                                </h3>
+                                                <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider border ${excelParsedClients.length > 0
+                                                    ? 'bg-emerald-50 text-emerald-700 dark:bg-emerald-950/30 dark:text-emerald-400 border-emerald-200 dark:border-emerald-500/20'
+                                                    : 'bg-gray-100 text-gray-500 dark:bg-white/5 dark:text-gray-400 border-gray-200 dark:border-white/10'
+                                                    }`}>
+                                                    {excelParsedClients.length} {excelParsedClients.length === 1 ? 'Row' : 'Rows'}
+                                                </span>
+                                            </div>
+
+                                            {excelParsedClients.length > 0 && (
+                                                <button
+                                                    type="button"
+                                                    onClick={() => {
+                                                        setExcelParsedClients([]);
+                                                        setExcelPasteText('');
+                                                        setExcelSourceFileName('');
+                                                    }}
+                                                    className="text-[11px] text-red-500 hover:text-red-600 font-bold hover:underline cursor-pointer"
+                                                >
+                                                    Clear
+                                                </button>
+                                            )}
+                                        </div>
+
+                                        {excelParsedClients.length === 0 ? (
+                                            <div className="p-8 border border-dashed border-gray-200 dark:border-white/10 rounded-xl text-center bg-gray-50/50 dark:bg-white/[0.01]">
+                                                <FileText size={28} className="mx-auto text-gray-300 dark:text-gray-600 mb-2" />
+                                                <p className="text-xs font-semibold text-gray-600 dark:text-gray-400">No data parsed yet</p>
+                                                <p className="text-[11px] text-gray-400 mt-0.5">Upload a spreadsheet or paste rows to see a live preview of all mapped columns.</p>
+                                            </div>
+                                        ) : (
+                                            <div className="space-y-2 max-h-[340px] overflow-y-auto pr-1 table-scrollbar">
+                                                {excelParsedClients.map((item, idx) => (
+                                                    <div
+                                                        key={item.id || idx}
+                                                        className="p-3.5 rounded-xl border border-gray-200 dark:border-white/10 bg-white dark:bg-[#0d1117] shadow-xs space-y-2 text-xs"
+                                                    >
+                                                        <div className="flex items-center justify-between gap-2">
+                                                            <div className="flex items-center gap-2 min-w-0">
+                                                                <span className="text-[10px] font-mono font-bold text-gray-400 shrink-0">#{idx + 1}</span>
+                                                                <span className="font-bold text-gray-900 dark:text-white truncate">
+                                                                    {item.name || <span className="text-red-500 italic">No Company Name</span>}
+                                                                </span>
+                                                            </div>
+                                                            {item.sector_name && (
+                                                                <span className="px-2 py-0.5 rounded-full text-[10px] font-bold border shrink-0 bg-blue-50 text-blue-700 border-blue-200 dark:bg-blue-950/30 dark:text-blue-400 dark:border-blue-500/20">
+                                                                    {item.sector_name}
+                                                                </span>
+                                                            )}
+                                                        </div>
+
+                                                        <div className="grid grid-cols-2 gap-2 text-[11px] text-gray-600 dark:text-gray-400 border-t border-gray-100 dark:border-white/5 pt-2">
+                                                            <div>
+                                                                <span className="text-gray-400">Job: </span>
+                                                                <span className="font-semibold text-blue-600 dark:text-blue-400">{item.job_name || '—'}</span>
+                                                            </div>
+                                                            <div>
+                                                                <span className="text-gray-400">Contact: </span>
+                                                                <span className="font-medium text-gray-700 dark:text-gray-300">{item.contact_person || '—'}</span>
+                                                                {item.designation && <span className="text-gray-400"> ({item.designation})</span>}
+                                                            </div>
+                                                            <div>
+                                                                <span className="text-gray-400">Phone: </span>
+                                                                <span className="font-mono text-gray-700 dark:text-gray-300">{item.telephone_no || '—'}</span>
+                                                            </div>
+                                                            <div>
+                                                                <span className="text-gray-400">Email: </span>
+                                                                <span className="font-mono text-gray-700 dark:text-gray-300 truncate">{item.email || '—'}</span>
+                                                            </div>
+                                                        </div>
+
+                                                        {(item.address || item.location || item.remarks) && (
+                                                            <div className="text-[11px] text-gray-500 dark:text-gray-400 bg-gray-50 dark:bg-white/[0.02] p-2 rounded-lg border border-gray-100 dark:border-white/5 space-y-0.5">
+                                                                {(item.address || item.location) && (
+                                                                    <p className="truncate">
+                                                                        <span className="text-gray-400">Address / Location: </span>
+                                                                        {[item.address, item.location].filter(Boolean).join(', ')}
+                                                                    </p>
+                                                                )}
+                                                                {item.remarks && (
+                                                                    <p className="truncate">
+                                                                        <span className="text-gray-400">Remarks: </span>
+                                                                        {item.remarks}
+                                                                    </p>
+                                                                )}
+                                                            </div>
+                                                        )}
+                                                    </div>
+                                                ))}
+                                            </div>
+                                        )}
+                                    </div>
+                                </div>
+
+                                {/* Drawer Footer */}
+                                <div className="p-4 border-t border-gray-200 dark:border-white/10 bg-gray-50/70 dark:bg-[#161b22] flex items-center justify-between gap-4 shrink-0">
+                                    <div className="flex items-center gap-2">
+                                        <label className="text-xs font-semibold text-gray-600 dark:text-gray-400">Import Mode:</label>
+                                        <select
+                                            value={excelImportMode}
+                                            onChange={(e) => setExcelImportMode(e.target.value)}
+                                            className="px-2.5 py-1 bg-white dark:bg-white/5 border border-gray-200 dark:border-white/10 rounded-lg text-xs font-semibold text-gray-800 dark:text-gray-200 focus:outline-none"
+                                        >
+                                            <option value="append">Append to list</option>
+                                            <option value="replace">Replace all existing</option>
+                                        </select>
+                                    </div>
+
+                                    <div className="flex items-center gap-2">
+                                        <button
+                                            type="button"
+                                            onClick={() => setIsExcelModalOpen(false)}
+                                            className="px-4 py-2 bg-gray-100 dark:bg-white/5 hover:bg-gray-200 dark:hover:bg-white/10 text-gray-700 dark:text-gray-300 rounded-xl text-xs font-bold transition cursor-pointer"
+                                        >
+                                            Cancel
+                                        </button>
+                                        <button
+                                            type="button"
+                                            onClick={handleCommitExcelImport}
+                                            disabled={excelParsedClients.length === 0}
+                                            className={`px-5 py-2 rounded-xl text-xs font-bold transition flex items-center gap-1.5 shadow-md ${excelParsedClients.length > 0
+                                                ? 'bg-blue-600 hover:bg-blue-700 text-white shadow-blue-500/20 active:scale-95 cursor-pointer'
+                                                : 'bg-gray-200 dark:bg-white/10 text-gray-400 cursor-not-allowed'
+                                                }`}
+                                        >
+                                            <CheckCircle size={14} />
+                                            <span>Add to Clients ({excelParsedClients.length})</span>
+                                        </button>
+                                    </div>
+                                </div>
+                            </motion.div>
+                        </div>
+                    </div>
+                )}
+            </AnimatePresence>
+
+            {/* Hidden File Input for Excel / CSV */}
+            <input
+                type="file"
+                ref={fileInputRef}
+                onChange={handleFileUpload}
+                accept=".xlsx,.xls,.csv"
+                className="hidden"
+            />
 
             {/* ── Job Nature Portal Dropdown ── */}
             {dropdownPortalProps?.colName === 'job_name' && (
