@@ -1,9 +1,12 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { useSearchParams } from 'react-router-dom';
+import * as XLSX from 'xlsx';
+import Papa from 'papaparse';
 import {
     Search, Plus, Trash2, Info, RefreshCw, Package, Layers, Users, X, Upload,
     Download, Save, RotateCcw, AlertCircle, ChevronDown, ChevronRight, Copy, Eye, CheckSquare,
-    Square, ArrowUpDown, ArrowUp, ArrowDown, Filter, Sparkles, Check, DollarSign, ArrowLeftRight, Scale, Edit3
+    Square, ArrowUpDown, ArrowUp, ArrowDown, Filter, Sparkles, Check, DollarSign, ArrowLeftRight, Scale, Edit3,
+    UploadCloud, ClipboardPaste, FileSpreadsheet, FileText, CheckCircle
 } from 'lucide-react';
 import { resourceApi } from '../../services/resourceApi';
 import ResourceDetail from './ResourceDetail';
@@ -19,7 +22,53 @@ import DuplicateResolverModal from '../../components/DuplicateResolverModal';
 import Toast from '../../components/Toast';
 import ResourceFilterDropdown from './ResourceFilterDropdown';
 import CustomDatePicker from '../../components/CustomDatePicker';
-import LogoLoader from '../../components/LogoLoader';
+
+const COLUMN_ALIASES = {
+    code: ['code', 'item code', 'resource code', 'material code', 'sku', 'product code', 'item no', 'item_code'],
+    name: ['resource name', 'name', 'item name', 'material name', 'item description', 'description / name', 'product name', 'title'],
+    type: ['type', 'resource type', 'category', 'item type', 'classification'],
+    base_unit_code: ['base unit', 'unit', 'uom', 'unit of measure', 'unit code', 'measure', 'base unit code'],
+    rate: ['rate', 'standard rate', 'unit rate', 'price', 'unit price', 'cost', 'standard rate (₹)', 'rate (₹)', 'rate (rs)'],
+    description: ['description', 'specification', 'spec', 'details', 'item details', 'desc'],
+    remarks: ['remarks', 'notes', 'comments', 'remark', 'note']
+};
+
+const matchColumnHeader = (headerText) => {
+    if (!headerText || typeof headerText !== 'string') return null;
+    const clean = headerText.trim().toLowerCase().replace(/[*_#₹()]/g, '').replace(/\s+/g, ' ');
+    for (const [colKey, aliases] of Object.entries(COLUMN_ALIASES)) {
+        if (aliases.some(a => clean === a || clean.startsWith(a) || a.startsWith(clean))) {
+            return colKey;
+        }
+    }
+    return null;
+};
+
+const downloadExcelTemplateFile = () => {
+    const headers = [
+        'Resource Code',
+        'Resource Name',
+        'Type (Material/Item/Labour)',
+        'Base Unit (kg/nos/cum/sqm/ltr/etc)',
+        'Rate (₹)',
+        'Description',
+        'Remarks'
+    ];
+    const data = [headers];
+    const ws = XLSX.utils.aoa_to_sheet(data);
+    ws['!cols'] = [
+        { wch: 18 },
+        { wch: 32 },
+        { wch: 25 },
+        { wch: 28 },
+        { wch: 18 },
+        { wch: 35 },
+        { wch: 30 }
+    ];
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, 'Resources');
+    XLSX.writeFile(wb, 'Resources_Template.xlsx');
+};
 
 const TYPE_CONFIG = {
     material: { label: 'Material', icon: Package, color: 'text-amber-600 dark:text-amber-400', bg: 'bg-amber-100 dark:bg-amber-900/30' },
@@ -176,6 +225,18 @@ const formatBackendError = (err) => {
     return rawMsg;
 };
 
+const COLUMN_WIDTH_CLASSES = {
+    code: 'w-32 min-w-32 max-w-32',
+    name: 'w-60 min-w-56',
+    type: 'w-32 min-w-32 max-w-32',
+    base_unit_code: 'w-36 min-w-36 max-w-36',
+    rate: 'w-44 min-w-44 max-w-44',
+    compositions: 'w-64 min-w-64 max-w-64',
+    conversions: 'w-56 min-w-56 max-w-56',
+    description: 'w-56 min-w-48',
+    remarks: 'w-56 min-w-48'
+};
+
 const CustomCheckbox = ({ checked, onChange, title }) => (
     <div
         onClick={onChange}
@@ -302,16 +363,11 @@ const ResourceList = () => {
     // Ref to container for click outside detection
     const tableContainerRef = useRef(null);
 
-    // Helper to get initial cached state or draft cache from sessionStorage
+    // Helper to get initial cached state from sessionStorage
     const getInitialDraftState = () => {
         try {
-            const draftGridStr = sessionStorage.getItem('mano_resources_draft_grid');
-            const draftDeletedStr = sessionStorage.getItem('mano_resources_draft_deleted');
-            if (draftGridStr) {
-                const draftGrid = JSON.parse(draftGridStr);
-                const draftDeleted = draftDeletedStr ? new Set(JSON.parse(draftDeletedStr)) : new Set();
-                return { draftGrid, draftDeleted };
-            }
+            sessionStorage.removeItem('mano_resources_draft_grid');
+            sessionStorage.removeItem('mano_resources_draft_deleted');
         } catch (e) { }
 
         let cached = [];
@@ -321,7 +377,7 @@ const ResourceList = () => {
         } catch (e) { }
 
         return {
-            draftGrid: cached.map(r => ({ ...r, _status: 'saved', _errors: {} })),
+            draftGrid: Array.isArray(cached) ? cached.map(r => ({ ...r, _status: 'saved', _errors: {} })) : [],
             draftDeleted: new Set()
         };
     };
@@ -343,45 +399,120 @@ const ResourceList = () => {
     const deletedIdsRef = useRef(deletedIds);
     deletedIdsRef.current = deletedIds;
 
-    // Auto-sync local unsaved changes to sessionStorage
-    useEffect(() => {
-        try {
-            const hasDraft = gridData.some(r => r._status === 'modified' || r._status === 'new') || deletedIds.size > 0;
-            if (hasDraft) {
-                sessionStorage.setItem('mano_resources_draft_grid', JSON.stringify(gridData));
-                sessionStorage.setItem('mano_resources_draft_deleted', JSON.stringify(Array.from(deletedIds)));
-            } else {
-                sessionStorage.removeItem('mano_resources_draft_grid');
-                sessionStorage.removeItem('mano_resources_draft_deleted');
+    // Original database data map for dirty comparison
+    const originalResourcesMap = useMemo(() => {
+        const map = new Map();
+        resources.forEach(r => {
+            if (r && r.id) map.set(r.id, r);
+        });
+        return map;
+    }, [resources]);
+
+    // Check if a resource row differs from its original database record
+    const isResourceRowDirty = (row, originalResource) => {
+        if (!row) return false;
+        if (!originalResource) {
+            // New row: dirty only if explicitly new and user has entered required name & base_unit_code
+            return row._status === 'new' && Boolean(row.name && row.name.trim() && row.base_unit_code);
+        }
+        if (row._status === 'new') {
+            return Boolean(row.name && row.name.trim() && row.base_unit_code);
+        }
+
+        // Basic string fields
+        if (String(row.code ?? '').trim() !== String(originalResource.code ?? '').trim()) return true;
+        if (String(row.name ?? '').trim() !== String(originalResource.name ?? '').trim()) return true;
+        if ((row.type || 'material') !== (originalResource.type || 'material')) return true;
+        if (String(row.base_unit_code ?? '').trim() !== String(originalResource.base_unit_code ?? '').trim()) return true;
+        if (String(row.description ?? '').trim() !== String(originalResource.description ?? '').trim()) return true;
+        if (String(row.remarks ?? '').trim() !== String(originalResource.remarks ?? '').trim()) return true;
+
+        // Rate comparison
+        const curRate = parseNumericRate(row.rate);
+        const origRate = parseNumericRate(originalResource.rate);
+        if (curRate !== origRate) return true;
+
+        // Compositions comparison
+        const curComp = Array.isArray(row.compositions) ? row.compositions : [];
+        const origComp = Array.isArray(originalResource.compositions) ? originalResource.compositions : [];
+        if (curComp.length !== origComp.length) return true;
+        for (let i = 0; i < curComp.length; i++) {
+            const c = curComp[i];
+            const o = origComp[i];
+            if (
+                String(c.component_resource_id) !== String(o.component_resource_id) ||
+                Number(c.quantity) !== Number(o.quantity) ||
+                String(c.unit_code || '') !== String(o.unit_code || '')
+            ) return true;
+        }
+
+        // Conversions comparison
+        const curConv = Array.isArray(row.conversions) ? row.conversions : [];
+        const origConv = Array.isArray(originalResource.conversions) ? originalResource.conversions : [];
+        if (curConv.length !== origConv.length) return true;
+        for (let i = 0; i < curConv.length; i++) {
+            const c = curConv[i];
+            const o = origConv[i];
+            if (
+                String(c.name || '').trim() !== String(o.name || '').trim() ||
+                Number(c.quantity) !== Number(o.quantity) ||
+                String(c.unit_code || '') !== String(o.unit_code || '')
+            ) return true;
+        }
+
+        return false;
+    };
+
+    const { hasUnsavedChanges, unsavedCount } = useMemo(() => {
+        if (deletedIds.size === 0 && gridData.length === resources.length && gridData.every(r => r._status === 'saved' && !r._compositionModified && !r._rateModified)) {
+            return { hasUnsavedChanges: false, unsavedCount: 0 };
+        }
+        let dirtyCount = 0;
+        for (let i = 0; i < gridData.length; i++) {
+            const row = gridData[i];
+            if (row._status === 'new') {
+                if (row.name && row.name.trim()) dirtyCount++;
+            } else if (row._status === 'modified' || row._status === 'error' || row._compositionModified || row._rateModified) {
+                const original = originalResourcesMap.get(row.id);
+                if (isResourceRowDirty(row, original)) dirtyCount++;
             }
-        } catch (e) { }
-    }, [gridData, deletedIds]);
+        }
+        const total = dirtyCount + deletedIds.size;
+        return { hasUnsavedChanges: total > 0, unsavedCount: total };
+    }, [gridData, originalResourcesMap, deletedIds, resources.length]);
 
-    const hasUnsavedChanges = useMemo(() => {
-        const hasModified = gridData.some(r => (r._status === 'modified' || r._status === 'new') && r.name && r.name.trim() && r.base_unit_code);
-        return hasModified || deletedIds.size > 0;
-    }, [gridData, deletedIds]);
+    const hasPendingCompositionChanges = useMemo(() => gridData.some(row => {
+        if (row._compositionModified) return true;
+        const original = originalResourcesMap.get(row.id);
+        if (!original) return row._status === 'new' && (row.compositions || []).length > 0;
+        const curComp = Array.isArray(row.compositions) ? row.compositions : [];
+        const origComp = Array.isArray(original.compositions) ? original.compositions : [];
+        if (curComp.length !== origComp.length) return true;
+        return curComp.some((c, i) => {
+            const o = origComp[i];
+            return String(c.component_resource_id) !== String(o.component_resource_id) ||
+                Number(c.quantity) !== Number(o.quantity) ||
+                String(c.unit_code || '') !== String(o.unit_code || '');
+        });
+    }), [gridData, originalResourcesMap]);
 
-    const unsavedCount = useMemo(() => {
-        const count = gridData.filter(r => (r._status === 'modified' || r._status === 'new') && r.name && r.name.trim() && r.base_unit_code).length;
-        return count + deletedIds.size;
-    }, [gridData, deletedIds]);
-
-    const hasPendingCompositionChanges = useMemo(() => gridData.some(row => (
-        row._compositionModified
-    )), [gridData]);
-
-    const hasPendingRateChanges = useMemo(() => gridData.some(row => row._rateModified), [gridData]);
+    const hasPendingRateChanges = useMemo(() => gridData.some(row => {
+        if (row._rateModified) return true;
+        const original = originalResourcesMap.get(row.id);
+        if (!original) return row._status === 'new' && row.rate !== null && row.rate !== undefined && row.rate !== '';
+        return parseNumericRate(row.rate) !== parseNumericRate(original.rate);
+    }), [gridData, originalResourcesMap]);
 
     // Undo / Redo Stacks
     const undoStackRef = useRef([]);
     const redoStackRef = useRef([]);
+    const cellEditInitialStateRef = useRef(null);
 
     const pushUndoState = (gridSnapshot) => {
         if (!gridSnapshot) return;
         const snapshotCopy = gridSnapshot.map(r => ({ ...r, _errors: r._errors ? { ...r._errors } : {} }));
         undoStackRef.current.push(snapshotCopy);
-        if (undoStackRef.current.length > 30) undoStackRef.current.shift();
+        if (undoStackRef.current.length > 50) undoStackRef.current.shift();
         redoStackRef.current = [];
     };
 
@@ -420,18 +551,19 @@ const ResourceList = () => {
         } catch (e) { }
     }, [visibleColumns]);
 
-    // Click outside handler for Column Selector Dropdown
+    // Click outside handler for Column Selector & Excel Dropdowns
     useEffect(() => {
         const handleClickOutside = (e) => {
             if (columnSelectorRef.current && !columnSelectorRef.current.contains(e.target)) {
                 setIsColumnSelectorOpen(false);
             }
+            if (excelDropdownRef.current && !excelDropdownRef.current.contains(e.target)) {
+                setIsExcelDropdownOpen(false);
+            }
         };
-        if (isColumnSelectorOpen) {
-            document.addEventListener('mousedown', handleClickOutside);
-        }
+        document.addEventListener('mousedown', handleClickOutside);
         return () => document.removeEventListener('mousedown', handleClickOutside);
-    }, [isColumnSelectorOpen]);
+    }, []);
 
     const activeGridColumns = useMemo(() => {
         return GRID_COLUMNS.filter(colKey => {
@@ -464,6 +596,17 @@ const ResourceList = () => {
     const [activeFilters, setActiveFilters] = useState({ types: [], units: [], statuses: [] });
     const filterDropdownRef = useRef(null);
     const [isDuplicateModalOpen, setIsDuplicateModalOpen] = useState(false);
+
+    // Excel Tools & Right Sidebar Drawer State
+    const [isExcelModalOpen, setIsExcelModalOpen] = useState(false);
+    const [isExcelDropdownOpen, setIsExcelDropdownOpen] = useState(false);
+    const excelDropdownRef = useRef(null);
+    const fileInputRef = useRef(null);
+    const [excelPasteText, setExcelPasteText] = useState('');
+    const [excelParsedResources, setExcelParsedResources] = useState([]);
+    const [excelSourceFileName, setExcelSourceFileName] = useState('');
+    const [excelImportMode, setExcelImportMode] = useState('append'); // 'append' | 'replace'
+    const [excelModalTab, setExcelModalTab] = useState('upload'); // 'upload' | 'paste'
 
     // Bulk selection state
     const [selectedIds, setSelectedIds] = useState(new Set());
@@ -818,12 +961,15 @@ const ResourceList = () => {
     }, [selectionAnchor, selectionFocus]);
 
     // Stats
-    const stats = {
-        total: resources.length,
-        materials: resources.filter(r => r.type === 'material').length,
-        items: resources.filter(r => r.type === 'item').length,
-        labour: resources.filter(r => r.type === 'labour').length,
-    };
+    const stats = useMemo(() => {
+        const activeRows = gridData.filter(r => !deletedIds.has(r.id));
+        return {
+            total: activeRows.length,
+            materials: activeRows.filter(r => (r.type || 'material') === 'material').length,
+            items: activeRows.filter(r => r.type === 'item').length,
+            labour: activeRows.filter(r => r.type === 'labour').length,
+        };
+    }, [gridData, deletedIds]);
 
     const fetchData = async (isManualRefresh = false) => {
         if (resourcesRef.current.length === 0 || isManualRefresh) {
@@ -874,7 +1020,6 @@ const ResourceList = () => {
     useEffect(() => {
         fetchData();
     }, []);
-
     const prepareResourcePayload = (row) => {
         const {
             _status,
@@ -886,7 +1031,21 @@ const ResourceList = () => {
             ...payload
         } = row;
 
-        if (_compositionModified) {
+        const original = originalResourcesMap.get(row.id);
+        const rateChanged = !original || (parseNumericRate(row.rate) !== parseNumericRate(original.rate));
+        const compChanged = !original || (() => {
+            const curComp = Array.isArray(row.compositions) ? row.compositions : [];
+            const origComp = Array.isArray(original.compositions) ? original.compositions : [];
+            if (curComp.length !== origComp.length) return true;
+            return curComp.some((c, i) => {
+                const o = origComp[i];
+                return String(c.component_resource_id) !== String(o.component_resource_id) ||
+                    Number(c.quantity) !== Number(o.quantity) ||
+                    String(c.unit_code || '') !== String(o.unit_code || '');
+            });
+        })();
+
+        if (_compositionModified || compChanged) {
             payload.compositions = (row.compositions || [])
                 .filter(comp => comp.component_resource_id && Number(comp.quantity) > 0 && comp.unit_code)
                 .map(comp => ({
@@ -900,7 +1059,7 @@ const ResourceList = () => {
             delete payload.effective_from;
         }
 
-        if (_rateModified) {
+        if (_rateModified || rateChanged) {
             payload.rate = row.rate;
             payload.rate_unit_code = row.rate_unit_code || row.base_unit_code;
             payload.rate_effective_from = rateEffectiveFrom;
@@ -916,11 +1075,15 @@ const ResourceList = () => {
         return payload;
     };
 
-    // â”€â”€â”€ Manual Batch Save Engine â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+    // ─── Manual Batch Save Engine ──────────────────────────────────────────────
     const saveGridRows = async () => {
         const targetGrid = gridDataRef.current;
-        const newRows = targetGrid.filter(r => r._status === 'new' && r.name && r.name.trim() && r.base_unit_code);
-        const modifiedRows = targetGrid.filter(r => r._status === 'modified' && r.name && r.name.trim() && r.base_unit_code);
+        const dirtyRows = targetGrid.filter(r => {
+            const original = originalResourcesMap.get(r.id);
+            return isResourceRowDirty(r, original);
+        });
+        const newRows = dirtyRows.filter(r => (!originalResourcesMap.has(r.id) || r._status === 'new') && r.name && r.name.trim() && r.base_unit_code);
+        const modifiedRows = dirtyRows.filter(r => originalResourcesMap.has(r.id) && r._status !== 'new' && r.name && r.name.trim() && r.base_unit_code);
         const pendingDeleteIds = Array.from(deletedIds);
 
         if (newRows.length === 0 && modifiedRows.length === 0 && pendingDeleteIds.length === 0) {
@@ -1044,24 +1207,36 @@ const ResourceList = () => {
         }
     };
 
-    // Sorting & Filtering local grid data (Memoized)
+    // Sorting & Filtering local grid data (Memoized, high-performance)
     const filteredGridData = useMemo(() => {
-        if (!searchTerm && !filterType && activeFilters.types.length === 0 && activeFilters.units.length === 0 && activeFilters.statuses.length === 0) {
+        const hasSearch = Boolean(searchTerm && searchTerm.trim());
+        const hasTypes = activeFilters.types.length > 0;
+        const hasUnits = activeFilters.units.length > 0;
+        const hasStatuses = activeFilters.statuses.length > 0;
+
+        if (!hasSearch && !filterType && !hasTypes && !hasUnits && !hasStatuses) {
             return gridData;
         }
-        const lowerSearch = searchTerm.toLowerCase();
+
+        const lowerSearch = hasSearch ? searchTerm.toLowerCase().trim() : '';
+        const typeSet = hasTypes ? new Set(activeFilters.types) : null;
+        const unitSet = hasUnits ? new Set(activeFilters.units) : null;
+        const statusSet = hasStatuses ? new Set(activeFilters.statuses) : null;
+
         return gridData.filter(r => {
-            const matchesType = filterType ? r.type === filterType : true;
-            const matchesSearch = !searchTerm ||
-                (r.name || '').toLowerCase().includes(lowerSearch) ||
-                (r.code && r.code.toLowerCase().includes(lowerSearch)) ||
-                (r.description && r.description.toLowerCase().includes(lowerSearch));
+            if (filterType && r.type !== filterType) return false;
+            if (typeSet && !typeSet.has(r.type)) return false;
+            if (unitSet && !unitSet.has(r.base_unit_code)) return false;
+            if (statusSet && !statusSet.has(r._status || 'saved')) return false;
 
-            const matchesTypeFilter = activeFilters.types.length === 0 || activeFilters.types.includes(r.type);
-            const matchesUnitFilter = activeFilters.units.length === 0 || activeFilters.units.includes(r.base_unit_code);
-            const matchesStatusFilter = activeFilters.statuses.length === 0 || activeFilters.statuses.includes(r._status || 'saved');
-
-            return matchesType && matchesSearch && matchesTypeFilter && matchesUnitFilter && matchesStatusFilter;
+            if (lowerSearch) {
+                const name = r.name ? r.name.toLowerCase() : '';
+                const code = r.code ? r.code.toLowerCase() : '';
+                const desc = r.description ? r.description.toLowerCase() : '';
+                const rem = r.remarks ? r.remarks.toLowerCase() : '';
+                return name.includes(lowerSearch) || code.includes(lowerSearch) || desc.includes(lowerSearch) || rem.includes(lowerSearch);
+            }
+            return true;
         });
     }, [gridData, searchTerm, filterType, activeFilters]);
 
@@ -1475,7 +1650,7 @@ const ResourceList = () => {
             internalClipboardRef.current = tsvData;
             navigator.clipboard?.writeText(tsvData).catch(() => {});
             const numCells = tsvLines.length * (maxCol - minCol + 1);
-            showToast('sparkle', 'Copied to Clipboard', `Copied ${numCells} cell(s) across ${tsvLines.length} row(s)`);
+            showToast('sparkle', '', numCells === 1 ? 'Copied 1 cell to clipboard' : `Copied ${numCells} cells to clipboard`);
         }
         return tsvData;
     };
@@ -1514,7 +1689,7 @@ const ResourceList = () => {
 
         if (numCleared > 0) {
             setGridData(updatedGrid);
-            showToast('sparkle', 'Cut to Clipboard', `Cut values from ${numCleared} cell(s).`);
+            showToast('sparkle', '', numCleared === 1 ? 'Cut 1 cell to clipboard' : `Cut ${numCleared} cells to clipboard`);
         }
     };
 
@@ -1639,15 +1814,249 @@ const ResourceList = () => {
         }
     };
 
+    const parseRawRowsToResources = (rawRows) => {
+        if (!rawRows || rawRows.length === 0) return [];
+        let parsedList = [];
+
+        if (Array.isArray(rawRows[0])) {
+            let headerRowIdx = -1;
+            let colMap = {};
+
+            for (let i = 0; i < Math.min(rawRows.length, 10); i++) {
+                const row = rawRows[i];
+                let matches = 0;
+                const tempMap = {};
+                row.forEach((cell, cIdx) => {
+                    const matched = matchColumnHeader(String(cell || ''));
+                    if (matched) {
+                        tempMap[cIdx] = matched;
+                        matches++;
+                    }
+                });
+                if (matches >= 2 || (row.length === 1 && matches === 1)) {
+                    headerRowIdx = i;
+                    colMap = tempMap;
+                    break;
+                }
+            }
+
+            const dataRows = headerRowIdx !== -1 ? rawRows.slice(headerRowIdx + 1) : rawRows;
+
+            dataRows.forEach((row, rIdx) => {
+                if (!row || !row.some(c => String(c || '').trim() !== '')) return;
+
+                const item = {
+                    id: `temp_${Date.now()}_${Math.random().toString(36).substring(2, 9)}_${rIdx}`,
+                    code: '',
+                    name: '',
+                    type: 'material',
+                    base_unit_code: 'kg',
+                    rate: null,
+                    description: '',
+                    remarks: '',
+                    compositions: [],
+                    conversions: [],
+                    _status: 'new',
+                    _errors: {}
+                };
+
+                row.forEach((cellVal, cIdx) => {
+                    const val = String(cellVal ?? '').trim();
+                    const targetCol = headerRowIdx !== -1 ? colMap[cIdx] : GRID_COLUMNS[cIdx];
+                    if (targetCol) {
+                        if (targetCol === 'type') {
+                            item.type = resolveType(val);
+                        } else if (targetCol === 'base_unit_code') {
+                            item.base_unit_code = resolveUnitCode(val);
+                        } else if (targetCol === 'rate') {
+                            item.rate = parseNumericRate(val);
+                            item.rate_source = 'manual';
+                        } else if (targetCol === 'code' && val) {
+                            item.code = val;
+                        } else if (targetCol === 'name') {
+                            item.name = val;
+                        } else if (targetCol === 'description') {
+                            item.description = val;
+                        } else if (targetCol === 'remarks') {
+                            item.remarks = val;
+                        }
+                    }
+                });
+
+                if (!item.name) {
+                    const firstNonEmpty = row.find(c => String(c || '').trim() !== '');
+                    if (firstNonEmpty) item.name = String(firstNonEmpty).trim();
+                }
+
+                if (!item.code) {
+                    item.code = generateUniqueCode('RES', parsedList);
+                }
+
+                if (item.name) {
+                    parsedList.push(item);
+                }
+            });
+        } else {
+            rawRows.forEach((r, rIdx) => {
+                const item = {
+                    id: `temp_${Date.now()}_${Math.random().toString(36).substring(2, 9)}_${rIdx}`,
+                    code: '',
+                    name: '',
+                    type: 'material',
+                    base_unit_code: 'kg',
+                    rate: null,
+                    description: '',
+                    remarks: '',
+                    compositions: [],
+                    conversions: [],
+                    _status: 'new',
+                    _errors: {}
+                };
+
+                Object.entries(r).forEach(([key, val]) => {
+                    const cleanVal = String(val ?? '').trim();
+                    const targetCol = matchColumnHeader(key) || (GRID_COLUMNS.includes(key) ? key : null);
+                    if (targetCol) {
+                        if (targetCol === 'type') {
+                            item.type = resolveType(cleanVal);
+                        } else if (targetCol === 'base_unit_code') {
+                            item.base_unit_code = resolveUnitCode(cleanVal);
+                        } else if (targetCol === 'rate') {
+                            item.rate = parseNumericRate(cleanVal);
+                            item.rate_source = 'manual';
+                        } else if (targetCol === 'code' && cleanVal) {
+                            item.code = cleanVal;
+                        } else if (targetCol === 'name') {
+                            item.name = cleanVal;
+                        } else if (targetCol === 'description') {
+                            item.description = cleanVal;
+                        } else if (targetCol === 'remarks') {
+                            item.remarks = cleanVal;
+                        }
+                    }
+                });
+
+                if (!item.name) {
+                    const fallbackName = r['Resource Name'] || r['Item Name'] || r['Material Name'] || r['Name'] || r['name'] || '';
+                    if (fallbackName) item.name = String(fallbackName).trim();
+                }
+
+                if (!item.code) {
+                    item.code = generateUniqueCode('RES', parsedList);
+                }
+
+                if (item.name) {
+                    parsedList.push(item);
+                }
+            });
+        }
+
+        return parsedList;
+    };
+
+    const handleFileUpload = (e) => {
+        const file = e.target.files?.[0];
+        if (!file) return;
+
+        setExcelSourceFileName(file.name);
+        const fileName = file.name.toLowerCase();
+
+        if (fileName.endsWith('.xlsx') || fileName.endsWith('.xls')) {
+            const reader = new FileReader();
+            reader.onload = (evt) => {
+                try {
+                    const data = new Uint8Array(evt.target.result);
+                    const workbook = XLSX.read(data, { type: 'array' });
+
+                    let targetSheetName = workbook.SheetNames[0];
+                    for (const name of workbook.SheetNames) {
+                        const sheet = workbook.Sheets[name];
+                        if (sheet && sheet['!ref']) {
+                            targetSheetName = name;
+                            break;
+                        }
+                    }
+
+                    const sheet = workbook.Sheets[targetSheetName];
+                    const rawAoa = XLSX.utils.sheet_to_json(sheet, { header: 1, defval: '' });
+                    const parsed = parseRawRowsToResources(rawAoa);
+                    setExcelParsedResources(parsed);
+                    setExcelModalTab('upload');
+                    setIsExcelModalOpen(true);
+                } catch (err) {
+                    console.error('Failed to parse Excel file:', err);
+                    showToast('error', 'Import Failed', 'Failed to read Excel spreadsheet data. Please check the file.');
+                }
+            };
+            reader.readAsArrayBuffer(file);
+        } else {
+            Papa.parse(file, {
+                skipEmptyLines: true,
+                complete: (results) => {
+                    if (!results.data || results.data.length === 0) {
+                        showToast('error', 'Import Failed', 'Uploaded CSV contains no valid data.');
+                        return;
+                    }
+                    const parsed = parseRawRowsToResources(results.data);
+                    setExcelParsedResources(parsed);
+                    setExcelModalTab('upload');
+                    setIsExcelModalOpen(true);
+                },
+                error: (err) => {
+                    console.error('Failed to parse CSV file:', err);
+                    showToast('error', 'Import Failed', 'Failed to read CSV spreadsheet data.');
+                }
+            });
+        }
+        e.target.value = '';
+    };
+
+    const handleCommitExcelImport = () => {
+        if (!excelParsedResources || excelParsedResources.length === 0) {
+            showToast('info', 'No Rows', 'No valid resource rows to import.');
+            return;
+        }
+
+        pushUndoState(gridDataRef.current);
+
+        if (excelImportMode === 'append') {
+            setGridData(prev => [...excelParsedResources, ...prev]);
+        } else {
+            setGridData(excelParsedResources);
+        }
+
+        setIsExcelModalOpen(false);
+        setExcelParsedResources([]);
+        setExcelPasteText('');
+        showToast('sparkle', 'Resources Imported', `Successfully imported ${excelParsedResources.length} resource row(s). Click "Save Changes" to save to database.`);
+    };
+
     const executePaste = (pastedDataText, forcedStartRow, forcedStartCol) => {
         let textToPaste = pastedDataText || internalClipboardRef.current;
         if (!textToPaste || !textToPaste.trim()) {
-            showToast('info', 'Clipboard Empty', 'No content available to paste.');
+            showToast('info', '', 'Clipboard is empty');
             return;
         }
 
         const parsedRows = parseExcelClipboardText(textToPaste);
         if (parsedRows.length === 0) return;
+
+        // Check if top row is header row
+        if (parsedRows.length > 1 && forcedStartRow === undefined) {
+            let headerMatches = 0;
+            parsedRows[0].forEach(cell => {
+                if (matchColumnHeader(String(cell || ''))) headerMatches++;
+            });
+            if (headerMatches >= 2) {
+                const parsedRes = parseRawRowsToResources(parsedRows);
+                if (parsedRes.length > 0) {
+                    pushUndoState(gridDataRef.current);
+                    setGridData(prev => [...parsedRes, ...prev]);
+                    showToast('sparkle', 'Pasted Resources', `Mapped & added ${parsedRes.length} resource row(s) from Excel.`);
+                    return;
+                }
+            }
+        }
 
         pushUndoState(gridDataRef.current);
 
@@ -1786,16 +2195,16 @@ const ResourceList = () => {
             setSelectionFocus({ r: endRow, c: endCol });
 
             if (newRowsAddedCount > 0) {
-                showToast('sparkle', 'Added New Rows', `Pasted values into ${numCellsUpdated} cell(s) and created ${newRowsAddedCount} new resource row(s).`);
+                showToast('sparkle', '', `Pasted ${numCellsUpdated} cell${numCellsUpdated > 1 ? 's' : ''} (${newRowsAddedCount} new row${newRowsAddedCount > 1 ? 's' : ''})`);
             } else {
-                showToast('sparkle', 'Paste Success', `Pasted content into ${numCellsUpdated} cell(s). Click "Save Changes" to apply.`);
+                showToast('sparkle', '', numCellsUpdated === 1 ? 'Pasted 1 cell successfully' : `Pasted ${numCellsUpdated} cells successfully`);
             }
         }
     };
     executePasteRef.current = executePaste;
 
 
-    // â”€â”€â”€ Native Browser Copy/Paste event handlers (fires when focus is NOT on an input) â”€
+    // ─── Native Browser Copy/Paste event handlers (fires when focus is NOT on an input) ─
     useEffect(() => {
         const handleNativeCopy = (e) => {
             const activeEl = document.activeElement;
@@ -1835,6 +2244,9 @@ const ResourceList = () => {
             });
             const tsvData = tsvLines.join('\n');
             e.clipboardData.setData('text/plain', tsvData);
+            internalClipboardRef.current = tsvData;
+            const numCells = tsvLines.length * (maxCol - minCol + 1);
+            showToast('sparkle', '', numCells === 1 ? 'Copied 1 cell to clipboard' : `Copied ${numCells} cells to clipboard`);
         };
 
         const handleNativePaste = (e) => {
@@ -1946,9 +2358,13 @@ const ResourceList = () => {
         setLastSelectedId(id);
     };
 
-    // â”€â”€â”€ Cell Management with Immediate Auto-Save & Undo Push â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
-    const handleCellChange = (rowIndex, field, value, shouldAutoSave = false) => {
-        pushUndoState(gridDataRef.current);
+    // ─── Cell Management with Immediate Auto-Save & Undo Push ─────────────────
+    const handleCellChange = (rowIndex, field, value, isAtomic = false) => {
+        if (isAtomic) {
+            pushUndoState(gridDataRef.current);
+        } else if (!cellEditInitialStateRef.current) {
+            cellEditInitialStateRef.current = gridDataRef.current.map(r => ({ ...r, _errors: r._errors ? { ...r._errors } : {} }));
+        }
         let updatedGridData = [];
         setGridData(prev => {
             const updated = [...prev];
@@ -1987,10 +2403,14 @@ const ResourceList = () => {
             }
 
             row._errors = errors;
+            const original = originalResourcesMap.get(row.id);
             if (Object.keys(errors).length === 0) {
                 delete row._errors;
-                if (row._status !== 'new') {
-                    row._status = 'modified';
+                if (!original || row._status === 'new') {
+                    row._status = 'new';
+                } else {
+                    const isDirty = isResourceRowDirty(row, original);
+                    row._status = isDirty ? 'modified' : 'saved';
                 }
             } else {
                 row._status = 'error';
@@ -2003,10 +2423,19 @@ const ResourceList = () => {
     };
 
     const handleCellBlur = () => {
+        if (cellEditInitialStateRef.current) {
+            const initial = cellEditInitialStateRef.current;
+            const current = gridDataRef.current;
+            const isChanged = initial.length !== current.length || initial.some((r, i) => r !== current[i]);
+            if (isChanged) {
+                pushUndoState(initial);
+            }
+            cellEditInitialStateRef.current = null;
+        }
         setEditingCell(null);
     };
 
-    // â”€â”€â”€ Helper for Deleting Entire Row Entries when All Cells Selected â”€â”€â”€â”€â”€â”€â”€â”€
+    // ─── Helper for Deleting Entire Row Entries when All Cells Selected ────────
     const deleteSelectedRowEntries = async (rowsToDelete) => {
         pushUndoState(gridDataRef.current);
         const rowIds = new Set(rowsToDelete.map(r => r.id));
@@ -2057,16 +2486,32 @@ const ResourceList = () => {
         const isModifier = e.ctrlKey || e.metaKey;
 
         if (editingCell?.rowIndex === rowIndex && editingCell?.colName === colName) {
+            const inputEl = e.target;
+            const isInput = inputEl?.tagName?.toLowerCase() === 'input' || inputEl?.tagName?.toLowerCase() === 'textarea';
+            const selStart = isInput ? (inputEl.selectionStart ?? 0) : 0;
+            const selEnd = isInput ? (inputEl.selectionEnd ?? 0) : 0;
+            const valLen = isInput ? (inputEl.value?.length ?? 0) : 0;
+
             if (e.key === 'Enter') {
                 e.preventDefault();
                 handleCellBlur();
                 const nextRow = e.shiftKey ? Math.max(0, rowIndex - 1) : Math.min(totalRows - 1, rowIndex + 1);
                 setSelectionAnchor({ r: nextRow, c: colIndex });
                 setSelectionFocus({ r: nextRow, c: colIndex });
-            } else if (e.key === 'Escape') {
+                return;
+            }
+
+            if (e.key === 'Escape') {
                 e.preventDefault();
+                if (cellEditInitialStateRef.current) {
+                    setGridData(cellEditInitialStateRef.current);
+                    cellEditInitialStateRef.current = null;
+                }
                 setEditingCell(null);
-            } else if (e.key === 'Tab') {
+                return;
+            }
+
+            if (e.key === 'Tab') {
                 e.preventDefault();
                 handleCellBlur();
                 let nextCol = e.shiftKey ? colIndex - 1 : colIndex + 1;
@@ -2088,7 +2533,89 @@ const ResourceList = () => {
                 }
                 setSelectionAnchor({ r: nextRow, c: nextCol });
                 setSelectionFocus({ r: nextRow, c: nextCol });
+                return;
             }
+
+            // ArrowUp: Commit edit and move up
+            if (e.key === 'ArrowUp') {
+                e.preventDefault();
+                handleCellBlur();
+                const targetRow = isModifier ? 0 : Math.max(0, rowIndex - 1);
+                setSelectionAnchor({ r: targetRow, c: colIndex });
+                setSelectionFocus({ r: targetRow, c: colIndex });
+                return;
+            }
+
+            // ArrowDown: Commit edit and move down
+            if (e.key === 'ArrowDown') {
+                e.preventDefault();
+                handleCellBlur();
+                const targetRow = isModifier ? Math.max(0, totalRows - 1) : Math.min(totalRows - 1, rowIndex + 1);
+                setSelectionAnchor({ r: targetRow, c: colIndex });
+                setSelectionFocus({ r: targetRow, c: colIndex });
+                return;
+            }
+
+            // ArrowLeft: If cursor is at the start (pos 0) or modifier pressed, navigate left
+            if (e.key === 'ArrowLeft') {
+                if (isModifier || (selStart === 0 && selEnd === 0)) {
+                    e.preventDefault();
+                    handleCellBlur();
+                    const targetCol = isModifier ? 0 : Math.max(0, colIndex - 1);
+                    setSelectionAnchor({ r: rowIndex, c: targetCol });
+                    setSelectionFocus({ r: rowIndex, c: targetCol });
+                    return;
+                }
+            }
+
+            // ArrowRight: If cursor is at the end (pos valLen) or modifier pressed, navigate right
+            if (e.key === 'ArrowRight') {
+                if (isModifier || (selStart === valLen && selEnd === valLen)) {
+                    e.preventDefault();
+                    handleCellBlur();
+                    const targetCol = isModifier ? totalCols - 1 : Math.min(totalCols - 1, colIndex + 1);
+                    setSelectionAnchor({ r: rowIndex, c: targetCol });
+                    setSelectionFocus({ r: rowIndex, c: targetCol });
+                    return;
+                }
+            }
+
+            // PageUp & PageDown while editing
+            if (e.key === 'PageUp') {
+                e.preventDefault();
+                handleCellBlur();
+                const targetRow = Math.max(0, rowIndex - 10);
+                setSelectionAnchor({ r: targetRow, c: colIndex });
+                setSelectionFocus({ r: targetRow, c: colIndex });
+                return;
+            }
+
+            if (e.key === 'PageDown') {
+                e.preventDefault();
+                handleCellBlur();
+                const targetRow = Math.min(Math.max(0, totalRows - 1), rowIndex + 10);
+                setSelectionAnchor({ r: targetRow, c: colIndex });
+                setSelectionFocus({ r: targetRow, c: colIndex });
+                return;
+            }
+
+            // Ctrl+Home / Ctrl+End while editing
+            if (isModifier && e.key === 'Home') {
+                e.preventDefault();
+                handleCellBlur();
+                setSelectionAnchor({ r: 0, c: 0 });
+                setSelectionFocus({ r: 0, c: 0 });
+                return;
+            }
+
+            if (isModifier && e.key === 'End') {
+                e.preventDefault();
+                handleCellBlur();
+                setSelectionAnchor({ r: Math.max(0, totalRows - 1), c: totalCols - 1 });
+                setSelectionFocus({ r: Math.max(0, totalRows - 1), c: totalCols - 1 });
+                return;
+            }
+
             return;
         }
 
@@ -2315,6 +2842,7 @@ const ResourceList = () => {
                 if (colName === 'type' || colName === 'base_unit_code') {
                     setActiveDropdownCell({ rowIndex: curFocus.r, colName });
                 } else {
+                    cellEditInitialStateRef.current = gridDataRef.current.map(r => ({ ...r, _errors: r._errors ? { ...r._errors } : {} }));
                     setEditingCell({ rowIndex: curFocus.r, colName });
                 }
             }
@@ -2324,6 +2852,7 @@ const ResourceList = () => {
         // Direct typing replaces cell content
         if (canWrite && e.key.length === 1 && !isModifier && !e.altKey) {
             if (colName !== 'type' && colName !== 'base_unit_code') {
+                cellEditInitialStateRef.current = gridDataRef.current.map(r => ({ ...r, _errors: r._errors ? { ...r._errors } : {} }));
                 setEditingCell({ rowIndex: curFocus.r, colName });
                 handleCellChange(curFocus.r, colName, e.key);
             }
@@ -2931,6 +3460,66 @@ const ResourceList = () => {
                         <span>Remove Duplicates</span>
                     </button>
 
+                    {/* Minimal Import & Excel Dropdown */}
+                    {canWrite && (
+                        <div className="relative inline-block shrink-0" ref={excelDropdownRef}>
+                            <button
+                                type="button"
+                                onClick={() => setIsExcelDropdownOpen(!isExcelDropdownOpen)}
+                                className="flex items-center gap-1.5 px-3 py-1.5 border border-gray-200 dark:border-white/10 hover:bg-gray-100 dark:hover:bg-white/5 rounded-lg text-xs font-semibold text-gray-700 dark:text-gray-200 transition cursor-pointer whitespace-nowrap"
+                                title="Import spreadsheet, paste from Excel, or download template"
+                            >
+                                <UploadCloud size={13} className="text-blue-600 dark:text-blue-400" />
+                                <span>Import / Excel</span>
+                                <ChevronDown size={12} className={`transition-transform ${isExcelDropdownOpen ? 'rotate-180' : ''}`} />
+                            </button>
+
+                            {isExcelDropdownOpen && (
+                                <div className="absolute right-0 mt-1.5 w-52 bg-white dark:bg-[#161b22] border border-gray-200 dark:border-white/10 rounded-xl shadow-2xl z-[7000] py-1.5 text-xs text-gray-700 dark:text-gray-300 font-semibold overflow-hidden animate-in fade-in zoom-in-95 duration-100 select-none flex flex-col">
+                                    <button
+                                        type="button"
+                                        onClick={() => {
+                                            setIsExcelDropdownOpen(false);
+                                            setExcelModalTab('upload');
+                                            setIsExcelModalOpen(true);
+                                        }}
+                                        className="w-full text-left px-3.5 py-2 hover:bg-blue-50 dark:hover:bg-white/5 text-gray-800 dark:text-gray-200 flex items-center gap-2.5 transition cursor-pointer"
+                                    >
+                                        <UploadCloud size={14} className="text-blue-600 dark:text-blue-400 shrink-0" />
+                                        <span>Import Spreadsheet</span>
+                                    </button>
+
+                                    <button
+                                        type="button"
+                                        onClick={() => {
+                                            setIsExcelDropdownOpen(false);
+                                            setExcelModalTab('paste');
+                                            setIsExcelModalOpen(true);
+                                        }}
+                                        className="w-full text-left px-3.5 py-2 hover:bg-blue-50 dark:hover:bg-white/5 text-gray-800 dark:text-gray-200 flex items-center gap-2.5 transition cursor-pointer"
+                                    >
+                                        <ClipboardPaste size={14} className="text-emerald-600 dark:text-emerald-400 shrink-0" />
+                                        <span>Paste from Excel</span>
+                                    </button>
+
+                                    <div className="border-t border-gray-100 dark:border-white/5 my-1"></div>
+
+                                    <button
+                                        type="button"
+                                        onClick={() => {
+                                            setIsExcelDropdownOpen(false);
+                                            downloadExcelTemplateFile();
+                                        }}
+                                        className="w-full text-left px-3.5 py-2 hover:bg-blue-50 dark:hover:bg-white/5 text-gray-800 dark:text-gray-200 flex items-center gap-2.5 transition cursor-pointer"
+                                    >
+                                        <Download size={14} className="text-gray-500 shrink-0" />
+                                        <span>Download Template</span>
+                                    </button>
+                                </div>
+                            )}
+                        </div>
+                    )}
+
                     {/* Export CSV button */}
                     <button
                         onClick={handleExportCSV}
@@ -3101,11 +3690,11 @@ const ResourceList = () => {
             >
                 {/* Spreadsheet Grid Table */}
                 <div className="flex-1 min-h-0 overflow-auto table-scrollbar">
-                    <table className="w-full min-w-[1900px] text-left whitespace-nowrap text-sm border-collapse bg-white dark:bg-[#0d1117] select-none">
+                    <table className="w-full min-w-[1900px] table-fixed text-left whitespace-nowrap text-sm border-collapse bg-white dark:bg-[#0d1117] select-none">
                         <thead className="bg-[#f9fafb] dark:bg-[#161b22] text-gray-500 dark:text-gray-400 sticky top-0 z-20 border-b border-gray-200 dark:border-white/5 tracking-wider text-[10px] uppercase font-bold select-none shadow-sm">
                             <tr>
                                 {/* Master Checkbox */}
-                                <th className="px-3 py-3 w-10 text-center border-r border-gray-150 dark:border-white/5">
+                                <th className="px-3 py-3 w-10 min-w-10 max-w-10 text-center border-r border-gray-150 dark:border-white/5">
                                     <div className="flex justify-center">
                                         <CustomCheckbox
                                             checked={sortedGridData.length > 0 && selectedIds.size === sortedGridData.length}
@@ -3114,17 +3703,17 @@ const ResourceList = () => {
                                         />
                                     </div>
                                 </th>
-                                <th className="px-3 py-3 w-12 text-center border-r border-gray-150 dark:border-white/5">#</th>
-                                <th className="px-2 py-3 w-16 text-center border-r border-gray-150 dark:border-white/5">Status</th>
+                                <th className="px-3 py-3 w-12 min-w-12 max-w-12 text-center border-r border-gray-150 dark:border-white/5">#</th>
+                                <th className="px-1 py-3 w-[82px] min-w-[82px] max-w-[82px] text-center border-r border-gray-150 dark:border-white/5">Status</th>
 
                                 {/* Sortable Column Headers */}
                                 {activeGridColumns.includes('code') && (
                                     <th
                                         onClick={() => handleSort('code')}
-                                        className="px-3 py-3 w-32 border-r border-gray-150 dark:border-white/5 cursor-pointer hover:bg-gray-100 dark:hover:bg-white/5 transition"
+                                        className="px-3 py-3 w-32 min-w-32 max-w-32 border-r border-gray-150 dark:border-white/5 cursor-pointer hover:bg-gray-100 dark:hover:bg-white/5 transition"
                                     >
                                         <div className="flex items-center justify-between">
-                                            <span>Code</span>
+                                            <span className="truncate">Code</span>
                                             {sortConfig.key === 'code' && (sortConfig.direction === 'asc' ? <ArrowUp size={12} /> : <ArrowDown size={12} />)}
                                         </div>
                                     </th>
@@ -3132,10 +3721,10 @@ const ResourceList = () => {
                                 {activeGridColumns.includes('name') && (
                                     <th
                                         onClick={() => handleSort('name')}
-                                        className="px-3 py-3 w-56 border-r border-gray-150 dark:border-white/5 cursor-pointer hover:bg-gray-100 dark:hover:bg-white/5 transition"
+                                        className="px-3 py-3 w-60 min-w-56 border-r border-gray-150 dark:border-white/5 cursor-pointer hover:bg-gray-100 dark:hover:bg-white/5 transition"
                                     >
                                         <div className="flex items-center justify-between">
-                                            <span>Name <span className="text-red-500">*</span></span>
+                                            <span className="truncate">Name <span className="text-red-500">*</span></span>
                                             {sortConfig.key === 'name' && (sortConfig.direction === 'asc' ? <ArrowUp size={12} /> : <ArrowDown size={12} />)}
                                         </div>
                                     </th>
@@ -3143,10 +3732,10 @@ const ResourceList = () => {
                                 {activeGridColumns.includes('type') && (
                                     <th
                                         onClick={() => handleSort('type')}
-                                        className="px-3 py-3 w-32 border-r border-gray-150 dark:border-white/5 cursor-pointer hover:bg-gray-100 dark:hover:bg-white/5 transition"
+                                        className="px-3 py-3 w-32 min-w-32 max-w-32 border-r border-gray-150 dark:border-white/5 cursor-pointer hover:bg-gray-100 dark:hover:bg-white/5 transition"
                                     >
                                         <div className="flex items-center justify-between">
-                                            <span>Type</span>
+                                            <span className="truncate">Type</span>
                                             {sortConfig.key === 'type' && (sortConfig.direction === 'asc' ? <ArrowUp size={12} /> : <ArrowDown size={12} />)}
                                         </div>
                                     </th>
@@ -3154,10 +3743,10 @@ const ResourceList = () => {
                                 {activeGridColumns.includes('base_unit_code') && (
                                     <th
                                         onClick={() => handleSort('base_unit_code')}
-                                        className="px-3 py-3 w-36 border-r border-gray-150 dark:border-white/5 cursor-pointer hover:bg-gray-100 dark:hover:bg-white/5 transition"
+                                        className="px-3 py-3 w-36 min-w-36 max-w-36 border-r border-gray-150 dark:border-white/5 cursor-pointer hover:bg-gray-100 dark:hover:bg-white/5 transition"
                                     >
                                         <div className="flex items-center justify-between">
-                                            <span>Base Unit <span className="text-red-500">*</span></span>
+                                            <span className="truncate">Base Unit <span className="text-red-500">*</span></span>
                                             {sortConfig.key === 'base_unit_code' && (sortConfig.direction === 'asc' ? <ArrowUp size={12} /> : <ArrowDown size={12} />)}
                                         </div>
                                     </th>
@@ -3165,10 +3754,10 @@ const ResourceList = () => {
                                 {activeGridColumns.includes('rate') && (
                                     <th
                                         onClick={() => handleSort('rate')}
-                                        className="px-3 py-3 w-44 border-r border-gray-150 dark:border-white/5 cursor-pointer hover:bg-gray-100 dark:hover:bg-white/5 transition"
+                                        className="px-3 py-3 w-44 min-w-44 max-w-44 border-r border-gray-150 dark:border-white/5 cursor-pointer hover:bg-gray-100 dark:hover:bg-white/5 transition"
                                     >
                                         <div className="flex items-center justify-between">
-                                            <span className="flex items-center gap-1 text-emerald-600 dark:text-emerald-400">
+                                            <span className="flex items-center gap-1 text-emerald-600 dark:text-emerald-400 truncate">
                                                 <DollarSign size={12} /> Rate (₹)
                                             </span>
                                             {sortConfig.key === 'rate' && (sortConfig.direction === 'asc' ? <ArrowUp size={12} /> : <ArrowDown size={12} />)}
@@ -3176,28 +3765,28 @@ const ResourceList = () => {
                                     </th>
                                 )}
                                 {activeGridColumns.includes('compositions') && (
-                                    <th className="px-3 py-3 w-64 border-r border-gray-150 dark:border-white/5">
-                                        <div className="flex items-center gap-1 text-purple-600 dark:text-purple-400">
+                                    <th className="px-3 py-3 w-64 min-w-64 max-w-64 border-r border-gray-150 dark:border-white/5">
+                                        <div className="flex items-center gap-1 text-purple-600 dark:text-purple-400 truncate">
                                             <Layers size={12} />
                                             <span>Recipe / Components</span>
                                         </div>
                                     </th>
                                 )}
                                 {activeGridColumns.includes('conversions') && (
-                                    <th className="px-3 py-3 w-56 border-r border-gray-150 dark:border-white/5">
-                                        <div className="flex items-center gap-1 text-blue-600 dark:text-blue-400">
+                                    <th className="px-3 py-3 w-56 min-w-56 max-w-56 border-r border-gray-150 dark:border-white/5">
+                                        <div className="flex items-center gap-1 text-blue-600 dark:text-blue-400 truncate">
                                             <ArrowLeftRight size={12} />
                                             <span>Unit Conversions</span>
                                         </div>
                                     </th>
                                 )}
                                 {activeGridColumns.includes('description') && (
-                                    <th className="px-3 py-3 w-48 border-r border-gray-150 dark:border-white/5">Description</th>
+                                    <th className="px-3 py-3 w-56 min-w-48 border-r border-gray-150 dark:border-white/5 truncate">Description</th>
                                 )}
                                 {activeGridColumns.includes('remarks') && (
-                                    <th className="px-3 py-3 w-48 border-r border-gray-150 dark:border-white/5">Remarks</th>
+                                    <th className="px-3 py-3 w-56 min-w-48 border-r border-gray-150 dark:border-white/5 truncate">Remarks</th>
                                 )}
-                                <th className="px-3 py-3 w-28 text-center">Actions</th>
+                                <th className="px-3 py-3 w-28 min-w-28 max-w-28 text-center">Actions</th>
                             </tr>
                         </thead>
 
@@ -3219,16 +3808,53 @@ const ResourceList = () => {
                                             <Package className="text-gray-300 dark:text-white/10" size={44} />
                                             <p className="text-sm font-semibold text-gray-500 dark:text-gray-400">No resources found</p>
                                             <p className="text-xs text-gray-400">
-                                                {searchTerm || filterType ? 'Adjust your filters' : 'Copy rows from Excel and press Ctrl+V to paste instantly'}
+                                                {searchTerm || filterType
+                                                    ? 'Adjust your filters'
+                                                    : 'Import an Excel spreadsheet, paste copied cells from Excel, or click below to start.'}
                                             </p>
+                                            {canWrite && (
+                                                <div className="flex flex-wrap items-center justify-center gap-2 pt-1">
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => handleAddRows(1)}
+                                                        className="px-3.5 py-1.5 bg-blue-600 text-white rounded-lg text-xs font-bold hover:bg-blue-700 transition cursor-pointer shadow-xs"
+                                                    >
+                                                        + Add First Resource
+                                                    </button>
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => {
+                                                            setExcelModalTab('upload');
+                                                            setIsExcelModalOpen(true);
+                                                        }}
+                                                        className="px-3.5 py-1.5 bg-gray-100 dark:bg-white/5 text-gray-700 dark:text-gray-300 border border-gray-200 dark:border-white/10 hover:bg-gray-200 dark:hover:bg-white/10 rounded-lg text-xs font-bold transition cursor-pointer flex items-center gap-1.5"
+                                                    >
+                                                        <UploadCloud size={13} />
+                                                        <span>Import Spreadsheet</span>
+                                                    </button>
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => {
+                                                            setExcelModalTab('paste');
+                                                            setIsExcelModalOpen(true);
+                                                        }}
+                                                        className="px-3.5 py-1.5 bg-gray-100 dark:bg-white/5 text-gray-700 dark:text-gray-300 border border-gray-200 dark:border-white/10 hover:bg-gray-200 dark:hover:bg-white/10 rounded-lg text-xs font-bold transition cursor-pointer flex items-center gap-1.5"
+                                                    >
+                                                        <ClipboardPaste size={13} />
+                                                        <span>Paste from Excel</span>
+                                                    </button>
+                                                </div>
+                                            )}
                                         </div>
                                     </td>
                                 </tr>
                             ) : (
                                 paginatedGridData.map((resource, index) => {
                                     const rowIndex = pageSize === 'All' ? index : (currentPage - 1) * Number(pageSize) + index;
-                                    const isNew = resource._status === 'new';
+                                    const originalResource = originalResourcesMap.get(resource.id);
+                                    const isNew = resource._status === 'new' || String(resource.id).startsWith('temp_');
                                     const isError = resource._status === 'error';
+                                    const isDirty = (resource._status === 'modified') || (originalResource && isResourceRowDirty(resource, originalResource));
                                     const rowErrors = resource._errors || {};
                                     const isRowSelected = selectedIds.has(resource.id);
                                     const isExpanded = expandedRowIds.has(resource.id);
@@ -3236,6 +3862,7 @@ const ResourceList = () => {
                                     return (
                                         <React.Fragment key={resource.id || `row-${rowIndex}`}>
                                             <tr
+                                                style={{ contentVisibility: 'auto', containIntrinsicSize: 'auto 42px' }}
                                                 className={`hover:bg-blue-50/20 dark:hover:bg-white/[0.02] transition-colors group/row text-gray-700 dark:text-gray-300 ${isRowSelected ? 'bg-blue-50/30 dark:bg-blue-900/10' : ''
                                                     } ${isExpanded ? 'bg-blue-50/20 dark:bg-blue-900/5' : ''}`}
                                             >
@@ -3268,22 +3895,26 @@ const ResourceList = () => {
                                                 </td>
 
                                                 {/* Status Badge */}
-                                                <td className="px-2 py-3 text-center border-r border-gray-100 dark:border-white/5 select-none">
-                                                    {isNew && (
-                                                        <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[9px] font-bold bg-emerald-50 text-emerald-600 dark:bg-emerald-950/20 dark:text-emerald-400 border border-emerald-200/50 dark:border-emerald-500/10">
+                                                <td className="px-1 py-2.5 text-center border-r border-gray-100 dark:border-white/5 select-none">
+                                                    {isNew ? (
+                                                        <span className="inline-flex items-center justify-center px-1.5 py-0.5 rounded text-[9px] font-bold bg-blue-50 text-blue-600 dark:bg-blue-950/30 dark:text-blue-400 border border-blue-200 dark:border-blue-500/20 whitespace-nowrap">
                                                             NEW
                                                         </span>
-                                                    )}
-                                                    {isError && (
+                                                    ) : isError ? (
                                                         <span
-                                                            className="inline-flex items-center px-1.5 py-0.5 rounded text-[9px] font-bold bg-red-50 text-red-600 dark:bg-red-950/20 dark:text-red-400 border border-red-200/50 dark:border-red-500/10 cursor-help"
+                                                            className="inline-flex items-center justify-center px-1.5 py-0.5 rounded text-[9px] font-bold bg-red-50 text-red-600 dark:bg-red-950/30 dark:text-red-400 border border-red-200 dark:border-red-500/20 whitespace-nowrap cursor-help"
                                                             title={rowErrors.server || Object.values(rowErrors).join(', ') || 'Validation error'}
                                                         >
                                                             ERROR
                                                         </span>
-                                                    )}
-                                                    {resource._status === 'saved' && (
-                                                        <span className="text-emerald-500 dark:text-emerald-400/80 text-[10px] font-bold">SAVED</span>
+                                                    ) : isDirty ? (
+                                                        <span className="inline-flex items-center justify-center px-1.5 py-0.5 rounded text-[9px] font-bold bg-amber-50 text-amber-600 dark:bg-amber-950/30 dark:text-amber-400 border border-amber-200 dark:border-amber-500/20 whitespace-nowrap">
+                                                            MODIFIED
+                                                        </span>
+                                                    ) : (
+                                                        <span className="inline-flex items-center justify-center px-1.5 py-0.5 rounded text-[9px] font-bold bg-emerald-50 text-emerald-600 dark:bg-emerald-950/30 dark:text-emerald-400 border border-emerald-200 dark:border-emerald-500/20 whitespace-nowrap">
+                                                            SAVED
+                                                        </span>
                                                     )}
                                                 </td>
 
@@ -3332,6 +3963,23 @@ const ResourceList = () => {
                                                                     setSelectionFocus({ r: rowIndex, c: colIndex });
                                                                 }
                                                             }}
+                                                            onClick={(e) => {
+                                                                if (e.target.closest('button') || e.target.closest('.z-\\[6000\\]')) return;
+                                                                if (canWrite) {
+                                                                    if (selectionAnchor?.r !== rowIndex || selectionAnchor?.c !== colIndex) {
+                                                                        setSelectionAnchor({ r: rowIndex, c: colIndex });
+                                                                        setSelectionFocus({ r: rowIndex, c: colIndex });
+                                                                    }
+                                                                    if (colName === 'type' || colName === 'base_unit_code') {
+                                                                        setActiveDropdownCell({ rowIndex, colName });
+                                                                    } else if (colName === 'compositions' || colName === 'conversions') {
+                                                                        // Keep normal expand
+                                                                    } else {
+                                                                        cellEditInitialStateRef.current = gridDataRef.current.map(r => ({ ...r, _errors: r._errors ? { ...r._errors } : {} }));
+                                                                        setEditingCell({ rowIndex, colName });
+                                                                    }
+                                                                }
+                                                            }}
                                                             onDoubleClick={() => {
                                                                 if (canWrite) {
                                                                     if (selectionAnchor?.r !== rowIndex || selectionAnchor?.c !== colIndex) {
@@ -3343,12 +3991,13 @@ const ResourceList = () => {
                                                                     } else if (colName === 'compositions' || colName === 'conversions') {
                                                                         toggleExpandRow(resource.id);
                                                                     } else {
+                                                                        cellEditInitialStateRef.current = gridDataRef.current.map(r => ({ ...r, _errors: r._errors ? { ...r._errors } : {} }));
                                                                         setEditingCell({ rowIndex, colName });
                                                                     }
                                                                 }
                                                             }}
                                                             onKeyDown={e => handleCellKeyDown(e, rowIndex, colName)}
-                                                            className={`p-0 border-r border-gray-100 dark:border-white/5 relative outline-none select-none ${isInRange ? 'bg-blue-500/15 dark:bg-blue-500/25 z-10' : ''
+                                                            className={`p-0 border-r border-gray-100 dark:border-white/5 relative outline-none select-none overflow-hidden ${COLUMN_WIDTH_CLASSES[colName] || 'w-48 min-w-40'} ${isInRange ? 'bg-blue-500/15 dark:bg-blue-500/25 z-10' : ''
                                                                 } ${isTopEdge ? 'border-t-2 border-t-blue-500' : ''} ${isBottomEdge ? 'border-b-2 border-b-blue-500' : ''
                                                                 } ${isLeftEdge ? 'border-l-2 border-l-blue-500' : ''} ${isRightEdge ? 'border-r-2 border-r-blue-500' : ''
                                                                 } ${hasError ? 'bg-red-500/5 ring-1 ring-red-500' : ''}`}
@@ -3371,31 +4020,33 @@ const ResourceList = () => {
                                                             {/* Standard Text Cells Editing vs Normal State */}
                                                             {!isSpecialCol && (
                                                                 isEdit ? (
-                                                                    <input
-                                                                        autoFocus
-                                                                        type="text"
-                                                                        className={`w-full px-3 py-2 bg-white dark:bg-[#161b22] border border-blue-500 text-sm font-semibold text-gray-900 dark:text-white focus:outline-none shadow-sm ${colName === 'code' ? 'font-mono' : colName === 'name' ? 'font-bold' : ''
-                                                                            }`}
-                                                                        value={resource[colName] || ''}
-                                                                        onChange={e => handleCellChange(rowIndex, colName, e.target.value)}
-                                                                        onBlur={handleCellBlur}
-                                                                        onKeyDown={e => handleCellKeyDown(e, rowIndex, colName)}
-                                                                        onPaste={(e) => {
-                                                                            const text = e.clipboardData?.getData('text/plain');
-                                                                            if (text && (text.includes('\t') || text.includes('\n') || text.includes('\r'))) {
-                                                                                e.preventDefault();
-                                                                                setEditingCell(null);
-                                                                                setSelectionAnchor({ r: rowIndex, c: colIndex });
-                                                                                setSelectionFocus({ r: rowIndex, c: colIndex });
-                                                                                executePasteRef.current(text, rowIndex, colIndex);
+                                                                    <div className="w-full flex items-center min-w-0 overflow-hidden">
+                                                                        <input
+                                                                            autoFocus
+                                                                            type="text"
+                                                                            className={`w-full min-w-0 max-w-full px-3 py-2 bg-white dark:bg-[#161b22] border border-blue-500 text-sm font-semibold text-gray-900 dark:text-white focus:outline-none shadow-sm ${colName === 'code' ? 'font-mono' : colName === 'name' ? 'font-bold' : ''
+                                                                                }`}
+                                                                            value={resource[colName] || ''}
+                                                                            onChange={e => handleCellChange(rowIndex, colName, e.target.value)}
+                                                                            onBlur={handleCellBlur}
+                                                                            onKeyDown={e => handleCellKeyDown(e, rowIndex, colName)}
+                                                                            onPaste={(e) => {
+                                                                                const text = e.clipboardData?.getData('text/plain');
+                                                                                if (text && (text.includes('\t') || text.includes('\n') || text.includes('\r'))) {
+                                                                                    e.preventDefault();
+                                                                                    setEditingCell(null);
+                                                                                    setSelectionAnchor({ r: rowIndex, c: colIndex });
+                                                                                    setSelectionFocus({ r: rowIndex, c: colIndex });
+                                                                                    executePasteRef.current(text, rowIndex, colIndex);
+                                                                                }
+                                                                            }}
+                                                                            placeholder={
+                                                                                colName === 'code' ? 'CEM-OPC' :
+                                                                                    colName === 'name' ? 'Enter resource name...' :
+                                                                                        colName === 'description' ? 'Short details...' : 'Internal specs...'
                                                                             }
-                                                                        }}
-                                                                        placeholder={
-                                                                            colName === 'code' ? 'CEM-OPC' :
-                                                                                colName === 'name' ? 'Enter resource name...' :
-                                                                                    colName === 'description' ? 'Short details...' : 'Internal specs...'
-                                                                        }
-                                                                    />
+                                                                        />
+                                                                    </div>
                                                                 ) : (
                                                                     <div className={`w-full px-3 py-2 text-sm text-gray-800 dark:text-gray-200 truncate cursor-pointer min-h-[37px] flex items-center ${colName === 'code' ? 'font-mono' : colName === 'name' ? 'font-bold text-gray-900 dark:text-white' : ''
                                                                         }`}>
@@ -3409,31 +4060,33 @@ const ResourceList = () => {
                                                             {/* Rate Cell */}
                                                             {colName === 'rate' && (
                                                                 isEdit ? (
-                                                                    <input
-                                                                        autoFocus
-                                                                        type="number"
-                                                                        step="0.01"
-                                                                        className="w-full px-3 py-2 bg-white dark:bg-[#161b22] border border-blue-500 text-sm font-mono font-bold text-gray-900 dark:text-white focus:outline-none shadow-sm"
-                                                                        value={resource.rate ?? ''}
-                                                                        onChange={e => {
-                                                                            const val = e.target.value === '' ? null : parseFloat(e.target.value);
-                                                                            handleCellChange(rowIndex, 'rate', val);
-                                                                            handleCellChange(rowIndex, 'rate_source', 'manual');
-                                                                        }}
-                                                                        onBlur={handleCellBlur}
-                                                                        onKeyDown={e => handleCellKeyDown(e, rowIndex, colName)}
-                                                                        onPaste={(e) => {
-                                                                            const text = e.clipboardData?.getData('text/plain');
-                                                                            if (text && (text.includes('\t') || text.includes('\n') || text.includes('\r'))) {
-                                                                                e.preventDefault();
-                                                                                setEditingCell(null);
-                                                                                setSelectionAnchor({ r: rowIndex, c: colIndex });
-                                                                                setSelectionFocus({ r: rowIndex, c: colIndex });
-                                                                                executePasteRef.current(text, rowIndex, colIndex);
-                                                                            }
-                                                                        }}
-                                                                        placeholder="0.00"
-                                                                    />
+                                                                    <div className="w-full flex items-center min-w-0 overflow-hidden">
+                                                                        <input
+                                                                            autoFocus
+                                                                            type="number"
+                                                                            step="0.01"
+                                                                            className="w-full min-w-0 max-w-full px-3 py-2 bg-white dark:bg-[#161b22] border border-blue-500 text-sm font-mono font-bold text-gray-900 dark:text-white focus:outline-none shadow-sm"
+                                                                            value={resource.rate ?? ''}
+                                                                            onChange={e => {
+                                                                                const val = e.target.value === '' ? null : parseFloat(e.target.value);
+                                                                                handleCellChange(rowIndex, 'rate', val);
+                                                                                handleCellChange(rowIndex, 'rate_source', 'manual');
+                                                                            }}
+                                                                            onBlur={handleCellBlur}
+                                                                            onKeyDown={e => handleCellKeyDown(e, rowIndex, colName)}
+                                                                            onPaste={(e) => {
+                                                                                const text = e.clipboardData?.getData('text/plain');
+                                                                                if (text && (text.includes('\t') || text.includes('\n') || text.includes('\r'))) {
+                                                                                    e.preventDefault();
+                                                                                    setEditingCell(null);
+                                                                                    setSelectionAnchor({ r: rowIndex, c: colIndex });
+                                                                                    setSelectionFocus({ r: rowIndex, c: colIndex });
+                                                                                    executePasteRef.current(text, rowIndex, colIndex);
+                                                                                }
+                                                                            }}
+                                                                            placeholder="0.00"
+                                                                        />
+                                                                    </div>
                                                                 ) : (
                                                                     <div
                                                                         onClick={() => {
@@ -3496,30 +4149,35 @@ const ResourceList = () => {
                                                             {/* Conversions (Unit Scale) Cell */}
                                                             {colName === 'conversions' && (
                                                                 <div className="w-full px-3 py-2 text-xs min-h-[37px] flex items-center justify-between gap-1 select-none">
-                                                                    <div className="flex items-center gap-1.5 overflow-hidden w-full justify-between">
-                                                                        <div className="flex items-center gap-1 overflow-x-auto no-scrollbar max-w-[150px]">
-                                                                            {Array.isArray(resource.conversions) && resource.conversions.length > 0 ? (
-                                                                                resource.conversions.map((conv, idx) => (
-                                                                                    <span key={conv.id || idx} className="inline-flex items-center gap-1 px-1.5 py-0.5 text-[10px] font-bold bg-blue-50 dark:bg-blue-950/30 text-blue-700 dark:text-blue-300 border border-blue-200/60 dark:border-blue-500/20 rounded whitespace-nowrap">
-                                                                                        <span>1 {conv.name}</span>
-                                                                                        <span className="text-[9px] opacity-70">= {conv.quantity} {conv.unit_code}</span>
-                                                                                    </span>
-                                                                                ))
-                                                                            ) : (
-                                                                                <span className="text-gray-400 italic text-[11px]">No unit scales</span>
-                                                                            )}
+                                                                    {resource.type === 'labour' ? (
+                                                                        <span className="text-gray-350 dark:text-white/20 text-[11px] italic">N/A (labour)</span>
+                                                                    ) : (
+                                                                        <div className="flex items-center gap-1.5 overflow-hidden w-full justify-between">
+                                                                            <div className="flex items-center gap-1 overflow-x-auto no-scrollbar max-w-[150px]">
+                                                                                {Array.isArray(resource.conversions) && resource.conversions.length > 0 ? (
+                                                                                    resource.conversions.map((conv, idx) => (
+                                                                                        <span key={conv.id || idx} className="inline-flex items-center gap-1 px-1.5 py-0.5 text-[10px] font-bold bg-blue-50 dark:bg-blue-950/30 text-blue-700 dark:text-blue-300 border border-blue-200/60 dark:border-blue-500/20 rounded whitespace-nowrap">
+                                                                                            <span>1 {conv.name}</span>
+                                                                                            <span className="text-[9px] opacity-70">= {conv.quantity} {conv.unit_code}</span>
+                                                                                        </span>
+                                                                                    ))
+                                                                                ) : (
+                                                                                    <span className="text-gray-400 italic text-[11px]">No unit scales</span>
+                                                                                )}
+                                                                            </div>
+                                                                            <button
+                                                                                type="button"
+                                                                                onClick={(e) => {
+                                                                                    e.stopPropagation();
+                                                                                    toggleExpandRow(resource.id);
+                                                                                }}
+                                                                                className="px-1.5 py-0.5 bg-blue-100 hover:bg-blue-200 dark:bg-blue-900/40 dark:hover:bg-blue-900/60 text-blue-700 dark:text-blue-300 text-[10px] font-extrabold rounded transition shrink-0 cursor-pointer"
+                                                                                title="Manage unit conversions inline"
+                                                                            >
+                                                                                {Array.isArray(resource.conversions) && resource.conversions.length ? `${resource.conversions.length} scale(s)` : '+ Scale'}
+                                                                            </button>
                                                                         </div>
-                                                                        <button
-                                                                            onClick={(e) => {
-                                                                                e.stopPropagation();
-                                                                                toggleExpandRow(resource.id);
-                                                                            }}
-                                                                            className="px-1.5 py-0.5 bg-blue-100 hover:bg-blue-200 dark:bg-blue-900/40 dark:hover:bg-blue-900/60 text-blue-700 dark:text-blue-300 text-[10px] font-extrabold rounded transition shrink-0"
-                                                                            title="Manage unit conversions inline"
-                                                                        >
-                                                                            {Array.isArray(resource.conversions) && resource.conversions.length ? `${resource.conversions.length} scale(s)` : '+ Scale'}
-                                                                        </button>
-                                                                    </div>
+                                                                    )}
                                                                 </div>
                                                             )}
 
@@ -3762,30 +4420,56 @@ const ResourceList = () => {
 
                                             {/* Expanded Inline Sub-Sheet Row */}
                                             {isExpanded && (
-                                                <tr key={`expanded-${resource.id || rowIndex}`} className="bg-slate-50 dark:bg-[#121721] border-b-2 border-blue-500/30">
+                                                <tr key={`expanded-${resource.id || rowIndex}`} className="bg-slate-50/80 dark:bg-[#10141d] border-b-2 border-blue-500/30">
                                                     <td colSpan={activeGridColumns.length + 4} className="p-4 pl-12 sticky left-0">
-                                                        <div className={`bg-white dark:bg-[#161b22] border border-gray-200 dark:border-white/10 rounded-xl p-4 shadow-lg space-y-4 ${resource.type !== 'item' ? 'max-w-2xl' : 'w-full'}`}>
+                                                        <div className={`bg-white dark:bg-[#161b22] border border-gray-200 dark:border-white/10 rounded-xl p-4 shadow-lg space-y-4 ${
+                                                            resource.type === 'item' ? 'max-w-6xl w-full' : resource.type === 'material' ? 'max-w-3xl w-full' : 'max-w-xl w-full'
+                                                        }`}>
                                                             {/* Header bar of expanded row */}
-                                                            <div className="flex items-center justify-between border-b border-gray-100 dark:border-white/5 pb-2 gap-2 flex-wrap">
-                                                                <div className="flex items-center gap-3">
-                                                                    <span className="font-extrabold text-xs text-gray-900 dark:text-white uppercase tracking-wider">
+                                                            <div className="flex items-center justify-between border-b border-gray-100 dark:border-white/5 pb-3 gap-3 flex-wrap">
+                                                                <div className="flex items-center gap-2.5 flex-wrap">
+                                                                    <span className="font-extrabold text-sm text-gray-900 dark:text-white uppercase tracking-wider">
                                                                         {resource.name || 'Unnamed Resource'}
                                                                     </span>
-                                                                    <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-blue-50 text-blue-700 dark:bg-blue-950/40 dark:text-blue-300 border border-blue-200 dark:border-blue-500/20 shadow-sm">
-                                                                        <ArrowLeftRight size={11} /> Scroll grid horizontally to view all columns
-                                                                    </span>
+                                                                    {resource.code && (
+                                                                        <span className="font-mono text-xs text-gray-400 bg-gray-100 dark:bg-white/5 px-2 py-0.5 rounded">
+                                                                            {resource.code}
+                                                                        </span>
+                                                                    )}
+                                                                    {(() => {
+                                                                        const tc = TYPE_CONFIG[resource.type || 'material'] || TYPE_CONFIG.material;
+                                                                        const TypeIcon = tc.icon;
+                                                                        return (
+                                                                            <span className={`inline-flex items-center gap-1 px-2 py-0.5 text-[10px] font-bold uppercase rounded-md ${tc.bg} ${tc.color}`}>
+                                                                                <TypeIcon size={11} />
+                                                                                {tc.label}
+                                                                            </span>
+                                                                        );
+                                                                    })()}
+                                                                    {resource.base_unit_code && (
+                                                                        <span className="text-[11px] text-gray-500 dark:text-gray-400 font-medium">
+                                                                            Base Unit: <strong className="text-gray-800 dark:text-gray-200">{UNIT_REGISTRY[resource.base_unit_code]?.name || resource.base_unit_code} ({UNIT_REGISTRY[resource.base_unit_code]?.symbol || resource.base_unit_code})</strong>
+                                                                        </span>
+                                                                    )}
+                                                                    {resource.rate !== null && resource.rate !== undefined && (
+                                                                        <span className="text-[11px] text-emerald-600 dark:text-emerald-400 font-semibold font-mono">
+                                                                            Rate: ₹{Number(resource.rate).toLocaleString('en-IN', { minimumFractionDigits: 2 })}
+                                                                        </span>
+                                                                    )}
                                                                 </div>
                                                                 <button
+                                                                    type="button"
                                                                     onClick={() => toggleExpandRow(resource.id)}
-                                                                    className="text-xs text-gray-400 hover:text-gray-600 dark:hover:text-white font-semibold flex items-center gap-1"
+                                                                    className="px-2.5 py-1 text-xs text-gray-500 hover:text-gray-800 dark:text-gray-400 dark:hover:text-white hover:bg-gray-100 dark:hover:bg-white/5 rounded-lg font-semibold flex items-center gap-1 transition cursor-pointer"
                                                                 >
-                                                                    <X size={13} /> Collapse Sub-Sheet
+                                                                    <X size={13} /> Collapse Details
                                                                 </button>
                                                             </div>
 
-                                                            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-                                                                {/* Section 1: Recipe Ingredients */}
-                                                                {(
+                                                            {/* Item: 2-Column Grid (Recipe Ingredients + Unit Conversions) */}
+                                                            {resource.type === 'item' && (
+                                                                <div className="grid grid-cols-1 xl:grid-cols-2 gap-6">
+                                                                    {/* Section 1: Recipe Ingredients */}
                                                                     <div className="space-y-3">
                                                                         <div className="flex items-center justify-between">
                                                                             <span className="text-xs font-bold text-purple-700 dark:text-purple-400 uppercase tracking-wider flex items-center gap-1.5">
@@ -3798,37 +4482,45 @@ const ResourceList = () => {
 
                                                                         <div className="border border-gray-200 dark:border-white/10 rounded-lg overflow-hidden">
                                                                             <table className="w-full text-xs text-left">
-                                                                                <thead className="bg-gray-100 dark:bg-white/5 text-[10px] uppercase font-bold text-gray-500">
+                                                                                <thead className="bg-gray-100 dark:bg-white/5 text-[10px] uppercase font-bold text-gray-500 dark:text-gray-400 border-b border-gray-200 dark:border-white/5">
                                                                                     <tr>
-                                                                                        <th className="p-2">Component Resource</th>
-                                                                                        <th className="p-2 w-20 text-right">Quantity</th>
-                                                                                        <th className="p-2 w-20">Unit</th>
-                                                                                        <th className="p-2 w-10 text-center">Action</th>
+                                                                                        <th className="p-2.5">Ingredient / Component</th>
+                                                                                        <th className="p-2.5 w-24 text-right">Quantity</th>
+                                                                                        <th className="p-2.5 w-20 text-center">Unit</th>
+                                                                                        <th className="p-2.5 w-12 text-center">Action</th>
                                                                                     </tr>
                                                                                 </thead>
                                                                                 <tbody className="divide-y divide-gray-100 dark:divide-white/5">
                                                                                     {!(Array.isArray(resource.compositions) && resource.compositions.length > 0) ? (
                                                                                         <tr>
-                                                                                            <td colSpan="4" className="p-3 text-center text-gray-400 italic text-xs">
+                                                                                            <td colSpan="4" className="p-4 text-center text-gray-400 italic text-xs">
                                                                                                 No recipe ingredients added yet.
                                                                                             </td>
                                                                                         </tr>
                                                                                     ) : (
                                                                                         (resource.compositions || []).map((comp, cIdx) => (
-                                                                                            <tr key={comp.id || cIdx} className="hover:bg-purple-50/30 dark:hover:bg-purple-900/10">
-                                                                                                <td className="p-2 font-semibold text-gray-800 dark:text-gray-200">
-                                                                                                    {comp.component_name || `Resource #${comp.component_resource_id}`}
+                                                                                            <tr key={comp.id || cIdx} className="hover:bg-purple-50/30 dark:hover:bg-purple-900/10 transition-colors">
+                                                                                                <td className="p-2.5 font-semibold text-gray-800 dark:text-gray-200">
+                                                                                                    <div className="flex items-center gap-2">
+                                                                                                        <span>{comp.component_name || `Resource #${comp.component_resource_id}`}</span>
+                                                                                                        {comp.component_code && (
+                                                                                                            <span className="text-[9px] font-mono text-gray-400 bg-gray-100 dark:bg-white/5 px-1.5 py-0.5 rounded">
+                                                                                                                {comp.component_code}
+                                                                                                            </span>
+                                                                                                        )}
+                                                                                                    </div>
                                                                                                 </td>
-                                                                                                <td className="p-2 font-mono font-bold text-right text-purple-600 dark:text-purple-400">
+                                                                                                <td className="p-2.5 font-mono font-bold text-right text-purple-600 dark:text-purple-400">
                                                                                                     {comp.quantity}
                                                                                                 </td>
-                                                                                                <td className="p-2 font-mono text-gray-500">
+                                                                                                <td className="p-2.5 font-mono text-center text-gray-500 dark:text-gray-400">
                                                                                                     {comp.unit_code}
                                                                                                 </td>
-                                                                                                <td className="p-2 text-center">
+                                                                                                <td className="p-2.5 text-center">
                                                                                                     <button
+                                                                                                        type="button"
                                                                                                         onClick={() => handleDeleteInlineComposition(resource.id, comp.id)}
-                                                                                                        className="p-1 text-gray-400 hover:text-red-600 rounded transition"
+                                                                                                        className="p-1 text-gray-400 hover:text-red-600 dark:hover:text-red-400 rounded transition hover:bg-red-50 dark:hover:bg-red-950/30"
                                                                                                         title="Remove ingredient"
                                                                                                     >
                                                                                                         <Trash2 size={13} />
@@ -3842,9 +4534,9 @@ const ResourceList = () => {
 
                                                                             {/* Quick Add Form */}
                                                                             {canWrite && (
-                                                                                <div className="p-2 bg-gray-50 dark:bg-white/[0.02] border-t border-gray-200 dark:border-white/10 flex items-center gap-2">
+                                                                                <div className="p-2.5 bg-gray-50 dark:bg-white/[0.02] border-t border-gray-200 dark:border-white/10 flex items-center gap-2 flex-wrap">
                                                                                     <select
-                                                                                        className="flex-1 px-2 py-1 bg-white dark:bg-[#0d1117] border border-gray-300 dark:border-white/10 rounded text-xs font-medium text-gray-800 dark:text-white"
+                                                                                        className="flex-1 min-w-[180px] px-2.5 py-1.5 bg-white dark:bg-[#0d1117] border border-gray-300 dark:border-white/10 rounded-lg text-xs font-medium text-gray-800 dark:text-white focus:outline-none focus:ring-1 focus:ring-purple-500"
                                                                                         value={newCompForm.component_resource_id}
                                                                                         onChange={e => {
                                                                                             const selectedId = e.target.value;
@@ -3875,12 +4567,12 @@ const ResourceList = () => {
                                                                                         type="number"
                                                                                         step="0.01"
                                                                                         placeholder="Qty"
-                                                                                        className="w-16 px-2 py-1 bg-white dark:bg-[#0d1117] border border-gray-300 dark:border-white/10 rounded text-xs font-mono font-bold text-gray-800 dark:text-white"
+                                                                                        className="w-20 px-2.5 py-1.5 bg-white dark:bg-[#0d1117] border border-gray-300 dark:border-white/10 rounded-lg text-xs font-mono font-bold text-gray-800 dark:text-white focus:outline-none focus:ring-1 focus:ring-purple-500"
                                                                                         value={newCompForm.quantity}
                                                                                         onChange={e => setNewCompForm(prev => ({ ...prev, quantity: e.target.value }))}
                                                                                     />
                                                                                     <select
-                                                                                        className="w-20 px-2 py-1 bg-white dark:bg-[#0d1117] border border-gray-300 dark:border-white/10 rounded text-xs font-medium text-gray-800 dark:text-white"
+                                                                                        className="w-24 px-2.5 py-1.5 bg-white dark:bg-[#0d1117] border border-gray-300 dark:border-white/10 rounded-lg text-xs font-medium text-gray-800 dark:text-white focus:outline-none focus:ring-1 focus:ring-purple-500"
                                                                                         value={newCompForm.unit_code}
                                                                                         onChange={e => setNewCompForm(prev => ({ ...prev, unit_code: e.target.value }))}
                                                                                     >
@@ -3889,6 +4581,7 @@ const ResourceList = () => {
                                                                                         ))}
                                                                                     </select>
                                                                                     <button
+                                                                                        type="button"
                                                                                         onClick={() => {
                                                                                             if (!newCompForm.component_resource_id) {
                                                                                                 showToast('error', 'Select Resource', 'Please select a component resource.');
@@ -3897,17 +4590,123 @@ const ResourceList = () => {
                                                                                             handleAddInlineComposition(resource.id, newCompForm.component_resource_id, newCompForm.quantity, newCompForm.unit_code);
                                                                                             setNewCompForm({ component_resource_id: '', quantity: '1', unit_code: 'kg' });
                                                                                         }}
-                                                                                        className="px-2.5 py-1 bg-purple-600 hover:bg-purple-700 text-white rounded text-xs font-bold transition flex items-center gap-1 shrink-0"
+                                                                                        className="px-3 py-1.5 bg-purple-600 hover:bg-purple-700 text-white rounded-lg text-xs font-bold transition flex items-center gap-1 shrink-0 shadow-sm cursor-pointer"
                                                                                     >
-                                                                                        <Plus size={12} /> Add
+                                                                                        <Plus size={13} /> Add
                                                                                     </button>
                                                                                 </div>
                                                                             )}
                                                                         </div>
                                                                     </div>
-                                                                )}
 
-                                                                {/* Section 2: Unit Conversion Scales */}
+                                                                    {/* Section 2: Unit Conversion Scales */}
+                                                                    <div className="space-y-3">
+                                                                        <div className="flex items-center justify-between">
+                                                                            <span className="text-xs font-bold text-blue-700 dark:text-blue-400 uppercase tracking-wider flex items-center gap-1.5">
+                                                                                <ArrowLeftRight size={14} /> Unit Conversion Scales
+                                                                            </span>
+                                                                            <span className="text-[10px] font-semibold text-gray-400">
+                                                                                {(Array.isArray(resource.conversions) ? resource.conversions : []).length} Conversion(s)
+                                                                            </span>
+                                                                        </div>
+
+                                                                        <div className="border border-gray-200 dark:border-white/10 rounded-lg overflow-hidden">
+                                                                            <table className="w-full text-xs text-left">
+                                                                                <thead className="bg-gray-100 dark:bg-white/5 text-[10px] uppercase font-bold text-gray-500 dark:text-gray-400 border-b border-gray-200 dark:border-white/5">
+                                                                                    <tr>
+                                                                                        <th className="p-2.5">Conversion Scale</th>
+                                                                                        <th className="p-2.5 w-28 text-right">Equivalent Qty</th>
+                                                                                        <th className="p-2.5 w-20 text-center">Base Unit</th>
+                                                                                        <th className="p-2.5 w-12 text-center">Action</th>
+                                                                                    </tr>
+                                                                                </thead>
+                                                                                <tbody className="divide-y divide-gray-100 dark:divide-white/5">
+                                                                                    {!(Array.isArray(resource.conversions) && resource.conversions.length > 0) ? (
+                                                                                        <tr>
+                                                                                            <td colSpan="4" className="p-4 text-center text-gray-400 italic text-xs">
+                                                                                                No unit conversion scales added.
+                                                                                            </td>
+                                                                                        </tr>
+                                                                                    ) : (
+                                                                                        (resource.conversions || []).map((conv, cvIdx) => (
+                                                                                            <tr key={conv.id || cvIdx} className="hover:bg-blue-50/30 dark:hover:bg-blue-900/10 transition-colors">
+                                                                                                <td className="p-2.5 font-semibold text-gray-800 dark:text-gray-200">
+                                                                                                    1 {conv.name}
+                                                                                                </td>
+                                                                                                <td className="p-2.5 font-mono font-bold text-right text-blue-600 dark:text-blue-400">
+                                                                                                    {conv.quantity}
+                                                                                                </td>
+                                                                                                <td className="p-2.5 font-mono text-center text-gray-500 dark:text-gray-400">
+                                                                                                    {conv.unit_code || resource.base_unit_code}
+                                                                                                </td>
+                                                                                                <td className="p-2.5 text-center">
+                                                                                                    <button
+                                                                                                        type="button"
+                                                                                                        onClick={() => handleDeleteInlineConversion(resource.id, conv.id)}
+                                                                                                        className="p-1 text-gray-400 hover:text-red-600 dark:hover:text-red-400 rounded transition hover:bg-red-50 dark:hover:bg-red-950/30"
+                                                                                                        title="Remove conversion"
+                                                                                                    >
+                                                                                                        <Trash2 size={13} />
+                                                                                                    </button>
+                                                                                                </td>
+                                                                                            </tr>
+                                                                                        ))
+                                                                                    )}
+                                                                                </tbody>
+                                                                            </table>
+
+                                                                            {/* Quick Add Form */}
+                                                                            {canWrite && (
+                                                                                <div className="p-2.5 bg-gray-50 dark:bg-white/[0.02] border-t border-gray-200 dark:border-white/10 flex items-center gap-2 flex-wrap">
+                                                                                    <span className="text-xs font-bold text-gray-500 dark:text-gray-400 font-mono">1</span>
+                                                                                    <input
+                                                                                        type="text"
+                                                                                        placeholder="Scale Name (e.g. Box, Ton, Bag)"
+                                                                                        className="flex-1 min-w-[160px] px-2.5 py-1.5 bg-white dark:bg-[#0d1117] border border-gray-300 dark:border-white/10 rounded-lg text-xs font-medium text-gray-800 dark:text-white focus:outline-none focus:ring-1 focus:ring-blue-500"
+                                                                                        value={newConvForm.name}
+                                                                                        onChange={e => setNewConvForm(prev => ({ ...prev, name: e.target.value }))}
+                                                                                    />
+                                                                                    <span className="text-xs font-bold text-gray-400">=</span>
+                                                                                    <input
+                                                                                        type="number"
+                                                                                        step="0.01"
+                                                                                        placeholder="Qty"
+                                                                                        className="w-20 px-2.5 py-1.5 bg-white dark:bg-[#0d1117] border border-gray-300 dark:border-white/10 rounded-lg text-xs font-mono font-bold text-gray-800 dark:text-white focus:outline-none focus:ring-1 focus:ring-blue-500"
+                                                                                        value={newConvForm.quantity}
+                                                                                        onChange={e => setNewConvForm(prev => ({ ...prev, quantity: e.target.value }))}
+                                                                                    />
+                                                                                    <select
+                                                                                        className="w-24 px-2.5 py-1.5 bg-white dark:bg-[#0d1117] border border-gray-300 dark:border-white/10 rounded-lg text-xs font-medium text-gray-800 dark:text-white focus:outline-none focus:ring-1 focus:ring-blue-500"
+                                                                                        value={newConvForm.unit_code}
+                                                                                        onChange={e => setNewConvForm(prev => ({ ...prev, unit_code: e.target.value }))}
+                                                                                    >
+                                                                                        {(UNIT_GROUPS[UNIT_REGISTRY[resource.base_unit_code]?.type] || UNIT_OPTIONS).map(u => (
+                                                                                            <option key={u.code} value={u.code}>{u.code}</option>
+                                                                                        ))}
+                                                                                    </select>
+                                                                                    <button
+                                                                                        type="button"
+                                                                                        onClick={() => {
+                                                                                            if (!newConvForm.name || !newConvForm.name.trim()) {
+                                                                                                showToast('error', 'Enter Scale Name', 'Please enter a unit conversion scale name (e.g. Box, Ton, Bag).');
+                                                                                                return;
+                                                                                            }
+                                                                                            handleAddInlineConversion(resource.id, newConvForm.name, newConvForm.quantity, newConvForm.unit_code);
+                                                                                            setNewConvForm({ name: '', quantity: '1', unit_code: resource.base_unit_code || 'kg' });
+                                                                                        }}
+                                                                                        className="px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-xs font-bold transition flex items-center gap-1 shrink-0 shadow-sm cursor-pointer"
+                                                                                    >
+                                                                                        <Plus size={13} /> Add
+                                                                                    </button>
+                                                                                </div>
+                                                                            )}
+                                                                        </div>
+                                                                    </div>
+                                                                </div>
+                                                            )}
+
+                                                            {/* Material: Single Column (Unit Conversion Scales only) */}
+                                                            {resource.type === 'material' && (
                                                                 <div className="space-y-3">
                                                                     <div className="flex items-center justify-between">
                                                                         <span className="text-xs font-bold text-blue-700 dark:text-blue-400 uppercase tracking-wider flex items-center gap-1.5">
@@ -3920,37 +4719,38 @@ const ResourceList = () => {
 
                                                                     <div className="border border-gray-200 dark:border-white/10 rounded-lg overflow-hidden">
                                                                         <table className="w-full text-xs text-left">
-                                                                            <thead className="bg-gray-100 dark:bg-white/5 text-[10px] uppercase font-bold text-gray-500">
+                                                                            <thead className="bg-gray-100 dark:bg-white/5 text-[10px] uppercase font-bold text-gray-500 dark:text-gray-400 border-b border-gray-200 dark:border-white/5">
                                                                                 <tr>
-                                                                                    <th className="p-2">Scale Name</th>
-                                                                                    <th className="p-2 w-20 text-right">Quantity</th>
-                                                                                    <th className="p-2 w-20">Unit</th>
-                                                                                    <th className="p-2 w-10 text-center">Action</th>
+                                                                                    <th className="p-2.5">Conversion Scale</th>
+                                                                                    <th className="p-2.5 w-28 text-right">Equivalent Qty</th>
+                                                                                    <th className="p-2.5 w-20 text-center">Base Unit</th>
+                                                                                    <th className="p-2.5 w-12 text-center">Action</th>
                                                                                 </tr>
                                                                             </thead>
                                                                             <tbody className="divide-y divide-gray-100 dark:divide-white/5">
                                                                                 {!(Array.isArray(resource.conversions) && resource.conversions.length > 0) ? (
                                                                                     <tr>
-                                                                                        <td colSpan="4" className="p-3 text-center text-gray-400 italic text-xs">
+                                                                                        <td colSpan="4" className="p-4 text-center text-gray-400 italic text-xs">
                                                                                             No unit conversion scales added.
                                                                                         </td>
                                                                                     </tr>
                                                                                 ) : (
                                                                                     (resource.conversions || []).map((conv, cvIdx) => (
-                                                                                        <tr key={conv.id || cvIdx} className="hover:bg-blue-50/30 dark:hover:bg-blue-900/10">
-                                                                                            <td className="p-2 font-semibold text-gray-800 dark:text-gray-200">
+                                                                                        <tr key={conv.id || cvIdx} className="hover:bg-blue-50/30 dark:hover:bg-blue-900/10 transition-colors">
+                                                                                            <td className="p-2.5 font-semibold text-gray-800 dark:text-gray-200">
                                                                                                 1 {conv.name}
                                                                                             </td>
-                                                                                            <td className="p-2 font-mono font-bold text-right text-blue-600 dark:text-blue-400">
+                                                                                            <td className="p-2.5 font-mono font-bold text-right text-blue-600 dark:text-blue-400">
                                                                                                 {conv.quantity}
                                                                                             </td>
-                                                                                            <td className="p-2 font-mono text-gray-500">
-                                                                                                {conv.unit_code}
+                                                                                            <td className="p-2.5 font-mono text-center text-gray-500 dark:text-gray-400">
+                                                                                                {conv.unit_code || resource.base_unit_code}
                                                                                             </td>
-                                                                                            <td className="p-2 text-center">
+                                                                                            <td className="p-2.5 text-center">
                                                                                                 <button
+                                                                                                    type="button"
                                                                                                     onClick={() => handleDeleteInlineConversion(resource.id, conv.id)}
-                                                                                                    className="p-1 text-gray-400 hover:text-red-600 rounded transition"
+                                                                                                    className="p-1 text-gray-400 hover:text-red-600 dark:hover:text-red-400 rounded transition hover:bg-red-50 dark:hover:bg-red-950/30"
                                                                                                     title="Remove conversion"
                                                                                                 >
                                                                                                     <Trash2 size={13} />
@@ -3964,24 +4764,26 @@ const ResourceList = () => {
 
                                                                         {/* Quick Add Form */}
                                                                         {canWrite && (
-                                                                            <div className="p-2 bg-gray-50 dark:bg-white/[0.02] border-t border-gray-200 dark:border-white/10 flex items-center gap-2">
+                                                                            <div className="p-2.5 bg-gray-50 dark:bg-white/[0.02] border-t border-gray-200 dark:border-white/10 flex items-center gap-2 flex-wrap">
+                                                                                <span className="text-xs font-bold text-gray-500 dark:text-gray-400 font-mono">1</span>
                                                                                 <input
                                                                                     type="text"
-                                                                                    placeholder="Scale (e.g. Box, Pack)"
-                                                                                    className="flex-1 px-2 py-1 bg-white dark:bg-[#0d1117] border border-gray-300 dark:border-white/10 rounded text-xs font-medium text-gray-800 dark:text-white"
+                                                                                    placeholder="Scale Name (e.g. Box, Ton, Bag)"
+                                                                                    className="flex-1 min-w-[160px] px-2.5 py-1.5 bg-white dark:bg-[#0d1117] border border-gray-300 dark:border-white/10 rounded-lg text-xs font-medium text-gray-800 dark:text-white focus:outline-none focus:ring-1 focus:ring-blue-500"
                                                                                     value={newConvForm.name}
                                                                                     onChange={e => setNewConvForm(prev => ({ ...prev, name: e.target.value }))}
                                                                                 />
+                                                                                <span className="text-xs font-bold text-gray-400">=</span>
                                                                                 <input
                                                                                     type="number"
                                                                                     step="0.01"
                                                                                     placeholder="Qty"
-                                                                                    className="w-16 px-2 py-1 bg-white dark:bg-[#0d1117] border border-gray-300 dark:border-white/10 rounded text-xs font-mono font-bold text-gray-800 dark:text-white"
+                                                                                    className="w-20 px-2.5 py-1.5 bg-white dark:bg-[#0d1117] border border-gray-300 dark:border-white/10 rounded-lg text-xs font-mono font-bold text-gray-800 dark:text-white focus:outline-none focus:ring-1 focus:ring-blue-500"
                                                                                     value={newConvForm.quantity}
                                                                                     onChange={e => setNewConvForm(prev => ({ ...prev, quantity: e.target.value }))}
                                                                                 />
                                                                                 <select
-                                                                                    className="w-20 px-2 py-1 bg-white dark:bg-[#0d1117] border border-gray-300 dark:border-white/10 rounded text-xs font-medium text-gray-800 dark:text-white"
+                                                                                    className="w-24 px-2.5 py-1.5 bg-white dark:bg-[#0d1117] border border-gray-300 dark:border-white/10 rounded-lg text-xs font-medium text-gray-800 dark:text-white focus:outline-none focus:ring-1 focus:ring-blue-500"
                                                                                     value={newConvForm.unit_code}
                                                                                     onChange={e => setNewConvForm(prev => ({ ...prev, unit_code: e.target.value }))}
                                                                                 >
@@ -3990,19 +4792,37 @@ const ResourceList = () => {
                                                                                     ))}
                                                                                 </select>
                                                                                 <button
+                                                                                    type="button"
                                                                                     onClick={() => {
+                                                                                        if (!newConvForm.name || !newConvForm.name.trim()) {
+                                                                                            showToast('error', 'Enter Scale Name', 'Please enter a unit conversion scale name (e.g. Box, Ton, Bag).');
+                                                                                            return;
+                                                                                        }
                                                                                         handleAddInlineConversion(resource.id, newConvForm.name, newConvForm.quantity, newConvForm.unit_code);
-                                                                                        setNewConvForm({ name: '', quantity: '1', unit_code: 'kg' });
+                                                                                        setNewConvForm({ name: '', quantity: '1', unit_code: resource.base_unit_code || 'kg' });
                                                                                     }}
-                                                                                    className="px-2.5 py-1 bg-blue-600 hover:bg-blue-700 text-white rounded text-xs font-bold transition flex items-center gap-1 shrink-0"
+                                                                                    className="px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-xs font-bold transition flex items-center gap-1 shrink-0 shadow-sm cursor-pointer"
                                                                                 >
-                                                                                    <Plus size={12} /> Add
+                                                                                    <Plus size={13} /> Add
                                                                                 </button>
                                                                             </div>
                                                                         )}
                                                                     </div>
                                                                 </div>
-                                                            </div>
+                                                            )}
+
+                                                            {/* Labour: Clean Info Card */}
+                                                            {resource.type === 'labour' && (
+                                                                <div className="p-4 bg-blue-50/40 dark:bg-blue-950/20 border border-blue-200/60 dark:border-blue-500/20 rounded-lg flex items-start gap-3">
+                                                                    <Users className="text-blue-600 dark:text-blue-400 shrink-0 mt-0.5" size={20} />
+                                                                    <div className="space-y-1 text-xs">
+                                                                        <p className="font-bold text-gray-900 dark:text-white">Labour Resource</p>
+                                                                        <p className="text-gray-600 dark:text-gray-300 leading-relaxed">
+                                                                            Labour represents manpower/workforce. Manpower entries do not use recipe composition ingredients or packaging conversions. Rates are applied directly per base unit (<span className="font-semibold text-blue-600 dark:text-blue-400">{resource.base_unit_code}</span>).
+                                                                        </p>
+                                                                    </div>
+                                                                </div>
+                                                            )}
                                                         </div>
                                                     </td>
                                                 </tr>
@@ -4331,6 +5151,317 @@ const ResourceList = () => {
                     )}
                 </div>
             )}
+            {/* Smart Excel Import & Paste Right Sidebar Drawer */}
+            <AnimatePresence>
+                {isExcelModalOpen && (
+                    <div className="fixed inset-0 z-[8500] overflow-hidden">
+                        {/* Backdrop */}
+                        <motion.div
+                            initial={{ opacity: 0 }}
+                            animate={{ opacity: 1 }}
+                            exit={{ opacity: 0 }}
+                            onClick={() => setIsExcelModalOpen(false)}
+                            className="absolute inset-0 bg-black/40 backdrop-blur-xs transition-opacity"
+                        />
+
+                        {/* Slide-Over Right Drawer */}
+                        <div className="fixed inset-y-0 right-0 max-w-full flex pl-10">
+                            <motion.div
+                                initial={{ x: '100%' }}
+                                animate={{ x: 0 }}
+                                exit={{ x: '100%' }}
+                                transition={{ type: 'spring', damping: 28, stiffness: 300 }}
+                                className="w-screen max-w-2xl bg-white dark:bg-[#161b22] border-l border-gray-200 dark:border-white/10 shadow-2xl flex flex-col justify-between overflow-hidden"
+                            >
+                                {/* Drawer Header */}
+                                <div className="p-6 border-b border-gray-100 dark:border-white/5 flex items-center justify-between shrink-0 bg-gray-50/50 dark:bg-white/[0.02]">
+                                    <div className="flex items-center gap-3">
+                                        <div className="p-2.5 bg-blue-50 dark:bg-blue-900/20 text-blue-600 dark:text-blue-400 rounded-xl border border-blue-100 dark:border-blue-500/20">
+                                            <FileSpreadsheet size={22} />
+                                        </div>
+                                        <div>
+                                            <h2 className="text-base font-bold text-gray-900 dark:text-white">Excel Import & Smart Paste</h2>
+                                            <p className="text-xs text-gray-500 dark:text-gray-400">Import resource files or paste cells directly with real-time preview</p>
+                                        </div>
+                                    </div>
+                                    <button
+                                        type="button"
+                                        onClick={() => setIsExcelModalOpen(false)}
+                                        className="p-2 hover:bg-gray-100 dark:hover:bg-white/10 rounded-full text-gray-400 hover:text-gray-700 dark:hover:text-white transition cursor-pointer"
+                                    >
+                                        <X size={18} />
+                                    </button>
+                                </div>
+
+                                {/* Drawer Tab Navigation & Download Template Bar */}
+                                <div className="px-6 pt-4 pb-3 border-b border-gray-100 dark:border-white/5 flex items-center justify-between gap-4 shrink-0 bg-white dark:bg-[#161b22]">
+                                    <div className="flex p-1 bg-gray-100 dark:bg-white/5 rounded-xl border border-gray-200 dark:border-white/10 text-xs font-semibold">
+                                        <button
+                                            type="button"
+                                            onClick={() => setExcelModalTab('upload')}
+                                            className={`px-3.5 py-1.5 rounded-lg flex items-center gap-2 transition cursor-pointer ${excelModalTab === 'upload'
+                                                ? 'bg-white dark:bg-white/10 text-blue-600 dark:text-blue-400 shadow-xs font-bold'
+                                                : 'text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white'
+                                                }`}
+                                        >
+                                            <UploadCloud size={14} />
+                                            <span>Upload Spreadsheet</span>
+                                        </button>
+                                        <button
+                                            type="button"
+                                            onClick={() => setExcelModalTab('paste')}
+                                            className={`px-3.5 py-1.5 rounded-lg flex items-center gap-2 transition cursor-pointer ${excelModalTab === 'paste'
+                                                ? 'bg-white dark:bg-white/10 text-blue-600 dark:text-blue-400 shadow-xs font-bold'
+                                                : 'text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white'
+                                                }`}
+                                        >
+                                            <ClipboardPaste size={14} />
+                                            <span>Paste from Excel</span>
+                                        </button>
+                                    </div>
+
+                                    <button
+                                        type="button"
+                                        onClick={downloadExcelTemplateFile}
+                                        className="text-xs font-bold text-blue-600 dark:text-blue-400 hover:underline flex items-center gap-1.5 cursor-pointer py-1"
+                                        title="Download blank resource spreadsheet template"
+                                    >
+                                        <Download size={13} />
+                                        <span>Download Template (.xlsx)</span>
+                                    </button>
+                                </div>
+
+                                {/* Drawer Body */}
+                                <div className="flex-1 overflow-y-auto p-6 space-y-5 table-scrollbar">
+                                    {excelModalTab === 'upload' && (
+                                        <div className="space-y-4">
+                                            {/* Drag & Drop Upload Zone */}
+                                            <div
+                                                onClick={() => fileInputRef.current?.click()}
+                                                className="border-2 border-dashed border-gray-300 dark:border-white/20 hover:border-blue-500 dark:hover:border-blue-400 bg-gray-50/50 dark:bg-white/[0.01] hover:bg-blue-50/20 dark:hover:bg-blue-950/10 rounded-2xl p-6 text-center cursor-pointer transition flex flex-col items-center gap-2 group"
+                                            >
+                                                <div className="p-3 bg-blue-50 dark:bg-white/5 text-blue-600 dark:text-blue-400 rounded-xl group-hover:scale-105 transition">
+                                                    <UploadCloud size={24} />
+                                                </div>
+                                                <div>
+                                                    <p className="text-xs font-bold text-gray-800 dark:text-gray-200">
+                                                        Click to browse or drop your spreadsheet here
+                                                    </p>
+                                                    <p className="text-[11px] text-gray-400 mt-0.5">
+                                                        Supports Microsoft Excel (.xlsx, .xls) and CSV (.csv) files
+                                                    </p>
+                                                </div>
+                                                {excelSourceFileName && (
+                                                    <div className="mt-1 px-3 py-1 bg-blue-100/70 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300 rounded-lg text-xs font-semibold flex items-center gap-1.5">
+                                                        <FileSpreadsheet size={13} />
+                                                        <span>{excelSourceFileName}</span>
+                                                    </div>
+                                                )}
+                                            </div>
+                                        </div>
+                                    )}
+
+                                    {excelModalTab === 'paste' && (
+                                        <div className="space-y-3">
+                                            <div className="flex items-center justify-between">
+                                                <label className="text-xs font-bold text-gray-700 dark:text-gray-300 flex items-center gap-1.5">
+                                                    <ClipboardPaste size={14} className="text-blue-600 dark:text-blue-400" />
+                                                    <span>Paste copied cells from Excel / Google Sheets</span>
+                                                </label>
+                                                <button
+                                                    type="button"
+                                                    onClick={async () => {
+                                                        try {
+                                                            const text = await navigator.clipboard.readText();
+                                                            if (text && text.trim()) {
+                                                                setExcelPasteText(text);
+                                                                const parsed = parseRawRowsToResources(parseExcelClipboardText(text));
+                                                                setExcelParsedResources(parsed);
+                                                                setExcelSourceFileName('Pasted from clipboard');
+                                                            } else {
+                                                                showToast('info', 'Clipboard Empty', 'No content found on your clipboard.');
+                                                            }
+                                                        } catch (e) {
+                                                            showToast('error', 'Clipboard Access', 'Could not read clipboard. Please paste manually into the box below.');
+                                                        }
+                                                    }}
+                                                    className="text-[11px] font-bold text-blue-600 dark:text-blue-400 hover:underline flex items-center gap-1 cursor-pointer"
+                                                >
+                                                    <ClipboardPaste size={12} />
+                                                    <span>Paste from Clipboard</span>
+                                                </button>
+                                            </div>
+                                            <textarea
+                                                rows={5}
+                                                value={excelPasteText}
+                                                onChange={(e) => {
+                                                    const text = e.target.value;
+                                                    setExcelPasteText(text);
+                                                    const parsed = parseRawRowsToResources(parseExcelClipboardText(text));
+                                                    setExcelParsedResources(parsed);
+                                                    setExcelSourceFileName(text.trim() ? 'Pasted text' : '');
+                                                }}
+                                                placeholder="Paste your copied rows here (Ctrl+V)... Header columns like 'Resource Code', 'Resource Name', 'Type', 'Base Unit', 'Rate (₹)', 'Description', 'Remarks' will be automatically mapped."
+                                                className="w-full p-3 bg-gray-50 dark:bg-white/[0.02] border border-gray-200 dark:border-white/10 rounded-xl text-xs font-mono text-gray-900 dark:text-white focus:outline-none focus:ring-1 focus:ring-blue-500/50 resize-y transition"
+                                            />
+                                        </div>
+                                    )}
+
+                                    {/* Live Data Preview Section */}
+                                    <div className="space-y-3 pt-2">
+                                        <div className="flex items-center justify-between">
+                                            <div className="flex items-center gap-2">
+                                                <h3 className="text-xs font-bold uppercase tracking-wider text-gray-500 dark:text-gray-400">
+                                                    Live Parsed Data Preview
+                                                </h3>
+                                                <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider border ${excelParsedResources.length > 0
+                                                    ? 'bg-emerald-50 text-emerald-700 dark:bg-emerald-950/30 dark:text-emerald-400 border-emerald-200 dark:border-emerald-500/20'
+                                                    : 'bg-gray-100 text-gray-500 dark:bg-white/5 dark:text-gray-400 border-gray-200 dark:border-white/10'
+                                                    }`}>
+                                                    {excelParsedResources.length} {excelParsedResources.length === 1 ? 'Row' : 'Rows'}
+                                                </span>
+                                            </div>
+
+                                            {excelParsedResources.length > 0 && (
+                                                <button
+                                                    type="button"
+                                                    onClick={() => {
+                                                        setExcelParsedResources([]);
+                                                        setExcelPasteText('');
+                                                        setExcelSourceFileName('');
+                                                    }}
+                                                    className="text-[11px] text-red-500 hover:text-red-600 font-bold hover:underline cursor-pointer"
+                                                >
+                                                    Clear
+                                                </button>
+                                            )}
+                                        </div>
+
+                                        {excelParsedResources.length === 0 ? (
+                                            <div className="p-8 border border-dashed border-gray-200 dark:border-white/10 rounded-xl text-center bg-gray-50/50 dark:bg-white/[0.01]">
+                                                <FileText size={28} className="mx-auto text-gray-300 dark:text-gray-600 mb-2" />
+                                                <p className="text-xs font-semibold text-gray-600 dark:text-gray-400">No data parsed yet</p>
+                                                <p className="text-[11px] text-gray-400 mt-0.5">Upload a spreadsheet or paste rows to see a live preview of all mapped columns.</p>
+                                            </div>
+                                        ) : (
+                                            <div className="space-y-2 max-h-[340px] overflow-y-auto pr-1 table-scrollbar">
+                                                {excelParsedResources.map((item, idx) => {
+                                                    const tc = TYPE_CONFIG[item.type || 'material'] || TYPE_CONFIG.material;
+                                                    const TypeIcon = tc.icon;
+                                                    return (
+                                                        <div
+                                                            key={item.id || idx}
+                                                            className="p-3.5 rounded-xl border border-gray-200 dark:border-white/10 bg-white dark:bg-[#0d1117] shadow-xs space-y-2 text-xs"
+                                                        >
+                                                            <div className="flex items-center justify-between gap-2">
+                                                                <div className="flex items-center gap-2 min-w-0">
+                                                                    <span className="text-[10px] font-mono font-bold text-gray-400 shrink-0">#{idx + 1}</span>
+                                                                    <span className="font-mono text-xs font-bold text-blue-600 dark:text-blue-400 shrink-0 bg-blue-50 dark:bg-blue-950/40 px-1.5 py-0.5 rounded border border-blue-200 dark:border-blue-500/20">
+                                                                        {item.code || 'NO-CODE'}
+                                                                    </span>
+                                                                    <span className="font-bold text-gray-900 dark:text-white truncate">
+                                                                        {item.name || <span className="text-red-500 italic">No Name</span>}
+                                                                    </span>
+                                                                </div>
+                                                                <span className={`inline-flex items-center gap-1 px-2 py-0.5 text-[10px] font-bold uppercase rounded-md border shrink-0 ${tc.bg} ${tc.color}`}>
+                                                                    <TypeIcon size={10} />
+                                                                    {tc.label}
+                                                                </span>
+                                                            </div>
+
+                                                            <div className="grid grid-cols-3 gap-2 text-[11px] text-gray-600 dark:text-gray-400 border-t border-gray-100 dark:border-white/5 pt-2">
+                                                                <div>
+                                                                    <span className="text-gray-400">Base Unit: </span>
+                                                                    <span className="font-bold text-gray-800 dark:text-gray-200 font-mono">
+                                                                        {UNIT_REGISTRY[item.base_unit_code]?.symbol || item.base_unit_code || 'kg'}
+                                                                    </span>
+                                                                </div>
+                                                                <div>
+                                                                    <span className="text-gray-400">Rate: </span>
+                                                                    <span className="font-bold text-emerald-600 dark:text-emerald-400 font-mono">
+                                                                        {item.rate !== null && item.rate !== undefined ? `₹ ${Number(item.rate).toFixed(2)}` : '—'}
+                                                                    </span>
+                                                                </div>
+                                                                <div>
+                                                                    <span className="text-gray-400">Type: </span>
+                                                                    <span className="capitalize text-gray-700 dark:text-gray-300 font-medium">{item.type || 'material'}</span>
+                                                                </div>
+                                                            </div>
+
+                                                            {(item.description || item.remarks) && (
+                                                                <div className="text-[11px] text-gray-500 dark:text-gray-400 bg-gray-50 dark:bg-white/[0.02] p-2 rounded-lg border border-gray-100 dark:border-white/5 space-y-0.5">
+                                                                    {item.description && (
+                                                                        <p className="truncate">
+                                                                            <span className="text-gray-400">Desc: </span>
+                                                                            {item.description}
+                                                                        </p>
+                                                                    )}
+                                                                    {item.remarks && (
+                                                                        <p className="truncate">
+                                                                            <span className="text-gray-400">Remarks: </span>
+                                                                            {item.remarks}
+                                                                        </p>
+                                                                    )}
+                                                                </div>
+                                                            )}
+                                                        </div>
+                                                    );
+                                                })}
+                                            </div>
+                                        )}
+                                    </div>
+                                </div>
+
+                                {/* Drawer Footer */}
+                                <div className="p-4 border-t border-gray-200 dark:border-white/10 bg-gray-50/70 dark:bg-[#161b22] flex items-center justify-between gap-4 shrink-0">
+                                    <div className="flex items-center gap-2">
+                                        <label className="text-xs font-semibold text-gray-600 dark:text-gray-400">Import Mode:</label>
+                                        <select
+                                            value={excelImportMode}
+                                            onChange={(e) => setExcelImportMode(e.target.value)}
+                                            className="px-2.5 py-1 bg-white dark:bg-white/5 border border-gray-200 dark:border-white/10 rounded-lg text-xs font-semibold text-gray-800 dark:text-gray-200 focus:outline-none"
+                                        >
+                                            <option value="append">Append to list</option>
+                                            <option value="replace">Replace all existing</option>
+                                        </select>
+                                    </div>
+
+                                    <div className="flex items-center gap-2">
+                                        <button
+                                            type="button"
+                                            onClick={() => setIsExcelModalOpen(false)}
+                                            className="px-4 py-2 bg-gray-100 dark:bg-white/5 hover:bg-gray-200 dark:hover:bg-white/10 text-gray-700 dark:text-gray-300 rounded-xl text-xs font-bold transition cursor-pointer"
+                                        >
+                                            Cancel
+                                        </button>
+                                        <button
+                                            type="button"
+                                            onClick={handleCommitExcelImport}
+                                            disabled={excelParsedResources.length === 0}
+                                            className={`px-5 py-2 rounded-xl text-xs font-bold transition flex items-center gap-1.5 shadow-md ${excelParsedResources.length > 0
+                                                ? 'bg-blue-600 hover:bg-blue-700 text-white shadow-blue-500/20 active:scale-95 cursor-pointer'
+                                                : 'bg-gray-200 dark:bg-white/10 text-gray-400 cursor-not-allowed'
+                                                }`}
+                                        >
+                                            <CheckCircle size={14} />
+                                            <span>Add to Resources ({excelParsedResources.length})</span>
+                                        </button>
+                                    </div>
+                                </div>
+                            </motion.div>
+                        </div>
+                    </div>
+                )}
+            </AnimatePresence>
+
+            {/* Hidden File Input for Excel / CSV */}
+            <input
+                type="file"
+                ref={fileInputRef}
+                onChange={handleFileUpload}
+                accept=".xlsx,.xls,.csv"
+                className="hidden"
+            />
             </div>
         </div>
     );

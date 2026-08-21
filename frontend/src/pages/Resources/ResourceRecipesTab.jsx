@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import {
     Plus, Trash2, Save, RefreshCw, AlertCircle, ArrowRight,
-    Search, Calendar, RotateCcw, Copy, WandSparkles
+    Search, Calendar, RotateCcw, Copy, WandSparkles, Loader2
 } from 'lucide-react';
 import { motion } from 'framer-motion';
 import { resourceApi } from '../../services/resourceApi';
@@ -11,7 +11,6 @@ import { useAuth } from '../../context/AuthContext';
 import ConfirmModal from '../../components/ConfirmModal';
 import CustomDatePicker from '../../components/CustomDatePicker';
 import CustomSelect from '../../components/CustomSelect';
-import LogoLoader from '../../components/LogoLoader';
 import { formatOrdinalDate } from '../../utils/dateUtils';
 
 const dateOnly = (val) => (val ? String(val).slice(0, 10) : new Date().toISOString().slice(0, 10));
@@ -749,8 +748,9 @@ const ResourceRecipesTab = ({
                                 </div>
 
                                 {isLoadingDetail ? (
-                                    <div className="py-12 border border-gray-200 dark:border-white/10 rounded-xl bg-gray-50/50 dark:bg-[#161b22]/30 flex items-center justify-center text-center">
-                                        <LogoLoader text="Loading Version Timeline..." size="sm" fullPage={false} />
+                                    <div className="py-12 border border-gray-200 dark:border-white/10 rounded-xl bg-gray-50/50 dark:bg-[#161b22]/30 flex flex-col items-center justify-center text-center">
+                                        <Loader2 className="animate-spin mb-2 text-blue-500" size={24} />
+                                        <span className="text-xs font-semibold text-gray-500 dark:text-gray-400">Loading Version Timeline...</span>
                                     </div>
                                 ) : compositionVersions.length === 0 ? (
                                     <div className="p-6 text-center border border-dashed border-gray-200 dark:border-white/10 rounded-xl text-xs text-gray-400">

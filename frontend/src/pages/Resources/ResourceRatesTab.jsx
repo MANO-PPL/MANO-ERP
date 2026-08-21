@@ -2,7 +2,7 @@ import React, { useState, useEffect, useMemo, useRef } from 'react';
 import {
     Search, Calendar, Save, RotateCcw, AlertCircle,
     RefreshCw, Plus, Calculator, History, AlertTriangle,
-    Edit2, X, Check
+    Edit2, X, Check, Loader2
 } from 'lucide-react';
 import { motion } from 'framer-motion';
 import { resourceApi } from '../../services/resourceApi';
@@ -11,7 +11,6 @@ import { UNIT_GROUPS } from './resourceConstants';
 import { useAuth } from '../../context/AuthContext';
 import CustomDatePicker from '../../components/CustomDatePicker';
 import CustomSelect from '../../components/CustomSelect';
-import LogoLoader from '../../components/LogoLoader';
 import { formatOrdinalDate } from '../../utils/dateUtils';
 
 const dateOnly = (val) => (val ? String(val).slice(0, 10) : new Date().toISOString().slice(0, 10));
@@ -449,8 +448,9 @@ const ResourceRatesTab = ({
 
                             {/* Live Rate Summary Card */}
                             {isLoadingDetails ? (
-                                <div className="p-8 bg-emerald-50/50 dark:bg-emerald-950/20 border border-emerald-200 dark:border-emerald-500/30 rounded-2xl flex items-center justify-center text-center">
-                                    <LogoLoader text="Resolving Effective Rate..." size="md" fullPage={false} />
+                                <div className="p-8 bg-emerald-50/50 dark:bg-emerald-950/20 border border-emerald-200 dark:border-emerald-500/30 rounded-2xl flex flex-col items-center justify-center text-center">
+                                    <Loader2 className="animate-spin mb-2 text-emerald-600 dark:text-emerald-400" size={24} />
+                                    <span className="text-xs font-semibold text-emerald-800 dark:text-emerald-300">Resolving Effective Rate...</span>
                                 </div>
                             ) : (
                                 <div className="p-5 bg-emerald-50/50 dark:bg-emerald-950/20 border border-emerald-200 dark:border-emerald-500/30 rounded-2xl flex flex-col md:flex-row items-start md:items-center justify-between gap-4">

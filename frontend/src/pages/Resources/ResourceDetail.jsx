@@ -1,14 +1,14 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import {
     X, Plus, Trash2, Package, Layers, Users, ArrowRight, RefreshCw, RotateCcw,
-    Copy, Check, DollarSign, ArrowLeftRight, Save, ChevronDown, Edit3, Sparkles, AlertCircle, Calendar
+    Copy, Check, DollarSign, ArrowLeftRight, Save, ChevronDown, Edit3, Sparkles, AlertCircle, Calendar,
+    Loader2
 } from 'lucide-react';
 import { resourceApi } from '../../services/resourceApi';
 import { UNIT_OPTIONS, UNIT_REGISTRY, UNIT_GROUPS } from './resourceConstants';
 import { motion, AnimatePresence } from 'framer-motion';
 import ConfirmModal from '../../components/ConfirmModal';
 import CustomDatePicker from '../../components/CustomDatePicker';
-import LogoLoader from '../../components/LogoLoader';
 
 const unitTypeLabel = { weight: 'Weight', volume: 'Volume', length: 'Length', area: 'Area', count: 'Count', time: 'Time' };
 const today = () => new Date().toISOString().slice(0, 10);
@@ -61,8 +61,7 @@ const ResourceDetail = ({
     const [isLoading, setIsLoading] = useState(true);
     const [isRefreshing, setIsRefreshing] = useState(false);
     const [isSaving, setIsSaving] = useState(false);
-    const [hasLocalChanges, setHasLocalChanges] = useState(false);
-    const [compositionChanged, setCompositionChanged] = useState(false);
+    const initialFormDataRef = useRef(null);
 
     // Editable form state
     const [formData, setFormData] = useState({
@@ -132,7 +131,7 @@ const ResourceDetail = ({
             const effRate = rateData?.rate || null;
             if (effRate) setResolvedRate(effRate);
 
-            setFormData({
+            const initialForm = {
                 name: resObj.name || '',
                 code: resObj.code || '',
                 type: resObj.type || 'material',
@@ -143,11 +142,11 @@ const ResourceDetail = ({
                 rate_source: effRate?.source || 'manual',
                 conversions: resObj.conversions ? [...resObj.conversions] : [],
                 compositions: resObj.compositions ? [...resObj.compositions] : []
-            });
-            setCompositionEffectiveFrom(latestCompositionDate ? nextDate(latestCompositionDate) : today());
+            };
 
-            setHasLocalChanges(false);
-            setCompositionChanged(false);
+            initialFormDataRef.current = JSON.parse(JSON.stringify(initialForm));
+            setFormData(initialForm);
+            setCompositionEffectiveFrom(latestCompositionDate ? nextDate(latestCompositionDate) : today());
         } catch (err) {
             console.error('Failed to load resource detail:', err);
             if (showToast) showToast('error', 'Fetch Error', 'Failed to load resource details.');
@@ -165,9 +164,61 @@ const ResourceDetail = ({
         setAllResourcesList(resources);
     }, [resources]);
 
+    const hasLocalChanges = useMemo(() => {
+        if (!initialFormDataRef.current) return false;
+        const init = initialFormDataRef.current;
+        if (String(formData.name ?? '').trim() !== String(init.name ?? '').trim()) return true;
+        if (String(formData.code ?? '').trim() !== String(init.code ?? '').trim()) return true;
+        if ((formData.type || 'material') !== (init.type || 'material')) return true;
+        if (String(formData.base_unit_code ?? '').trim() !== String(init.base_unit_code ?? '').trim()) return true;
+        if (String(formData.description ?? '').trim() !== String(init.description ?? '').trim()) return true;
+        if (String(formData.remarks ?? '').trim() !== String(init.remarks ?? '').trim()) return true;
+
+        const curRate = formData.rate !== '' && formData.rate !== null && formData.rate !== undefined ? Number(formData.rate) : null;
+        const initRate = init.rate !== '' && init.rate !== null && init.rate !== undefined ? Number(init.rate) : null;
+        if (curRate !== initRate) return true;
+        if (formData.rate_source !== init.rate_source) return true;
+
+        const curConv = formData.conversions || [];
+        const initConv = init.conversions || [];
+        if (curConv.length !== initConv.length) return true;
+        for (let i = 0; i < curConv.length; i++) {
+            if (
+                String(curConv[i].name || '').trim() !== String(initConv[i].name || '').trim() ||
+                Number(curConv[i].quantity) !== Number(initConv[i].quantity) ||
+                String(curConv[i].unit_code || '') !== String(initConv[i].unit_code || '')
+            ) return true;
+        }
+
+        const curComp = formData.compositions || [];
+        const initComp = init.compositions || [];
+        if (curComp.length !== initComp.length) return true;
+        for (let i = 0; i < curComp.length; i++) {
+            if (
+                String(curComp[i].component_resource_id) !== String(initComp[i].component_resource_id) ||
+                Number(curComp[i].quantity) !== Number(initComp[i].quantity) ||
+                String(curComp[i].unit_code || '') !== String(initComp[i].unit_code || '')
+            ) return true;
+        }
+
+        return false;
+    }, [formData]);
+
+    const compositionChanged = useMemo(() => {
+        if (!initialFormDataRef.current) return false;
+        const curComp = formData.compositions || [];
+        const initComp = initialFormDataRef.current.compositions || [];
+        if (curComp.length !== initComp.length) return true;
+        return curComp.some((c, i) => {
+            const o = initComp[i];
+            return String(c.component_resource_id) !== String(o.component_resource_id) ||
+                Number(c.quantity) !== Number(o.quantity) ||
+                String(c.unit_code || '') !== String(o.unit_code || '');
+        });
+    }, [formData.compositions]);
+
     const updateFormField = (field, value) => {
         setFormData(prev => ({ ...prev, [field]: value }));
-        setHasLocalChanges(true);
     };
 
     const latestCompositionDate = useMemo(() => compositionHistory
@@ -239,7 +290,6 @@ Remarks       : ${formData.remarks || '-'}
             }
 
             if (showToast) showToast('success', 'Changes Saved', `Updated details for "${formData.name}".`);
-            setHasLocalChanges(false);
             fetchDetail(true);
             if (onUpdate) onUpdate();
         } catch (err) {
@@ -282,7 +332,6 @@ Remarks       : ${formData.remarks || '-'}
 
         setConvForm({ name: '', quantity: '1', unit_code: formData.base_unit_code || 'kg' });
         setIsAddingConv(false);
-        setHasLocalChanges(true);
         if (showToast) showToast('sparkle', 'Scale Added', `Added 1 ${newConv.name} scale. Click "Save Changes" to commit.`);
     };
 
@@ -297,7 +346,6 @@ Remarks       : ${formData.remarks || '-'}
                     ...prev,
                     conversions: prev.conversions.filter(c => String(c.id) !== String(convId))
                 }));
-                setHasLocalChanges(true);
                 if (showToast) showToast('info', 'Scale Removed', `Removed conversion scale "${convName}".`);
                 if (setExternalConfirmModal) setExternalConfirmModal(prev => ({ ...prev, isOpen: false }));
                 else setInternalConfirmModal(prev => ({ ...prev, isOpen: false }));
@@ -335,8 +383,6 @@ Remarks       : ${formData.remarks || '-'}
 
         setCompForm({ component_resource_id: '', quantity: '1', unit_code: formData.base_unit_code || 'kg' });
         setIsAddingComp(false);
-        setHasLocalChanges(true);
-        setCompositionChanged(true);
         if (showToast) showToast('sparkle', 'Ingredient Added', `Added component "${newComp.component_name}". Click "Save Changes" to commit.`);
     };
 
@@ -351,8 +397,6 @@ Remarks       : ${formData.remarks || '-'}
                     ...prev,
                     compositions: prev.compositions.filter(c => String(c.id) !== String(compId))
                 }));
-                setHasLocalChanges(true);
-                setCompositionChanged(true);
                 if (showToast) showToast('info', 'Ingredient Removed', `Removed component "${compName}".`);
                 if (setExternalConfirmModal) setExternalConfirmModal(prev => ({ ...prev, isOpen: false }));
                 else setInternalConfirmModal(prev => ({ ...prev, isOpen: false }));
@@ -366,8 +410,9 @@ Remarks       : ${formData.remarks || '-'}
     const renderContent = () => {
         if (isLoading) {
             return (
-                <div className="flex-1 flex items-center justify-center p-8">
-                    <LogoLoader text="Rendering Resource Inspector..." size="md" fullPage={false} />
+                <div className="flex-1 flex flex-col items-center justify-center p-8 text-gray-400">
+                    <Loader2 className="animate-spin mb-2 text-blue-500" size={26} />
+                    <span className="text-xs font-semibold">Rendering Resource Inspector...</span>
                 </div>
             );
         }
@@ -717,11 +762,7 @@ Remarks       : ${formData.remarks || '-'}
                                         <CustomDatePicker
                                             value={compositionEffectiveFrom}
                                             disabled={!canWrite}
-                                            onChange={e => {
-                                                setCompositionEffectiveFrom(e.target.value);
-                                                setHasLocalChanges(true);
-                                                setCompositionChanged(true);
-                                            }}
+                                            onChange={e => setCompositionEffectiveFrom(e.target.value)}
                                             className="w-[160px]"
                                         />
                                     </div>
