@@ -699,7 +699,7 @@ const DrawingCategoryDetail = ({ category, projectId, onBack, setExtraBreadcrumb
                         <div className="flex flex-col items-center justify-center min-h-[300px] border-2 border-dashed border-gray-200 dark:border-gh-border rounded-lg m-6 p-8 bg-white dark:bg-[#0d1117]">
                             <FileText className="text-gray-300 dark:text-gray-600 mb-3" size={44} />
                             <h4 className="font-bold text-gray-700 dark:text-gray-300 text-xs">No drawings uploaded yet</h4>
-                            <p className="text-[11px] text-gray-400 mt-1">Click 'Add Record' to upload DWG or PDF blueprints.</p>
+                            <p className="text-[11px] text-gray-400 dark:text-gray-500 mt-1">Click 'Add Record' to upload DWG or PDF blueprints.</p>
                         </div>
                     ) : renderManagementTable()
                 ) : renderPlannedTable()}

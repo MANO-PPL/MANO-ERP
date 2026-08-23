@@ -72,21 +72,21 @@ const ConfirmModal = ({
                         animate={{ opacity: 1, scale: 1, y: 0 }}
                         exit={{ opacity: 0, scale: 0.95, y: 10 }}
                         transition={{ type: 'spring', damping: 25, stiffness: 350 }}
-                        className="relative w-full max-w-md bg-white dark:bg-[#161b22] border border-gray-200 dark:border-white/10 rounded-2xl shadow-2xl overflow-hidden z-10 p-6 select-none"
+                        className="relative w-full max-w-md bg-white dark:bg-[#161b22] border border-gray-200 dark:border-white/10 rounded-sm shadow-2xl overflow-hidden z-10 p-6 select-none"
                     >
                         {/* Close button */}
                         <button
                             onClick={onClose}
                             disabled={isLoading}
-                            className="absolute top-4 right-4 text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 transition p-1 rounded-lg hover:bg-gray-100 dark:hover:bg-white/5"
+                            className="absolute top-4 right-4 text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 transition p-1 rounded-sm hover:bg-gray-100 dark:hover:bg-white/5"
                         >
                             <X size={18} />
                         </button>
 
                         <div className="flex items-start gap-4">
                             {/* Icon Badge */}
-                            <div className={`w-12 h-12 rounded-xl flex items-center justify-center shrink-0 ${config.iconBg}`}>
-                                <Icon size={24} />
+                            <div className={`w-11 h-11 rounded-sm flex items-center justify-center shrink-0 ${config.iconBg}`}>
+                                <Icon size={22} />
                             </div>
 
                             {/* Content */}
@@ -106,7 +106,7 @@ const ConfirmModal = ({
                                 type="button"
                                 onClick={onClose}
                                 disabled={isLoading}
-                                className="px-4 py-2 text-xs font-semibold text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-white/5 border border-gray-200 dark:border-white/10 rounded-xl transition"
+                                className="px-4 py-2 text-xs font-semibold text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-white/5 border border-gray-200 dark:border-white/10 rounded-sm transition cursor-pointer"
                             >
                                 {cancelText}
                             </button>
@@ -116,7 +116,7 @@ const ConfirmModal = ({
                                     onConfirm();
                                 }}
                                 disabled={isLoading}
-                                className={`px-4 py-2 text-xs font-bold rounded-xl transition flex items-center gap-2 ${config.btnBg} disabled:opacity-50`}
+                                className={`px-4 py-2 text-xs font-bold rounded-sm transition flex items-center gap-2 ${config.btnBg} disabled:opacity-50 cursor-pointer`}
                             >
                                 {isLoading ? (
                                     <>

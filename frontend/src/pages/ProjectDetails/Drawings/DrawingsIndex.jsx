@@ -374,7 +374,7 @@ const DrawingsIndex = ({ setExtraBreadcrumbs, project, canWrite }) => {
                     <div className="flex flex-col items-center justify-center min-h-[300px] border-2 border-dashed border-gray-200 dark:border-gh-border rounded-lg p-8 bg-white dark:bg-[#0d1117]">
                         <FolderPlus className="text-gray-300 dark:text-gray-600 mb-3" size={44} />
                         <h4 className="font-bold text-gray-700 dark:text-gray-300 text-xs">No drawing categories found</h4>
-                        <p className="text-[11px] text-gray-400 mt-1">Create a new category to start storing drawing blueprints.</p>
+                        <p className="text-[11px] text-gray-400 dark:text-gray-500 mt-1">Create a new category to start storing drawing blueprints.</p>
                     </div>
                 ) : (
                     <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3.5">
