@@ -34,6 +34,7 @@ const CollaborationPage = lazy(() => import('./pages/Collaboration/Collaboration
 const AdminPage = lazy(() => import('./pages/Admin/AdminPage'));
 const Login = lazy(() => import('./pages/Auth/Login'));
 const DrawingTest = lazy(() => import('./pages/DrawingTest/DrawingTest'));
+const SpreadsheetPage = lazy(() => import('./pages/Spreadsheets/SpreadsheetPage'));
 
 import './index.css';
 
@@ -93,7 +94,7 @@ function App() {
               </ProtectedRoute>
             } />
             <Route path="projects/:id" element={
-              <ProtectedRoute pageId="projects">
+              <ProtectedRoute>
                 <Suspense fallback={<PageSkeleton variant="grid" />}>
                   <ProjectDetails />
                 </Suspense>
@@ -122,6 +123,13 @@ function App() {
             } />
             <Route path="resource-rate" element={<Navigate to="/resources?tab=rates" replace />} />
             <Route path="units" element={<Navigate to="/resources" replace />} />
+            <Route path="spreadsheets" element={
+              <ProtectedRoute pageId="spreadsheets">
+                <Suspense fallback={<PageSkeleton variant="table" />}>
+                  <SpreadsheetPage />
+                </Suspense>
+              </ProtectedRoute>
+            } />
             <Route path="collaboration" element={
               <ProtectedRoute pageId="collaboration">
                 <Suspense fallback={<PageSkeleton variant="table" />}>
