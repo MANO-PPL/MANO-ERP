@@ -229,21 +229,21 @@ const Dashboard = () => {
                                 <AlertTriangle className="w-5 h-5 text-rose-500 shrink-0 mt-0.5 mr-3" />
                                 <div>
                                     <h4 className="text-xs font-bold text-rose-800 dark:text-rose-400 uppercase tracking-wider">Safety Incident</h4>
-                                    <p className="text-xs text-rose-600 dark:text-gray-400 mt-1">Site B - Fall hazard detected near Grid B. Immediate corrective action required.</p>
+                                    <p className="text-xs text-rose-600 dark:text-rose-300 mt-1">Site B - Fall hazard detected near Grid B. Immediate corrective action required.</p>
                                 </div>
                             </div>
                             <div className="flex items-start p-3.5 bg-amber-50 dark:bg-amber-500/5 rounded-lg border border-amber-100/50 dark:border-amber-500/20">
                                 <Clock className="w-5 h-5 text-amber-500 shrink-0 mt-0.5 mr-3" />
                                 <div>
                                     <h4 className="text-xs font-bold text-amber-800 dark:text-amber-400 uppercase tracking-wider">Material Delay</h4>
-                                    <p className="text-xs text-amber-600 dark:text-gray-400 mt-1">Skyline Tower - Cement carrier delayed by local logistics check. ETA updated to 4PM.</p>
+                                    <p className="text-xs text-amber-600 dark:text-amber-300 mt-1">Skyline Tower - Cement carrier delayed by local logistics check. ETA updated to 4PM.</p>
                                 </div>
                             </div>
                             <div className="flex items-start p-3.5 bg-emerald-50 dark:bg-emerald-500/5 rounded-lg border border-emerald-100/50 dark:border-emerald-500/20">
                                 <CheckCircle className="w-5 h-5 text-emerald-500 shrink-0 mt-0.5 mr-3" />
                                 <div>
                                     <h4 className="text-xs font-bold text-emerald-800 dark:text-emerald-400 uppercase tracking-wider">Audit Cleared</h4>
-                                    <p className="text-xs text-emerald-600 dark:text-gray-400 mt-1">Metro Station - Structural foundation load test approved by independent audit engineer.</p>
+                                    <p className="text-xs text-emerald-600 dark:text-emerald-300 mt-1">Metro Station - Structural foundation load test approved by independent audit engineer.</p>
                                 </div>
                             </div>
                         </div>
@@ -277,12 +277,12 @@ const Dashboard = () => {
                             <div className="pb-3 border-b border-gray-100 dark:border-gh-border">
                                 <span className="text-[10px] font-bold text-blue-600 dark:text-blue-400 uppercase">HR Announcement</span>
                                 <p className="font-semibold text-gray-950 dark:text-white mt-0.5">Quarterly Site-Audit Review Schedule</p>
-                                <p className="text-gray-400 mt-1">Review sessions are planned from July 10 to July 15. Maintain task logs.</p>
+                                <p className="text-gray-500 dark:text-gray-400 mt-1">Review sessions are planned from July 10 to July 15. Maintain task logs.</p>
                             </div>
                             <div>
                                 <span className="text-[10px] font-bold text-purple-600 dark:text-purple-400 uppercase">Equipment notice</span>
                                 <p className="font-semibold text-gray-950 dark:text-white mt-0.5">Concrete Batch Mixer Maintenance</p>
-                                <p className="text-gray-400 mt-1">Batching mixer #2 will go offline tonight between 11 PM and 3 AM for scheduled checkups.</p>
+                                <p className="text-gray-500 dark:text-gray-400 mt-1">Batching mixer #2 will go offline tonight between 11 PM and 3 AM for scheduled checkups.</p>
                             </div>
                         </div>
                     </div>

@@ -377,7 +377,7 @@ const NewProjectSlideOut = ({ isOpen, onClose, onProjectCreated, projectToEdit =
                                             </div>
                                             <div className="flex-1 min-w-0">
                                                 <p className="text-sm font-semibold text-gray-800 dark:text-white truncate">{emp.name}</p>
-                                                <p className="text-xs text-gray-400">{emp.role}</p>
+                                                <p className="text-xs text-gray-400 dark:text-gray-500">{emp.role}</p>
                                             </div>
                                             {/* Tick indicator */}
                                             <div className={`w-5 h-5 rounded-full flex items-center justify-center shrink-0 border-2 transition-all ${isSelected ? 'bg-green-500 border-green-500' : 'border-gray-300 dark:border-white/20'}`}>

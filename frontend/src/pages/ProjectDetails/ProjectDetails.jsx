@@ -24,6 +24,7 @@ import MaterialManagement from './MaterialManagement/MaterialManagementIndex';
 import Approvals from './Approvals/Approvals';
 import ProjectSettings from './Settings/ProjectSettings';
 import Transactions from './Transactions/TransactionsIndex';
+import ProjectSpreadsheets from './Spreadsheets/ProjectSpreadsheets';
 
 const ProjectDetails = () => {
     const { id } = useParams();
@@ -119,16 +120,24 @@ const ProjectDetails = () => {
 
 
     const allTabs = [
-        'Dashboard', 'Tasks', 'WIP', 'Reports', 'General Documents', 'Drawings', 
-        'Planning', 'Phases', 'Contracts', 'Quality', 'Safety', 'Billing', 'Material Management', 'Transactions', 'Approvals', 'Settings'
+        'Dashboard', 'Tasks', 'WIP', 'Reports', 'General Documents', 'Spreadsheets', 'Drawings', 
+        'Planning', 'Phases', 'Contracts', 'Quality', 'Safety', 'Billing', 'Material Management',
+        'Transactions', 'Approvals', 'Settings'
     ];
 
     const allowedTabs = allTabs.filter(tab => {
+        // Dashboard is always visible to any project member
         if (tab === 'Dashboard') return true;
+        // Admins see everything
         if (isAdmin) return true;
-        if (!projectPermissions || Object.keys(projectPermissions).length === 0) return true;
-        const lvl = projectPermissions?.[tab];
-        if (lvl === undefined || lvl === null) return true;
+        // If no permissions object at all, or it's empty → only Dashboard is accessible
+        if (!projectPermissions || Object.keys(projectPermissions).length === 0) return false;
+        // Check the permission level for this tab (try exact key, lowercase, and underscore variant)
+        const lvl = projectPermissions?.[tab]
+            ?? projectPermissions?.[tab.toLowerCase()]
+            ?? projectPermissions?.[tab.replace(/\s+/g, '_').toLowerCase()];
+        // If the key is not present at all, deny (explicit grant required)
+        if (lvl === undefined || lvl === null) return false;
         return lvl >= 1;
     });
 
@@ -147,7 +156,10 @@ const ProjectDetails = () => {
     }
 
     const renderTabContent = () => {
-        const activeTabLvl = (isAdmin || !projectPermissions || projectPermissions[activeTab] === undefined) ? 2 : (projectPermissions[activeTab] ?? 0);
+        const tabKey = activeTab;
+        const activeTabLvl = isAdmin 
+            ? 2 
+            : (projectPermissions?.[tabKey] ?? projectPermissions?.[tabKey.toLowerCase()] ?? projectPermissions?.[tabKey.replace(/\s+/g, '_').toLowerCase()] ?? 0);
         const canWrite = isAdmin || activeTabLvl >= 2;
         const props = { setExtraBreadcrumbs, project, projectPermissions, isAdmin, user, canWrite, setActiveTab };
         switch (activeTab) {
@@ -161,6 +173,8 @@ const ProjectDetails = () => {
                 return <Reports {...props} />;
             case 'General Documents':
                 return <GeneralDocuments {...props} />;
+            case 'Spreadsheets':
+                return <ProjectSpreadsheets {...props} />;
             case 'Drawings':
                 return <Drawings {...props} />;
             case 'Planning':
