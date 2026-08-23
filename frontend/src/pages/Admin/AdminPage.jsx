@@ -6,7 +6,7 @@ import {
     ChevronRight, Eye, Edit3, Trash2, Info, Users,
     LayoutDashboard, Briefcase, Map, MessageSquare, Settings, ChevronDown, Loader2,
     Package, ArrowLeftRight, GripVertical, UploadCloud, Sparkles, Layers,
-    Plus, Sliders, FolderKey, Copy
+    Plus, Sliders, FolderKey, Copy, FileSpreadsheet
 } from 'lucide-react';
 import { toast } from 'react-toastify';
 import { adminApi } from '../../services/adminApi';
@@ -18,6 +18,7 @@ const BASE_PAGE_TREE = [
     { id: 'vendors', label: 'Vendors', icon: Map, children: [] },
     { id: 'clients', label: 'Clients', icon: Users, children: [] },
     { id: 'resources', label: 'Resources', icon: Package, children: [] },
+    { id: 'spreadsheets', label: 'Spreadsheets', icon: FileSpreadsheet, children: [] },
     { id: 'units', label: 'Units', icon: ArrowLeftRight, children: [] },
     {
         id: 'collaboration', label: 'Collaboration', icon: MessageSquare,
@@ -36,13 +37,16 @@ const PROJECT_MODULES_LIST = [
     { id: 'WIP', label: 'Work In Progress (WIP)' },
     { id: 'Reports', label: 'Reports & Analytics' },
     { id: 'General Documents', label: 'General Documents' },
+    { id: 'Spreadsheets', label: 'Project Spreadsheets' },
     { id: 'Drawings', label: 'Drawings & Blueprints' },
     { id: 'Planning', label: 'Project Planning' },
+    { id: 'Phases', label: 'Phases & Milestones' },
     { id: 'Contracts', label: 'Contracts & Agreements' },
     { id: 'Quality', label: 'Quality Control' },
     { id: 'Safety', label: 'Safety & Compliance' },
     { id: 'Billing', label: 'Billing & Invoicing' },
     { id: 'Material Management', label: 'Material Management' },
+    { id: 'Transactions', label: 'Transactions & Ledger' },
     { id: 'Approvals', label: 'Workflow Approvals' }
 ];
 
@@ -862,7 +866,7 @@ const AddUserDrawer = ({ open, onClose, onAdd, onBulkUpload, allProjects = [], b
                             >
                                 <UploadCloud size={36} className="mx-auto text-blue-500 mb-3" />
                                 <h4 className="text-xs font-bold text-gray-900 dark:text-white">Drag and drop CSV/Excel file</h4>
-                                <p className="text-[11px] text-gray-400 mt-1">Supports .csv, .xlsx formats with employee name, email, department columns</p>
+                                <p className="text-[11px] text-gray-400 dark:text-gray-500 mt-1">Supports .csv, .xlsx formats with employee name, email, department columns</p>
                                 <label className="mt-4 inline-block px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold rounded-xl cursor-pointer shadow-md transition-all">
                                     Browse File
                                     <input type="file" accept=".csv,.xlsx" onChange={e => { if (e.target.files?.[0]) setFile(e.target.files[0]); }} className="hidden" />
@@ -1286,7 +1290,7 @@ const PermissionTemplatesTab = ({
                             <Sparkles size={24} />
                         </div>
                         <h4 className="text-sm font-bold text-gray-900 dark:text-white">No System Permission Templates Found</h4>
-                        <p className="text-xs text-gray-400 mt-1 max-w-sm mx-auto">
+                        <p className="text-xs text-gray-400 dark:text-gray-500 mt-1 max-w-sm mx-auto">
                             Create custom system permission templates to easily apply navigation access across employee accounts.
                         </p>
                         <button

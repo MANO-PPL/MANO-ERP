@@ -15,13 +15,16 @@ const PROJECT_PAGES = [
     { id: 'WIP', label: 'Work In Progress (WIP)' },
     { id: 'Reports', label: 'Reports & Analytics' },
     { id: 'General Documents', label: 'General Documents' },
+    { id: 'Spreadsheets', label: 'Spreadsheets' },
     { id: 'Drawings', label: 'Drawings & Blueprints' },
     { id: 'Planning', label: 'Project Planning' },
+    { id: 'Phases', label: 'Phases & Milestones' },
     { id: 'Contracts', label: 'Contracts & Agreements' },
     { id: 'Quality', label: 'Quality Control' },
     { id: 'Safety', label: 'Safety & Compliance' },
     { id: 'Billing', label: 'Billing & Invoicing' },
     { id: 'Material Management', label: 'Material Management' },
+    { id: 'Transactions', label: 'Transactions & Ledger' },
     { id: 'Approvals', label: 'Workflow Approvals' }
 ];
 
@@ -812,7 +815,7 @@ const AccessControlSkeleton = () => (
                         >
                             <Users size={40} className="text-gray-300 dark:text-gray-600 mb-2.5" />
                             <h3 className="text-xs font-bold text-gray-700 dark:text-gray-300">No Member Selected</h3>
-                            <p className="text-[11px] text-gray-400 mt-1 max-w-[260px]">Select a project member on the left or add a new team member to configure specific page access levels.</p>
+                            <p className="text-[11px] text-gray-400 dark:text-gray-500 mt-1 max-w-[260px]">Select a project member on the left or add a new team member to configure specific page access levels.</p>
                         </motion.div>
                     )}
                 </AnimatePresence>

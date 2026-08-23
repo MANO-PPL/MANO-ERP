@@ -25,13 +25,16 @@ export const getProject = catchAsync(async (req, res) => {
             'WIP': 3,
             'Reports': 3,
             'General Documents': 3,
+            'Spreadsheets': 3,
             'Drawings': 3,
             'Planning': 3,
+            'Phases': 3,
             'Contracts': 3,
             'Quality': 3,
             'Safety': 3,
             'Billing': 3,
             'Material Management': 3,
+            'Transactions': 3,
             'Approvals': 3,
             'Settings': 3
         };

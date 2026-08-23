@@ -101,7 +101,9 @@ export const requireSystemPermission = (module) => {
             }
         }
 
-        const userRole = permissions?.[module] ?? 'edit';
+        // Resolve permission with case-insensitive fallback; default to 'none' (deny by default)
+        const normModule = String(module).toLowerCase().trim();
+        const userRole = permissions?.[module] ?? permissions?.[normModule] ?? 'none';
 
         if (hasAccess(userRole, requiredLevel)) {
             return next();
@@ -206,8 +208,15 @@ export const requireProjectPermission = (module) => {
             };
 
             const mappedModule = generalDocsMapping[module] || module;
-            const hasExplicitPerms = projectPerms && typeof projectPerms === 'object' && Object.keys(projectPerms).length > 0;
-            const userRole = projectPerms?.[module] ?? projectPerms?.[mappedModule] ?? (!hasExplicitPerms ? 'edit' : 'none');
+            // Resolve with case-insensitive key lookup; default to 'none' (deny by default)
+            // Dashboard access is always granted at the frontend level; backend tabs use this guard
+            const normModule = String(module).toLowerCase().trim();
+            const normMapped = String(mappedModule).toLowerCase().trim();
+            const userRole = projectPerms?.[module] 
+                ?? projectPerms?.[mappedModule]
+                ?? projectPerms?.[normModule]
+                ?? projectPerms?.[normMapped]
+                ?? 'none';
 
             if (hasAccess(userRole, requiredLevel)) {
                 return next();
