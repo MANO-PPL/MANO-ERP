@@ -1,0 +1,856 @@
+/* ==========================================================================
+   MANO-ERP Spreadsheet Suite Theme System (Light & Dark Mode)
+   ========================================================================== */
+
+/* ─── Global FortuneSheet Container ──────────────────────────────────────── */
+.fortune-container {
+    font-family: 'Poppins', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif !important;
+    background-color: #ffffff;
+    color: #1e293b;
+    border-radius: 0;
+    position: relative;
+    width: 100%;
+    height: 100%;
+    transition: background-color 0.15s ease, color 0.15s ease;
+}
+
+/* ─── Canvas Layer (Light Mode) ─────────────────────────────────────────── */
+.fortune-sheet-canvas {
+    background-color: #ffffff !important;
+    filter: none !important;
+}
+
+/* Ensure overlays do not obscure canvas headers */
+.fortune-sheet-area,
+.fortune-sheet-overlay,
+.fortune-cell-area,
+.fortune-row-body,
+.fortune-row-header,
+.fortune-col-header-wrap,
+.fortune-col-header {
+    background-color: transparent !important;
+}
+
+/* ─── Light Mode: Toolbar ────────────────────────────────────────────────── */
+.fortune-toolbar {
+    background-color: #f8fafc !important;
+    border-bottom: 1px solid #e2e8f0 !important;
+    padding: 3px 8px !important;
+    color: #334155 !important;
+}
+
+.fortune-toolbar-item,
+.fortune-toobar-combo-container {
+    position: relative !important;
+    overflow: visible !important;
+    display: inline-flex !important;
+    align-items: center !important;
+    background: transparent !important;
+    border: none !important;
+    box-shadow: none !important;
+    max-height: none !important;
+}
+
+.fortune-toolbar-button,
+.fortune-toolbar-combo {
+    display: inline-flex !important;
+    align-items: center !important;
+    border-radius: 4px !important;
+    margin: 0 1px !important;
+    color: #334155 !important;
+    height: 28px !important;
+    padding: 0 4px !important;
+    cursor: pointer !important;
+    transition: background-color 0.12s ease, color 0.12s ease !important;
+}
+
+.fortune-toolbar-button svg,
+.fortune-toolbar-combo svg,
+.fortune-toolbar-combo-button svg {
+    color: #334155 !important;
+    fill: currentColor !important;
+}
+
+.fortune-toolbar-button:hover,
+.fortune-toolbar-combo:hover {
+    background-color: #e2e8f0 !important;
+    color: #2563eb !important;
+}
+
+.fortune-toolbar-button:hover svg,
+.fortune-toolbar-combo:hover svg,
+.fortune-toolbar-combo-button:hover svg {
+    color: #2563eb !important;
+    fill: #2563eb !important;
+}
+
+.fortune-toolbar-button-active,
+.fortune-toolbar-combo-button-active {
+    background-color: rgba(37, 99, 235, 0.12) !important;
+    color: #2563eb !important;
+}
+
+.fortune-toolbar-combo-button {
+    display: inline-flex !important;
+    align-items: center !important;
+    font-size: 13px !important;
+    padding: 2px 4px !important;
+    cursor: pointer !important;
+}
+
+.fortune-toolbar-combo-text {
+    font-size: 13px !important;
+    font-weight: 500 !important;
+    color: #334155;
+}
+
+.fortune-toolbar-combo-arrow {
+    display: inline-flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+    padding: 2px 2px !important;
+    cursor: pointer !important;
+}
+
+.fortune-toolbar-divider {
+    background-color: #cbd5e1 !important;
+    width: 1px !important;
+    height: 18px !important;
+    margin: 0 4px !important;
+}
+
+/* ─── Light Mode: Formula Bar ───────────────────────────────────────────── */
+.fortune-fx-editor {
+    background-color: #ffffff !important;
+    border-bottom: 1px solid #e2e8f0 !important;
+    height: 32px !important;
+}
+
+.fortune-name-box-container {
+    border-right: 1px solid #e2e8f0 !important;
+    background-color: #ffffff !important;
+    font-weight: 600;
+}
+
+.fortune-name-box {
+    background-color: transparent !important;
+    color: #2563eb !important;
+    font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace !important;
+    font-size: 13px !important;
+    font-weight: 700 !important;
+}
+
+.fortune-fx-input-container {
+    border-left: 1px solid #e2e8f0 !important;
+    background-color: #ffffff !important;
+}
+
+.fortune-fx-input {
+    background-color: transparent !important;
+    color: #0f172a !important;
+    font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace !important;
+    font-size: 13px !important;
+}
+
+.fortune-fx-icon {
+    display: flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+    color: #2563eb !important;
+    fill: #2563eb !important;
+    margin: 0 10px !important;
+    opacity: 1 !important;
+}
+
+.fortune-fx-icon svg,
+.fortune-fx-icon svg use,
+.fortune-fx-icon svg path,
+.fortune-fx-icon * {
+    color: #2563eb !important;
+    fill: #2563eb !important;
+    opacity: 1 !important;
+}
+
+/* ─── Light Mode: Bottom Sheet Tabs ─────────────────────────────────────── */
+.luckysheet-sheet-area {
+    background-color: #f8fafc !important;
+    border-top: 1px solid #e2e8f0 !important;
+    height: 34px !important;
+    color: #475569 !important;
+}
+
+#luckysheet-bottom-pager {
+    background-color: #f8fafc !important;
+    color: #475569 !important;
+}
+
+.luckysheet-sheet-area div.luckysheet-sheets-item {
+    background-color: #f1f5f9 !important;
+    border: 1px solid #e2e8f0 !important;
+    border-bottom: none !important;
+    border-radius: 3px 3px 0 0 !important;
+    margin-right: 3px !important;
+    font-size: 12px !important;
+    font-weight: 500 !important;
+    color: #64748b !important;
+}
+
+.luckysheet-sheet-area div.luckysheet-sheets-item:hover {
+    background-color: #e2e8f0 !important;
+    color: #0f172a !important;
+}
+
+.luckysheet-sheet-area div.luckysheet-sheets-item-active {
+    background-color: #ffffff !important;
+    border-top: 2px solid #2563eb !important;
+    border-left: 1px solid #cbd5e1 !important;
+    border-right: 1px solid #cbd5e1 !important;
+    color: #2563eb !important;
+    font-weight: 600 !important;
+}
+
+.fortune-sheettab-button:hover,
+.fortune-zoom-button:hover,
+.fortune-sheettab-scroll:hover {
+    background-color: #e2e8f0 !important;
+    color: #2563eb !important;
+}
+
+/* ─── Dropdowns, Popups, Context Menus (Light Mode) ──────────────────────── */
+.fortune-toolbar-combo-popup {
+    position: absolute !important;
+    top: 100% !important;
+    margin-top: 4px !important;
+    z-index: 10005 !important;
+    background-color: #ffffff !important;
+    border: 1px solid #e2e8f0 !important;
+    border-radius: 6px !important;
+    box-shadow: 0 10px 25px rgba(0, 0, 0, 0.15) !important;
+    overflow: visible !important;
+    padding: 4px 0 !important;
+    min-width: 140px !important;
+}
+
+.fortune-toolbar-select {
+    max-height: 280px !important;
+    overflow-y: auto !important;
+    overflow-x: hidden !important;
+    background: transparent !important;
+    border: none !important;
+    box-shadow: none !important;
+    padding: 0 !important;
+    margin: 0 !important;
+}
+
+.fortune-toolbar-select-option,
+.fortune-toolbar-select-menu-item {
+    display: flex !important;
+    align-items: center !important;
+    justify-content: space-between !important;
+    padding: 6px 14px !important;
+    margin: 1px 4px !important;
+    border-radius: 4px !important;
+    cursor: pointer !important;
+    font-size: 13px !important;
+    color: #1e293b !important;
+    line-height: 1.4 !important;
+    white-space: nowrap !important;
+    transition: background-color 0.1s ease, color 0.1s ease !important;
+}
+
+.fortune-toolbar-select-option:hover,
+.fortune-toolbar-select-menu-item:hover {
+    background-color: #eff6ff !important;
+    color: #2563eb !important;
+}
+
+/* Layout for format options: name on left, example value on right */
+.fortune-toolbar-menu-line {
+    display: flex !important;
+    align-items: center !important;
+    justify-content: space-between !important;
+    width: 100% !important;
+    gap: 16px !important;
+}
+
+/* Example values (1000.12, 12.21%, ₹1200.09, etc.) — light mode */
+.fortune-toolbar-subtext {
+    color: #64748b !important;
+    font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace !important;
+    font-size: 11px !important;
+    font-weight: 500 !important;
+    opacity: 1 !important;
+    flex-shrink: 0 !important;
+    letter-spacing: 0.01em !important;
+}
+
+.fortune-context-menu,
+.fortune-popover,
+.fortune-dialog,
+.fortune-zoom-ratio-menu,
+.luckysheet-formula-search-c,
+.luckysheet-formula-help-c {
+    background-color: #ffffff !important;
+    border: 1px solid #e2e8f0 !important;
+    color: #1e293b !important;
+    box-shadow: 0 10px 25px rgba(0, 0, 0, 0.1) !important;
+    border-radius: 6px !important;
+    z-index: 10005 !important;
+}
+
+.fortune-context-menu-item,
+.fortune-zoom-ratio-item,
+.fortune-sheet-list-item,
+.format-list .item {
+    color: #1e293b !important;
+    font-size: 13px !important;
+    padding: 6px 14px !important;
+    cursor: pointer !important;
+    transition: background-color 0.12s ease, color 0.12s ease !important;
+}
+
+.fortune-context-menu-item:hover,
+.fortune-zoom-ratio-item:hover,
+.fortune-sheet-list-item:hover,
+.format-list .item:hover {
+    background-color: #eff6ff !important;
+    color: #2563eb !important;
+}
+
+
+/* ==========================================================================
+   DARK MODE OVERRIDES (High-Contrast MANO-ERP Palette)
+   ========================================================================== */
+
+.dark .fortune-container {
+    background-color: #0d1117 !important;
+    color: #f0f6fc !important;
+}
+
+/* ─── Dark Mode: Canvas Layer ───────────────────────────────────────────── */
+/* Deep dark sheet with sharp, crisp text and clean visible gridlines */
+.dark .fortune-sheet-canvas {
+    background-color: #ffffff !important;
+    filter: invert(0.88) hue-rotate(180deg) brightness(1.05) contrast(1.05) !important;
+}
+
+/* Ensure overlays stay transparent so canvas numbers & letters are 100% visible */
+.dark .fortune-sheet-area,
+.dark .fortune-sheet-overlay,
+.dark .fortune-cell-area,
+.dark .fortune-row-body,
+.dark .fortune-row-header,
+.dark .fortune-col-header-wrap,
+.dark .fortune-col-header {
+    background-color: transparent !important;
+}
+
+.dark .fortune-left-top {
+    background-color: #161b22 !important;
+    border-color: #30363d !important;
+}
+
+/* ─── Dark Mode: Toolbar ────────────────────────────────────────────────── */
+.dark .fortune-toolbar {
+    background-color: #161b22 !important;
+    border-bottom: 1px solid #30363d !important;
+    color: #f0f6fc !important;
+    padding: 4px 10px !important;
+}
+
+.dark .fortune-toobar-combo-container,
+.dark .fortune-toolbar-item {
+    background: transparent !important;
+    border: none !important;
+    box-shadow: none !important;
+}
+
+.dark .fortune-toolbar-button,
+.dark .fortune-toolbar-combo {
+    color: #f0f6fc !important;
+    border-radius: 4px !important;
+    font-size: 13px !important;
+    font-weight: 500 !important;
+    background: transparent !important;
+    border: none !important;
+    transition: background-color 0.12s ease, color 0.12s ease !important;
+}
+
+.dark .fortune-toolbar-combo-text {
+    color: #f0f6fc !important;
+}
+
+.dark .fortune-toolbar-button svg,
+.dark .fortune-toolbar-combo svg,
+.dark .fortune-toolbar-combo-button svg,
+.dark .fortune-toolbar-combo-arrow svg {
+    color: #c9d1d9 !important;
+    fill: currentColor !important;
+}
+
+.dark .fortune-toolbar-button:hover,
+.dark .fortune-toolbar-combo:hover {
+    background-color: #21262d !important;
+    color: #58a6ff !important;
+}
+
+.dark .fortune-toolbar-button:hover svg,
+.dark .fortune-toolbar-combo:hover svg,
+.dark .fortune-toolbar-combo-button:hover svg,
+.dark .fortune-toolbar-combo:hover .fortune-toolbar-combo-arrow svg {
+    color: #58a6ff !important;
+    fill: #58a6ff !important;
+}
+
+.dark .fortune-toolbar-button-active,
+.dark .fortune-toolbar-combo-button-active {
+    background-color: rgba(56, 139, 253, 0.22) !important;
+    color: #58a6ff !important;
+}
+
+.dark .fortune-toolbar-divider {
+    background-color: #30363d !important;
+}
+
+/* ─── Dark Mode: Formula Bar ────────────────────────────────────────────── */
+.dark .fortune-fx-editor {
+    background-color: #0d1117 !important;
+    border-bottom: 1px solid #30363d !important;
+    height: 32px !important;
+}
+
+.dark .fortune-name-box-container {
+    border-right: 1px solid #30363d !important;
+    background-color: #161b22 !important;
+    padding: 0 4px !important;
+}
+
+.dark .fortune-name-box {
+    background-color: transparent !important;
+    color: #58a6ff !important;
+    font-weight: 700 !important;
+    font-size: 13px !important;
+    font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace !important;
+}
+
+.dark .fortune-fx-input-container {
+    border-left: 1px solid #30363d !important;
+    background-color: #0d1117 !important;
+}
+
+.dark .fortune-fx-input {
+    background-color: transparent !important;
+    color: #ffffff !important;
+    font-size: 13px !important;
+    font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace !important;
+}
+
+.dark .fortune-fx-icon {
+    display: flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+    color: #58a6ff !important;
+    fill: #58a6ff !important;
+    margin: 0 10px !important;
+    opacity: 1 !important;
+}
+
+.dark .fortune-fx-icon svg,
+.dark .fortune-fx-icon svg use,
+.dark .fortune-fx-icon svg path,
+.dark .fortune-fx-icon * {
+    color: #58a6ff !important;
+    fill: #58a6ff !important;
+    opacity: 1 !important;
+}
+
+/* Global symbol fill fallback for #fx */
+#fx,
+#fx path,
+symbol#fx,
+symbol#fx path {
+    fill: currentColor !important;
+}
+
+/* ─── Dark Mode: Cell Selection & Active Editing ────────────────────────── */
+.dark .luckysheet-cell-selected {
+    background: rgba(56, 139, 253, 0.22) !important;
+    border: 2px solid #58a6ff !important;
+}
+
+.dark .luckysheet-cs-fillhandle {
+    background-color: #58a6ff !important;
+    border: 1px solid #ffffff !important;
+}
+
+.dark .luckysheet-input-box-inner {
+    background-color: #161b22 !important;
+    color: #ffffff !important;
+    border: 2px solid #58a6ff !important;
+    box-shadow: 0 0 16px rgba(56, 139, 253, 0.45) !important;
+    font-size: 13px !important;
+}
+
+.dark .luckysheet-cell-input {
+    color: #ffffff !important;
+}
+
+/* ─── Dark Mode: Bottom Sheet Tabs ──────────────────────────────────────── */
+.dark .luckysheet-sheet-area {
+    background-color: #161b22 !important;
+    border-top: 1px solid #30363d !important;
+    color: #9da7b3 !important;
+    height: 36px !important;
+}
+
+#luckysheet-bottom-pager {
+    background-color: #161b22 !important;
+    color: #9da7b3 !important;
+}
+
+.dark .fortune-sheettab-container .boundary {
+    background: #161b22 !important;
+}
+
+.dark .luckysheet-sheet-area div.luckysheet-sheets-item {
+    background-color: #0d1117 !important;
+    border: 1px solid #30363d !important;
+    border-bottom: none !important;
+    color: #9da7b3 !important;
+    font-size: 13px !important;
+    font-weight: 500 !important;
+    border-radius: 4px 4px 0 0 !important;
+    padding: 3px 14px 1px 10px !important;
+    height: 32px !important;
+    line-height: 28px !important;
+}
+
+.dark .luckysheet-sheet-area div.luckysheet-sheets-item:hover {
+    background-color: #21262d !important;
+    color: #ffffff !important;
+}
+
+.dark .luckysheet-sheet-area div.luckysheet-sheets-item-active {
+    background-color: #161b22 !important;
+    border-top: 2.5px solid #58a6ff !important;
+    border-left: 1px solid #38424d !important;
+    border-right: 1px solid #38424d !important;
+    color: #58a6ff !important;
+    font-weight: 700 !important;
+}
+
+.dark .fortune-sheettab-button,
+.dark .fortune-zoom-button,
+.dark .fortune-sheettab-scroll {
+    color: #e6edf3 !important;
+}
+
+.dark .fortune-sheettab-button:hover,
+.dark .fortune-zoom-button:hover,
+.dark .fortune-sheettab-scroll:hover {
+    background-color: #21262d !important;
+    color: #58a6ff !important;
+}
+
+.dark .fortune-zoom-ratio {
+    color: #f0f6fc !important;
+    font-size: 12px !important;
+    font-weight: 600 !important;
+}
+
+/* ─── Dark Mode: Dropdowns, Popups, Context Menus ────────────────────────── */
+.dark .fortune-toolbar-combo-popup {
+    background-color: #161b22 !important;
+    border: 1px solid #38424d !important;
+    box-shadow: 0 16px 36px rgba(0, 0, 0, 0.8) !important;
+}
+
+.dark .fortune-toolbar-select {
+    background: transparent !important;
+    border: none !important;
+}
+
+.dark .fortune-toolbar-select-option,
+.dark .fortune-toolbar-select-menu-item {
+    color: #f0f6fc !important;
+}
+
+.dark .fortune-toolbar-select-option:hover,
+.dark .fortune-toolbar-select-menu-item:hover {
+    background-color: #21262d !important;
+    color: #58a6ff !important;
+}
+
+.dark .fortune-toolbar-select-option .fortuen-toolbar-text {
+    color: inherit !important;
+}
+
+.dark .fortune-context-menu,
+.dark .fortune-popover,
+.dark .fortune-dialog,
+.dark .fortune-zoom-ratio-menu,
+.dark .fortune-border-select-menu,
+.dark .fortune-border-style-picker-menu,
+.dark .fortune-toolbar-color-picker,
+.dark .luckysheet-formula-search-c,
+.dark .luckysheet-formula-help-c,
+.dark .fortune-link-modify-modal,
+.dark .luckysheet-modal-dialog,
+.dark .luckysheet-cols-menu,
+.dark .luckysheet-filter-bycolor-submenu,
+.dark .format-list,
+.dark #fortune-change-color,
+.dark .fortune-sheet-list {
+    background-color: #161b22 !important;
+    border: 1px solid #38424d !important;
+    color: #f0f6fc !important;
+    box-shadow: 0 16px 40px rgba(0, 0, 0, 0.8) !important;
+    border-radius: 6px !important;
+    z-index: 10005 !important;
+}
+
+.dark .fortune-context-menu .fortune-context-menu-item,
+.dark .luckysheet-cols-menu .luckysheet-cols-menuitem,
+.dark .luckysheet-cols-menu .luckysheet-cols-menuitem-content,
+.dark .fortune-zoom-ratio-item,
+.dark .fortune-sheet-list-item,
+.dark .fortune-menuitem-row,
+.dark .format-list .item,
+.dark .luckysheet-filter-bycolor-submenu .item {
+    color: #f0f6fc !important;
+    font-size: 13px !important;
+    font-weight: 500 !important;
+    padding: 7px 16px !important;
+    cursor: pointer !important;
+    display: flex !important;
+    align-items: center !important;
+    justify-content: space-between !important;
+    transition: background-color 0.12s ease, color 0.12s ease !important;
+}
+
+.dark .fortune-context-menu .fortune-context-menu-item:hover,
+.dark .luckysheet-cols-menu .luckysheet-cols-menuitem:hover,
+.dark .luckysheet-cols-menu .luckysheet-cols-menuitem-hover,
+.dark .fortune-zoom-ratio-item:hover,
+.dark .fortune-sheet-list-item:hover,
+.dark .format-list .item:hover,
+.dark .luckysheet-filter-bycolor-submenu .item:hover {
+    background-color: #21262d !important;
+    color: #58a6ff !important;
+}
+
+/* Submenu container (e.g. More Formats -> More Currency / More Number) */
+.toolbar-item-sub-menu,
+.fortune-toolbar-select-sub-menu {
+    position: absolute !important;
+    left: 100% !important;
+    top: 0 !important;
+    z-index: 10006 !important;
+    background-color: #ffffff !important;
+    border: 1px solid #e2e8f0 !important;
+    border-radius: 6px !important;
+    box-shadow: 0 10px 25px rgba(0, 0, 0, 0.15) !important;
+    padding: 4px 0 !important;
+    min-width: 150px !important;
+}
+
+.dark .toolbar-item-sub-menu,
+.dark .fortune-toolbar-select-sub-menu {
+    background-color: #161b22 !important;
+    border: 1px solid #38424d !important;
+    box-shadow: 0 16px 36px rgba(0, 0, 0, 0.8) !important;
+}
+
+/* Color Picker */
+.fortune-toolbar-color-picker {
+    padding: 8px !important;
+    background-color: #ffffff !important;
+}
+
+.dark .fortune-toolbar-color-picker {
+    background-color: #161b22 !important;
+}
+
+.fortune-toolbar-color-picker-row {
+    display: flex !important;
+    margin-bottom: 2px !important;
+}
+
+.fortune-toolbar-color-picker-item {
+    width: 16px !important;
+    height: 16px !important;
+    margin: 1px !important;
+    border-radius: 2px !important;
+    cursor: pointer !important;
+    border: 1px solid rgba(0, 0, 0, 0.1) !important;
+}
+
+.dark .fortune-toolbar-color-picker-item {
+    border: 1px solid rgba(255, 255, 255, 0.15) !important;
+}
+
+/* Border Menu */
+.fortune-border-select-menu {
+    padding: 6px 8px !important;
+    min-width: 160px !important;
+}
+
+/* ─── Dark Mode: Format Dropdown Menu Items ──────────────────────────────── */
+
+/* Dark mode: menu-line layout (format name + example value side-by-side) */
+.dark .fortune-toolbar-menu-line {
+    display: flex !important;
+    align-items: center !important;
+    justify-content: space-between !important;
+    width: 100% !important;
+    gap: 16px !important;
+}
+
+/* Dark mode: format item label (e.g. "Number", "Percent") */
+.dark .fortune-toolbar-menu-line > div:first-child {
+    color: #e6edf3 !important;
+    font-size: 13px !important;
+    font-weight: 500 !important;
+}
+
+/* Dark mode: example preview values (1000.12, 12.21%, ₹1200.09, 2017-11-29) */
+.dark .fortune-toolbar-subtext {
+    color: #79c0ff !important;
+    font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace !important;
+    font-size: 11px !important;
+    font-weight: 500 !important;
+    opacity: 1 !important;
+    flex-shrink: 0 !important;
+    letter-spacing: 0.02em !important;
+    background: rgba(56, 139, 253, 0.1) !important;
+    padding: 1px 5px !important;
+    border-radius: 3px !important;
+}
+
+/* Hover: example value brightens */
+.dark .fortune-toolbar-select-option:hover .fortune-toolbar-subtext,
+.dark .fortune-toolbar-select-menu-item:hover .fortune-toolbar-subtext {
+    color: #58a6ff !important;
+    background: rgba(56, 139, 253, 0.2) !important;
+}
+
+/* Dark Mode Submenu Arrow / right-arrow icon */
+.dark .format-list .item .luckysheet-arrow,
+.dark .fortune-toolbar-select-option .luckysheet-arrow,
+.dark .fortune-toolbar-menu-line svg {
+    color: #8b949e !important;
+    fill: currentColor !important;
+}
+
+.dark .fortune-context-menu-divider,
+.dark .fortune-toolbar-menu-divider {
+    background-color: #30363d !important;
+    margin: 4px 0 !important;
+    height: 1px !important;
+}
+
+.dark .luckysheet-formula-search-c .luckysheet-formula-search-item {
+    background-color: #161b22 !important;
+    color: #f0f6fc !important;
+    font-size: 13px !important;
+    padding: 6px 12px !important;
+}
+
+.dark .luckysheet-formula-search-c .luckysheet-formula-search-item:hover {
+    background-color: #21262d !important;
+    color: #58a6ff !important;
+}
+
+.dark .luckysheet-formula-search-c .luckysheet-formula-search-func {
+    color: #58a6ff !important;
+    font-weight: 700 !important;
+}
+
+.dark .luckysheet-formula-help-title {
+    background-color: #21262d !important;
+    border-color: #30363d !important;
+    color: #f0f6fc !important;
+    font-size: 13px !important;
+}
+
+.dark .fortune-modal-container {
+    background: rgba(1, 4, 9, 0.8) !important;
+    backdrop-filter: blur(6px) !important;
+}
+
+.dark .fortune-message-box-button.button-default {
+    background-color: #21262d !important;
+    color: #f0f6fc !important;
+    border-color: #38424d !important;
+    font-size: 13px !important;
+}
+
+.dark .fortune-message-box-button.button-default:hover {
+    background-color: #30363d !important;
+    color: #ffffff !important;
+}
+
+.dark .fortune-message-box-button.button-primary {
+    background-color: #238636 !important;
+    color: #ffffff !important;
+    font-size: 13px !important;
+}
+
+.dark .fortune-message-box-button.button-primary:hover {
+    background-color: #2ea043 !important;
+}
+
+/* ─── Smooth Custom Scrollbars for Dropdowns & Menus ─────────────────────── */
+.fortune-toolbar-select::-webkit-scrollbar,
+.fortune-toolbar-select-menu::-webkit-scrollbar,
+.fortune-toolbar-combo-popup::-webkit-scrollbar,
+.format-list::-webkit-scrollbar,
+.fortune-sheet-list::-webkit-scrollbar {
+    width: 6px;
+    height: 6px;
+}
+
+.fortune-toolbar-select::-webkit-scrollbar-track,
+.fortune-toolbar-select-menu::-webkit-scrollbar-track,
+.fortune-toolbar-combo-popup::-webkit-scrollbar-track,
+.format-list::-webkit-scrollbar-track,
+.fortune-sheet-list::-webkit-scrollbar-track {
+    background: transparent;
+}
+
+.fortune-toolbar-select::-webkit-scrollbar-thumb,
+.fortune-toolbar-select-menu::-webkit-scrollbar-thumb,
+.fortune-toolbar-combo-popup::-webkit-scrollbar-thumb,
+.format-list::-webkit-scrollbar-thumb,
+.fortune-sheet-list::-webkit-scrollbar-thumb {
+    background-color: #cbd5e1;
+    border-radius: 4px;
+}
+
+.dark .fortune-toolbar-select::-webkit-scrollbar-thumb,
+.dark .fortune-toolbar-select-menu::-webkit-scrollbar-thumb,
+.dark .fortune-toolbar-combo-popup::-webkit-scrollbar-thumb,
+.dark .format-list::-webkit-scrollbar-thumb,
+.dark .fortune-sheet-list::-webkit-scrollbar-thumb {
+    background-color: #38424d !important;
+    border-radius: 4px !important;
+}
+
+.dark .fortune-toolbar-select::-webkit-scrollbar-thumb:hover,
+.dark .fortune-toolbar-select-menu::-webkit-scrollbar-thumb:hover,
+.dark .fortune-toolbar-combo-popup::-webkit-scrollbar-thumb:hover,
+.dark .format-list::-webkit-scrollbar-thumb:hover,
+.dark .fortune-sheet-list::-webkit-scrollbar-thumb:hover {
+    background-color: #58a6ff !important;
+}
+
+.dark .luckysheet-scrollbar-ltr::-webkit-scrollbar-thumb {
+    background-color: #38424d !important;
+    border-radius: 4px !important;
+}
+
+.dark .luckysheet-scrollbar-ltr::-webkit-scrollbar-thumb:hover {
+    background-color: #58a6ff !important;
+}
+
+
