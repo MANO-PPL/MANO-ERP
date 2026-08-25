@@ -28,6 +28,7 @@ const ResourcesList = lazy(() => import('./pages/Resources/ResourceList'));
 const ResourceRate = lazy(() => import('./pages/Resources/ResourceRate'));
 const UnitsList = lazy(() => import('./pages/Units/UnitsPage'));
 const VendorBulkUpload = lazy(() => import('./pages/Vendors/VendorBulkUpload'));
+const ResourceBulkUpload = lazy(() => import('./pages/Resources/ResourceBulkUpload'));
 const ClientsList = lazy(() => import('./pages/Clients/ClientsList'));
 const ClientBulkUpload = lazy(() => import('./pages/Clients/ClientBulkUpload'));
 const CollaborationPage = lazy(() => import('./pages/Collaboration/CollaborationPage'));
@@ -118,6 +119,13 @@ function App() {
               <ProtectedRoute pageId="resources">
                 <Suspense fallback={<PageSkeleton variant="table" />}>
                   <ResourcesList />
+                </Suspense>
+              </ProtectedRoute>
+            } />
+            <Route path="resources/bulk-upload" element={
+              <ProtectedRoute pageId="resources">
+                <Suspense fallback={<PageSkeleton variant="table" />}>
+                  <ResourceBulkUpload />
                 </Suspense>
               </ProtectedRoute>
             } />

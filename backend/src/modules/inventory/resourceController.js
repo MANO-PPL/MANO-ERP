@@ -261,6 +261,31 @@ export const removeConversion = catchAsync(async (req, res) => {
     res.json({ success: true, message: 'Conversion removed' });
 });
 
+export const bulkValidate = catchAsync(async (req, res) => {
+    const resources = req.body.resources || req.body;
+    if (!resources || !Array.isArray(resources)) {
+        throw new AppError('Invalid resources data, array expected', 400);
+    }
+    const response = await resourceService.bulkValidateResources(req.user.org_id, resources);
+    res.json({ success: true, validation: response });
+});
+
+export const bulkJson = catchAsync(async (req, res) => {
+    const resources = req.body.resources || req.body;
+    if (!resources || !Array.isArray(resources) || resources.length === 0) {
+        throw new AppError('Invalid or empty resources list provided', 400);
+    }
+    const results = await resourceService.bulkInsertResources(req.user.org_id, resources);
+    if (results.errors.length > 0) {
+        return res.status(400).json({
+            success: false,
+            message: 'Bulk insert failed and was rolled back.',
+            report: results
+        });
+    }
+    res.status(201).json({ success: true, report: results });
+});
+
 export const bulkUpdateResources = catchAsync(async (req, res) => {
     if (!Array.isArray(req.body)) {
         throw new AppError('Body must be an array of resources', 400);
@@ -329,6 +354,8 @@ export default {
     getResource,
     getResolvedRate,
     createResource,
+    bulkValidate,
+    bulkJson,
     updateResource,
     deleteResource,
     setCompositions,

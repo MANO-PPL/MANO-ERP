@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
-import { useSearchParams } from 'react-router-dom';
+import { useSearchParams, useNavigate } from 'react-router-dom';
 import * as XLSX from 'xlsx';
 import Papa from 'papaparse';
 import {
@@ -331,6 +331,7 @@ const ResourceSubNav = ({ activeTab, onChange }) => {
 };
 
 const ResourceList = () => {
+    const navigate = useNavigate();
     const { hasPermission } = useAuth();
     const canWrite = hasPermission('resources', 2);
 
@@ -601,6 +602,8 @@ const ResourceList = () => {
     const [isExcelModalOpen, setIsExcelModalOpen] = useState(false);
     const [isExcelDropdownOpen, setIsExcelDropdownOpen] = useState(false);
     const excelDropdownRef = useRef(null);
+    const [isManageDropdownOpen, setIsManageDropdownOpen] = useState(false);
+    const manageDropdownRef = useRef(null);
     const fileInputRef = useRef(null);
     const [excelPasteText, setExcelPasteText] = useState('');
     const [excelParsedResources, setExcelParsedResources] = useState([]);
@@ -890,6 +893,12 @@ const ResourceList = () => {
     // Global click outside & keydown listener to deselect cells
     useEffect(() => {
         const handleClickOutside = (e) => {
+            if (excelDropdownRef.current && !excelDropdownRef.current.contains(e.target)) {
+                setIsExcelDropdownOpen(false);
+            }
+            if (manageDropdownRef.current && !manageDropdownRef.current.contains(e.target)) {
+                setIsManageDropdownOpen(false);
+            }
             if (e.target.closest('.z-\\[6000\\]') || e.target.closest('.z-\\[9999\\]') || e.target.closest('.z-\\[9000\\]') || e.target.closest('.z-\\[7000\\]') || e.target.closest('[data-context-menu="true"]') || e.target.closest('[role="dialog"]')) {
                 return;
             }
@@ -3453,7 +3462,7 @@ const ResourceList = () => {
                     {/* Remove Duplicates button */}
                     <button
                         onClick={handleRemoveDuplicates}
-                        className="flex items-center gap-1.5 px-3 py-1.5 text-amber-700 dark:text-amber-400 border border-amber-200 dark:border-amber-500/20 bg-amber-50/50 dark:bg-amber-500/10 hover:bg-amber-100 dark:hover:bg-amber-500/20 rounded-lg text-xs font-semibold transition shrink-0"
+                        className="flex items-center gap-1.5 px-3 py-1.5 text-amber-700 dark:text-amber-400 border border-amber-200 dark:border-amber-500/20 bg-amber-50/50 dark:bg-amber-500/10 hover:bg-amber-100 dark:hover:bg-amber-500/20 rounded-lg text-xs font-semibold transition shrink-0 cursor-pointer"
                         title="Instantly find and remove duplicate rows"
                     >
                         <Copy size={13} />
@@ -3523,7 +3532,7 @@ const ResourceList = () => {
                     {/* Export CSV button */}
                     <button
                         onClick={handleExportCSV}
-                        className="flex items-center gap-1.5 px-3 py-1.5 text-gray-600 hover:text-gray-800 border border-gray-250 dark:text-gray-400 dark:hover:text-white dark:border-white/10 bg-transparent rounded-lg text-xs font-semibold hover:bg-gray-100 dark:hover:bg-white/5 transition shrink-0"
+                        className="flex items-center gap-1.5 px-3 py-1.5 text-gray-600 hover:text-gray-800 border border-gray-250 dark:text-gray-400 dark:hover:text-white dark:border-white/10 bg-transparent rounded-lg text-xs font-semibold hover:bg-gray-100 dark:hover:bg-white/5 transition shrink-0 cursor-pointer"
                         title="Export CSV"
                     >
                         <Download size={13} />
@@ -3542,17 +3551,66 @@ const ResourceList = () => {
                         <span>Refresh</span>
                     </button>
 
-                    {/* Add Resource Button (Extreme Right) */}
+                    {/* Add Resource Button */}
                     {canWrite && (
-                        <button
-                            type="button"
-                            onClick={() => handleAddRows(1)}
-                            className="flex items-center gap-1.5 px-3.5 py-1.5 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-xs font-bold transition-all shadow-sm active:scale-[0.98] cursor-pointer shrink-0"
-                            title="Add new editable resource row directly to Excel grid"
-                        >
-                            <Plus size={14} className="stroke-[3]" />
-                            <span>Add Resource</span>
-                        </button>
+                        <div className="relative group shrink-0">
+                            <button
+                                type="button"
+                                onClick={() => handleAddRows(1)}
+                                className="flex items-center gap-1.5 px-3.5 py-1.5 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-xs font-bold transition-all shadow-sm active:scale-[0.98] cursor-pointer"
+                                title="Add new editable resource row directly to Excel grid"
+                            >
+                                <Plus size={14} className="stroke-[3]" />
+                                <span>Add Resource</span>
+                            </button>
+                            <div className="absolute right-0 top-full mt-1 hidden group-hover:block z-50 bg-white dark:bg-[#161b22] border border-gray-200 dark:border-white/10 rounded-md shadow-xl py-1 text-xs w-28 font-semibold">
+                                <button onClick={() => handleAddRows(5)} className="w-full text-left px-3 py-1.5 hover:bg-gray-50 dark:hover:bg-white/5 text-gray-700 dark:text-gray-300 cursor-pointer">Add 5 Rows</button>
+                                <button onClick={() => handleAddRows(10)} className="w-full text-left px-3 py-1.5 hover:bg-gray-50 dark:hover:bg-white/5 text-gray-700 dark:text-gray-300 cursor-pointer">Add 10 Rows</button>
+                            </div>
+                        </div>
+                    )}
+
+                    {/* Manage Dropdown */}
+                    {canWrite && (
+                        <div className="relative shrink-0" ref={manageDropdownRef}>
+                            <button
+                                type="button"
+                                onClick={() => setIsManageDropdownOpen(!isManageDropdownOpen)}
+                                className="flex items-center gap-1.5 px-3 py-1.5 bg-gray-100 dark:bg-white/10 hover:bg-gray-200 dark:hover:bg-white/15 text-gray-700 dark:text-gray-200 rounded-lg text-xs font-semibold transition cursor-pointer"
+                            >
+                                <span>Manage</span>
+                                <ChevronDown size={13} className={`transition-transform duration-200 ${isManageDropdownOpen ? 'rotate-180' : ''}`} />
+                            </button>
+
+                            {isManageDropdownOpen && (
+                                <div className="absolute right-0 mt-1.5 w-52 bg-white dark:bg-[#161b22] rounded-xl shadow-xl border border-gray-200 dark:border-white/10 z-[5000] overflow-hidden py-1.5 text-xs font-semibold select-none flex flex-col">
+                                    <button
+                                        type="button"
+                                        onClick={() => { setIsAddFormOpen(true); setIsManageDropdownOpen(false); }}
+                                        className="w-full flex items-center px-3.5 py-2 text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-white/5 transition-colors cursor-pointer"
+                                    >
+                                        <Plus size={14} className="mr-2 text-emerald-500" />
+                                        Add Manual Resource
+                                    </button>
+                                    <button
+                                        type="button"
+                                        onClick={() => { navigate('/resources/bulk-upload'); setIsManageDropdownOpen(false); }}
+                                        className="w-full flex items-center px-3.5 py-2 text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-white/5 transition-colors cursor-pointer"
+                                    >
+                                        <UploadCloud size={14} className="mr-2 text-blue-500" />
+                                        Bulk Upload CSV/Excel
+                                    </button>
+                                    <button
+                                        type="button"
+                                        onClick={() => { handleRemoveDuplicates(); setIsManageDropdownOpen(false); }}
+                                        className="w-full flex items-center px-3.5 py-2 text-amber-700 dark:text-amber-400 hover:bg-amber-50 dark:hover:bg-white/5 transition-colors border-t border-gray-100 dark:border-white/5 cursor-pointer"
+                                    >
+                                        <Copy size={14} className="mr-2 text-amber-500" />
+                                        Remove Duplicates
+                                    </button>
+                                </div>
+                            )}
+                        </div>
                     )}
 
 

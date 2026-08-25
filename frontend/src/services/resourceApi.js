@@ -31,13 +31,16 @@ export const resourceApi = {
     //            compositions?: [{component_resource_id, quantity, unit_code}] }
     createResource: (data) => unwrap(api.post('/resources', data)),
 
-    // ─── Bulk create resources ─────────────────────────────────────────────────
-    // payload: Array of resource objects (same shape as single create)
-    bulkCreateResources: (data) => unwrap(api.post('/resources', data)),
+    // ─── Bulk Resource Operations ──────────────────────────────────────────────
+    // Dry-run validate resource records before inserting
+    bulkValidate: (resources) => unwrap(api.post('/resources/bulk-validate', { resources })),
 
-    // ─── Bulk update resources ─────────────────────────────────────────────────
-    // payload: Array of resource objects with id
-    bulkUpdateResources: (data) => unwrap(api.put('/resources', data)),
+    // Bulk insert JSON resources array
+    bulkJson: (resources) => unwrap(api.post('/resources/bulk-json', { resources })),
+    bulkCreateResources: (data) => unwrap(api.post('/resources/bulk-json', { resources: data })),
+
+    // Bulk update resources (Array of resources with id)
+    bulkUpdateResources: (data) => unwrap(api.put('/resources/bulk', data)),
 
     // ─── Update resource (conversions & compositions included if provided) ─────
     updateResource: (id, data) => unwrap(api.put(`/resources/${id}`, data)),

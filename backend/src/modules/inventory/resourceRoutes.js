@@ -7,13 +7,17 @@ const router = express.Router();
 router.use(authenticateJWT);
 router.use(requireSystemPermission('materials'));
 
+// Bulk Endpoints
+router.post('/bulk-validate', resourceController.bulkValidate);
+router.post('/bulk-json', resourceController.bulkJson);
+router.put('/bulk', resourceController.bulkUpdateResources);
+
 // Basic CRUD
 router.get('/', resourceController.listResources);
 router.get('/rates', resourceController.getResolvedRates);
 router.get('/:id', resourceController.getResource);
 
 router.post('/', resourceController.createResource);
-router.put('/', resourceController.bulkUpdateResources);
 router.put('/:id', resourceController.updateResource);
 router.delete('/:id', resourceController.deleteResource);
 

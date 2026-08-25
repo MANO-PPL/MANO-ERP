@@ -1734,21 +1734,20 @@ export async function bulkInsertResources(orgId, resources) {
     await db.transaction(async (trx) => {
         for (let i = 0; i < resources.length; i++) {
             const res = resources[i];
-            const {
-                name,
-                code,
-                type,
-                base_unit_code,
-                description,
-                remarks,
-                compositions,
-                conversions,
-                effective_from,
-                rate,
-                rate_unit_code,
-                rate_effective_from,
-                rate_remarks
-            } = res;
+            const name = (res.name || res.Name || res['resource_name'] || res['Resource Name'] || res['item_name'] || res['Item Name'] || '').toString().trim();
+            const code = (res.code || res.Code || res['resource_code'] || res['Resource Code'] || res['item_code'] || '') ? (res.code || res.Code || res['resource_code'] || res['Resource Code'] || res['item_code']).toString().trim() : null;
+            const type = (res.type || res.Type || res['resource_type'] || res['Resource Type'] || 'material').toString().toLowerCase().trim();
+            const base_unit_code = (res.base_unit_code || res.unit_code || res.unit || res.Unit || res['Base Unit'] || res['base_unit'] || res['Unit Code'] || res.base_unit_id || '').toString().trim();
+            const description = (res.description || res.Description) ? (res.description || res.Description).toString().trim() : null;
+            const remarks = (res.remarks || res.Remarks) ? (res.remarks || res.Remarks).toString().trim() : null;
+            const rawRate = res.rate !== undefined ? res.rate : (res.Rate !== undefined ? res.Rate : (res['unit_price'] || res['price'] || res['Price']));
+            const rate = (rawRate !== undefined && rawRate !== null && rawRate !== '') ? Number(rawRate) : undefined;
+            const rate_unit_code = (res.rate_unit_code || res['Rate Unit'] || res['rate_unit'] || base_unit_code || '').toString().trim();
+            const rate_effective_from = res.rate_effective_from || res.effective_from || res['Effective Date'] || res['effective_date'] || null;
+            const rate_remarks = res.rate_remarks || res.remarks || null;
+            const compositions = res.compositions;
+            const conversions = res.conversions;
+            const effective_from = res.effective_from;
 
             try {
                 if (!name || !type || !base_unit_code) {
@@ -1774,7 +1773,7 @@ export async function bulkInsertResources(orgId, resources) {
                     remarks: remarks || null
                 });
 
-                if (rate !== undefined && rate !== null && rate !== '') {
+                if (rate !== undefined && !Number.isNaN(rate)) {
                     await _writeManualRateVersion(orgId, {
                         id: insertId,
                         type,
@@ -1837,6 +1836,86 @@ export async function bulkInsertResources(orgId, resources) {
     });
 
     return report;
+}
+
+export async function bulkValidateResources(orgId, resources) {
+    if (!Array.isArray(resources)) {
+        throw new AppError('Invalid resources data, array expected', 400);
+    }
+
+    const response = { duplicates: [], invalid_types: [], missing_fields: [], valid_count: 0 };
+    const inputNames = new Set();
+    const inputCodes = new Set();
+
+    resources.forEach((r, idx) => {
+        const name = (r.name || r.Name || r['resource_name'] || r['Resource Name'] || r['item_name'] || r['Item Name'] || '').toString().trim();
+        const code = (r.code || r.Code || r['resource_code'] || r['Resource Code'] || r['item_code'] || '').toString().trim();
+        const type = (r.type || r.Type || r['resource_type'] || r['Resource Type'] || '').toString().trim().toLowerCase();
+        const unit = (r.base_unit_code || r.unit_code || r.unit || r.Unit || r['Base Unit'] || r['base_unit'] || r['Unit Code'] || r.base_unit_id || '').toString().trim();
+
+        if (!name || !type || !unit) {
+            response.missing_fields.push({
+                row: idx + 1,
+                name: name || null,
+                reason: `Missing required field(s): ${[!name && 'Name', !type && 'Type', !unit && 'Unit'].filter(Boolean).join(', ')}`
+            });
+        }
+
+        if (type && !['material', 'item', 'labour'].includes(type)) {
+            response.invalid_types.push({
+                row: idx + 1,
+                type,
+                reason: 'Type must be "material", "item", or "labour"'
+            });
+        }
+
+        if (name) inputNames.add(name.toLowerCase());
+        if (code) inputCodes.add(code.toLowerCase());
+    });
+
+    let existingResources = [];
+    if (inputNames.size > 0 || inputCodes.size > 0) {
+        existingResources = await db('res_resources')
+            .where({ org_id: orgId })
+            .whereNull('project_id')
+            .where(function () {
+                if (inputNames.size > 0) this.whereIn(db.raw('LOWER(name)'), Array.from(inputNames));
+                if (inputCodes.size > 0) this.orWhereIn(db.raw('LOWER(code)'), Array.from(inputCodes));
+            })
+            .select('name', 'code');
+    }
+
+    const existingNameSet = new Set(existingResources.map(r => r.name?.toLowerCase()).filter(Boolean));
+    const existingCodeSet = new Set(existingResources.map(r => r.code?.toLowerCase()).filter(Boolean));
+
+    resources.forEach((r, index) => {
+        const rowNum = index + 1;
+        const name = (r.name || r.Name || r['resource_name'] || r['Resource Name'] || r['item_name'] || r['Item Name'] || '').toString().trim();
+        const code = (r.code || r.Code || r['resource_code'] || r['Resource Code'] || r['item_code'] || '').toString().trim();
+        const type = (r.type || r.Type || r['resource_type'] || r['Resource Type'] || '').toString().trim().toLowerCase();
+        const unit = (r.base_unit_code || r.unit_code || r.unit || r.Unit || r['Base Unit'] || r['base_unit'] || r['Unit Code'] || r.base_unit_id || '').toString().trim();
+
+        let hasError = false;
+
+        if (!name || !type || !unit || !['material', 'item', 'labour'].includes(type)) {
+            hasError = true;
+        }
+
+        if (name && existingNameSet.has(name.toLowerCase())) {
+            response.duplicates.push({ row: rowNum, name, reason: `Resource with name "${name}" already exists` });
+            hasError = true;
+        }
+        if (code && existingCodeSet.has(code.toLowerCase())) {
+            response.duplicates.push({ row: rowNum, code, reason: `Resource with code "${code}" already exists` });
+            hasError = true;
+        }
+
+        if (!hasError) {
+            response.valid_count++;
+        }
+    });
+
+    return response;
 }
 
 export async function bulkUpdateResources(orgId, resources) {
@@ -2129,6 +2208,7 @@ export default {
     addConversion,
     removeConversion,
     bulkInsertResources,
+    bulkValidateResources,
     bulkUpdateResources,
     clearManualRate,
     getCompositionColumns
