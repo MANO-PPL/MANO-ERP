@@ -161,6 +161,26 @@ export async function initializeResourceSchema() {
         }
     }
 
+    if (await db.schema.hasTable('res_rates')) {
+        if (!(await hasIndex('res_rates', 'idx_res_rates_lookup'))) {
+            try {
+                await db.schema.alterTable('res_rates', table => {
+                    table.index(['resource_id', 'is_active', 'effective_from', 'effective_to'], 'idx_res_rates_lookup');
+                });
+            } catch (e) { }
+        }
+    }
+
+    if (await db.schema.hasTable('res_conversions')) {
+        if (!(await hasIndex('res_conversions', 'idx_res_conversions_res_org'))) {
+            try {
+                await db.schema.alterTable('res_conversions', table => {
+                    table.index(['resource_id', 'org_id'], 'idx_res_conversions_res_org');
+                });
+            } catch (e) { }
+        }
+    }
+
 }
 
 const toIsoDate = (value) => {
@@ -549,10 +569,75 @@ export async function getResolvedRate(orgId, resourceId, asOfDate, projectId = n
  */
 export async function getResolvedRates(orgId, resourceIds, asOfDate, projectId = null) {
     const effectiveDate = toDateOnly(asOfDate);
-    const uniqueIds = [...new Set(resourceIds.map(Number))];
+    const uniqueIds = [...new Set((resourceIds || []).map(Number).filter(id => Number.isInteger(id) && id > 0))];
+    if (uniqueIds.length === 0) return [];
     if (projectId) await ensureProjectExists(orgId, projectId);
 
+    // 1. Batch fetch all resources in 1 query
+    const resources = await db('res_resources')
+        .where('org_id', orgId)
+        .whereIn('id', uniqueIds)
+        .select('id', 'name', 'code', 'type', 'description', 'remarks', 'base_unit_code', 'project_id', 'parent_id');
+
+    const resourceMap = new Map(resources.map(r => [Number(r.id), r]));
+
+    // 2. Batch fetch all active manual rates in 1 query
+    const manualRates = await db('res_rates as rr')
+        .whereIn('rr.resource_id', uniqueIds)
+        .where('rr.is_active', 1)
+        .whereNotNull('rr.rate')
+        .andWhere('rr.effective_from', '<=', effectiveDate)
+        .andWhere(function () {
+            this.whereNull('rr.effective_to').orWhere('rr.effective_to', '>=', effectiveDate);
+        })
+        .select('rr.id', 'rr.resource_id', 'rr.rate', 'rr.unit_code', 'rr.effective_from', 'rr.effective_to', 'rr.is_active', 'rr.remarks')
+        .orderBy('rr.effective_from', 'desc')
+        .orderBy('rr.id', 'desc');
+
+    const manualRatesByResource = new Map();
+    manualRates.forEach(rate => {
+        const rId = Number(rate.resource_id);
+        if (!manualRatesByResource.has(rId)) {
+            manualRatesByResource.set(rId, rate);
+        }
+    });
+
+    const resolutionContext = {
+        resourceCache: resourceMap,
+        manualRateCache: manualRatesByResource,
+        compositionCache: new Map(),
+        rateCache: new Map()
+    };
+
     return Promise.all(uniqueIds.map(async resourceId => {
+        const res = resourceMap.get(resourceId);
+        if (!res) {
+            return { resourceId, rate: null, source: null, unitCode: null };
+        }
+        // Direct manual rate fast-path (instant 0ms)
+        const manual = manualRatesByResource.get(resourceId);
+        if (manual) {
+            return {
+                resourceId,
+                projectResourceId: resourceId,
+                resourceName: res.name,
+                rate: Number(manual.rate),
+                unitCode: manual.unit_code,
+                source: 'manual',
+                rateScope: 'master'
+            };
+        }
+        // If material/labour without manual rate
+        if (res.type !== 'item') {
+            return {
+                resourceId,
+                projectResourceId: resourceId,
+                resourceName: res.name,
+                rate: null,
+                source: null,
+                unitCode: res.base_unit_code
+            };
+        }
         try {
             const resolved = await resolveRateInternal(
                 orgId,
@@ -560,7 +645,7 @@ export async function getResolvedRates(orgId, resourceIds, asOfDate, projectId =
                 effectiveDate,
                 db,
                 new Set(),
-                null,
+                resolutionContext,
                 projectId
             );
             return {
@@ -570,7 +655,14 @@ export async function getResolvedRates(orgId, resourceIds, asOfDate, projectId =
                 resourceId
             };
         } catch {
-            return { resourceId, rate: null, source: null, unitCode: null };
+            return {
+                resourceId,
+                projectResourceId: resourceId,
+                resourceName: res.name,
+                rate: null,
+                source: null,
+                unitCode: res.base_unit_code
+            };
         }
     }));
 }
@@ -796,7 +888,7 @@ export async function getRateHistory(orgId, resourceId, projectId = null) {
 export async function getResources(orgId, {
     type,
     search,
-    limit = 100,
+    limit,
     offset = 0,
     includeDetails = true,
     includeRates = true
@@ -810,7 +902,9 @@ export async function getResources(orgId, {
     if (type) query.where('type', type);
     if (search) query.where('name', 'like', `%${search}%`);
 
-    query.limit(limit).offset(offset);
+    if (limit) {
+        query.limit(limit).offset(offset);
+    }
     const resources = await query;
 
     // Enrich with standard base unit name/symbol in-memory from UNIT_REGISTRY

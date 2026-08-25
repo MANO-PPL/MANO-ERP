@@ -24,7 +24,7 @@ export const listResources = catchAsync(async (req, res) => {
     const resources = await resourceService.getResources(req.user.org_id, {
         type,
         search,
-        limit: limit ? parseInt(limit) : 100,
+        limit: limit ? parseInt(limit) : undefined,
         offset: offset ? parseInt(offset) : 0,
         includeDetails: include_details !== 'false',
         includeRates: include_rates !== 'false'

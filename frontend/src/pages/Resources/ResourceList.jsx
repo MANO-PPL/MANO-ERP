@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
+import ReactDOM from 'react-dom';
 import { useSearchParams, useNavigate } from 'react-router-dom';
 import * as XLSX from 'xlsx';
 import Papa from 'papaparse';
@@ -716,6 +717,29 @@ const ResourceList = () => {
         setBulkUnitSearch('');
     };
 
+    const openCellDropdown = (e, rowIndex, colName, resource) => {
+        if (e) {
+            e.stopPropagation();
+        }
+        const tdEl = document.getElementById(`cell-${rowIndex}-${colName}`) || (e?.target ? e.target.closest('td') : null);
+        const rect = tdEl ? tdEl.getBoundingClientRect() : { top: 150, bottom: 190, left: 150, width: 220 };
+        setActiveDropdownCell(prev => {
+            if (prev?.rowIndex === rowIndex && prev?.colName === colName) return null;
+            return {
+                rowIndex,
+                colName,
+                resourceId: resource?.id,
+                resource,
+                coords: {
+                    top: rect.top,
+                    bottom: rect.bottom,
+                    left: rect.left,
+                    width: Math.max(rect.width, colName === 'base_unit_code' ? 260 : 200)
+                }
+            };
+        });
+    };
+
     // Expandable Row Details State (Inline Sub-sheet View)
     const [expandedRowIds, setExpandedRowIds] = useState(new Set());
 
@@ -899,7 +923,7 @@ const ResourceList = () => {
             if (manageDropdownRef.current && !manageDropdownRef.current.contains(e.target)) {
                 setIsManageDropdownOpen(false);
             }
-            if (e.target.closest('.z-\\[6000\\]') || e.target.closest('.z-\\[9999\\]') || e.target.closest('.z-\\[9000\\]') || e.target.closest('.z-\\[7000\\]') || e.target.closest('[data-context-menu="true"]') || e.target.closest('[role="dialog"]')) {
+            if (e.target.closest('[data-portal-dropdown="true"]') || e.target.closest('.z-\\[6000\\]') || e.target.closest('.z-\\[9999\\]') || e.target.closest('.z-\\[9000\\]') || e.target.closest('.z-\\[7000\\]') || e.target.closest('.z-\\[99999\\]') || e.target.closest('[data-context-menu="true"]') || e.target.closest('[role="dialog"]')) {
                 return;
             }
             if (!e.target.closest('td[id^="cell-"]')) {
@@ -2368,7 +2392,7 @@ const ResourceList = () => {
     };
 
     // ─── Cell Management with Immediate Auto-Save & Undo Push ─────────────────
-    const handleCellChange = (rowIndex, field, value, isAtomic = false) => {
+    const handleCellChange = (rowIndexOrId, field, value, isAtomic = false) => {
         if (isAtomic) {
             pushUndoState(gridDataRef.current);
         } else if (!cellEditInitialStateRef.current) {
@@ -2377,8 +2401,14 @@ const ResourceList = () => {
         let updatedGridData = [];
         setGridData(prev => {
             const updated = [...prev];
-            const targetId = sortedGridDataRef.current[rowIndex]?.id;
-            const realIdx = updated.findIndex(r => r.id === targetId);
+            let realIdx = -1;
+            if (rowIndexOrId !== undefined && rowIndexOrId !== null) {
+                realIdx = updated.findIndex(r => String(r.id) === String(rowIndexOrId));
+            }
+            if (realIdx === -1 && typeof rowIndexOrId === 'number') {
+                const targetId = sortedGridDataRef.current[rowIndexOrId]?.id;
+                realIdx = updated.findIndex(r => r.id === targetId);
+            }
             if (realIdx === -1) return prev;
 
             const row = { ...updated[realIdx] };
@@ -2849,7 +2879,8 @@ const ResourceList = () => {
             e.preventDefault();
             if (canWrite) {
                 if (colName === 'type' || colName === 'base_unit_code') {
-                    setActiveDropdownCell({ rowIndex: curFocus.r, colName });
+                    const targetRow = sortedGridDataRef.current[curFocus.r];
+                    if (targetRow) openCellDropdown(null, curFocus.r, colName, targetRow);
                 } else {
                     cellEditInitialStateRef.current = gridDataRef.current.map(r => ({ ...r, _errors: r._errors ? { ...r._errors } : {} }));
                     setEditingCell({ rowIndex: curFocus.r, colName });
@@ -4031,22 +4062,6 @@ const ResourceList = () => {
                                                                     if (colName === 'type' || colName === 'base_unit_code') {
                                                                         setActiveDropdownCell({ rowIndex, colName });
                                                                     } else if (colName === 'compositions' || colName === 'conversions') {
-                                                                        // Keep normal expand
-                                                                    } else {
-                                                                        cellEditInitialStateRef.current = gridDataRef.current.map(r => ({ ...r, _errors: r._errors ? { ...r._errors } : {} }));
-                                                                        setEditingCell({ rowIndex, colName });
-                                                                    }
-                                                                }
-                                                            }}
-                                                            onDoubleClick={() => {
-                                                                if (canWrite) {
-                                                                    if (selectionAnchor?.r !== rowIndex || selectionAnchor?.c !== colIndex) {
-                                                                        setSelectionAnchor({ r: rowIndex, c: colIndex });
-                                                                        setSelectionFocus({ r: rowIndex, c: colIndex });
-                                                                    }
-                                                                    if (colName === 'type' || colName === 'base_unit_code') {
-                                                                        setActiveDropdownCell({ rowIndex, colName });
-                                                                    } else if (colName === 'compositions' || colName === 'conversions') {
                                                                         toggleExpandRow(resource.id);
                                                                     } else {
                                                                         cellEditInitialStateRef.current = gridDataRef.current.map(r => ({ ...r, _errors: r._errors ? { ...r._errors } : {} }));
@@ -4055,7 +4070,7 @@ const ResourceList = () => {
                                                                 }
                                                             }}
                                                             onKeyDown={e => handleCellKeyDown(e, rowIndex, colName)}
-                                                            className={`p-0 border-r border-gray-100 dark:border-white/5 relative outline-none select-none overflow-hidden ${COLUMN_WIDTH_CLASSES[colName] || 'w-48 min-w-40'} ${isInRange ? 'bg-blue-500/15 dark:bg-blue-500/25 z-10' : ''
+                                                            className={`p-0 border-r border-gray-100 dark:border-white/5 relative outline-none select-none ${activeDropdownCell?.rowIndex === rowIndex && activeDropdownCell?.colName === colName ? 'overflow-visible z-[7000]' : 'overflow-hidden'} ${COLUMN_WIDTH_CLASSES[colName] || 'w-48 min-w-40'} ${isInRange ? 'bg-blue-500/15 dark:bg-blue-500/25 z-10' : ''
                                                                 } ${isTopEdge ? 'border-t-2 border-t-blue-500' : ''} ${isBottomEdge ? 'border-b-2 border-b-blue-500' : ''
                                                                 } ${isLeftEdge ? 'border-l-2 border-l-blue-500' : ''} ${isRightEdge ? 'border-r-2 border-r-blue-500' : ''
                                                                 } ${hasError ? 'bg-red-500/5 ring-1 ring-red-500' : ''}`}
@@ -4085,7 +4100,7 @@ const ResourceList = () => {
                                                                             className={`w-full min-w-0 max-w-full px-3 py-2 bg-white dark:bg-[#161b22] border border-blue-500 text-sm font-semibold text-gray-900 dark:text-white focus:outline-none shadow-sm ${colName === 'code' ? 'font-mono' : colName === 'name' ? 'font-bold' : ''
                                                                                 }`}
                                                                             value={resource[colName] || ''}
-                                                                            onChange={e => handleCellChange(rowIndex, colName, e.target.value)}
+                                                                            onChange={e => handleCellChange(resource.id, colName, e.target.value)}
                                                                             onBlur={handleCellBlur}
                                                                             onKeyDown={e => handleCellKeyDown(e, rowIndex, colName)}
                                                                             onPaste={(e) => {
@@ -4127,8 +4142,8 @@ const ResourceList = () => {
                                                                             value={resource.rate ?? ''}
                                                                             onChange={e => {
                                                                                 const val = e.target.value === '' ? null : parseFloat(e.target.value);
-                                                                                handleCellChange(rowIndex, 'rate', val);
-                                                                                handleCellChange(rowIndex, 'rate_source', 'manual');
+                                                                                handleCellChange(resource.id, 'rate', val);
+                                                                                handleCellChange(resource.id, 'rate_source', 'manual');
                                                                             }}
                                                                             onBlur={handleCellBlur}
                                                                             onKeyDown={e => handleCellKeyDown(e, rowIndex, colName)}
@@ -4241,195 +4256,81 @@ const ResourceList = () => {
 
                                                             {/* Type Dropdown Cell */}
                                                             {colName === 'type' && (
-                                                                <>
-                                                                    <div
-                                                                        onClick={(e) => {
-                                                                            if (selectionAnchor?.r !== rowIndex || selectionAnchor?.c !== colIndex) {
-                                                                                setSelectionAnchor({ r: rowIndex, c: colIndex });
-                                                                                setSelectionFocus({ r: rowIndex, c: colIndex });
-                                                                            }
-                                                                        }}
-                                                                        className={`w-full h-full px-3 py-2.5 bg-transparent text-xs text-gray-900 dark:text-white cursor-pointer flex items-center justify-between group select-none ${!canWrite ? 'opacity-60 cursor-not-allowed' : ''
-                                                                            }`}
-                                                                    >
-                                                                        {(() => {
-                                                                            const tc = TYPE_CONFIG[resource.type || 'material'] || TYPE_CONFIG.material;
-                                                                            const TypeIcon = tc.icon;
-                                                                            return (
-                                                                                <span className={`inline-flex items-center gap-1.5 px-2 py-0.5 text-[10px] font-bold uppercase rounded-md ${tc.bg} ${tc.color}`}>
-                                                                                    <TypeIcon size={10} />
-                                                                                    {tc.label}
-                                                                                </span>
-                                                                            );
-                                                                        })()}
-                                                                        {canWrite && (
-                                                                            <button
-                                                                                type="button"
-                                                                                onClick={(e) => {
-                                                                                    e.stopPropagation();
-                                                                                    setActiveDropdownCell(prev =>
-                                                                                        prev?.rowIndex === rowIndex && prev?.colName === 'type' ? null : { rowIndex, colName: 'type' }
-                                                                                    );
-                                                                                }}
-                                                                                className="p-1 hover:bg-gray-200 dark:hover:bg-white/10 rounded text-gray-400 opacity-60 group-hover:opacity-100 transition-opacity"
-                                                                            >
-                                                                                <ChevronDown size={12} />
-                                                                            </button>
-                                                                        )}
-                                                                    </div>
-
-                                                                    {activeDropdownCell?.rowIndex === rowIndex && activeDropdownCell?.colName === 'type' && (
-                                                                        <div className="absolute left-0 top-full mt-1 w-48 bg-white dark:bg-[#161b22] border border-gray-200 dark:border-white/10 rounded-md shadow-2xl z-[6000] py-1 text-xs select-none no-scrollbar flex flex-col">
-                                                                            {[
-                                                                                { value: 'material', label: 'Material', icon: Package, color: 'text-amber-600 dark:text-amber-400' },
-                                                                                { value: 'item', label: 'Item (Composite)', icon: Layers, color: 'text-purple-600 dark:text-purple-400' },
-                                                                                { value: 'labour', label: 'Labour', icon: Users, color: 'text-blue-600 dark:text-blue-400' }
-                                                                            ].map(opt => {
-                                                                                const Icon = opt.icon;
-                                                                                return (
-                                                                                    <button
-                                                                                        key={opt.value}
-                                                                                        type="button"
-                                                                                        onClick={(e) => {
-                                                                                            e.stopPropagation();
-                                                                                            handleCellChange(rowIndex, 'type', opt.value, true);
-                                                                                            closeDropdown();
-                                                                                        }}
-                                                                                        className="w-full text-left px-3.5 py-2 hover:bg-gray-50 dark:hover:bg-white/5 text-gray-700 dark:text-gray-300 flex items-center gap-2 font-semibold block whitespace-nowrap"
-                                                                                    >
-                                                                                        <Icon size={13} className={opt.color} />
-                                                                                        <span>{opt.label}</span>
-                                                                                    </button>
-                                                                                );
-                                                                            })}
-                                                                        </div>
+                                                                <div
+                                                                    onClick={(e) => {
+                                                                        if (selectionAnchor?.r !== rowIndex || selectionAnchor?.c !== colIndex) {
+                                                                            setSelectionAnchor({ r: rowIndex, c: colIndex });
+                                                                            setSelectionFocus({ r: rowIndex, c: colIndex });
+                                                                        }
+                                                                        if (canWrite) openCellDropdown(e, rowIndex, 'type', resource);
+                                                                    }}
+                                                                    className={`w-full h-full px-3 py-2.5 bg-transparent text-xs text-gray-900 dark:text-white cursor-pointer flex items-center justify-between group select-none ${!canWrite ? 'opacity-60 cursor-not-allowed' : ''
+                                                                        }`}
+                                                                >
+                                                                    {(() => {
+                                                                        const tc = TYPE_CONFIG[resource.type || 'material'] || TYPE_CONFIG.material;
+                                                                        const TypeIcon = tc.icon;
+                                                                        return (
+                                                                            <span className={`inline-flex items-center gap-1.5 px-2 py-0.5 text-[10px] font-bold uppercase rounded-md ${tc.bg} ${tc.color}`}>
+                                                                                <TypeIcon size={10} />
+                                                                                {tc.label}
+                                                                            </span>
+                                                                        );
+                                                                    })()}
+                                                                    {canWrite && (
+                                                                        <button
+                                                                            type="button"
+                                                                            onClick={(e) => {
+                                                                                openCellDropdown(e, rowIndex, 'type', resource);
+                                                                            }}
+                                                                            className="p-1 hover:bg-gray-200 dark:hover:bg-white/10 rounded text-gray-400 opacity-60 group-hover:opacity-100 transition-opacity cursor-pointer"
+                                                                        >
+                                                                            <ChevronDown size={12} />
+                                                                        </button>
                                                                     )}
-                                                                </>
+                                                                </div>
                                                             )}
 
                                                             {/* Base Unit Dropdown Cell */}
                                                             {colName === 'base_unit_code' && (
-                                                                <>
-                                                                    <div
-                                                                        onClick={(e) => {
-                                                                            if (selectionAnchor?.r !== rowIndex || selectionAnchor?.c !== colIndex) {
-                                                                                setSelectionAnchor({ r: rowIndex, c: colIndex });
-                                                                                setSelectionFocus({ r: rowIndex, c: colIndex });
-                                                                            }
-                                                                        }}
-                                                                        className={`w-full h-full px-3 py-2.5 bg-transparent text-xs text-gray-900 dark:text-white cursor-pointer flex items-center justify-between group select-none ${!canWrite ? 'opacity-60 cursor-not-allowed' : ''
-                                                                            }`}
-                                                                    >
-                                                                        {(() => {
-                                                                            const u = UNIT_REGISTRY[resource.base_unit_code];
-                                                                            return (
-                                                                                <span className="flex items-center gap-1.5">
-                                                                                    <span className="font-semibold text-gray-900 dark:text-gray-100">
-                                                                                        {u ? u.name : 'Select unit'}
-                                                                                    </span>
-                                                                                    {u && (
-                                                                                        <span className="text-gray-400 dark:text-gray-500 font-medium text-[10px]">
-                                                                                            ({u.symbol})
-                                                                                        </span>
-                                                                                    )}
+                                                                <div
+                                                                    onClick={(e) => {
+                                                                        if (selectionAnchor?.r !== rowIndex || selectionAnchor?.c !== colIndex) {
+                                                                            setSelectionAnchor({ r: rowIndex, c: colIndex });
+                                                                            setSelectionFocus({ r: rowIndex, c: colIndex });
+                                                                        }
+                                                                        if (canWrite) openCellDropdown(e, rowIndex, 'base_unit_code', resource);
+                                                                    }}
+                                                                    className={`w-full h-full px-3 py-2.5 bg-transparent text-xs text-gray-900 dark:text-white cursor-pointer flex items-center justify-between group select-none ${!canWrite ? 'opacity-60 cursor-not-allowed' : ''
+                                                                        }`}
+                                                                >
+                                                                    {(() => {
+                                                                        const u = UNIT_REGISTRY[resource.base_unit_code];
+                                                                        return (
+                                                                            <span className="flex items-center gap-1.5">
+                                                                                <span className="font-semibold text-gray-900 dark:text-gray-100">
+                                                                                    {u ? u.name : 'Select unit'}
                                                                                 </span>
-                                                                            );
-                                                                        })()}
-                                                                        {canWrite && (
-                                                                            <button
-                                                                                type="button"
-                                                                                onClick={(e) => {
-                                                                                    e.stopPropagation();
-                                                                                    setActiveDropdownCell(prev =>
-                                                                                        prev?.rowIndex === rowIndex && prev?.colName === 'base_unit_code' ? null : { rowIndex, colName: 'base_unit_code' }
-                                                                                    );
-                                                                                }}
-                                                                                className="p-1 hover:bg-gray-200 dark:hover:bg-white/10 rounded text-gray-400 opacity-60 group-hover:opacity-100 transition-opacity"
-                                                                            >
-                                                                                <ChevronDown size={12} />
-                                                                            </button>
-                                                                        )}
-                                                                    </div>
-
-                                                                    {activeDropdownCell?.rowIndex === rowIndex && activeDropdownCell?.colName === 'base_unit_code' && (
-                                                                        <div className="absolute left-0 top-full mt-1 w-64 bg-white dark:bg-[#161b22] border border-gray-200 dark:border-white/10 rounded-md shadow-2xl z-[6000]">
-                                                                            <div className="p-2 border-b border-gray-100 dark:border-white/5 bg-gray-50/50 dark:bg-white/[0.01]">
-                                                                                <input
-                                                                                    type="text"
-                                                                                    placeholder="Search base units..."
-                                                                                    className="w-full px-2.5 py-1.5 bg-white dark:bg-[#0d1117] border border-gray-300 dark:border-white/10 rounded-md text-xs text-gray-900 dark:text-white focus:outline-none focus:ring-1 focus:ring-blue-500 font-semibold"
-                                                                                    value={unitSearch}
-                                                                                    onChange={e => setUnitSearch(e.target.value)}
-                                                                                    onClick={e => e.stopPropagation()}
-                                                                                    onKeyDown={e => {
-                                                                                        if (e.key === 'Escape') {
-                                                                                            e.preventDefault();
-                                                                                            e.stopPropagation();
-                                                                                            closeDropdown();
-                                                                                        } else {
-                                                                                            e.stopPropagation();
-                                                                                        }
-                                                                                    }}
-                                                                                />
-                                                                            </div>
-
-                                                                            <div className="max-h-56 overflow-y-auto py-1" style={{scrollbarWidth:'none',msOverflowStyle:'none'}}>
-                                                                                {(() => {
-                                                                                    const filteredGroups = Object.entries(UNIT_GROUPS).map(([type, units]) => {
-                                                                                        const matched = units.filter(u =>
-                                                                                            u.name.toLowerCase().includes(unitSearch.toLowerCase()) ||
-                                                                                            u.symbol.toLowerCase().includes(unitSearch.toLowerCase()) ||
-                                                                                            u.code.toLowerCase().includes(unitSearch.toLowerCase())
-                                                                                        );
-                                                                                        return [type, matched];
-                                                                                    }).filter(([_, units]) => units.length > 0);
-
-                                                                                    if (filteredGroups.length === 0) {
-                                                                                        return (
-                                                                                            <div className="p-3 text-center text-xs text-gray-400 italic">
-                                                                                                No units found
-                                                                                            </div>
-                                                                                        );
-                                                                                    }
-
-                                                                                    const rowUnitType = resource.base_unit_code ? UNIT_REGISTRY[resource.base_unit_code]?.type : null;
-
-                                                                                    return filteredGroups.map(([type, units]) => {
-                                                                                        const isGroupCompatible = !rowUnitType || resource._status === 'new' || type === rowUnitType;
-                                                                                        return (
-                                                                                            <div key={type} className={`px-1 py-1 ${!isGroupCompatible ? 'opacity-50' : ''}`}>
-                                                                                                <div className="px-2 py-0.5 text-[9px] font-black text-gray-400 dark:text-gray-500 uppercase tracking-widest bg-gray-50/50 dark:bg-white/[0.01] rounded flex items-center justify-between">
-                                                                                                    <span>{unitTypeLabel[type] || type}</span>
-                                                                                                    {!isGroupCompatible && <span className="text-[8px] font-normal text-amber-500">Locked</span>}
-                                                                                                </div>
-                                                                                                {units.map(u => (
-                                                                                                    <button
-                                                                                                        key={u.code}
-                                                                                                        onClick={(e) => {
-                                                                                                            e.stopPropagation();
-                                                                                                            if (!isGroupCompatible) {
-                                                                                                                showToast('error', 'Incompatible Unit Category', `Cannot change from ${rowUnitType.toUpperCase()} (${resource.base_unit_code}) to ${type.toUpperCase()} (${u.code}). Units must stay in the same category (e.g. g to kg, MT) to protect rates and recipes.`);
-                                                                                                                return;
-                                                                                                            }
-                                                                                                            handleCellChange(rowIndex, 'base_unit_code', u.code, true);
-                                                                                                            closeDropdown();
-                                                                                                        }}
-                                                                                                        className={`w-full text-left px-2.5 py-1.5 text-gray-700 dark:text-gray-300 rounded-md text-xs font-semibold flex items-center justify-between ${
-                                                                                                            isGroupCompatible ? 'hover:bg-gray-50 dark:hover:bg-white/5 cursor-pointer' : 'cursor-not-allowed'
-                                                                                                        }`}
-                                                                                                    >
-                                                                                                        <span>{u.name}</span>
-                                                                                                        <span className="text-[10px] text-gray-400 font-mono">({u.symbol})</span>
-                                                                                                    </button>
-                                                                                                ))}
-                                                                                            </div>
-                                                                                        );
-                                                                                    });
-                                                                                })()}
-                                                                            </div>
-                                                                        </div>
+                                                                                {u && (
+                                                                                    <span className="text-gray-400 dark:text-gray-500 font-medium text-[10px]">
+                                                                                        ({u.symbol})
+                                                                                    </span>
+                                                                                )}
+                                                                            </span>
+                                                                        );
+                                                                    })()}
+                                                                    {canWrite && (
+                                                                        <button
+                                                                            type="button"
+                                                                            onClick={(e) => {
+                                                                                openCellDropdown(e, rowIndex, 'base_unit_code', resource);
+                                                                            }}
+                                                                            className="p-1 hover:bg-gray-200 dark:hover:bg-white/10 rounded text-gray-400 opacity-60 group-hover:opacity-100 transition-opacity cursor-pointer"
+                                                                        >
+                                                                            <ChevronDown size={12} />
+                                                                        </button>
                                                                     )}
-                                                                </>
+                                                                </div>
                                                             )}
                                                         </td>
                                                     );
@@ -5520,6 +5421,135 @@ const ResourceList = () => {
                 accept=".xlsx,.xls,.csv"
                 className="hidden"
             />
+
+            {/* ── Fixed Portal for Type & Base Unit Dropdowns ── */}
+            {activeDropdownCell && ReactDOM.createPortal(
+                <div
+                    data-portal-dropdown="true"
+                    style={{
+                        position: 'fixed',
+                        left: `${Math.max(10, Math.min(window.innerWidth - (activeDropdownCell.coords?.width || 220) - 10, activeDropdownCell.coords?.left || 100))}px`,
+                        top: (activeDropdownCell.coords?.bottom || 100) + (activeDropdownCell.colName === 'base_unit_code' ? 280 : 160) > window.innerHeight && (activeDropdownCell.coords?.top || 100) > (activeDropdownCell.colName === 'base_unit_code' ? 280 : 160)
+                            ? `${Math.max(10, (activeDropdownCell.coords?.top || 100) - (activeDropdownCell.colName === 'base_unit_code' ? 270 : 130))}px`
+                            : `${Math.min(window.innerHeight - (activeDropdownCell.colName === 'base_unit_code' ? 280 : 160), (activeDropdownCell.coords?.bottom || 100) + 4)}px`,
+                        width: `${activeDropdownCell.coords?.width || 220}px`,
+                        zIndex: 99999
+                    }}
+                    className="bg-white dark:bg-[#161b22] border border-gray-200 dark:border-white/10 rounded-md shadow-2xl py-1 text-xs select-none"
+                    onMouseDown={(e) => e.stopPropagation()}
+                    onClick={(e) => e.stopPropagation()}
+                >
+                    {activeDropdownCell.colName === 'type' && (
+                        <div className="flex flex-col py-0.5 no-scrollbar">
+                            {[
+                                { value: 'material', label: 'Material', icon: Package, color: 'text-amber-600 dark:text-amber-400' },
+                                { value: 'item', label: 'Item (Composite)', icon: Layers, color: 'text-purple-600 dark:text-purple-400' },
+                                { value: 'labour', label: 'Labour', icon: Users, color: 'text-blue-600 dark:text-blue-400' }
+                            ].map(opt => {
+                                const Icon = opt.icon;
+                                return (
+                                    <button
+                                        key={opt.value}
+                                        type="button"
+                                        onClick={(e) => {
+                                            e.stopPropagation();
+                                            handleCellChange(activeDropdownCell.resourceId, 'type', opt.value, true);
+                                            closeDropdown();
+                                        }}
+                                        className="w-full text-left px-3.5 py-2 hover:bg-gray-50 dark:hover:bg-white/5 text-gray-700 dark:text-gray-300 flex items-center gap-2 font-semibold block whitespace-nowrap cursor-pointer"
+                                    >
+                                        <Icon size={13} className={opt.color} />
+                                        <span>{opt.label}</span>
+                                    </button>
+                                );
+                            })}
+                        </div>
+                    )}
+
+                    {activeDropdownCell.colName === 'base_unit_code' && (
+                        <div>
+                            <div className="p-2 border-b border-gray-100 dark:border-white/5 bg-gray-50/50 dark:bg-white/[0.01]">
+                                <input
+                                    autoFocus
+                                    type="text"
+                                    placeholder="Search base units..."
+                                    className="w-full px-2.5 py-1.5 bg-white dark:bg-[#0d1117] border border-gray-300 dark:border-white/10 rounded-md text-xs text-gray-900 dark:text-white focus:outline-none focus:ring-1 focus:ring-blue-500 font-semibold"
+                                    value={unitSearch}
+                                    onChange={e => setUnitSearch(e.target.value)}
+                                    onClick={e => e.stopPropagation()}
+                                    onKeyDown={e => {
+                                        if (e.key === 'Escape') {
+                                            e.preventDefault();
+                                            e.stopPropagation();
+                                            closeDropdown();
+                                        } else {
+                                            e.stopPropagation();
+                                        }
+                                    }}
+                                />
+                            </div>
+
+                            <div className="max-h-56 overflow-y-auto py-1" style={{ scrollbarWidth: 'none', msOverflowStyle: 'none' }}>
+                                {(() => {
+                                    const filteredGroups = Object.entries(UNIT_GROUPS).map(([type, units]) => {
+                                        const matched = units.filter(u =>
+                                            u.name.toLowerCase().includes(unitSearch.toLowerCase()) ||
+                                            u.symbol.toLowerCase().includes(unitSearch.toLowerCase()) ||
+                                            u.code.toLowerCase().includes(unitSearch.toLowerCase())
+                                        );
+                                        return [type, matched];
+                                    }).filter(([_, units]) => units.length > 0);
+
+                                    if (filteredGroups.length === 0) {
+                                        return (
+                                            <div className="p-3 text-center text-xs text-gray-400 italic">
+                                                No units found
+                                            </div>
+                                        );
+                                    }
+
+                                    const currentResource = gridDataRef.current.find(r => r.id === activeDropdownCell.resourceId) || activeDropdownCell.resource;
+                                    const rowUnitType = currentResource?.base_unit_code ? UNIT_REGISTRY[currentResource.base_unit_code]?.type : null;
+
+                                    return filteredGroups.map(([type, units]) => {
+                                        const isGroupCompatible = !rowUnitType || currentResource?._status === 'new' || type === rowUnitType;
+                                        return (
+                                            <div key={type} className={`px-1 py-1 ${!isGroupCompatible ? 'opacity-50' : ''}`}>
+                                                <div className="px-2 py-0.5 text-[9px] font-black text-gray-400 dark:text-gray-500 uppercase tracking-widest bg-gray-50/50 dark:bg-white/[0.01] rounded flex items-center justify-between">
+                                                    <span>{unitTypeLabel[type] || type}</span>
+                                                    {!isGroupCompatible && <span className="text-[8px] font-normal text-amber-500">Locked</span>}
+                                                </div>
+                                                {units.map(u => (
+                                                    <button
+                                                        key={u.code}
+                                                        type="button"
+                                                        onClick={(e) => {
+                                                            e.stopPropagation();
+                                                            if (!isGroupCompatible) {
+                                                                showToast('error', 'Incompatible Unit Category', `Cannot change from ${rowUnitType?.toUpperCase() || ''} (${currentResource?.base_unit_code}) to ${type.toUpperCase()} (${u.code}). Units must stay in the same category (e.g. g to kg, MT) to protect rates and recipes.`);
+                                                                return;
+                                                            }
+                                                            handleCellChange(activeDropdownCell.resourceId, 'base_unit_code', u.code, true);
+                                                            closeDropdown();
+                                                        }}
+                                                        className={`w-full text-left px-2.5 py-1.5 text-gray-700 dark:text-gray-300 rounded-md text-xs font-semibold flex items-center justify-between ${
+                                                            isGroupCompatible ? 'hover:bg-gray-50 dark:hover:bg-white/5 cursor-pointer' : 'cursor-not-allowed'
+                                                        }`}
+                                                    >
+                                                        <span>{u.name}</span>
+                                                        <span className="text-[10px] text-gray-400 font-mono">({u.symbol})</span>
+                                                    </button>
+                                                ))}
+                                            </div>
+                                        );
+                                    });
+                                })()}
+                            </div>
+                        </div>
+                    )}
+                </div>,
+                document.body
+            )}
             </div>
         </div>
     );

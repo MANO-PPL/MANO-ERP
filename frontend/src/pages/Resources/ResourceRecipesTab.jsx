@@ -170,6 +170,15 @@ const ResourceRecipesTab = ({
 
     const fetchItemRecipe = async (force = false) => {
         if (!selectedItemId) return;
+        if (String(selectedItemId).startsWith('temp_')) {
+            setSelectedItemDetail(null);
+            setCompositionHistory([]);
+            setRecipeRows([]);
+            setIsLoadingDetail(false);
+            setErrorMsg('This resource has not been saved to the database yet. Click "Save Changes" on the Resources list first.');
+            return;
+        }
+
         const cacheKey = `${selectedItemId}_${selectedProjectId || 'master'}_${effectiveFrom}`;
         if (!force && recipeCacheRef.current[cacheKey]) {
             const cached = recipeCacheRef.current[cacheKey];
@@ -230,8 +239,15 @@ const ResourceRecipesTab = ({
 
         } catch (err) {
             if (requestId === loadRequestRef.current) {
-                console.error('Failed to load item recipe', err);
-                setErrorMsg(err.response?.data?.message || 'Failed to load item recipe');
+                console.warn('Failed to load item recipe', err);
+                if (err.response?.status === 404) {
+                    setErrorMsg('Resource not found in database or has been deleted.');
+                    if (itemsList.length > 0 && String(itemsList[0].id) !== String(selectedItemId)) {
+                        setSelectedItemId(String(itemsList[0].id));
+                    }
+                } else {
+                    setErrorMsg(err.response?.data?.message || 'Failed to load item recipe');
+                }
             }
         } finally {
             if (requestId === loadRequestRef.current) setIsLoadingDetail(false);
