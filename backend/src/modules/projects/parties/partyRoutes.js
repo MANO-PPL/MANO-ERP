@@ -8,5 +8,7 @@ router.get('/', partyController.listProjectParties);
 router.get('/available', partyController.listAvailableProjectParties);
 router.post('/', partyController.addProjectParties);
 router.delete('/', partyController.removeProjectParties);
+router.put('/sync', partyController.syncProjectParties);
+router.post('/sync', partyController.syncProjectParties);
 
 export default router;

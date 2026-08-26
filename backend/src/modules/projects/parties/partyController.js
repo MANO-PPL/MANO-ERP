@@ -80,9 +80,30 @@ export const removeProjectParties = catchAsync(async (req, res) => {
     });
 });
 
+/* -------------------------------------------------------
+   SYNC PROJECT PARTIES — PUT /:id/parties/sync or POST /:id/parties/sync
+-------------------------------------------------------- */
+export const syncProjectParties = catchAsync(async (req, res) => {
+    const projectId = parseInt(req.params.id, 10);
+    if (isNaN(projectId)) throw new AppError('Invalid project_id', 400);
+
+    const body = req.body || {};
+    const result = await partyService.syncProjectParties(
+        projectId,
+        {
+            parties: Array.isArray(body.parties) ? body.parties : [],
+            deleted_ids: Array.isArray(body.deleted_ids) ? body.deleted_ids : []
+        },
+        req.user.org_id
+    );
+
+    res.json(result);
+});
+
 export default {
     listProjectParties,
     listAvailableProjectParties,
     addProjectParties,
     removeProjectParties,
+    syncProjectParties,
 };

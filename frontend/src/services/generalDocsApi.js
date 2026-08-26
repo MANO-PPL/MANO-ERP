@@ -73,6 +73,10 @@ export const generalDocsApi = {
         const response = await api.delete(`/projects/${projectId}/parties`, { data: { pp_ids: [ppId] } });
         return response.data;
     },
+    syncParties: async (projectId, payload) => {
+        const response = await api.put(`/projects/${projectId}/parties/sync`, payload);
+        return response.data;
+    },
 
     // ---- ORGANIZATION CHART ----
     getOrgChart: async (projectId) => {

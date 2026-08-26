@@ -1077,9 +1077,10 @@ const ProjectPartiesList = ({ onBack, setExtraBreadcrumbs, canWrite }) => {
                 remarks: (r.remarks || '').trim()
             }));
 
-            if (workflowState && workflowState.instanceId && !workflowState.notConfigured) {
-                await workflowApi.saveDraft(workflowState.instanceId, {
-                    pdoc_vendors: currentPayload
+            if (workflowState && workflowState.cycleId) {
+                await workflowApi.saveDraft(workflowState.cycleId, {
+                    pdoc_vendors: currentPayload,
+                    pdoc_parties: currentPayload
                 });
             } else {
                 await generalDocsApi.syncParties(projectId, {

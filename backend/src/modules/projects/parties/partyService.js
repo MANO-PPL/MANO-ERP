@@ -179,9 +179,139 @@ export async function removePartiesFromProject(projectId, ppIds) {
     return { deletedCount, deletedPvIds: existingPvIds, notFoundPvIds: notFound };
 }
 
+/* -------------------------------------------------------
+   SYNC PARTIES WITH PROJECT (bulk create / update / delete)
+-------------------------------------------------------- */
+export async function syncProjectParties(projectId, { parties = [], deleted_ids = [] }, orgId) {
+    if (!projectId) throw new AppError('projectId is required', 400);
+
+    return await db.transaction(async (trx) => {
+        // 1. Delete removed parties from project
+        if (Array.isArray(deleted_ids) && deleted_ids.length > 0) {
+            await trx('pdoc_parties')
+                .where('project_id', projectId)
+                .whereIn('pv_id', deleted_ids)
+                .del();
+        }
+
+        // 2. Process incoming party rows
+        for (const p of parties) {
+            if (!p.name || !String(p.name).trim()) continue;
+
+            const name = String(p.name).trim();
+            const category = p.category || 'Contractor';
+            const contactPerson = p.contact_person ? String(p.contact_person).trim() : null;
+            const designation = p.designation ? String(p.designation).trim() : null;
+            const telephoneNo = p.telephone_no || p.mobile ? String(p.telephone_no || p.mobile).trim() : null;
+            const mobile = p.mobile || p.telephone_no ? String(p.mobile || p.telephone_no).trim() : null;
+            const email = p.email ? String(p.email).trim() : null;
+            const address = p.address ? String(p.address).trim() : null;
+            const remarks = p.remarks ? String(p.remarks).trim() : null;
+            const jobNatureName = p.job_nature || p.job_name ? String(p.job_nature || p.job_name).trim() : null;
+
+            let jobNatureId = null;
+            if (jobNatureName) {
+                jobNatureId = await findOrCreateJobNature(orgId, jobNatureName);
+            }
+
+            let contactId = p.party_id || (p.id && !String(p.id).startsWith('temp_') ? p.id : null);
+
+            if (contactId) {
+                const existingPartyRow = await trx('pdoc_parties').where({ pv_id: contactId, project_id: projectId }).first();
+                if (existingPartyRow) {
+                    contactId = existingPartyRow.party_id;
+                }
+            }
+
+            if (contactId) {
+                // Update existing contact record
+                const updatePayload = {
+                    name,
+                    category,
+                    contact_person: contactPerson,
+                    designation,
+                    telephone_no: telephoneNo,
+                    mobile,
+                    email,
+                    address,
+                    remarks,
+                    updated_at: new Date()
+                };
+                if (jobNatureId !== null) updatePayload.job_nature_id = jobNatureId;
+
+                await trx('crm_contacts')
+                    .where({ id: contactId })
+                    .where(function () {
+                        if (orgId) this.where('org_id', orgId).orWhereNull('org_id');
+                    })
+                    .update(updatePayload);
+
+                // Ensure linked in pdoc_parties
+                const isLinked = await trx('pdoc_parties')
+                    .where({ project_id: projectId, party_id: contactId })
+                    .first();
+                if (!isLinked) {
+                    await trx('pdoc_parties').insert({
+                        project_id: projectId,
+                        party_id: contactId,
+                        created_at: new Date(),
+                        updated_at: new Date()
+                    });
+                }
+            } else {
+                // Check if contact with same name exists in org
+                let existingContact = await trx('crm_contacts')
+                    .whereRaw('LOWER(name) = ?', [name.toLowerCase()])
+                    .where(function () {
+                        if (orgId) this.where('org_id', orgId).orWhereNull('org_id');
+                    })
+                    .first();
+
+                if (!existingContact) {
+                    const [newId] = await trx('crm_contacts').insert({
+                        org_id: orgId || null,
+                        name,
+                        category,
+                        contact_person: contactPerson,
+                        designation,
+                        telephone_no: telephoneNo,
+                        mobile,
+                        email,
+                        address,
+                        remarks,
+                        job_nature_id: jobNatureId,
+                        scope: 'project',
+                        created_at: new Date(),
+                        updated_at: new Date()
+                    });
+                    contactId = newId;
+                } else {
+                    contactId = existingContact.id;
+                }
+
+                // Link in pdoc_parties
+                const isLinked = await trx('pdoc_parties')
+                    .where({ project_id: projectId, party_id: contactId })
+                    .first();
+                if (!isLinked) {
+                    await trx('pdoc_parties').insert({
+                        project_id: projectId,
+                        party_id: contactId,
+                        created_at: new Date(),
+                        updated_at: new Date()
+                    });
+                }
+            }
+        }
+
+        return { success: true, message: 'Project parties synced successfully' };
+    });
+}
+
 export default {
     getProjectParties,
     getAvailableProjectParties,
     addPartiesToProject,
     removePartiesFromProject,
+    syncProjectParties,
 };
