@@ -27,6 +27,8 @@ export const projectApi = {
         }));
     },
 
+    uploadLogo: (id, file) => projectApi.uploadProjectLogo(id, file),
+
     listProjectResources: (projectId) => unwrap(api.get(`/projects/${projectId}/resources`)),
 
     getResolvedResourceRates: (projectId, resourceIds, date) => {
