@@ -22,7 +22,7 @@ const ProjectSummary = ({ onBack, setExtraBreadcrumbs, canWrite }) => {
     const { id: projectId } = useParams();
     const [milestones, setMilestones] = useState([]);
     const [loading, setLoading] = useState(true);
-    const [workflowState, setWorkflowState] = useState({ mode: 'read', cycleId: null, loading: true });
+    const [workflowState, setWorkflowState] = useState({ mode: 'read', cycleId: null, instanceId: null, loading: false, notConfigured: true });
 
     const [editingId, setEditingId] = useState(null);
     const [editData, setEditData] = useState(null);
@@ -296,13 +296,13 @@ const ProjectSummary = ({ onBack, setExtraBreadcrumbs, canWrite }) => {
 
             {/* List View - Task Theme Style */}
             <div className="flex-1 overflow-auto no-scrollbar p-6">
-                <WorkflowPanel 
+                {/* <WorkflowPanel 
                     projectId={projectId} 
                     templateName="Project Summary" 
                     instanceId={workflowState.instanceId}
                     onStateChange={setWorkflowState} 
                     onRefreshContent={fetchSummaries} 
-                />
+                /> */}
 
                 {loading ? (
                     <div className="flex flex-col items-center justify-center h-64 text-gray-400">

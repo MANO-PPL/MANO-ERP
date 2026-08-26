@@ -673,18 +673,22 @@ const ResourceRatesTab = ({
                                                             {item.remarks || '-'}
                                                         </td>
                                                         {canWrite && (
-                                                            <td className="py-3 px-4 text-right">
-                                                                <button
-                                                                    type="button"
-                                                                    onClick={() => handleOpenEditModal({ ...item, versionNumber })}
-                                                                    className="inline-flex items-center gap-1 px-2.5 py-1 text-[11px] font-semibold text-blue-600 dark:text-blue-400 hover:bg-blue-50 dark:hover:bg-blue-950/50 rounded-lg border border-transparent hover:border-blue-200 dark:hover:border-blue-500/30 transition cursor-pointer"
-                                                                    title="Edit historical version parameters"
-                                                                >
-                                                                    <Edit2 size={12} />
-                                                                    <span>Edit</span>
-                                                                </button>
-                                                            </td>
-                                                        )}
+        <td className="py-3 px-4 text-right">
+            {isActive ? (
+                <button
+                    type="button"
+                    onClick={() => handleOpenEditModal({ ...item, versionNumber })}
+                    className="inline-flex items-center gap-1 px-2.5 py-1 text-[11px] font-semibold text-blue-600 dark:text-blue-400 hover:bg-blue-50 dark:hover:bg-blue-950/50 rounded-lg border border-transparent hover:border-blue-200 dark:hover:border-blue-500/30 transition cursor-pointer"
+                    title="Edit current active rate"
+                >
+                    <Edit2 size={12} />
+                    <span>Edit Rate</span>
+                </button>
+            ) : (
+                <span className="text-gray-400 text-[10px] italic">Locked</span>
+            )}
+        </td>
+    )}
                                                     </tr>
                                                 );
                                             })}

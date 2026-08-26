@@ -191,7 +191,7 @@ const ProjectDirectory = ({ onBack, setExtraBreadcrumbs, canWrite }) => {
     const { id: projectId } = useParams();
     const [contacts, setContacts] = useState([]);
     const [loading, setLoading] = useState(true);
-    const [workflowState, setWorkflowState] = useState({ mode: 'read', cycleId: null, loading: true });
+    const [workflowState, setWorkflowState] = useState({ mode: 'read', cycleId: null, instanceId: null, loading: false, notConfigured: true });
 
     const [editingId, setEditingId] = useState(null);
     const [editData, setEditData] = useState(null);
@@ -532,13 +532,13 @@ const ProjectDirectory = ({ onBack, setExtraBreadcrumbs, canWrite }) => {
 
             {/* List View - Task Theme Style */}
             <div className="flex-1 overflow-auto custom-scrollbar p-6">
-                <WorkflowPanel 
+                {/* <WorkflowPanel 
                     projectId={projectId} 
                     templateName="Project Directory" 
                     instanceId={workflowState.instanceId}
                     onStateChange={setWorkflowState} 
                     onRefreshContent={fetchDirectory} 
-                />
+                /> */}
 
                 {loading ? (
                     <div className="flex flex-col items-center justify-center h-64 text-gray-400">

@@ -419,7 +419,7 @@ const ProjectResourceRow = React.memo(({
                                                 </button>
                                             )}
 
-                                            {rowDetail?.activeProjectRate && (
+                                            {rowDetail?.activeProjectRate && rowDetail.activeProjectRate.remarks !== 'Imported from master catalog' && (
                                                 <button
                                                     type="button"
                                                     disabled={rowDetail?.saving}
@@ -796,7 +796,7 @@ const ProjectResourceList = ({ onBack, setExtraBreadcrumbs, canWrite, projectId:
 
             const [projectResponse, masterResponse] = await Promise.all([
                 projectApi.listProjectResources(projectId),
-                resourceApi.getResources({ type: 'item', limit: 5000, include_details: 'false', include_rates: 'false' })
+                resourceApi.getResources({ type: 'item', limit: 5000, include_details: 'false', include_rates: 'true' })
             ]);
 
             const projectResources = projectResponse.resources || [];

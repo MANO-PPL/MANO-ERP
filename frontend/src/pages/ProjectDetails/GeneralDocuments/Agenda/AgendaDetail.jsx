@@ -295,7 +295,7 @@ const ResizableTextarea = ({ value, onChange, placeholder = "", className = "" }
 
 const AgendaDetail = ({ onBack, setExtraBreadcrumbs, agendaId: id, canWrite }) => {
     const { id: projectId } = useParams();
-    const [workflowState, setWorkflowState] = useState({ mode: 'read', cycleId: null, instanceId: null, loading: id !== 'new' });
+    const [workflowState, setWorkflowState] = useState({ mode: 'read', cycleId: null, instanceId: null, loading: false, notConfigured: true });
     // Guard: track which instanceId+cycleId we've already loaded workflow content for
     const loadedWorkflowKey = useRef(null);
     const [template, setTemplate] = useState(null);
@@ -905,13 +905,13 @@ const AgendaDetail = ({ onBack, setExtraBreadcrumbs, agendaId: id, canWrite }) =
                     )}
 
                     {id !== 'new' && (
-                        <WorkflowPanel
+                        {/* <WorkflowPanel
                             projectId={projectId}
                             templateName="Agenda of Meeting"
                             instanceId={workflowState.instanceId}
                             onStateChange={(newState) => setWorkflowState(prev => ({ ...prev, ...newState }))}
                             onRefreshContent={loadWorkflowContent}
-                        />
+                        /> */}
                     )}
                     {workflowState.loading ? (
                         <div className="flex flex-col items-center justify-center py-32 space-y-4 bg-white dark:bg-[#161b22] border border-gray-200 dark:border-white/10 rounded-lg shadow-sm">

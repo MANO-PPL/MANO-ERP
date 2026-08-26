@@ -589,7 +589,7 @@ const ProjectPartiesList = ({ onBack, setExtraBreadcrumbs, canWrite }) => {
     const [allJobNatures, setAllJobNatures] = useState([]);
 
     // Workflow state
-    const [workflowState, setWorkflowState] = useState({ mode: 'read', cycleId: null, loading: true });
+    const [workflowState, setWorkflowState] = useState({ mode: 'read', cycleId: null, instanceId: null, loading: false, notConfigured: true });
     const isEditable = canWrite && (workflowState.notConfigured || (workflowState.mode === 'edit' && workflowState.cycleId));
 
     // Spreadsheet grid state
@@ -2849,13 +2849,13 @@ const ProjectPartiesList = ({ onBack, setExtraBreadcrumbs, canWrite }) => {
                     </div>
 
                     {/* Workflow Approval Action Controls & Version History */}
-                    <WorkflowPanel
+                    {/* <WorkflowPanel
                         projectId={projectId}
                         templateName="Project Parties"
                         onStateChange={handleWorkflowStateChange}
                         onRefreshContent={() => fetchParties(true)}
                         onActionComplete={() => fetchParties(true)}
-                    />
+                    /> */}
 
                     {canWrite && (
                         <button

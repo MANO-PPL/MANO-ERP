@@ -297,7 +297,7 @@ const ResizableTextarea = ({ value, onChange, placeholder = "", className = "" }
 
 const MoMDetail = ({ onBack, setExtraBreadcrumbs, momId: id, canWrite }) => {
     const { id: projectId } = useParams();
-    const [workflowState, setWorkflowState] = useState({ mode: 'read', cycleId: null, instanceId: null, loading: id !== 'new' });
+    const [workflowState, setWorkflowState] = useState({ mode: 'read', cycleId: null, instanceId: null, loading: false, notConfigured: true });
     const [template, setTemplate] = useState(null);
     const [isEditing, setIsEditing] = useState(id === 'new' && canWrite);
 
@@ -903,13 +903,13 @@ const MoMDetail = ({ onBack, setExtraBreadcrumbs, momId: id, canWrite }) => {
                     )}
 
                     {id !== 'new' && (
-                        <WorkflowPanel
+                        {/* <WorkflowPanel
                             projectId={projectId}
                             templateName="Minutes of Meeting"
                             instanceId={workflowState.instanceId}
                             onStateChange={setWorkflowState}
                             onRefreshContent={loadWorkflowContent}
-                        />
+                        /> */}
                     )}
 
                     {workflowState.loading ? (

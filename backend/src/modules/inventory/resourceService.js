@@ -755,6 +755,11 @@ export async function updateRate(orgId, resourceId, rateId, rateData = {}, proje
             throw new AppError('Rate record not found for this resource', 404);
         }
 
+        // Lock past historical records from being edited
+        if (Number(existingRate.is_active) !== 1 || (existingRate.effective_to && toDateOnly(existingRate.effective_to) < toDateOnly())) {
+            throw new AppError('Past rate history records are locked and cannot be edited. Only the currently active rate can be edited in place.', 400);
+        }
+
         const updates = {};
 
         if (rateData.mode === 'computed' || rateData.rate === null) {
@@ -1561,14 +1566,22 @@ async function ensureProjectRateFromMaster(orgId, masterResource, projectResourc
         .first('id');
     if (existingRate) return;
 
-    // 1. Direct fast lookup for manual rate (instant indexed query for materials/labour)
-    let resolvedRate = null;
-    try {
-        resolvedRate = await findEffectiveManualRate(orgId, masterResource.id, importDate, trx, null);
-    } catch { }
+    // 1. Direct lookup for the most recent master rate, independent of date
+    const latestMasterRate = await trx('res_rates')
+        .where('resource_id', masterResource.id)
+        .whereNotNull('rate')
+        .orderBy('effective_from', 'desc')
+        .orderBy('id', 'desc')
+        .first();
 
-    // 2. If no manual rate (e.g. composite item computed from recipes), resolve computed rate
-    if (!resolvedRate || resolvedRate.rate === null || resolvedRate.rate === undefined) {
+    let resolvedRate = null;
+    if (latestMasterRate && latestMasterRate.rate !== null && latestMasterRate.rate !== undefined) {
+        resolvedRate = {
+            rate: latestMasterRate.rate,
+            unitCode: latestMasterRate.unit_code || masterResource.base_unit_code
+        };
+    } else {
+        // 2. If no direct manual master rate, resolve dynamically (e.g. from recipe composition)
         try {
             resolvedRate = await resolveRateInternal(
                 orgId,

@@ -232,7 +232,7 @@ const OrganisationChart = ({ onBack, setExtraBreadcrumbs, canWrite }) => {
     const [isInfoOpen, setIsInfoOpen] = useState(false);
     const [activeNode, setActiveNode] = useState(null); // The node currently being edited in modal
     const [editForm, setEditForm] = useState({ name: '', role: '', type: 'staff', location: '', subRole: '' });
-    const [workflowState, setWorkflowState] = useState({ mode: 'read', cycleId: null, loading: true });
+    const [workflowState, setWorkflowState] = useState({ mode: 'read', cycleId: null, instanceId: null, loading: false, notConfigured: true });
     const [auditTrail, setAuditTrail] = useState([]);
     
     const [availableParties, setAvailableParties] = useState([]);
@@ -669,13 +669,13 @@ const OrganisationChart = ({ onBack, setExtraBreadcrumbs, canWrite }) => {
 
             {/* Workflow Banner Area */}
             <div className="px-8 pt-4 bg-gray-50 dark:bg-[#0d1117] flex-shrink-0">
-                <WorkflowPanel 
+                {/* <WorkflowPanel 
                     projectId={projectId} 
                     templateName="Organisation Chart" 
                     instanceId={workflowState.instanceId}
                     onStateChange={setWorkflowState} 
                     onRefreshContent={fetchOrgChart} 
-                />
+                /> */}
             </div>
 
             {/* Stage Outer Wrapper */}
