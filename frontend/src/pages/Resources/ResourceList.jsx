@@ -2899,10 +2899,11 @@ const ResourceList = () => {
         }
     };
 
-    // â”€â”€â”€ Add Row(s) (inserted right below active cursor) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+    // Add Row(s) (inserted at the bottom of the table)
     const handleAddRows = (count = 1) => {
         pushUndoState(gridDataRef.current);
-        const { gridInsertIdx, sortedRowIdx } = getTargetInsertIndex();
+        const gridInsertIdx = gridDataRef.current.length;
+        const sortedRowIdx = sortedGridDataRef.current.length;
 
         const newRows = Array.from({ length: count }).map((_, idx) => ({
             id: `temp_${Date.now()}_${Math.random().toString(36).substring(2, 9)}_${idx}`,
@@ -2924,17 +2925,9 @@ const ResourceList = () => {
             return next;
         });
 
-        // Compute which page the inserted row is on and auto-navigate
-        const targetPage = pageSize !== 'All' ? Math.floor(sortedRowIdx / Number(pageSize)) + 1 : 1;
-        if (pageSize !== 'All' && targetPage !== currentPage) {
-            setCurrentPage(targetPage);
-            showToast('info', 'Rows Added', `Added ${count} new resource row(s) on Page ${targetPage} (Row ${sortedRowIdx + 1}).`);
-        } else {
-            showToast('info', 'Rows Added', `Added ${count} new resource row(s) below selection.`);
-        }
-
         setSelectionAnchor({ r: sortedRowIdx, c: 0 });
         setSelectionFocus({ r: sortedRowIdx + count - 1, c: 0 });
+        showToast('info', 'Rows Added', `Added ${count} new resource row(s) below selection.`);
     };
 
     // â”€â”€â”€ Duplicate Row (inserted right below duplicated row) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€

@@ -1457,24 +1457,38 @@ const ClientsList = () => {
     }, [gridData, searchTerm, activeFilters]);
 
     const sortedGridData = useMemo(() => {
-        if (!sortConfig.key || filteredGridData.length <= 1) return filteredGridData;
-        const key = sortConfig.key;
-        const isAsc = sortConfig.direction === 'asc';
+        const savedRows = [];
+        const newRows = [];
 
-        return [...filteredGridData].sort((a, b) => {
-            const aVal = a[key];
-            const bVal = b[key];
-            if (aVal === bVal) return 0;
-            if (aVal == null || aVal === '') return 1;
-            if (bVal == null || bVal === '') return -1;
-
-            if (typeof aVal === 'number' && typeof bVal === 'number') {
-                return isAsc ? aVal - bVal : bVal - aVal;
+        for (const row of filteredGridData) {
+            if (row._status === 'new' || String(row.id).startsWith('temp_')) {
+                newRows.push(row);
+            } else {
+                savedRows.push(row);
             }
+        }
 
-            const cmp = String(aVal).localeCompare(String(bVal), undefined, { numeric: true, sensitivity: 'base' });
-            return isAsc ? cmp : -cmp;
-        });
+        if (sortConfig.key && savedRows.length > 1) {
+            const key = sortConfig.key;
+            const isAsc = sortConfig.direction === 'asc';
+
+            savedRows.sort((a, b) => {
+                const aVal = a[key];
+                const bVal = b[key];
+                if (aVal === bVal) return 0;
+                if (aVal == null || aVal === '') return 1;
+                if (bVal == null || bVal === '') return -1;
+
+                if (typeof aVal === 'number' && typeof bVal === 'number') {
+                    return isAsc ? aVal - bVal : bVal - aVal;
+                }
+
+                const cmp = String(aVal).localeCompare(String(bVal), undefined, { numeric: true, sensitivity: 'base' });
+                return isAsc ? cmp : -cmp;
+            });
+        }
+
+        return [...savedRows, ...newRows];
     }, [filteredGridData, sortConfig]);
 
     const sortedGridDataRef = useRef(sortedGridData);
@@ -2398,10 +2412,11 @@ const ClientsList = () => {
         }
     };
 
-    // Add Row (inserted right below active cursor)
+    // Add Row (inserted at the bottom of the table)
     const handleAddRows = (count = 1) => {
         pushUndoState(gridDataRef.current);
-        const { gridInsertIdx, sortedRowIdx } = getTargetInsertIndex();
+        const gridInsertIdx = gridDataRef.current.length;
+        const sortedRowIdx = sortedGridDataRef.current.length;
 
         const newRows = Array.from({ length: count }).map((_, idx) => ({
             id: `temp_${Date.now()}_${Math.random().toString(36).substring(2, 9)}_${idx}`,
@@ -2413,6 +2428,7 @@ const ClientsList = () => {
             telephone_no: '',
             email: '',
             address: '',
+            category: 'Client',
             location: '',
             remarks: '',
             _status: 'new',
@@ -2425,16 +2441,9 @@ const ClientsList = () => {
             return next;
         });
 
-        const targetPage = pageSize !== 'All' ? Math.floor(sortedRowIdx / Number(pageSize)) + 1 : 1;
-        if (pageSize !== 'All' && targetPage !== currentPage) {
-            setCurrentPage(targetPage);
-            showToast('info', 'Rows Added', `Added ${count} new client row(s) on Page ${targetPage} (Row ${sortedRowIdx + 1}).`);
-        } else {
-            showToast('info', 'Rows Added', `Added ${count} new client row(s) below selection.`);
-        }
-
         setSelectionAnchor({ r: sortedRowIdx, c: 0 });
         setSelectionFocus({ r: sortedRowIdx + count - 1, c: 0 });
+        showToast('info', 'Rows Added', `Added ${count} new client row(s) at the bottom.`);
     };
 
     // Duplicate Row (inserted right below duplicated row)
