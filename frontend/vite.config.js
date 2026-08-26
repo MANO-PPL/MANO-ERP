@@ -10,6 +10,9 @@ export default defineConfig({
   esbuild: {
     keepNames: true,
   },
+  optimizeDeps: {
+    include: ['@fortune-sheet/react', '@fortune-sheet/core']
+  },
   build: {
     minify: false,
   },
