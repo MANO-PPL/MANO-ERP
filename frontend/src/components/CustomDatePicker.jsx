@@ -1,14 +1,38 @@
 import React, { useState, useRef, useEffect } from 'react';
+import { createPortal } from 'react-dom';
 import { Calendar as CalendarIcon, ChevronLeft, ChevronRight } from 'lucide-react';
 import { format, addMonths, subMonths, startOfMonth, startOfWeek, endOfMonth, endOfWeek, isSameMonth, isSameDay, addDays } from 'date-fns';
 import { formatOrdinalDate } from '../utils/dateUtils';
 
-const CustomDatePicker = ({ label, value: externalValue, onChange: externalOnChange, className, disabled = false }) => {
+const CustomDatePicker = ({
+    label,
+    value: externalValue,
+    onChange: externalOnChange,
+    className = '',
+    buttonClassName = '',
+    disabled = false
+}) => {
     const [isOpen, setIsOpen] = useState(false);
     const [currentMonth, setCurrentMonth] = useState(new Date());
     const [internalValue, setInternalValue] = useState('');
+    const [coords, setCoords] = useState({ top: 0, left: 0, openUpward: false });
     const dropdownRef = useRef(null);
+    const popupRef = useRef(null);
     const value = externalValue !== undefined ? externalValue : internalValue;
+
+    const updateCoords = () => {
+        if (dropdownRef.current) {
+            const rect = dropdownRef.current.getBoundingClientRect();
+            const spaceBelow = window.innerHeight - rect.bottom;
+            const openUpward = spaceBelow < 320 && rect.top > 320;
+            const leftPos = Math.max(10, Math.min(rect.left, window.innerWidth - 300));
+            setCoords({
+                top: openUpward ? rect.top - 325 : rect.bottom + 4,
+                left: leftPos,
+                openUpward
+            });
+        }
+    };
 
     const handleDateChange = (dateStr) => {
         if (externalOnChange) {
@@ -20,29 +44,32 @@ const CustomDatePicker = ({ label, value: externalValue, onChange: externalOnCha
 
     // Close on click outside
     useEffect(() => {
+        if (!isOpen) return;
         const handleClickOutside = (event) => {
-            if (dropdownRef.current && !dropdownRef.current.contains(event.target)) {
+            if (
+                dropdownRef.current && !dropdownRef.current.contains(event.target) &&
+                popupRef.current && !popupRef.current.contains(event.target)
+            ) {
                 setIsOpen(false);
             }
         };
         document.addEventListener('mousedown', handleClickOutside);
-        return () => document.removeEventListener('mousedown', handleClickOutside);
-    }, []);
-
-    const [alignRight, setAlignRight] = useState(false);
-
-    // Auto align dropdown depending on screen edge space
-    useEffect(() => {
-        if (isOpen && dropdownRef.current) {
-            const rect = dropdownRef.current.getBoundingClientRect();
-            const spaceOnRight = window.innerWidth - rect.left;
-            if (spaceOnRight < 290) {
-                setAlignRight(true);
-            } else {
-                setAlignRight(false);
-            }
-        }
+        window.addEventListener('scroll', updateCoords, true);
+        window.addEventListener('resize', updateCoords);
+        return () => {
+            document.removeEventListener('mousedown', handleClickOutside);
+            window.removeEventListener('scroll', updateCoords, true);
+            window.removeEventListener('resize', updateCoords);
+        };
     }, [isOpen]);
+
+    const toggleOpen = () => {
+        if (disabled) return;
+        if (!isOpen) {
+            updateCoords();
+        }
+        setIsOpen(!isOpen);
+    };
 
     const parseDate = (val) => {
         if (!val) return null;
@@ -142,23 +169,33 @@ const CustomDatePicker = ({ label, value: externalValue, onChange: externalOnCha
             {label && <label className="block text-[13px] font-medium text-gray-700 dark:text-gray-300 mb-1.5">{label}</label>}
 
             <div
-                onClick={() => !disabled && setIsOpen(!isOpen)}
-                className={`w-full bg-white dark:bg-[#161b22] border rounded-lg px-2.5 py-1.5 flex items-center justify-between gap-2 transition-all shadow-xs dark:shadow-none ${disabled ? 'opacity-60 cursor-not-allowed' : 'cursor-pointer'}
+                onClick={toggleOpen}
+                className={buttonClassName || `w-full bg-white dark:bg-[#161b22] border rounded-lg px-2.5 py-1.5 flex items-center justify-between gap-2 transition-all shadow-xs dark:shadow-none ${disabled ? 'opacity-60 cursor-not-allowed' : 'cursor-pointer'}
                 ${isOpen ? 'border-blue-500 ring-2 ring-blue-500/10 shadow-lg shadow-blue-500/5' : 'border-gray-200 dark:border-white/10 hover:border-blue-500/30 dark:hover:border-white/20'}`}
             >
-                <span className={`text-xs font-medium tracking-tight whitespace-nowrap ${selectedDate ? 'text-gray-900 dark:text-white' : 'text-gray-500 dark:text-[#7A8AAB]'}`}>
+                <span className={`text-xs font-medium tracking-tight whitespace-nowrap truncate ${selectedDate ? 'text-gray-900 dark:text-white font-semibold' : 'text-gray-400 dark:text-[#7A8AAB]'}`}>
                     {selectedDate ? formatOrdinalDate(selectedDate) : 'Select Date'}
                 </span>
-                <CalendarIcon size={14} className={`shrink-0 ${isOpen ? 'text-blue-500' : 'text-gray-400 dark:text-[#7A8AAB]'}`} />
+                <CalendarIcon size={13} className={`shrink-0 ${isOpen ? 'text-blue-500' : 'text-gray-400 dark:text-[#7A8AAB]'}`} />
             </div>
 
-            {/* Custom Dropdown Calendar */}
-            {isOpen && (
-                <div className={`absolute top-full mt-2 w-[280px] bg-white dark:bg-[#1c2128] border border-gray-100 dark:border-white/10 shadow-2xl rounded-2xl p-5 z-50 anim-fade-in ${alignRight ? 'right-0' : 'left-0'}`}>
+            {/* Custom Dropdown Calendar Portal */}
+            {isOpen && typeof document !== 'undefined' && createPortal(
+                <div
+                    ref={popupRef}
+                    style={{
+                        position: 'fixed',
+                        top: `${coords.top}px`,
+                        left: `${coords.left}px`,
+                        zIndex: 99999
+                    }}
+                    className="w-[280px] bg-white dark:bg-[#1c2128] border border-gray-200 dark:border-white/10 shadow-2xl rounded-2xl p-4 z-[99999] anim-fade-in"
+                >
                     {renderHeader()}
                     {renderDays()}
                     {renderCells()}
-                </div>
+                </div>,
+                document.body
             )}
         </div>
     );

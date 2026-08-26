@@ -1,5 +1,5 @@
 import React, { useRef, useEffect, useState } from 'react';
-import { AlertCircle } from 'lucide-react';
+import { AlertCircle, ChevronUp, ChevronDown } from 'lucide-react';
 
 export const ExcelCell = ({
     value,
@@ -85,7 +85,7 @@ export const ExcelCell = ({
 
     const renderCellContent = () => {
         if (column.renderCell && typeof column.renderCell === 'function') {
-            return column.renderCell(value, row, column);
+            return column.renderCell(value, row, column, (newVal) => onChangeValue && onChangeValue(rowIndex, column.key, newVal, true), rowIndex);
         }
 
         if (column.type === 'checkbox') {
@@ -140,6 +140,10 @@ export const ExcelCell = ({
             return column.renderEditor(localValue, row, column, updateLocalValue, handleBlur, rowIndex, onChangeValue);
         }
 
+        if (column.renderCell && typeof column.renderCell === 'function') {
+            return column.renderCell(localValue, row, column, (newVal) => onChangeValue && onChangeValue(rowIndex, column.key, newVal, true), rowIndex);
+        }
+
         if (column.type === 'select') {
             return (
                 <select
@@ -148,14 +152,14 @@ export const ExcelCell = ({
                     onChange={(e) => updateLocalValue(e.target.value)}
                     onBlur={() => handleBlur()}
                     onKeyDown={(e) => onKeyDown(e, rowIndex, column.key)}
-                    className="w-full h-full px-2 py-0.5 bg-white dark:bg-[#161b22] text-gray-900 dark:text-white border border-blue-500 rounded text-xs outline-none focus:ring-1 focus:ring-blue-500"
+                    className="w-full h-full px-2 py-0.5 bg-white dark:bg-[#161b22] text-gray-900 dark:text-white border border-blue-500 rounded text-xs outline-none focus:ring-1 focus:ring-blue-500 cursor-pointer"
                 >
                     <option value="">-- Select --</option>
                     {(column.options || []).map((opt) => {
                         const optVal = typeof opt === 'object' ? opt.value : opt;
                         const optLabel = typeof opt === 'object' ? opt.label : opt;
                         return (
-                            <option key={String(optVal)} value={optVal}>
+                            <option key={String(optVal)} value={optVal} className="text-gray-900 dark:text-white dark:bg-[#161b22]">
                                 {optLabel}
                             </option>
                         );
@@ -169,11 +173,12 @@ export const ExcelCell = ({
                 <input
                     ref={inputRef}
                     type="number"
+                    step={column.step || 'any'}
                     value={localValue}
                     onChange={(e) => updateLocalValue(e.target.value)}
                     onBlur={() => handleBlur()}
                     onKeyDown={(e) => onKeyDown(e, rowIndex, column.key)}
-                    className="w-full min-w-0 bg-transparent border-0 outline-none p-0 text-xs font-semibold text-gray-900 dark:text-white text-right font-mono"
+                    className="w-full min-w-0 bg-transparent border-0 outline-none p-0 text-xs font-semibold text-gray-900 dark:text-white text-right font-mono [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
                 />
             );
         }
@@ -214,7 +219,7 @@ export const ExcelCell = ({
             style={widthStyle}
             onMouseDown={(e) => {
                 if (e.button !== 0) return;
-                if (e.target.closest('.z-\\[6000\\]') || e.target.closest('button') || e.target.closest('select')) return;
+                if (e.target.closest('.z-\\[6000\\]') || e.target.closest('button') || e.target.closest('select') || e.target.closest('input')) return;
                 if (isEditing) return;
 
                 if (onCellMouseDown) {
@@ -233,7 +238,7 @@ export const ExcelCell = ({
                 }
             }}
             onDoubleClick={(e) => {
-                if (canWrite && !column.readOnly) {
+                if (canWrite && !column.readOnly && !column.renderCell) {
                     if (column.type === 'searchable-select' && onOpenDropdownPortal) {
                         onOpenDropdownPortal(rowIndex, column.key);
                     } else {

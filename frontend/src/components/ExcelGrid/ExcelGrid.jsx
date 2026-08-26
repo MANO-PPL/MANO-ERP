@@ -152,13 +152,16 @@ export const ExcelGrid = ({
             return;
         }
 
-        const payload = generateBatchPayload(
-            grid.gridData,
-            grid.originalDataMap,
-            primaryKey,
-            grid.deletedIds,
-            mergedColumns
-        );
+        const payload = {
+            ...generateBatchPayload(
+                grid.gridData,
+                grid.originalDataMap,
+                primaryKey,
+                grid.deletedIds,
+                mergedColumns
+            ),
+            allCurrentRows: grid.gridData
+        };
 
         setIsSaving(true);
         try {

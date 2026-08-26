@@ -132,9 +132,15 @@ export const ExcelToolbar = ({
                 )}
             </div>
 
-            {/* Middle Section: Search, Filters, Custom Slots */}
-            <div className="flex items-center gap-2 flex-1 max-w-xl justify-end sm:justify-start">
-                <div className="relative w-full max-w-xs">
+            {/* Middle Section: Custom Extra Filters */}
+            <div className="flex items-center gap-2 flex-1 min-w-0 justify-start">
+                {extraFilters}
+            </div>
+
+            {/* Right Section: Search, Bulk Operations, Custom Actions, Add Row & Excel Tools */}
+            <div className="flex items-center gap-2 ml-auto">
+                {/* Search Bar placed near tools */}
+                <div className="relative w-44 sm:w-56">
                     <Search
                         size={13}
                         className="absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none"
@@ -148,19 +154,15 @@ export const ExcelToolbar = ({
                     />
                     {searchTerm && (
                         <button
+                            type="button"
                             onClick={() => setSearchTerm('')}
-                            className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 dark:hover:text-gray-200"
+                            className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 cursor-pointer"
                         >
                             <X size={12} />
                         </button>
                     )}
                 </div>
 
-                {extraFilters}
-            </div>
-
-            {/* Right Section: Add Rows, Bulk Operations & Excel Tools */}
-            <div className="flex items-center gap-2">
                 {/* Bulk Actions Menu (when rows are selected via checkbox) */}
                 {selectedIds.size > 0 ? (
                     <div className="flex items-center gap-1.5 bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800/40 px-2 py-1 rounded-lg animate-in fade-in">
