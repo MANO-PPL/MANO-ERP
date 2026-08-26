@@ -23,83 +23,95 @@ async function cloneContentToNewCycle(trx, instanceId, cycleId, latestApprovedVe
     const pvIdMap = new Map();
 
     for (const tableConf of CONTENT_TABLES) {
-        let query;
-        if (latestApprovedVersionId) {
-            query = trx(tableConf.name).where({ instance_id: instanceId, version_id: latestApprovedVersionId });
-        } else {
-            // Generic foundation rows cannot be scoped to a project because
-            // wf_document_lines intentionally has no project_id column.
-            if (tableConf.projectScoped === false) continue;
+        try {
+            const hasTable = await trx.schema.hasTable(tableConf.name);
+            if (!hasTable) continue;
 
-            // First cycle: select from base project rows (where instance_id is null)
-            query = trx(tableConf.name)
-                .where({ project_id: projectId })
-                .whereNull('instance_id')
-                .whereNull('cycle_id')
-                .whereNull('version_id');
-        }
+            let query;
+            if (latestApprovedVersionId) {
+                query = trx(tableConf.name).where({ instance_id: instanceId, version_id: latestApprovedVersionId });
+            } else {
+                // Generic foundation rows cannot be scoped to a project because
+                // wf_document_lines intentionally has no project_id column.
+                if (tableConf.projectScoped === false) continue;
 
-        let sourceRows = await query;
-
-        // Base project data can contain stale vendor links after a CRM vendor
-        // has been removed. Do not copy those links into a cycle because the
-        // pdoc_vendors foreign key correctly rejects missing contacts.
-        if (tableConf.name === 'pdoc_vendors' && sourceRows.length > 0) {
-            const vendorIds = [...new Set(sourceRows.map(row => row.vendors_id).filter(Boolean))];
-            const validVendors = vendorIds.length > 0
-                ? await trx('crm_contacts')
-                    .whereIn('id', vendorIds)
-                    .where(function () {
-                        this.whereNull('category')
-                            .orWhereRaw('LOWER(??) NOT IN (?, ?)', ['category', 'client', 'pmc']);
-                    })
-                    .select('id')
-                : [];
-            const validVendorIds = new Set(validVendors.map(vendor => vendor.id));
-            sourceRows = sourceRows.filter(row => validVendorIds.has(row.vendors_id));
-        }
-
-        if (sourceRows.length === 0) continue;
-
-        for (const row of sourceRows) {
-            const oldPkVal = row[tableConf.pk];
-            
-            const clonedRow = { ...row };
-            delete clonedRow[tableConf.pk]; // Remove PK for auto-increment
-            clonedRow.instance_id = instanceId;
-            clonedRow.cycle_id = cycleId;
-            clonedRow.version_id = null;
-            
-            if (clonedRow.created_at) clonedRow.created_at = new Date();
-            if (clonedRow.updated_at) clonedRow.updated_at = new Date();
-
-            // Sibling mapping: If this is pdoc_directory and references a pv_id, update it to the cloned pv_id
-            if (tableConf.name === 'pdoc_directory' && clonedRow.pv_id != null) {
-                const clonedPvId = pvIdMap.get(clonedRow.pv_id);
-                // The directory row depends on a vendor row. If that vendor
-                // was stale and skipped above, skip the dependent row too.
-                if (!clonedPvId) continue;
-                clonedRow.pv_id = clonedPvId;
+                // First cycle: select from base project rows (where instance_id is null)
+                query = trx(tableConf.name)
+                    .where({ project_id: projectId })
+                    .whereNull('instance_id')
+                    .whereNull('cycle_id')
+                    .whereNull('version_id');
             }
 
-            const [newPkVal] = await trx(tableConf.name).insert(clonedRow);
+            let sourceRows = await query;
+            if (!sourceRows || sourceRows.length === 0) continue;
 
-            // Sibling mapping: Store mapping of old pv_id to new pv_id
-            if (tableConf.name === 'pdoc_vendors' && newPkVal) {
-                pvIdMap.set(oldPkVal, newPkVal);
+            // Base project data can contain stale vendor links after a CRM vendor
+            // has been removed. Do not copy those links into a cycle because the
+            // pdoc_vendors foreign key correctly rejects missing contacts.
+            if (tableConf.name === 'pdoc_vendors' && sourceRows.length > 0) {
+                const vendorIds = [...new Set(sourceRows.map(row => row.vendors_id).filter(Boolean))];
+                const validVendors = vendorIds.length > 0
+                    ? await trx('crm_contacts')
+                        .whereIn('id', vendorIds)
+                        .where(function () {
+                            this.whereNull('category')
+                                .orWhereRaw('LOWER(??) NOT IN (?, ?)', ['category', 'client', 'pmc']);
+                        })
+                        .select('id')
+                    : [];
+                const validVendorIds = new Set(validVendors.map(vendor => vendor.id));
+                sourceRows = sourceRows.filter(row => validVendorIds.has(row.vendors_id));
             }
 
-            if (tableConf.children && newPkVal) {
-                for (const childConf of tableConf.children) {
-                    const childRows = await trx(childConf.name).where({ [childConf.fk]: oldPkVal });
-                    for (const childRow of childRows) {
-                        const clonedChild = { ...childRow };
-                        delete clonedChild[childConf.pk];
-                        clonedChild[childConf.fk] = newPkVal;
-                        await trx(childConf.name).insert(clonedChild);
+            for (const row of sourceRows) {
+                try {
+                    const oldPkVal = row[tableConf.pk];
+                    
+                    const clonedRow = { ...row };
+                    delete clonedRow[tableConf.pk]; // Remove PK for auto-increment
+                    clonedRow.instance_id = instanceId;
+                    clonedRow.cycle_id = cycleId;
+                    clonedRow.version_id = null;
+                    
+                    if (clonedRow.created_at) clonedRow.created_at = new Date();
+                    if (clonedRow.updated_at) clonedRow.updated_at = new Date();
+
+                    // Sibling mapping: If this is pdoc_directory and references a pv_id, update it to the cloned pv_id
+                    if (tableConf.name === 'pdoc_directory' && clonedRow.pv_id != null) {
+                        const clonedPvId = pvIdMap.get(clonedRow.pv_id);
+                        if (!clonedPvId) continue;
+                        clonedRow.pv_id = clonedPvId;
                     }
+
+                    const [newPkVal] = await trx(tableConf.name).insert(clonedRow);
+
+                    // Sibling mapping: Store mapping of old pv_id to new pv_id
+                    if (tableConf.name === 'pdoc_vendors' && newPkVal) {
+                        pvIdMap.set(oldPkVal, newPkVal);
+                    }
+
+                    if (tableConf.children && newPkVal) {
+                        for (const childConf of tableConf.children) {
+                            try {
+                                const childRows = await trx(childConf.name).where({ [childConf.fk]: oldPkVal });
+                                for (const childRow of childRows) {
+                                    const clonedChild = { ...childRow };
+                                    delete clonedChild[childConf.pk];
+                                    clonedChild[childConf.fk] = newPkVal;
+                                    await trx(childConf.name).insert(clonedChild);
+                                }
+                            } catch (childErr) {
+                                console.warn(`Note cloning child table ${childConf.name}:`, childErr.message);
+                            }
+                        }
+                    }
+                } catch (rowErr) {
+                    console.warn(`Note cloning row in ${tableConf.name}:`, rowErr.message);
                 }
             }
+        } catch (tableErr) {
+            console.warn(`Note querying table ${tableConf.name}:`, tableErr.message);
         }
     }
 }

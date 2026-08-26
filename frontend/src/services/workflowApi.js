@@ -103,7 +103,11 @@ export const workflowApi = {
         const response = await api.get(`/v1/cycles/${cycleId}`);
         return response.data;
     },
-    saveDraftContent: async (cycleId, content) => {
+    saveDraft: async (cycleId, content = {}) => {
+        const response = await api.patch(`/v1/cycles/${cycleId}/draft`, { content });
+        return response.data;
+    },
+    saveDraftContent: async (cycleId, content = {}) => {
         const response = await api.patch(`/v1/cycles/${cycleId}/draft`, { content });
         return response.data;
     },
