@@ -38,9 +38,12 @@ const SectionHeader = ({ title, badge }) => (
 
 
 const ResourceDetail = ({
-    resourceId,
+    resourceId: propResourceId,
+    resource: propResource,
+    isOpen = true,
     resources = [],
     onClose,
+    onEdit,
     onUpdate,
     onNavigateTab,
     canWrite = true,
@@ -51,8 +54,9 @@ const ResourceDetail = ({
     showToast,
     setConfirmModal: setExternalConfirmModal
 }) => {
+    const resourceId = propResourceId || propResource?.id || propResource?.resource_id;
     const [copied, setCopied] = useState(false);
-    const [resource, setResource] = useState(null);
+    const [resource, setResource] = useState(propResource || null);
     const [compositionHistory, setCompositionHistory] = useState([]);
     const [compositionEffectiveFrom, setCompositionEffectiveFrom] = useState(today());
     const [resolvedRate, setResolvedRate] = useState(null);
