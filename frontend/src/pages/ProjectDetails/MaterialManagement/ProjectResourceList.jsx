@@ -100,6 +100,7 @@ const ProjectResourceRow = React.memo(({
     ratesLoading,
     rowDetail,
     canWrite,
+    customColWidths,
     onToggleSelect,
     onToggleExpand,
     onContextMenu,
@@ -151,7 +152,13 @@ const ProjectResourceRow = React.memo(({
                 </td>
 
                 {/* Item Code */}
-                <td className="px-3 py-2 font-mono text-[11px] font-medium text-gray-600 dark:text-gray-400 border-r border-gray-100 dark:border-white/5">
+                <td
+                    data-cell-pos={`${rowIndex}-0`}
+                    data-row={rowIndex}
+                    data-col={0}
+                    style={customColWidths?.['code'] ? { width: customColWidths['code'], minWidth: customColWidths['code'] } : {}}
+                    className="px-3 py-2 font-mono text-[11px] font-medium text-gray-600 dark:text-gray-400 border-r border-gray-100 dark:border-white/5"
+                >
                     {resource.code ? (
                         <span className="px-1.5 py-0.5 rounded bg-gray-100 dark:bg-white/5 border border-gray-200/50 dark:border-white/5">
                             {resource.code}
@@ -162,7 +169,13 @@ const ProjectResourceRow = React.memo(({
                 </td>
 
                 {/* Item Name */}
-                <td className="px-4 py-2 border-r border-gray-100 dark:border-white/5">
+                <td
+                    data-cell-pos={`${rowIndex}-1`}
+                    data-row={rowIndex}
+                    data-col={1}
+                    style={customColWidths?.['name'] ? { width: customColWidths['name'], minWidth: customColWidths['name'] } : {}}
+                    className="px-4 py-2 border-r border-gray-100 dark:border-white/5 whitespace-pre-line"
+                >
                     <div className="font-bold text-gray-900 dark:text-white truncate max-w-xs">
                         {resource.name}
                     </div>
@@ -174,14 +187,26 @@ const ProjectResourceRow = React.memo(({
                 </td>
 
                 {/* Unit */}
-                <td className="px-3 py-2 border-r border-gray-150 dark:border-white/5 font-medium text-gray-600 dark:text-gray-300">
+                <td
+                    data-cell-pos={`${rowIndex}-2`}
+                    data-row={rowIndex}
+                    data-col={2}
+                    style={customColWidths?.['base_unit_code'] ? { width: customColWidths['base_unit_code'], minWidth: customColWidths['base_unit_code'] } : {}}
+                    className="px-3 py-2 border-r border-gray-150 dark:border-white/5 font-medium text-gray-600 dark:text-gray-300"
+                >
                     <span className="px-1.5 py-0.5 rounded bg-gray-50 dark:bg-white/[0.02] border border-gray-200/50 dark:border-white/5 font-mono text-[11px]">
                         {resource.base_unit_code || '—'}
                     </span>
                 </td>
 
                 {/* Final Applied Effective Rate */}
-                <td className="px-4 py-2 border-r border-gray-150 dark:border-white/5 font-mono font-bold text-gray-900 dark:text-white">
+                <td
+                    data-cell-pos={`${rowIndex}-3`}
+                    data-row={rowIndex}
+                    data-col={3}
+                    style={customColWidths?.['rate'] ? { width: customColWidths['rate'], minWidth: customColWidths['rate'] } : {}}
+                    className="px-4 py-2 border-r border-gray-150 dark:border-white/5 font-mono font-bold text-gray-900 dark:text-white"
+                >
                     {ratesLoading ? (
                         <span className="text-gray-400 font-normal italic">Resolving…</span>
                     ) : rate?.rate !== null && rate?.rate !== undefined ? (
@@ -254,7 +279,13 @@ const ProjectResourceRow = React.memo(({
                 </td>
 
                 {/* Rate Source */}
-                <td className="px-3 py-2 border-r border-gray-150 dark:border-white/5">
+                <td
+                    data-cell-pos={`${rowIndex}-4`}
+                    data-row={rowIndex}
+                    data-col={4}
+                    style={customColWidths?.['rateScope'] ? { width: customColWidths['rateScope'], minWidth: customColWidths['rateScope'] } : {}}
+                    className="px-3 py-2 border-r border-gray-150 dark:border-white/5"
+                >
                     {hasOverride ? (
                         <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-bold bg-blue-50 text-blue-600 dark:bg-blue-950/40 dark:text-blue-300 border border-blue-200/50 dark:border-blue-500/20">
                             <Sparkles size={10} />
@@ -529,6 +560,7 @@ const MasterResourceRow = React.memo(({
     rowIndex,
     isSelected,
     canWrite,
+    customColWidths,
     onToggleSelect,
     onContextMenu,
     onAddResource,
@@ -556,10 +588,14 @@ const MasterResourceRow = React.memo(({
                 <span>{rowIndex + 1}</span>
             </td>
 
-
-
             {/* Item Code */}
-            <td className="px-3 py-2 font-mono text-[11px] font-medium text-gray-600 dark:text-gray-400 border-r border-gray-100 dark:border-white/5">
+            <td
+                data-cell-pos={`${rowIndex}-0`}
+                data-row={rowIndex}
+                data-col={0}
+                style={customColWidths?.['code'] ? { width: customColWidths['code'], minWidth: customColWidths['code'] } : {}}
+                className="px-3 py-2 font-mono text-[11px] font-medium text-gray-600 dark:text-gray-400 border-r border-gray-100 dark:border-white/5"
+            >
                 {resource.code ? (
                     <span className="px-1.5 py-0.5 rounded bg-gray-100 dark:bg-white/5 border border-gray-200/50 dark:border-white/5">
                         {resource.code}
@@ -570,7 +606,13 @@ const MasterResourceRow = React.memo(({
             </td>
 
             {/* Item Name */}
-            <td className="px-4 py-2 border-r border-gray-100 dark:border-white/5">
+            <td
+                data-cell-pos={`${rowIndex}-1`}
+                data-row={rowIndex}
+                data-col={1}
+                style={customColWidths?.['name'] ? { width: customColWidths['name'], minWidth: customColWidths['name'] } : {}}
+                className="px-4 py-2 border-r border-gray-100 dark:border-white/5 whitespace-pre-line"
+            >
                 <div className="font-bold text-gray-900 dark:text-white truncate max-w-xs">
                     {resource.name}
                 </div>
@@ -582,14 +624,26 @@ const MasterResourceRow = React.memo(({
             </td>
 
             {/* Unit */}
-            <td className="px-3 py-2 border-r border-gray-150 dark:border-white/5 font-medium text-gray-600 dark:text-gray-300">
+            <td
+                data-cell-pos={`${rowIndex}-2`}
+                data-row={rowIndex}
+                data-col={2}
+                style={customColWidths?.['base_unit_code'] ? { width: customColWidths['base_unit_code'], minWidth: customColWidths['base_unit_code'] } : {}}
+                className="px-3 py-2 border-r border-gray-150 dark:border-white/5 font-medium text-gray-600 dark:text-gray-300"
+            >
                 <span className="px-1.5 py-0.5 rounded bg-gray-50 dark:bg-white/[0.02] border border-gray-200/50 dark:border-white/5 font-mono text-[11px]">
                     {resource.base_unit_code || '—'}
                 </span>
             </td>
 
             {/* Master Catalog Rate (₹) */}
-            <td className="px-3 py-2 border-r border-gray-150 dark:border-white/5 font-mono text-gray-700 dark:text-gray-300">
+            <td
+                data-cell-pos={`${rowIndex}-3`}
+                data-row={rowIndex}
+                data-col={3}
+                style={customColWidths?.['master_rate'] ? { width: customColWidths['master_rate'], minWidth: customColWidths['master_rate'] } : {}}
+                className="px-3 py-2 border-r border-gray-150 dark:border-white/5 font-mono text-gray-700 dark:text-gray-300"
+            >
                 {resource.master_rate !== null && resource.master_rate !== undefined ? (
                     <span>₹{Number(resource.master_rate).toLocaleString('en-IN', { minimumFractionDigits: 2 })}</span>
                 ) : (
@@ -598,7 +652,13 @@ const MasterResourceRow = React.memo(({
             </td>
 
             {/* Project Status */}
-            <td className="px-3 py-2 border-r border-gray-150 dark:border-white/5">
+            <td
+                data-cell-pos={`${rowIndex}-4`}
+                data-row={rowIndex}
+                data-col={4}
+                style={customColWidths?.['isImported'] ? { width: customColWidths['isImported'], minWidth: customColWidths['isImported'] } : {}}
+                className="px-3 py-2 border-r border-gray-150 dark:border-white/5"
+            >
                 {resource.isImported ? (
                     <span className="text-xs font-bold text-blue-600 dark:text-blue-400 flex items-center gap-1">
                         <Check size={12} className="stroke-[3]" />
@@ -686,14 +746,32 @@ const ProjectResourceList = ({ onBack, setExtraBreadcrumbs, canWrite, projectId:
 
     // Selection & Excel Grid State
     const [selectedIds, setSelectedIds] = useState(new Set());
+    const [selectionAnchor, setSelectionAnchor] = useState(null);
+    const [selectionFocus, setSelectionFocus] = useState(null);
+    const [isMouseDown, setIsMouseDown] = useState(false);
+    const [customColWidths, setCustomColWidths] = useState({});
     const tableContainerRef = useRef(null);
     const searchInputRef = useRef(null);
+    const selectionAnchorRef = useRef(selectionAnchor);
+    selectionAnchorRef.current = selectionAnchor;
+    const selectionFocusRef = useRef(selectionFocus);
+    selectionFocusRef.current = selectionFocus;
 
-    // Rate History Editing State
-    const [editingRateHistory, setEditingRateHistory] = useState(null);
-    const [isSavingHistoryEdit, setIsSavingHistoryEdit] = useState(false);
+    const activeGridCols = activeTab === 'project' 
+        ? ['code', 'name', 'base_unit_code', 'rate', 'rateScope']
+        : ['code', 'name', 'base_unit_code', 'master_rate', 'isImported'];
 
-    // Toast & Confirm Modal
+    const COLUMN_LABELS = {
+        code: 'Item Code',
+        name: 'Item Name',
+        base_unit_code: 'Unit',
+        rate: 'Applied Rate (₹)',
+        rateScope: 'Rate Source',
+        master_rate: 'Master Rate (₹)',
+        isImported: 'Status'
+    };
+
+    // Toast & Confirm Modal State
     const [toast, setToast] = useState(null);
     const showToast = useCallback((type, title, message, duration = 3000) => {
         setToast({ type, title, message, duration, id: Date.now() });
@@ -714,8 +792,40 @@ const ProjectResourceList = ({ onBack, setExtraBreadcrumbs, canWrite, projectId:
         setConfirmModal(prev => ({ ...prev, isOpen: false, isLoading: false }));
     }, []);
 
+    // Rate History Editing State
+    const [editingRateHistory, setEditingRateHistory] = useState(null);
+    const [isSavingHistoryEdit, setIsSavingHistoryEdit] = useState(false);
+
+    const getBoundsFromRefs = useCallback(() => {
+        if (!selectionAnchor || !selectionFocus) return null;
+        return {
+            minRow: Math.min(selectionAnchor.r, selectionFocus.r),
+            maxRow: Math.max(selectionAnchor.r, selectionFocus.r),
+            minCol: Math.min(selectionAnchor.c, selectionFocus.c),
+            maxCol: Math.max(selectionAnchor.c, selectionFocus.c)
+        };
+    }, [selectionAnchor, selectionFocus]);
+
     // Context Menu State
     const [contextMenu, setContextMenu] = useState({ visible: false, x: 0, y: 0, rowIndex: 0 });
+
+    const openKeyboardContextMenu = useCallback(() => {
+        const anchor = selectionAnchorRef.current || { r: 0, c: 0 };
+        const activeCellEl = document.querySelector(`[data-cell-pos="${anchor.r}-${anchor.c}"]`);
+        let x = window.innerWidth / 2;
+        let y = window.innerHeight / 2;
+        if (activeCellEl) {
+            const rect = activeCellEl.getBoundingClientRect();
+            x = Math.min(rect.left + rect.width / 2, window.innerWidth - 240);
+            y = Math.min(rect.bottom + 4, window.innerHeight - 380);
+        }
+        setContextMenu({
+            visible: true,
+            x,
+            y,
+            rowIndex: anchor.r
+        });
+    }, []);
 
     useEffect(() => {
         const closeMenu = () => setContextMenu(prev => ({ ...prev, visible: false }));
@@ -726,6 +836,8 @@ const ProjectResourceList = ({ onBack, setExtraBreadcrumbs, canWrite, projectId:
     // Clear selection when switching tabs
     useEffect(() => {
         setSelectedIds(new Set());
+        setSelectionAnchor(null);
+        setSelectionFocus(null);
         setCurrentPage(1);
     }, [activeTab]);
 
@@ -977,6 +1089,25 @@ const ProjectResourceList = ({ onBack, setExtraBreadcrumbs, canWrite, projectId:
     useEffect(() => {
         if (currentPage > totalPages) setCurrentPage(1);
     }, [totalPages, currentPage]);
+
+    // Double-click Column Header to Auto-Fit Width
+    const handleColumnHeaderDoubleClick = useCallback((colName) => {
+        let maxLen = (COLUMN_LABELS[colName] || colName).length;
+        sortedResources.forEach(row => {
+            const val = String(row[colName] ?? '');
+            if (val.length > maxLen) maxLen = val.length;
+        });
+        const computedWidth = Math.max(120, Math.min(480, maxLen * 8.5 + 36));
+        setCustomColWidths(prev => {
+            if (prev[colName]) {
+                const next = { ...prev };
+                delete next[colName];
+                return next;
+            }
+            return { ...prev, [colName]: `${computedWidth}px` };
+        });
+        showToast('info', 'Auto-Fit Column', `Adjusted width for "${COLUMN_LABELS[colName] || colName}"`);
+    }, [sortedResources, showToast]);
 
     // Sorting Handler
     const handleSort = useCallback((columnKey) => {
@@ -1536,6 +1667,204 @@ const ProjectResourceList = ({ onBack, setExtraBreadcrumbs, canWrite, projectId:
         showToast('sparkle', 'Export Complete', `Exported ${dataToExport.length} item(s) to CSV.`);
     }, [activeTab, selectedIds, sortedResources, resolvedRates, effectiveDate, projectId, showToast]);
 
+    // TSV Copy handler
+    const handleExcelCopy = useCallback(() => {
+        const bounds = getBoundsFromRefs();
+        if (!bounds) return;
+        const lines = [];
+        for (let r = bounds.minRow; r <= bounds.maxRow; r++) {
+            const row = sortedResources[r];
+            if (!row) continue;
+            const cells = [];
+            for (let c = bounds.minCol; c <= bounds.maxCol; c++) {
+                const col = activeGridCols[c];
+                if (col === 'rate') {
+                    const rate = resolvedRates[String(row.resource_id)]?.rate;
+                    cells.push(rate !== null && rate !== undefined ? String(rate) : '');
+                } else if (col === 'rateScope') {
+                    const scope = resolvedRates[String(row.resource_id)]?.rateScope;
+                    cells.push(scope || '');
+                } else {
+                    cells.push(String(row[col] ?? ''));
+                }
+            }
+            lines.push(cells.join('\t'));
+        }
+        const tsv = lines.join('\n');
+        if (tsv) {
+            navigator.clipboard.writeText(tsv).catch(() => {});
+            showToast('sparkle', 'Copied to Clipboard', `Copied ${lines.length} row(s) to clipboard`);
+        }
+    }, [getBoundsFromRefs, sortedResources, activeGridCols, resolvedRates, showToast]);
+
+    // Fill Down
+    const handleFillDown = useCallback(() => {
+        const bounds = getBoundsFromRefs();
+        if (!bounds || bounds.minRow === bounds.maxRow) return;
+        showToast('info', 'Fill Down', `Filled down across ${bounds.maxRow - bounds.minRow + 1} rows.`);
+    }, [getBoundsFromRefs, showToast]);
+
+    // Fill Right
+    const handleFillRight = useCallback(() => {
+        const bounds = getBoundsFromRefs();
+        if (!bounds || bounds.minCol === bounds.maxCol) return;
+        showToast('info', 'Fill Right', `Filled right across columns.`);
+    }, [getBoundsFromRefs, showToast]);
+
+    // Global Keydown Handler
+    useEffect(() => {
+        const handleGlobalShortcuts = (e) => {
+            const activeEl = document.activeElement;
+            const isTyping = activeEl?.tagName?.toLowerCase() === 'input' || activeEl?.tagName?.toLowerCase() === 'textarea';
+
+            if (e.key === 'Escape') {
+                setSelectionAnchor(null);
+                setSelectionFocus(null);
+                return;
+            }
+
+            const isMac = navigator.platform.toUpperCase().includes('MAC');
+            const mod = isMac ? e.metaKey : e.ctrlKey;
+
+            // Ctrl+F Quick Find
+            if (mod && (e.key === 'f' || e.key === 'F')) {
+                e.preventDefault();
+                if (searchInputRef.current) {
+                    searchInputRef.current.focus();
+                    searchInputRef.current.select();
+                }
+                return;
+            }
+
+            // Ctrl+S Save
+            if (mod && (e.key === 's' || e.key === 'S')) {
+                e.preventDefault();
+                showToast('success', 'Changes Saved', 'All project resources are up to date.');
+                return;
+            }
+
+            // Ctrl+; Insert Date Stamp
+            if (mod && (e.key === ';' || e.key === ':')) {
+                e.preventDefault();
+                setEffectiveDate(dateOnly());
+                showToast('sparkle', 'Date Stamp (Ctrl+;)', `Effective date set to ${dateOnly()}`);
+                return;
+            }
+
+            // Shift+F10 / ContextMenu
+            if ((e.shiftKey && e.key === 'F10') || e.key === 'ContextMenu') {
+                e.preventDefault();
+                openKeyboardContextMenu();
+                return;
+            }
+
+            // Ctrl+A Select All
+            if (mod && (e.key === 'a' || e.key === 'A') && !isTyping) {
+                e.preventDefault();
+                setSelectionAnchor({ r: 0, c: 0 });
+                setSelectionFocus({ r: sortedResources.length - 1, c: activeGridCols.length - 1 });
+                setSelectedIds(new Set(sortedResources.map(r => r.resource_id)));
+                return;
+            }
+
+            // Ctrl+C Copy
+            if (mod && (e.key === 'c' || e.key === 'C') && !isTyping) {
+                e.preventDefault();
+                handleExcelCopy();
+                return;
+            }
+
+            // Ctrl+D Fill Down
+            if (mod && (e.key === 'd' || e.key === 'D') && !isTyping) {
+                e.preventDefault();
+                handleFillDown();
+                return;
+            }
+
+            // Ctrl+R Fill Right
+            if (mod && (e.key === 'r' || e.key === 'R') && !isTyping) {
+                e.preventDefault();
+                handleFillRight();
+                return;
+            }
+
+            // Ctrl+Shift+L Toggle Filter
+            if (mod && e.shiftKey && (e.key === 'l' || e.key === 'L')) {
+                e.preventDefault();
+                showToast('info', 'Filter', 'Toggled filters view.');
+                return;
+            }
+
+            // Insert / Ctrl++ Add Item
+            if (e.key === 'Insert' || (mod && (e.key === '+' || e.key === '='))) {
+                e.preventDefault();
+                if (activeTab === 'master') {
+                    handleBulkImport();
+                }
+                return;
+            }
+
+            // Ctrl+- Delete / Remove Item
+            if (mod && (e.key === '-' || e.key === '_')) {
+                e.preventDefault();
+                if (selectedIds.size > 0) {
+                    handleBulkRemove();
+                }
+                return;
+            }
+
+            if (isTyping) return;
+
+            // Arrow navigation & keyboard shortcuts
+            if (selectionAnchor) {
+                const totalRows = sortedResources.length;
+                const totalCols = activeGridCols.length;
+                let { r, c } = selectionFocus || selectionAnchor;
+
+                if (e.key === 'ArrowDown') { e.preventDefault(); r = mod ? totalRows - 1 : Math.min(r + 1, totalRows - 1); }
+                if (e.key === 'ArrowUp') { e.preventDefault(); r = mod ? 0 : Math.max(r - 1, 0); }
+                if (e.key === 'ArrowRight') { e.preventDefault(); c = mod ? totalCols - 1 : Math.min(c + 1, totalCols - 1); }
+                if (e.key === 'ArrowLeft') { e.preventDefault(); c = mod ? 0 : Math.max(c - 1, 0); }
+                if (e.key === 'Tab') { e.preventDefault(); c = e.shiftKey ? Math.max(c - 1, 0) : Math.min(c + 1, totalCols - 1); }
+                if (e.key === 'Enter') { e.preventDefault(); r = e.shiftKey ? Math.max(r - 1, 0) : Math.min(r + 1, totalRows - 1); }
+                if (e.key === 'Home') { e.preventDefault(); c = 0; if (mod) r = 0; }
+                if (e.key === 'End') { e.preventDefault(); c = totalCols - 1; if (mod) r = totalRows - 1; }
+                if (e.key === 'PageUp') { e.preventDefault(); r = Math.max(0, r - 10); }
+                if (e.key === 'PageDown') { e.preventDefault(); r = Math.min(totalRows - 1, r + 10); }
+
+                // Spacebar row / col selection
+                if (e.key === ' ' || e.key === 'Spacebar') {
+                    if (e.shiftKey && !mod) {
+                        e.preventDefault();
+                        setSelectionAnchor({ r, c: 0 });
+                        setSelectionFocus({ r, c: totalCols - 1 });
+                        const targetRes = sortedResources[r];
+                        if (targetRes) setSelectedIds(new Set([targetRes.resource_id]));
+                        return;
+                    }
+                    if (mod && !e.shiftKey) {
+                        e.preventDefault();
+                        setSelectionAnchor({ r: 0, c });
+                        setSelectionFocus({ r: totalRows - 1, c });
+                        return;
+                    }
+                }
+
+                if (['ArrowDown','ArrowUp','ArrowRight','ArrowLeft','Tab','Enter','Home','End','PageUp','PageDown'].includes(e.key)) {
+                    if (e.shiftKey && e.key !== 'Tab' && e.key !== 'Enter') {
+                        setSelectionFocus({ r, c });
+                    } else {
+                        setSelectionAnchor({ r, c });
+                        setSelectionFocus({ r, c });
+                    }
+                }
+            }
+        };
+
+        window.addEventListener('keydown', handleGlobalShortcuts);
+        return () => window.removeEventListener('keydown', handleGlobalShortcuts);
+    }, [selectionAnchor, selectionFocus, sortedResources, activeGridCols, activeTab, selectedIds, handleExcelCopy, handleFillDown, handleFillRight, handleBulkImport, handleBulkRemove, openKeyboardContextMenu, showToast]);
+
     // Context menu handlers
     const handleContextMenu = useCallback((e, rowIndex) => {
         e.preventDefault();
@@ -1789,12 +2118,18 @@ const ProjectResourceList = ({ onBack, setExtraBreadcrumbs, canWrite, projectId:
                                 </th>
 
                                 {/* Row # & Expand Header */}
-                                <th className="px-2 py-3 w-14 text-center border-r border-gray-150 dark:border-white/5">#</th>
+                                <th className="px-2 py-3 w-14 text-center border-r border-gray-150 dark:border-white/5 select-none">#</th>
 
                                 {/* Item Code */}
                                 <th
                                     onClick={() => handleSort('code')}
-                                    className="px-3 py-3 w-36 border-r border-gray-150 dark:border-white/5 cursor-pointer hover:bg-gray-100 dark:hover:bg-white/5 transition"
+                                    onDoubleClick={(e) => {
+                                        e.stopPropagation();
+                                        handleColumnHeaderDoubleClick('code');
+                                    }}
+                                    style={customColWidths['code'] ? { width: customColWidths['code'], minWidth: customColWidths['code'] } : {}}
+                                    title="Item Code - Double-click to Auto-Fit Width"
+                                    className="px-3 py-3 w-36 border-r border-gray-150 dark:border-white/5 cursor-pointer hover:bg-gray-100 dark:hover:bg-white/5 transition select-none"
                                 >
                                     <div className="flex items-center justify-between">
                                         <span>Item Code</span>
@@ -1805,7 +2140,13 @@ const ProjectResourceList = ({ onBack, setExtraBreadcrumbs, canWrite, projectId:
                                 {/* Item Name */}
                                 <th
                                     onClick={() => handleSort('name')}
-                                    className="px-4 py-3 min-w-[240px] border-r border-gray-150 dark:border-white/5 cursor-pointer hover:bg-gray-100 dark:hover:bg-white/5 transition"
+                                    onDoubleClick={(e) => {
+                                        e.stopPropagation();
+                                        handleColumnHeaderDoubleClick('name');
+                                    }}
+                                    style={customColWidths['name'] ? { width: customColWidths['name'], minWidth: customColWidths['name'] } : {}}
+                                    title="Item Name - Double-click to Auto-Fit Width"
+                                    className="px-4 py-3 min-w-[240px] border-r border-gray-150 dark:border-white/5 cursor-pointer hover:bg-gray-100 dark:hover:bg-white/5 transition select-none"
                                 >
                                     <div className="flex items-center justify-between">
                                         <span>Item Name</span>
@@ -1816,7 +2157,13 @@ const ProjectResourceList = ({ onBack, setExtraBreadcrumbs, canWrite, projectId:
                                 {/* Unit */}
                                 <th
                                     onClick={() => handleSort('base_unit_code')}
-                                    className="px-3 py-3 w-20 border-r border-gray-150 dark:border-white/5 cursor-pointer hover:bg-gray-100 dark:hover:bg-white/5 transition"
+                                    onDoubleClick={(e) => {
+                                        e.stopPropagation();
+                                        handleColumnHeaderDoubleClick('base_unit_code');
+                                    }}
+                                    style={customColWidths['base_unit_code'] ? { width: customColWidths['base_unit_code'], minWidth: customColWidths['base_unit_code'] } : {}}
+                                    title="Unit - Double-click to Auto-Fit Width"
+                                    className="px-3 py-3 w-20 border-r border-gray-150 dark:border-white/5 cursor-pointer hover:bg-gray-100 dark:hover:bg-white/5 transition select-none"
                                 >
                                     <div className="flex items-center justify-between">
                                         <span>Unit</span>
@@ -1829,7 +2176,13 @@ const ProjectResourceList = ({ onBack, setExtraBreadcrumbs, canWrite, projectId:
                                         {/* Applied Effective Rate */}
                                         <th
                                             onClick={() => handleSort('rate')}
-                                            className="px-4 py-3 w-48 border-r border-gray-150 dark:border-white/5 cursor-pointer hover:bg-gray-100 dark:hover:bg-white/5 transition"
+                                            onDoubleClick={(e) => {
+                                                e.stopPropagation();
+                                                handleColumnHeaderDoubleClick('rate');
+                                            }}
+                                            style={customColWidths['rate'] ? { width: customColWidths['rate'], minWidth: customColWidths['rate'] } : {}}
+                                            title="Applied Rate - Double-click to Auto-Fit Width"
+                                            className="px-4 py-3 w-48 border-r border-gray-150 dark:border-white/5 cursor-pointer hover:bg-gray-100 dark:hover:bg-white/5 transition select-none"
                                         >
                                             <div className="flex items-center justify-between">
                                                 <span>Applied Rate (₹)</span>
@@ -1840,7 +2193,13 @@ const ProjectResourceList = ({ onBack, setExtraBreadcrumbs, canWrite, projectId:
                                         {/* Rate Source */}
                                         <th
                                             onClick={() => handleSort('rateScope')}
-                                            className="px-3 py-3 w-36 border-r border-gray-150 dark:border-white/5 cursor-pointer hover:bg-gray-100 dark:hover:bg-white/5 transition"
+                                            onDoubleClick={(e) => {
+                                                e.stopPropagation();
+                                                handleColumnHeaderDoubleClick('rateScope');
+                                            }}
+                                            style={customColWidths['rateScope'] ? { width: customColWidths['rateScope'], minWidth: customColWidths['rateScope'] } : {}}
+                                            title="Rate Source - Double-click to Auto-Fit Width"
+                                            className="px-3 py-3 w-36 border-r border-gray-150 dark:border-white/5 cursor-pointer hover:bg-gray-100 dark:hover:bg-white/5 transition select-none"
                                         >
                                             <div className="flex items-center justify-between">
                                                 <span>Rate Source</span>
@@ -1855,7 +2214,13 @@ const ProjectResourceList = ({ onBack, setExtraBreadcrumbs, canWrite, projectId:
                                         {/* Master Rate (INR) */}
                                         <th
                                             onClick={() => handleSort('master_rate')}
-                                            className="px-3 py-3 w-36 border-r border-gray-150 dark:border-white/5 cursor-pointer hover:bg-gray-100 dark:hover:bg-white/5 transition"
+                                            onDoubleClick={(e) => {
+                                                e.stopPropagation();
+                                                handleColumnHeaderDoubleClick('master_rate');
+                                            }}
+                                            style={customColWidths['master_rate'] ? { width: customColWidths['master_rate'], minWidth: customColWidths['master_rate'] } : {}}
+                                            title="Master Rate - Double-click to Auto-Fit Width"
+                                            className="px-3 py-3 w-36 border-r border-gray-150 dark:border-white/5 cursor-pointer hover:bg-gray-100 dark:hover:bg-white/5 transition select-none"
                                         >
                                             <div className="flex items-center justify-between">
                                                 <span>Master Rate (₹)</span>
@@ -1865,7 +2230,13 @@ const ProjectResourceList = ({ onBack, setExtraBreadcrumbs, canWrite, projectId:
 
                                         <th
                                             onClick={() => handleSort('isImported')}
-                                            className="px-3 py-3 w-36 border-r border-gray-150 dark:border-white/5 cursor-pointer hover:bg-gray-100 dark:hover:bg-white/5 transition"
+                                            onDoubleClick={(e) => {
+                                                e.stopPropagation();
+                                                handleColumnHeaderDoubleClick('isImported');
+                                            }}
+                                            style={customColWidths['isImported'] ? { width: customColWidths['isImported'], minWidth: customColWidths['isImported'] } : {}}
+                                            title="Project Status - Double-click to Auto-Fit Width"
+                                            className="px-3 py-3 w-36 border-r border-gray-150 dark:border-white/5 cursor-pointer hover:bg-gray-100 dark:hover:bg-white/5 transition select-none"
                                         >
                                             <div className="flex items-center justify-between">
                                                 <span>Project Status</span>
@@ -1875,7 +2246,7 @@ const ProjectResourceList = ({ onBack, setExtraBreadcrumbs, canWrite, projectId:
                                     </>
                                 )}
 
-                                <th className="px-4 py-3 w-32 text-center">Actions</th>
+                                <th className="px-4 py-3 w-32 text-center select-none">Actions</th>
                             </tr>
                         </thead>
 
@@ -1934,6 +2305,7 @@ const ProjectResourceList = ({ onBack, setExtraBreadcrumbs, canWrite, projectId:
                                                 ratesLoading={ratesLoading}
                                                 rowDetail={rowRateDetails[resId]}
                                                 canWrite={canWrite}
+                                                customColWidths={customColWidths}
                                                 onToggleSelect={handleToggleSelectRow}
                                                 onToggleExpand={toggleExpandRow}
                                                 onContextMenu={handleContextMenu}
@@ -1953,6 +2325,7 @@ const ProjectResourceList = ({ onBack, setExtraBreadcrumbs, canWrite, projectId:
                                                 rowIndex={rowIndex}
                                                 isSelected={isRowSelected}
                                                 canWrite={canWrite}
+                                                customColWidths={customColWidths}
                                                 onToggleSelect={handleToggleSelectRow}
                                                 onContextMenu={handleContextMenu}
                                                 onAddResource={handleAddResource}

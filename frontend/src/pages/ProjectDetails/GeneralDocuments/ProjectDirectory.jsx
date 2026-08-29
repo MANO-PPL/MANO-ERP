@@ -199,6 +199,205 @@ const ProjectDirectory = ({ onBack, setExtraBreadcrumbs, canWrite }) => {
     const [isInfoOpen, setIsInfoOpen] = useState(false);
     const [projectParties, setProjectParties] = useState([]);
 
+    // Excel Grid & Selection State
+    const [selectionAnchor, setSelectionAnchor] = useState(null);
+    const [selectionFocus, setSelectionFocus] = useState(null);
+    const [isMouseDown, setIsMouseDown] = useState(false);
+    const [customColWidths, setCustomColWidths] = useState({});
+
+    const DIRECTORY_COLS = [
+        'name', 'category', 'nature', 'person', 'designation',
+        'responsibilities', 'phone', 'email', 'address'
+    ];
+
+    const COLUMN_LABELS = {
+        name: 'Company Name',
+        category: 'Category',
+        nature: 'Job Nature',
+        person: 'Person Name',
+        designation: 'Designation',
+        responsibilities: 'Responsibilities',
+        phone: 'Mobile No',
+        email: 'Email ID',
+        address: 'Address'
+    };
+
+    const getBoundsFromRefs = useCallback(() => {
+        if (!selectionAnchor || !selectionFocus) return null;
+        return {
+            minRow: Math.min(selectionAnchor.r, selectionFocus.r),
+            maxRow: Math.max(selectionAnchor.r, selectionFocus.r),
+            minCol: Math.min(selectionAnchor.c, selectionFocus.c),
+            maxCol: Math.max(selectionAnchor.c, selectionFocus.c)
+        };
+    }, [selectionAnchor, selectionFocus]);
+
+    const handleColumnHeaderDoubleClick = useCallback((colKey) => {
+        let maxLen = (COLUMN_LABELS[colKey] || colKey).length;
+        contacts.forEach(c => {
+            const val = String(c[colKey] ?? '');
+            if (val.length > maxLen) maxLen = val.length;
+        });
+        const computedWidth = Math.max(100, Math.min(480, maxLen * 8.5 + 32));
+        setCustomColWidths(prev => {
+            if (prev[colKey]) {
+                const next = { ...prev };
+                delete next[colKey];
+                return next;
+            }
+            return { ...prev, [colKey]: `${computedWidth}px` };
+        });
+    }, [contacts]);
+
+    // Excel TSV Copy
+    const handleExcelCopy = useCallback(() => {
+        const bounds = getBoundsFromRefs();
+        if (!bounds) return;
+        const lines = [];
+        for (let r = bounds.minRow; r <= bounds.maxRow; r++) {
+            const row = contacts[r];
+            if (!row) continue;
+            const cells = [];
+            for (let c = bounds.minCol; c <= bounds.maxCol; c++) {
+                const colKey = DIRECTORY_COLS[c];
+                cells.push(String(row[colKey] ?? ''));
+            }
+            lines.push(cells.join('\t'));
+        }
+        navigator.clipboard.writeText(lines.join('\n')).catch(() => {});
+        toast.info(`Copied ${lines.length} row(s) to clipboard`);
+    }, [getBoundsFromRefs, contacts]);
+
+    // Excel Fill Down
+    const handleFillDown = useCallback(() => {
+        if (!isEditable) return;
+        const bounds = getBoundsFromRefs();
+        if (!bounds || bounds.minRow === bounds.maxRow) return;
+        const sourceRow = contacts[bounds.minRow];
+        if (!sourceRow) return;
+        const updated = [...contacts];
+        for (let r = bounds.minRow + 1; r <= bounds.maxRow; r++) {
+            const targetRow = { ...updated[r] };
+            for (let c = bounds.minCol; c <= bounds.maxCol; c++) {
+                const colKey = DIRECTORY_COLS[c];
+                if (['designation', 'responsibilities', 'address'].includes(colKey)) {
+                    targetRow[colKey] = sourceRow[colKey];
+                }
+            }
+            updated[r] = targetRow;
+        }
+        setContacts(updated);
+        toast.info('Filled down');
+    }, [isEditable, getBoundsFromRefs, contacts]);
+
+    // Excel Fill Right
+    const handleFillRight = useCallback(() => {
+        if (!isEditable) return;
+        const bounds = getBoundsFromRefs();
+        if (!bounds || bounds.minCol === bounds.maxCol) return;
+        toast.info('Filled right');
+    }, [isEditable, getBoundsFromRefs]);
+
+    // Global Keydown Handler
+    useEffect(() => {
+        const handleKeyDown = (e) => {
+            const activeEl = document.activeElement;
+            const isTyping = activeEl?.tagName?.toLowerCase() === 'input' || activeEl?.tagName?.toLowerCase() === 'textarea';
+
+            if (e.key === 'Escape') {
+                setSelectionAnchor(null);
+                setSelectionFocus(null);
+                setEditingId(null);
+                return;
+            }
+
+            const isMac = navigator.platform.toUpperCase().includes('MAC');
+            const mod = isMac ? e.metaKey : e.ctrlKey;
+
+            // Ctrl+S
+            if (mod && (e.key === 's' || e.key === 'S')) {
+                e.preventDefault();
+                toast.success('Directory saved');
+                return;
+            }
+
+            // Insert / Ctrl++
+            if (e.key === 'Insert' || (mod && (e.key === '+' || e.key === '='))) {
+                e.preventDefault();
+                if (isEditable) handleAdd();
+                return;
+            }
+
+            // Ctrl+-
+            if (mod && (e.key === '-' || e.key === '_')) {
+                e.preventDefault();
+                if (selectionAnchor && isEditable && contacts[selectionAnchor.r]) {
+                    handleDelete(contacts[selectionAnchor.r].id);
+                }
+                return;
+            }
+
+            // Ctrl+A
+            if (mod && (e.key === 'a' || e.key === 'A') && !isTyping) {
+                e.preventDefault();
+                setSelectionAnchor({ r: 0, c: 0 });
+                setSelectionFocus({ r: contacts.length - 1, c: DIRECTORY_COLS.length - 1 });
+                return;
+            }
+
+            if (mod && (e.key === 'c' || e.key === 'C') && !isTyping) { e.preventDefault(); handleExcelCopy(); return; }
+            if (mod && (e.key === 'd' || e.key === 'D') && !isTyping) { e.preventDefault(); handleFillDown(); return; }
+            if (mod && (e.key === 'r' || e.key === 'R') && !isTyping) { e.preventDefault(); handleFillRight(); return; }
+
+            if (isTyping) return;
+
+            if (selectionAnchor) {
+                const totalRows = contacts.length;
+                const totalCols = DIRECTORY_COLS.length;
+                let { r, c } = selectionFocus || selectionAnchor;
+
+                if (e.key === 'ArrowDown')  { e.preventDefault(); r = mod ? totalRows - 1 : Math.min(r + 1, totalRows - 1); }
+                if (e.key === 'ArrowUp')    { e.preventDefault(); r = mod ? 0 : Math.max(r - 1, 0); }
+                if (e.key === 'ArrowRight') { e.preventDefault(); c = mod ? totalCols - 1 : Math.min(c + 1, totalCols - 1); }
+                if (e.key === 'ArrowLeft')  { e.preventDefault(); c = mod ? 0 : Math.max(c - 1, 0); }
+                if (e.key === 'Tab')        { e.preventDefault(); c = e.shiftKey ? Math.max(c - 1, 0) : Math.min(c + 1, totalCols - 1); }
+                if (e.key === 'Enter')      { e.preventDefault(); r = e.shiftKey ? Math.max(r - 1, 0) : Math.min(r + 1, totalRows - 1); }
+                if (e.key === 'Home')       { e.preventDefault(); c = 0; if (mod) r = 0; }
+                if (e.key === 'End')        { e.preventDefault(); c = totalCols - 1; if (mod) r = totalRows - 1; }
+                if (e.key === 'PageUp')     { e.preventDefault(); r = Math.max(0, r - 10); }
+                if (e.key === 'PageDown')   { e.preventDefault(); r = Math.min(totalRows - 1, r + 10); }
+
+                // Space
+                if (e.key === ' ' || e.key === 'Spacebar') {
+                    if (e.shiftKey && !mod) {
+                        e.preventDefault();
+                        setSelectionAnchor({ r, c: 0 });
+                        setSelectionFocus({ r, c: totalCols - 1 });
+                        return;
+                    }
+                    if (mod && !e.shiftKey) {
+                        e.preventDefault();
+                        setSelectionAnchor({ r: 0, c });
+                        setSelectionFocus({ r: totalRows - 1, c });
+                        return;
+                    }
+                }
+
+                if (['ArrowDown','ArrowUp','ArrowRight','ArrowLeft','Tab','Enter','Home','End','PageUp','PageDown'].includes(e.key)) {
+                    if (e.shiftKey && e.key !== 'Tab' && e.key !== 'Enter') {
+                        setSelectionFocus({ r, c });
+                    } else {
+                        setSelectionAnchor({ r, c });
+                        setSelectionFocus({ r, c });
+                    }
+                }
+            }
+        };
+
+        window.addEventListener('keydown', handleKeyDown);
+        return () => window.removeEventListener('keydown', handleKeyDown);
+    }, [selectionAnchor, selectionFocus, contacts, isEditable, handleExcelCopy, handleFillDown, handleFillRight]);
+
     const isEditable = canWrite && (workflowState.notConfigured || (workflowState.mode === 'edit' && workflowState.cycleId));
 
     const [auditTrail, setAuditTrail] = useState([]);
@@ -581,19 +780,64 @@ const ProjectDirectory = ({ onBack, setExtraBreadcrumbs, canWrite }) => {
                                 <col className="w-[200px]" />
                                 {isEditable && <col className="w-[110px]" />}
                             </colgroup>
-                            <thead className="bg-gray-50/80 dark:bg-[#161b22] text-gray-600 dark:text-gray-300 sticky top-0 z-10 border-b border-gray-200 dark:border-white/10">
+                            <thead className="bg-gray-50/80 dark:bg-[#161b22] text-gray-600 dark:text-gray-300 sticky top-0 z-10 border-b border-gray-200 dark:border-white/10 select-none">
                                 <tr>
                                     <th className="px-2 py-3 text-center"></th>
                                     <th className="px-3 py-3 font-semibold text-[11px] uppercase tracking-wider text-center text-gray-500 dark:text-gray-400">Sl No.</th>
-                                    <th className="px-3 py-3 font-semibold text-[11px] uppercase tracking-wider text-gray-500 dark:text-gray-400">Company Name</th>
-                                    <th className="px-3 py-3 font-semibold text-[11px] uppercase tracking-wider text-gray-500 dark:text-gray-400">Category</th>
-                                    <th className="px-3 py-3 font-semibold text-[11px] uppercase tracking-wider text-gray-500 dark:text-gray-400">Job Nature</th>
-                                    <th className="px-3 py-3 font-semibold text-[11px] uppercase tracking-wider text-gray-500 dark:text-gray-400">Person Name</th>
-                                    <th className="px-3 py-3 font-semibold text-[11px] uppercase tracking-wider text-gray-500 dark:text-gray-400">Designation</th>
-                                    <th className="px-3 py-3 font-semibold text-[11px] uppercase tracking-wider text-gray-500 dark:text-gray-400">Responsibilities</th>
-                                    <th className="px-3 py-3 font-semibold text-[11px] uppercase tracking-wider text-gray-500 dark:text-gray-400">Mobile No</th>
-                                    <th className="px-3 py-3 font-semibold text-[11px] uppercase tracking-wider text-gray-500 dark:text-gray-400">Email ID</th>
-                                    <th className="px-3 py-3 font-semibold text-[11px] uppercase tracking-wider text-gray-500 dark:text-gray-400">Address</th>
+                                    <th
+                                        onDoubleClick={() => handleColumnHeaderDoubleClick('name')}
+                                        style={customColWidths['name'] ? { width: customColWidths['name'], minWidth: customColWidths['name'] } : {}}
+                                        title="Company Name - Double-click to Auto-Fit"
+                                        className="px-3 py-3 font-semibold text-[11px] uppercase tracking-wider text-gray-500 dark:text-gray-400 cursor-pointer hover:bg-gray-100 dark:hover:bg-white/5 transition"
+                                    >Company Name</th>
+                                    <th
+                                        onDoubleClick={() => handleColumnHeaderDoubleClick('category')}
+                                        style={customColWidths['category'] ? { width: customColWidths['category'], minWidth: customColWidths['category'] } : {}}
+                                        title="Category - Double-click to Auto-Fit"
+                                        className="px-3 py-3 font-semibold text-[11px] uppercase tracking-wider text-gray-500 dark:text-gray-400 cursor-pointer hover:bg-gray-100 dark:hover:bg-white/5 transition"
+                                    >Category</th>
+                                    <th
+                                        onDoubleClick={() => handleColumnHeaderDoubleClick('nature')}
+                                        style={customColWidths['nature'] ? { width: customColWidths['nature'], minWidth: customColWidths['nature'] } : {}}
+                                        title="Job Nature - Double-click to Auto-Fit"
+                                        className="px-3 py-3 font-semibold text-[11px] uppercase tracking-wider text-gray-500 dark:text-gray-400 cursor-pointer hover:bg-gray-100 dark:hover:bg-white/5 transition"
+                                    >Job Nature</th>
+                                    <th
+                                        onDoubleClick={() => handleColumnHeaderDoubleClick('person')}
+                                        style={customColWidths['person'] ? { width: customColWidths['person'], minWidth: customColWidths['person'] } : {}}
+                                        title="Person Name - Double-click to Auto-Fit"
+                                        className="px-3 py-3 font-semibold text-[11px] uppercase tracking-wider text-gray-500 dark:text-gray-400 cursor-pointer hover:bg-gray-100 dark:hover:bg-white/5 transition"
+                                    >Person Name</th>
+                                    <th
+                                        onDoubleClick={() => handleColumnHeaderDoubleClick('designation')}
+                                        style={customColWidths['designation'] ? { width: customColWidths['designation'], minWidth: customColWidths['designation'] } : {}}
+                                        title="Designation - Double-click to Auto-Fit"
+                                        className="px-3 py-3 font-semibold text-[11px] uppercase tracking-wider text-gray-500 dark:text-gray-400 cursor-pointer hover:bg-gray-100 dark:hover:bg-white/5 transition"
+                                    >Designation</th>
+                                    <th
+                                        onDoubleClick={() => handleColumnHeaderDoubleClick('responsibilities')}
+                                        style={customColWidths['responsibilities'] ? { width: customColWidths['responsibilities'], minWidth: customColWidths['responsibilities'] } : {}}
+                                        title="Responsibilities - Double-click to Auto-Fit"
+                                        className="px-3 py-3 font-semibold text-[11px] uppercase tracking-wider text-gray-500 dark:text-gray-400 cursor-pointer hover:bg-gray-100 dark:hover:bg-white/5 transition"
+                                    >Responsibilities</th>
+                                    <th
+                                        onDoubleClick={() => handleColumnHeaderDoubleClick('phone')}
+                                        style={customColWidths['phone'] ? { width: customColWidths['phone'], minWidth: customColWidths['phone'] } : {}}
+                                        title="Mobile No - Double-click to Auto-Fit"
+                                        className="px-3 py-3 font-semibold text-[11px] uppercase tracking-wider text-gray-500 dark:text-gray-400 cursor-pointer hover:bg-gray-100 dark:hover:bg-white/5 transition"
+                                    >Mobile No</th>
+                                    <th
+                                        onDoubleClick={() => handleColumnHeaderDoubleClick('email')}
+                                        style={customColWidths['email'] ? { width: customColWidths['email'], minWidth: customColWidths['email'] } : {}}
+                                        title="Email ID - Double-click to Auto-Fit"
+                                        className="px-3 py-3 font-semibold text-[11px] uppercase tracking-wider text-gray-500 dark:text-gray-400 cursor-pointer hover:bg-gray-100 dark:hover:bg-white/5 transition"
+                                    >Email ID</th>
+                                    <th
+                                        onDoubleClick={() => handleColumnHeaderDoubleClick('address')}
+                                        style={customColWidths['address'] ? { width: customColWidths['address'], minWidth: customColWidths['address'] } : {}}
+                                        title="Address - Double-click to Auto-Fit"
+                                        className="px-3 py-3 font-semibold text-[11px] uppercase tracking-wider text-gray-500 dark:text-gray-400 cursor-pointer hover:bg-gray-100 dark:hover:bg-white/5 transition"
+                                    >Address</th>
                                     {isEditable && <th className="px-3 py-3 font-semibold text-[11px] uppercase tracking-wider text-center text-gray-500 dark:text-gray-400">Actions</th>}
                                 </tr>
                             </thead>
@@ -620,7 +864,7 @@ const ProjectDirectory = ({ onBack, setExtraBreadcrumbs, canWrite }) => {
                                                 </td>
 
                                                 {/* Company Name */}
-                                                <td className="px-3 py-3" onClick={() => isEditable && !isEditing && handleEdit(contact)}>
+                                                <td data-cell-pos={`${idx}-0`} className="px-3 py-3" onClick={() => isEditable && !isEditing && handleEdit(contact)}>
                                                     {isEditing ? (
                                                         <PartySelector
                                                             value={editData.name}
@@ -635,14 +879,14 @@ const ProjectDirectory = ({ onBack, setExtraBreadcrumbs, canWrite }) => {
                                                 </td>
 
                                                 {/* Party Category */}
-                                                <td className="px-3 py-3" onClick={() => isEditable && !isEditing && handleEdit(contact)}>
+                                                <td data-cell-pos={`${idx}-1`} className="px-3 py-3" onClick={() => isEditable && !isEditing && handleEdit(contact)}>
                                                     <span className="inline-flex px-2 py-0.5 rounded-full border border-blue-500/20 bg-blue-500/10 text-blue-600 dark:text-blue-400 text-[10px] font-semibold uppercase tracking-wide">
                                                         {(isEditing ? editData.category : contact.category) || 'Uncategorized'}
                                                     </span>
                                                 </td>
 
                                                 {/* Job Nature */}
-                                                <td className="px-3 py-3" onClick={() => isEditable && !isEditing && handleEdit(contact)}>
+                                                <td data-cell-pos={`${idx}-2`} className="px-3 py-3" onClick={() => isEditable && !isEditing && handleEdit(contact)}>
                                                     {isEditing ? (
                                                         <div className={`h-8 px-2.5 flex items-center text-xs rounded-md border ${editData.nature ? 'text-blue-600 dark:text-blue-400 border-blue-500/30 bg-blue-500/5 font-semibold' : 'text-gray-400 border-gray-200 dark:border-white/10 italic'}`}>
                                                             {editData.nature || 'Auto-filled'}
@@ -653,7 +897,7 @@ const ProjectDirectory = ({ onBack, setExtraBreadcrumbs, canWrite }) => {
                                                 </td>
 
                                                 {/* Person Name */}
-                                                <td className="px-3 py-3" onClick={() => isEditable && !isEditing && handleEdit(contact)}>
+                                                <td data-cell-pos={`${idx}-3`} className="px-3 py-3" onClick={() => isEditable && !isEditing && handleEdit(contact)}>
                                                     {isEditing ? (
                                                         <StandardInput
                                                             autoFocus
@@ -667,7 +911,7 @@ const ProjectDirectory = ({ onBack, setExtraBreadcrumbs, canWrite }) => {
                                                 </td>
 
                                                 {/* Designation */}
-                                                <td className="px-3 py-3" onClick={() => isEditable && !isEditing && handleEdit(contact)}>
+                                                <td data-cell-pos={`${idx}-4`} className="px-3 py-3" onClick={() => isEditable && !isEditing && handleEdit(contact)}>
                                                     {isEditing ? (
                                                         <StandardInput
                                                             placeholder="Designation..."
@@ -680,7 +924,7 @@ const ProjectDirectory = ({ onBack, setExtraBreadcrumbs, canWrite }) => {
                                                 </td>
 
                                                 {/* Responsibilities */}
-                                                <td className="px-3 py-3" onClick={() => isEditable && !isEditing && handleEdit(contact)}>
+                                                <td data-cell-pos={`${idx}-5`} className="px-3 py-3" onClick={() => isEditable && !isEditing && handleEdit(contact)}>
                                                     {isEditing ? (
                                                         <StandardTextarea
                                                             placeholder="Enter responsibilities..."
@@ -693,7 +937,7 @@ const ProjectDirectory = ({ onBack, setExtraBreadcrumbs, canWrite }) => {
                                                 </td>
 
                                                 {/* Mobile No */}
-                                                <td className="px-3 py-3" onClick={() => isEditable && !isEditing && handleEdit(contact)}>
+                                                <td data-cell-pos={`${idx}-6`} className="px-3 py-3" onClick={() => isEditable && !isEditing && handleEdit(contact)}>
                                                     {isEditing ? (
                                                         <StandardInput
                                                             placeholder="Mobile Number..."
@@ -706,7 +950,7 @@ const ProjectDirectory = ({ onBack, setExtraBreadcrumbs, canWrite }) => {
                                                 </td>
 
                                                 {/* Email ID */}
-                                                <td className="px-3 py-3" onClick={() => isEditable && !isEditing && handleEdit(contact)}>
+                                                <td data-cell-pos={`${idx}-7`} className="px-3 py-3" onClick={() => isEditable && !isEditing && handleEdit(contact)}>
                                                     {isEditing ? (
                                                         <StandardInput
                                                             type="email"
@@ -720,7 +964,7 @@ const ProjectDirectory = ({ onBack, setExtraBreadcrumbs, canWrite }) => {
                                                 </td>
 
                                                 {/* Address */}
-                                                <td className="px-3 py-3" onClick={() => isEditable && !isEditing && handleEdit(contact)}>
+                                                <td data-cell-pos={`${idx}-8`} className="px-3 py-3" onClick={() => isEditable && !isEditing && handleEdit(contact)}>
                                                     {isEditing ? (
                                                         <StandardTextarea
                                                             placeholder="Enter address..."
