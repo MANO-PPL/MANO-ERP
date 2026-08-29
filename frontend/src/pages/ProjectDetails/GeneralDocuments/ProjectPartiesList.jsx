@@ -6,6 +6,7 @@ import {
     Tag,
     Clock,
     Sparkles,
+    CopyCheck,
     Check,
     Search,
     X,
@@ -70,21 +71,50 @@ const CrmPartyAutoSuggestEditor = ({
     const [inputValue, setInputValue] = useState(value || '');
     const [isOpen, setIsOpen] = useState(true);
     const [highlightIndex, setHighlightIndex] = useState(0);
-    const [coords, setCoords] = useState({ top: 0, left: 0, width: 300 });
+    const [coords, setCoords] = useState({ top: 0, left: 0, width: 300, maxHeight: 240 });
     const inputRef = useRef(null);
+    const blurTimeoutRef = useRef(null);
 
     useEffect(() => {
         inputRef.current?.focus();
+        return () => {
+            if (blurTimeoutRef.current) {
+                clearTimeout(blurTimeoutRef.current);
+            }
+        };
     }, []);
 
     useEffect(() => {
         const updateCoords = () => {
             if (inputRef.current) {
                 const rect = inputRef.current.getBoundingClientRect();
+                const dropdownWidth = Math.max(300, Math.min(rect.width, 420));
+
+                // Horizontal boundary clipping protection
+                let left = rect.left;
+                if (left + dropdownWidth > window.innerWidth - 16) {
+                    left = Math.max(16, window.innerWidth - dropdownWidth - 16);
+                }
+                if (left < 16) left = 16;
+
+                // Vertical boundary clipping protection
+                const spaceBelow = window.innerHeight - rect.bottom;
+                const spaceAbove = rect.top;
+                let top = rect.bottom + 4;
+                let maxHeight = Math.min(240, spaceBelow - 16);
+
+                // If not enough space below and more space above, flip upwards
+                if (spaceBelow < 180 && spaceAbove > spaceBelow) {
+                    const availableHeight = Math.min(240, spaceAbove - 16);
+                    top = Math.max(16, rect.top - availableHeight - 4);
+                    maxHeight = availableHeight;
+                }
+
                 setCoords({
-                    top: rect.bottom + 4,
-                    left: rect.left,
-                    width: Math.max(300, rect.width)
+                    top,
+                    left,
+                    width: dropdownWidth,
+                    maxHeight: Math.max(120, maxHeight)
                 });
             }
         };
@@ -111,6 +141,11 @@ const CrmPartyAutoSuggestEditor = ({
     }, [inputValue, crmSuggestions]);
 
     const handleSelectSuggestion = (item) => {
+        if (blurTimeoutRef.current) {
+            clearTimeout(blurTimeoutRef.current);
+            blurTimeoutRef.current = null;
+        }
+
         setInputValue(item.name);
         setIsOpen(false);
         onChange(item.name);
@@ -133,7 +168,7 @@ const CrmPartyAutoSuggestEditor = ({
             if (item.address) onChangeValue(rowIndex, 'address', item.address);
             if (item.remarks) onChangeValue(rowIndex, 'remarks', item.remarks);
         }
-        onBlur();
+        onBlur(item.name);
     };
 
     return (
@@ -167,8 +202,8 @@ const CrmPartyAutoSuggestEditor = ({
                     }
                 }}
                 onBlur={() => {
-                    setTimeout(() => {
-                        onBlur();
+                    blurTimeoutRef.current = setTimeout(() => {
+                        onBlur(inputValue);
                     }, 200);
                 }}
                 placeholder="Type name or select from CRM..."
@@ -183,11 +218,12 @@ const CrmPartyAutoSuggestEditor = ({
                         top: `${coords.top}px`,
                         left: `${coords.left}px`,
                         width: `${coords.width}px`,
+                        maxHeight: `${coords.maxHeight}px`,
                         zIndex: 99999,
                         scrollbarWidth: 'none',
                         msOverflowStyle: 'none'
                     }}
-                    className="bg-white dark:bg-[#161b22] border border-gray-200 dark:border-white/10 rounded-xl shadow-2xl p-1.5 space-y-1 max-h-56 overflow-y-auto [&::-webkit-scrollbar]:hidden animate-in fade-in zoom-in-95 select-none font-sans"
+                    className="bg-white dark:bg-[#161b22] border border-gray-200 dark:border-white/10 rounded-xl shadow-2xl p-1.5 space-y-1 overflow-y-auto [&::-webkit-scrollbar]:hidden animate-in fade-in zoom-in-95 select-none font-sans"
                     onMouseDown={(e) => e.stopPropagation()}
                 >
                     <div className="px-2 py-1 text-[10px] font-bold text-gray-400 uppercase tracking-wider flex items-center justify-between border-b border-gray-100 dark:border-white/5">
@@ -564,10 +600,11 @@ export const ProjectPartiesList = ({ canWrite = true }) => {
                                 <button
                                     type="button"
                                     onClick={() => setIsDuplicateModalOpen(true)}
-                                    className="p-1.5 hover:bg-gray-100 dark:hover:bg-white/5 text-gray-600 dark:text-gray-400 rounded-lg border border-gray-200 dark:border-white/10 transition cursor-pointer"
-                                    title="Check & Resolve Duplicates"
+                                    className="px-2.5 py-1.5 bg-gray-100 hover:bg-gray-200 dark:bg-white/5 dark:hover:bg-white/10 text-gray-700 dark:text-gray-300 border border-gray-200 dark:border-white/10 rounded-lg text-xs font-semibold transition-all cursor-pointer flex items-center gap-1.5"
+                                    title="Check & Resolve Duplicate Parties"
                                 >
-                                    <Sparkles size={13} className="text-purple-500" />
+                                    <CopyCheck size={13} className="text-amber-500 stroke-[2.5]" />
+                                    <span>Resolve Duplicates</span>
                                 </button>
                             </>
                         )}

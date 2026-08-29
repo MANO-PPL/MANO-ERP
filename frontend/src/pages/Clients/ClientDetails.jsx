@@ -110,7 +110,7 @@ Reference     : ${client.reference || '-'}
                 </div>
 
                 {/* Body */}
-                <div className="p-6 overflow-y-auto no-scrollbar flex-1 space-y-6">
+                <div className="p-6 overflow-y-auto custom-scrollbar flex-1 space-y-6">
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                         <div>
                             <p className="text-[10px] uppercase tracking-widest text-gray-400 font-bold mb-1">Sector</p>
