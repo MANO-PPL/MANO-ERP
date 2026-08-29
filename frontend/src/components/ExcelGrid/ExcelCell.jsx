@@ -26,10 +26,15 @@ export const ExcelCell = ({
     onContextMenu,
     onStartFillDrag,
     onAutoFillDown,
-    onOpenDropdownPortal
+    onOpenDropdownPortal,
+    isFindMatch = false,
+    isFindCurrentMatch = false,
+    findHighlightQuery = '',
+    findHighlightMatchCase = false
 }) => {
     const inputRef = useRef(null);
     const [localValue, setLocalValue] = useState(value ?? '');
+    const localValueRef = useRef(value ?? '');
 
     const isAnchor = selectionAnchor?.r === rowIndex && selectionAnchor?.c === colIndex;
     const isFocus = selectionFocus?.r === rowIndex && selectionFocus?.c === colIndex;
@@ -49,7 +54,13 @@ export const ExcelCell = ({
 
     useEffect(() => {
         setLocalValue(value ?? '');
+        localValueRef.current = value ?? '';
     }, [value]);
+
+    const updateLocalValue = (newVal) => {
+        localValueRef.current = newVal;
+        setLocalValue(newVal);
+    };
 
     useEffect(() => {
         if (isEditing && inputRef.current) {
@@ -60,8 +71,9 @@ export const ExcelCell = ({
         }
     }, [isEditing, column.type]);
 
-    const handleBlur = () => {
-        onChangeValue(rowIndex, column.key, localValue);
+    const handleBlur = (overrideVal) => {
+        const valToCommit = overrideVal !== undefined ? overrideVal : localValueRef.current;
+        onChangeValue(rowIndex, column.key, valToCommit);
         onStopEditing();
     };
 
@@ -94,16 +106,38 @@ export const ExcelCell = ({
             ? String(value)
             : '';
 
+        let contentNode = displayVal;
+        if (isFindMatch && findHighlightQuery && displayVal) {
+            const query = findHighlightMatchCase ? findHighlightQuery : findHighlightQuery.toLowerCase();
+            const strVal = String(displayVal);
+            const comp = findHighlightMatchCase ? strVal : strVal.toLowerCase();
+            const idx = comp.indexOf(query);
+            if (idx !== -1) {
+                const before = strVal.substring(0, idx);
+                const match = strVal.substring(idx, idx + findHighlightQuery.length);
+                const after = strVal.substring(idx + findHighlightQuery.length);
+                contentNode = (
+                    <span>
+                        {before}
+                        <mark className="bg-amber-300 dark:bg-amber-500 text-black dark:text-gray-900 font-bold px-0.5 rounded-xs">
+                            {match}
+                        </mark>
+                        {after}
+                    </span>
+                );
+            }
+        }
+
         return (
             <div className={`truncate w-full text-xs font-semibold text-gray-800 dark:text-gray-200 ${column.align === 'right' ? 'text-right font-mono' : column.align === 'center' ? 'text-center' : 'text-left'}`}>
-                {displayVal}
+                {contentNode}
             </div>
         );
     };
 
     const renderEditor = () => {
         if (column.renderEditor && typeof column.renderEditor === 'function') {
-            return column.renderEditor(localValue, row, column, setLocalValue, handleBlur, rowIndex, onChangeValue);
+            return column.renderEditor(localValue, row, column, updateLocalValue, handleBlur, rowIndex, onChangeValue);
         }
 
         if (column.type === 'select') {
@@ -111,8 +145,8 @@ export const ExcelCell = ({
                 <select
                     ref={inputRef}
                     value={localValue}
-                    onChange={(e) => setLocalValue(e.target.value)}
-                    onBlur={handleBlur}
+                    onChange={(e) => updateLocalValue(e.target.value)}
+                    onBlur={() => handleBlur()}
                     onKeyDown={(e) => onKeyDown(e, rowIndex, column.key)}
                     className="w-full h-full px-2 py-0.5 bg-white dark:bg-[#161b22] text-gray-900 dark:text-white border border-blue-500 rounded text-xs outline-none focus:ring-1 focus:ring-blue-500"
                 >
@@ -136,8 +170,8 @@ export const ExcelCell = ({
                     ref={inputRef}
                     type="number"
                     value={localValue}
-                    onChange={(e) => setLocalValue(e.target.value)}
-                    onBlur={handleBlur}
+                    onChange={(e) => updateLocalValue(e.target.value)}
+                    onBlur={() => handleBlur()}
                     onKeyDown={(e) => onKeyDown(e, rowIndex, column.key)}
                     className="w-full min-w-0 bg-transparent border-0 outline-none p-0 text-xs font-semibold text-gray-900 dark:text-white text-right font-mono"
                 />
@@ -150,8 +184,8 @@ export const ExcelCell = ({
                     ref={inputRef}
                     type="date"
                     value={localValue}
-                    onChange={(e) => setLocalValue(e.target.value)}
-                    onBlur={handleBlur}
+                    onChange={(e) => updateLocalValue(e.target.value)}
+                    onBlur={() => handleBlur()}
                     onKeyDown={(e) => onKeyDown(e, rowIndex, column.key)}
                     className="w-full min-w-0 bg-transparent border-0 outline-none p-0 text-xs font-semibold text-gray-900 dark:text-white"
                 />
@@ -163,8 +197,8 @@ export const ExcelCell = ({
                 ref={inputRef}
                 type="text"
                 value={localValue}
-                onChange={(e) => setLocalValue(e.target.value)}
-                onBlur={handleBlur}
+                onChange={(e) => updateLocalValue(e.target.value)}
+                onBlur={() => handleBlur()}
                 onKeyDown={(e) => onKeyDown(e, rowIndex, column.key)}
                 className="w-full min-w-0 bg-transparent border-0 outline-none p-0 text-xs font-semibold text-gray-900 dark:text-white"
             />
@@ -209,14 +243,30 @@ export const ExcelCell = ({
             }}
             onContextMenu={(e) => onContextMenu(e, rowIndex, colIndex)}
             tabIndex={-1}
+            onKeyDown={(e) => onKeyDown && onKeyDown(e, rowIndex, column.key)}
             className={`px-3 py-1.5 border-r border-b border-gray-100 dark:border-white/5 relative outline-none select-none cursor-pointer overflow-hidden transition-colors ${
                 isEditing
                     ? 'bg-white dark:bg-[#161b22]'
+                    : isFindCurrentMatch
+                    ? 'bg-amber-200/90 dark:bg-amber-900/50 text-amber-950 dark:text-amber-50'
+                    : isFindMatch
+                    ? 'bg-amber-100/70 dark:bg-amber-950/40 text-amber-900 dark:text-amber-100'
                     : isInRange
                     ? 'bg-blue-50/50 dark:bg-blue-900/20'
                     : 'hover:bg-gray-50/70 dark:hover:bg-white/[0.03]'
             }`}
         >
+            {/* Find Match Indicator Ring */}
+            {isFindMatch && !isEditing && (
+                <div
+                    className={`absolute inset-0 pointer-events-none z-10 ${
+                        isFindCurrentMatch
+                            ? 'ring-2 ring-blue-500 shadow-md animate-pulse'
+                            : 'border border-amber-300/80 dark:border-amber-700/60'
+                    }`}
+                />
+            )}
+
             {/* Active Cell Blue Ring */}
             {(isAnchor || isEditing) && (
                 <div className="absolute inset-0 pointer-events-none z-20 border-2 border-blue-500 shadow-xs" />

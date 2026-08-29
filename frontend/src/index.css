@@ -51,51 +51,162 @@ body {
   }
 }
 
-.no-scrollbar::-webkit-scrollbar,
-.custom-scrollbar::-webkit-scrollbar {
-  display: none;
-  width: 0;
-  height: 0;
+/* ===== Global & Custom Theme Scrollbars (White & Black/Dark Modes) ===== */
+
+/* Explicit hide scrollbar utility */
+.no-scrollbar::-webkit-scrollbar {
+  display: none !important;
+  width: 0 !important;
+  height: 0 !important;
 }
-.no-scrollbar,
-.custom-scrollbar {
-  -ms-overflow-style: none;
-  scrollbar-width: none;
+.no-scrollbar {
+  -ms-overflow-style: none !important;
+  scrollbar-width: none !important;
 }
 
-/* ===== Visible Custom Table Scrollbar ===== */
-.table-scrollbar::-webkit-scrollbar {
-  height: 8px;
-  width: 8px;
+/* Global scrollbar fallback */
+::-webkit-scrollbar {
+  width: 7px;
+  height: 7px;
 }
-.table-scrollbar::-webkit-scrollbar-track {
-  background: rgba(0, 0, 0, 0.04);
-  border-radius: 4px;
+::-webkit-scrollbar-track {
+  background: transparent;
 }
-.dark .table-scrollbar::-webkit-scrollbar-track {
-  background: rgba(255, 255, 255, 0.04);
+::-webkit-scrollbar-thumb {
+  background: rgba(148, 163, 184, 0.45);
+  border-radius: 6px;
+  border: 1.5px solid transparent;
+  background-clip: padding-box;
 }
-.table-scrollbar::-webkit-scrollbar-thumb {
-  background: rgba(148, 163, 184, 0.5);
-  border-radius: 4px;
-  border: 1px solid transparent;
-  background-clip: content-box;
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(100, 116, 139, 0.75);
+  border: 1.5px solid transparent;
+  background-clip: padding-box;
 }
-.dark .table-scrollbar::-webkit-scrollbar-thumb {
-  background: rgba(100, 116, 139, 0.5);
+::-webkit-scrollbar-corner {
+  background: transparent;
 }
-.table-scrollbar::-webkit-scrollbar-thumb:hover {
-  background: rgba(59, 130, 246, 0.8);
+
+.dark ::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.18);
+  border-radius: 6px;
+  border: 1.5px solid transparent;
+  background-clip: padding-box;
 }
-.dark .table-scrollbar::-webkit-scrollbar-thumb:hover {
-  background: rgba(96, 165, 250, 0.8);
+.dark ::-webkit-scrollbar-thumb:hover {
+  background: rgba(255, 255, 255, 0.35);
+  border: 1.5px solid transparent;
+  background-clip: padding-box;
 }
-.table-scrollbar {
+
+/* ===== Specialized Table & Grid Scrollbars (Vendors, Clients, ExcelGrid) ===== */
+.table-scrollbar,
+.scrollbar-thin,
+.custom-scrollbar,
+.theme-scrollbar,
+[data-excel-grid="true"] {
   scrollbar-width: thin;
-  scrollbar-color: rgba(148, 163, 184, 0.5) rgba(0, 0, 0, 0.04);
+  scrollbar-color: rgba(148, 163, 184, 0.55) rgba(0, 0, 0, 0.03);
 }
-.dark .table-scrollbar {
-  scrollbar-color: rgba(100, 116, 139, 0.5) rgba(255, 255, 255, 0.04);
+
+.dark .table-scrollbar,
+.dark .scrollbar-thin,
+.dark .custom-scrollbar,
+.dark .theme-scrollbar,
+.dark [data-excel-grid="true"] {
+  scrollbar-color: rgba(255, 255, 255, 0.22) rgba(255, 255, 255, 0.02);
+}
+
+/* Webkit table vertical & horizontal scrollbar track & thumb */
+.table-scrollbar::-webkit-scrollbar,
+.scrollbar-thin::-webkit-scrollbar,
+.custom-scrollbar::-webkit-scrollbar,
+.theme-scrollbar::-webkit-scrollbar,
+[data-excel-grid="true"]::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+.table-scrollbar::-webkit-scrollbar-track,
+.scrollbar-thin::-webkit-scrollbar-track,
+.custom-scrollbar::-webkit-scrollbar-track,
+.theme-scrollbar::-webkit-scrollbar-track,
+[data-excel-grid="true"]::-webkit-scrollbar-track {
+  background: rgba(0, 0, 0, 0.03);
+  border-radius: 6px;
+}
+
+.dark .table-scrollbar::-webkit-scrollbar-track,
+.dark .scrollbar-thin::-webkit-scrollbar-track,
+.dark .custom-scrollbar::-webkit-scrollbar-track,
+.dark .theme-scrollbar::-webkit-scrollbar-track,
+.dark [data-excel-grid="true"]::-webkit-scrollbar-track {
+  background: rgba(255, 255, 255, 0.02);
+  border-radius: 6px;
+}
+
+.table-scrollbar::-webkit-scrollbar-thumb,
+.scrollbar-thin::-webkit-scrollbar-thumb,
+.custom-scrollbar::-webkit-scrollbar-thumb,
+.theme-scrollbar::-webkit-scrollbar-thumb,
+[data-excel-grid="true"]::-webkit-scrollbar-thumb {
+  background: rgba(148, 163, 184, 0.55);
+  border-radius: 6px;
+  border: 2px solid transparent;
+  background-clip: padding-box;
+}
+
+.dark .table-scrollbar::-webkit-scrollbar-thumb,
+.dark .scrollbar-thin::-webkit-scrollbar-thumb,
+.dark .custom-scrollbar::-webkit-scrollbar-thumb,
+.dark .theme-scrollbar::-webkit-scrollbar-thumb,
+.dark [data-excel-grid="true"]::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.22);
+  border-radius: 6px;
+  border: 2px solid transparent;
+  background-clip: padding-box;
+}
+
+.table-scrollbar::-webkit-scrollbar-thumb:hover,
+.scrollbar-thin::-webkit-scrollbar-thumb:hover,
+.custom-scrollbar::-webkit-scrollbar-thumb:hover,
+.theme-scrollbar::-webkit-scrollbar-thumb:hover,
+[data-excel-grid="true"]::-webkit-scrollbar-thumb:hover {
+  background: rgba(100, 116, 139, 0.85);
+  border: 2px solid transparent;
+  background-clip: padding-box;
+}
+
+.dark .table-scrollbar::-webkit-scrollbar-thumb:hover,
+.dark .scrollbar-thin::-webkit-scrollbar-thumb:hover,
+.dark .custom-scrollbar::-webkit-scrollbar-thumb:hover,
+.dark .theme-scrollbar::-webkit-scrollbar-thumb:hover,
+.dark [data-excel-grid="true"]::-webkit-scrollbar-thumb:hover {
+  background: rgba(255, 255, 255, 0.4);
+  border: 2px solid transparent;
+  background-clip: padding-box;
+}
+
+.table-scrollbar::-webkit-scrollbar-corner,
+.scrollbar-thin::-webkit-scrollbar-corner,
+.custom-scrollbar::-webkit-scrollbar-corner,
+.theme-scrollbar::-webkit-scrollbar-corner,
+[data-excel-grid="true"]::-webkit-scrollbar-corner {
+  background: transparent;
+}
+
+/* ===== Hide Scrollbars Utility (for sidebars, compact lists, etc.) ===== */
+.no-scrollbar::-webkit-scrollbar,
+.scrollbar-none::-webkit-scrollbar {
+  display: none !important;
+  width: 0 !important;
+  height: 0 !important;
+}
+
+.no-scrollbar,
+.scrollbar-none {
+  -ms-overflow-style: none !important;
+  scrollbar-width: none !important;
 }
 
 

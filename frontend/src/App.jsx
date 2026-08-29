@@ -22,6 +22,7 @@ if (reactToastify) {
 // ─── Lazy-loaded pages ────────────────────────────────────────────────────
 const Dashboard = lazy(() => import('./pages/Dashboard'));
 const Projects = lazy(() => import('./pages/Projects'));
+const CreateProject = lazy(() => import('./pages/Projects/CreateProject'));
 const ProjectDetails = lazy(() => import('./pages/ProjectDetails/ProjectDetails'));
 const VendorsList = lazy(() => import('./pages/Vendors/VendorsList'));
 const ResourcesList = lazy(() => import('./pages/Resources/ResourceList'));
@@ -91,6 +92,20 @@ function App() {
               <ProtectedRoute pageId="projects">
                 <Suspense fallback={<PageSkeleton variant="grid" />}>
                   <Projects />
+                </Suspense>
+              </ProtectedRoute>
+            } />
+            <Route path="projects/create" element={
+              <ProtectedRoute pageId="projects" requiredLevel={2}>
+                <Suspense fallback={<PageSkeleton variant="form" />}>
+                  <CreateProject />
+                </Suspense>
+              </ProtectedRoute>
+            } />
+            <Route path="projects/new" element={
+              <ProtectedRoute pageId="projects" requiredLevel={2}>
+                <Suspense fallback={<PageSkeleton variant="form" />}>
+                  <CreateProject />
                 </Suspense>
               </ProtectedRoute>
             } />

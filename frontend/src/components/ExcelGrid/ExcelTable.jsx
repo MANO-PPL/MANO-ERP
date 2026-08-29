@@ -1,6 +1,6 @@
 import React, { useRef, useCallback, useState, useEffect } from 'react';
 import { ExcelCell } from './ExcelCell';
-import { ArrowUp, ArrowDown, Eye, Edit3, Trash2, Check, Plus, Table as TableIcon } from 'lucide-react';
+import { ArrowUp, ArrowDown, Eye, Trash2, Check, Plus, Table as TableIcon } from 'lucide-react';
 import { getColumnLetter } from './excelUtils';
 
 const CustomCheckbox = ({ checked, onChange, title }) => (
@@ -58,13 +58,13 @@ export const ExcelTable = ({
     onAutoFillDown,
     onOpenDropdownPortal,
     onViewRow = null,
-    onEditRow = null,
     onDeleteRow = null,
     emptyMessage = 'No records found',
     onAddRows = null,
     onOpenImportModal = null,
     currentPage = 1,
-    pageSize = 100
+    pageSize = 100,
+    findHighlightConfig = null
 }) => {
     // Select All Rows toggle
     const handleToggleSelectAll = () => {
@@ -135,10 +135,14 @@ export const ExcelTable = ({
         document.addEventListener('mouseup', handleMouseUp);
     };
 
-    const hasActions = Boolean(onViewRow || onEditRow || onDeleteRow);
+    const hasActions = Boolean(onViewRow || onDeleteRow);
 
     return (
-        <div className="flex-1 min-h-0 relative overflow-auto scrollbar-thin bg-white dark:bg-[#0d1117]">
+        <div
+            data-excel-grid="true"
+            tabIndex={0}
+            className="flex-1 min-h-0 relative overflow-auto scrollbar-thin table-scrollbar theme-scrollbar bg-white dark:bg-[#0d1117] outline-none"
+        >
             <table className="w-full border-collapse text-left table-fixed">
                 {/* ─── STICKY HEADER ─── */}
                 <thead className="sticky top-0 z-30 bg-gray-50/95 dark:bg-[#161b22]/95 backdrop-blur border-b border-gray-200 dark:border-white/10 text-[11px] font-bold text-gray-500 dark:text-gray-400 uppercase tracking-wider select-none">
@@ -229,7 +233,7 @@ export const ExcelTable = ({
 
                         {/* Actions Column */}
                         {hasActions && (
-                            <th className="px-3 py-2.5 w-28 min-w-28 max-w-28 text-center">Actions</th>
+                            <th className="px-3 py-2.5 w-20 min-w-20 max-w-20 text-center">Actions</th>
                         )}
                     </tr>
                 </thead>
@@ -361,6 +365,25 @@ export const ExcelTable = ({
                                             colIndex >= copiedBounds.minCol &&
                                             colIndex <= copiedBounds.maxCol;
 
+                                        let isFindMatch = false;
+                                        if (findHighlightConfig && findHighlightConfig.query && !col.readOnly) {
+                                            const cellVal = String(row[col.key] ?? '');
+                                            const q = findHighlightConfig.matchCase
+                                                ? findHighlightConfig.query
+                                                : findHighlightConfig.query.toLowerCase();
+                                            const target = findHighlightConfig.matchCase
+                                                ? cellVal
+                                                : cellVal.toLowerCase();
+                                            isFindMatch = findHighlightConfig.matchExact
+                                                ? target === q
+                                                : target.includes(q);
+                                        }
+
+                                        const isFindCurrentMatch =
+                                            isFindMatch &&
+                                            selectionFocus?.r === rowIndex &&
+                                            selectionFocus?.c === colIndex;
+
                                         return (
                                             <ExcelCell
                                                 key={col.key}
@@ -389,6 +412,10 @@ export const ExcelTable = ({
                                                 onStartFillDrag={onStartFillDrag}
                                                 onAutoFillDown={onAutoFillDown}
                                                 onOpenDropdownPortal={onOpenDropdownPortal}
+                                                isFindMatch={isFindMatch}
+                                                isFindCurrentMatch={isFindCurrentMatch}
+                                                findHighlightQuery={findHighlightConfig?.query}
+                                                findHighlightMatchCase={findHighlightConfig?.matchCase}
                                             />
                                         );
                                     })}
@@ -410,16 +437,6 @@ export const ExcelTable = ({
                                                         title="View Details"
                                                     >
                                                         <Eye size={13} />
-                                                    </button>
-                                                )}
-                                                {canWrite && onEditRow && (
-                                                    <button
-                                                        type="button"
-                                                        onClick={() => onEditRow(row)}
-                                                        className="p-1 hover:bg-gray-100 dark:hover:bg-white/5 text-gray-500 hover:text-amber-600 rounded transition cursor-pointer"
-                                                        title="Edit in Modal"
-                                                    >
-                                                        <Edit3 size={13} />
                                                     </button>
                                                 )}
                                                 {canWrite && onDeleteRow && (

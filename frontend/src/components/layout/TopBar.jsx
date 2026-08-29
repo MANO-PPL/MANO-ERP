@@ -61,6 +61,23 @@ const TopBar = () => {
   };
 
   const getPageTitle = () => {
+    if (location.pathname === '/projects/create' || location.pathname === '/projects/new') {
+      return (
+        <div className="flex items-center gap-2">
+          <span
+            onClick={() => navigate('/projects')}
+            className="text-gray-500 dark:text-gray-400 hover:text-blue-600 dark:hover:text-blue-400 cursor-pointer font-medium text-xs sm:text-sm transition-colors"
+          >
+            Projects
+          </span>
+          <span className="text-gray-300 dark:text-gray-600 text-xs">/</span>
+          <span className="font-bold text-gray-900 dark:text-white tracking-tight text-xs sm:text-sm">
+            Create Project
+          </span>
+        </div>
+      );
+    }
+
     if (location.pathname.startsWith('/projects/')) {
       const id = location.pathname.split('/')[2];
       if (activeProjectInfo?.name) {
