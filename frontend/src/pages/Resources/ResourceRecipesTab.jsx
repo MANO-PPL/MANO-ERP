@@ -432,19 +432,10 @@ const ResourceRecipesTab = ({
         <div className="flex-1 flex flex-col md:flex-row h-full overflow-hidden bg-white dark:bg-[#0d1117] text-gray-900 dark:text-gray-100 font-sans">
             {/* Left Sidebar: Composite Item Selector */}
             <div className="w-full md:w-72 border-r border-gray-200 dark:border-white/10 flex flex-col bg-gray-50/50 dark:bg-[#161b22]/50 shrink-0">
-                {/* Header aligned to exactly h-[88px] */}
-                <div className="h-[88px] px-4 py-3 border-b border-gray-200 dark:border-white/10 flex flex-col justify-center space-y-2 shrink-0">
-                    <div className="flex items-center justify-between">
-                        <h3 className="text-xs font-bold uppercase tracking-wider text-gray-500 dark:text-gray-400">
-                            Composite Items
-                        </h3>
-                        <span className="text-[10px] font-mono font-bold px-2 py-0.5 rounded bg-purple-500/10 text-purple-600 dark:text-purple-400 border border-purple-500/20">
-                            {itemsList.length} Items
-                        </span>
-                    </div>
-
-                    <div className="relative">
-                        <Search size={13} className="absolute left-2.5 top-2.5 text-gray-400" />
+                {/* Header: Search Box only */}
+                <div className="h-[52px] px-3 border-b border-gray-200 dark:border-white/10 flex items-center shrink-0">
+                    <div className="relative w-full">
+                        <Search size={13} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-400" />
                         <input
                             type="text"
                             placeholder="Filter recipes..."
@@ -455,7 +446,7 @@ const ResourceRecipesTab = ({
                         {searchItem && (
                             <button
                                 onClick={() => setSearchItem('')}
-                                className="absolute right-2 top-2 text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 text-xs"
+                                className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 text-xs"
                             >
                                 ✕
                             </button>
@@ -463,7 +454,7 @@ const ResourceRecipesTab = ({
                     </div>
                 </div>
 
-                <div className="flex-1 overflow-y-auto custom-scrollbar p-2 space-y-1">
+                <div className="flex-1 overflow-y-auto no-scrollbar p-2 space-y-1">
                     {filteredItems.length === 0 ? (
                         <div className="p-6 text-center text-xs text-gray-400">
                             No composite items found.
@@ -481,7 +472,7 @@ const ResourceRecipesTab = ({
                                         }`}
                                 >
                                     <div className="flex items-center justify-between">
-                                        <p className="text-xs truncate pr-2">{item.name}</p>
+                                        <p className="text-xs truncate pr-2 font-medium text-gray-900 dark:text-white">{item.name}</p>
                                         <span className="text-[10px] font-mono font-semibold px-1.5 py-0.5 rounded bg-gray-100 dark:bg-white/10 text-gray-500 dark:text-gray-400 shrink-0">
                                             {item.base_unit_code}
                                         </span>
@@ -504,31 +495,31 @@ const ResourceRecipesTab = ({
                     </div>
                 ) : (
                     <form onSubmit={handleSaveRecipe} className="flex-1 flex flex-col overflow-hidden">
-                        {/* Header aligned to exactly h-[88px] */}
-                        <div className="h-[88px] px-5 py-3 border-b border-gray-200 dark:border-white/10 bg-gray-50/50 dark:bg-[#161b22]/40 flex items-center justify-between gap-4 shrink-0">
-                            <div>
+                        {/* Header Panel */}
+                        <div className="h-[52px] px-4 border-b border-gray-200 dark:border-white/10 bg-gray-50/50 dark:bg-[#161b22]/40 flex items-center justify-between gap-3 shrink-0">
+                            <div className="flex flex-col justify-center min-w-0">
                                 <div className="flex items-center gap-2">
-                                    <span className="text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded bg-purple-100 dark:bg-purple-900/30 text-purple-700 dark:text-purple-300 border border-purple-200 dark:border-purple-500/30">
+                                    <span className="text-[9px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded bg-purple-100 dark:bg-purple-900/30 text-purple-700 dark:text-purple-300 border border-purple-200 dark:border-purple-500/30 shrink-0">
                                         Recipe Specification & BOM
                                     </span>
+                                    <h2 className="text-xs sm:text-sm font-bold text-gray-900 dark:text-white truncate">
+                                        {selectedItem.name}
+                                    </h2>
                                     {selectedItem.code && (
-                                        <span className="text-[10px] font-mono text-gray-400">
-                                            Code: {selectedItem.code}
+                                        <span className="text-[10px] font-mono text-gray-400 shrink-0">
+                                            #{selectedItem.code}
                                         </span>
                                     )}
                                 </div>
-                                <h2 className="text-base font-bold text-gray-900 dark:text-white mt-0.5">
-                                    {selectedItem.name}
-                                </h2>
-                                <p className="text-xs text-gray-500 dark:text-gray-400">
+                                <p className="text-[10px] text-gray-500 dark:text-gray-400 truncate">
                                     Base Output Unit: <span className="font-semibold text-gray-700 dark:text-gray-300">{selectedItem.base_unit_name || selectedItem.base_unit_code} ({selectedItem.base_unit_code})</span>
                                 </p>
                             </div>
 
-                            <div className="flex flex-wrap items-center justify-end gap-3">
-                                <div className="flex items-center gap-2">
+                            <div className="flex items-center justify-end gap-2 shrink-0">
+                                <div className="flex items-center gap-1.5">
                                     <span className="text-[10px] font-bold text-gray-400 uppercase shrink-0">Scope:</span>
-                                    <div className="w-48">
+                                    <div className="w-40">
                                         <CustomSelect
                                             value={selectedProjectId}
                                             onChange={e => setSelectedProjectId(e.target.value)}
@@ -539,9 +530,9 @@ const ResourceRecipesTab = ({
                                 </div>
 
                                 {/* Effective date picker */}
-                                <div className="flex items-center gap-2">
+                                <div className="flex items-center gap-1.5">
                                     <span className="text-[10px] font-bold text-gray-400 uppercase shrink-0">Effective:</span>
-                                    <div className="w-44">
+                                    <div className="w-36">
                                         <CustomDatePicker
                                             value={effectiveFrom}
                                             disabled={!canWrite}
@@ -555,18 +546,18 @@ const ResourceRecipesTab = ({
                                         type="button"
                                         onClick={handleImportItem}
                                         disabled={isImporting}
-                                        className="flex items-center gap-1.5 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-xs font-bold transition-all shadow-sm disabled:opacity-50 cursor-pointer"
+                                        className="flex items-center gap-1.5 px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-xs font-bold transition-all shadow-xs disabled:opacity-50 cursor-pointer shrink-0"
                                     >
-                                        {isImporting ? <RefreshCw size={14} className="animate-spin" /> : <ArrowRight size={14} />}
+                                        {isImporting ? <RefreshCw size={12} className="animate-spin" /> : <ArrowRight size={12} />}
                                         <span>Import Master Composition</span>
                                     </button>
                                 ) : canWrite && (
                                     <button
                                         type="submit"
                                         disabled={isSaving}
-                                        className="flex items-center gap-1.5 px-4 py-2 bg-purple-600 hover:bg-purple-700 text-white rounded-lg text-xs font-bold transition-all shadow-xs disabled:opacity-50 cursor-pointer shrink-0"
+                                        className="flex items-center gap-1.5 px-3 py-1.5 bg-purple-600 hover:bg-purple-700 text-white rounded-lg text-xs font-bold transition-all shadow-xs disabled:opacity-50 cursor-pointer shrink-0"
                                     >
-                                        {isSaving ? <RefreshCw size={14} className="animate-spin" /> : <Save size={14} />}
+                                        {isSaving ? <RefreshCw size={12} className="animate-spin" /> : <Save size={12} />}
                                         <span>{selectedProjectId ? 'Save Project Version' : 'Save Recipe Version'}</span>
                                     </button>
                                 )}
@@ -575,9 +566,9 @@ const ResourceRecipesTab = ({
 
                         {/* Error banner */}
                         {errorMsg && (
-                            <div className="mx-6 mt-4 p-3 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-500/30 rounded-xl flex items-center justify-between gap-2 text-xs text-red-600 dark:text-red-400">
+                            <div className="mx-3 mt-2.5 p-2 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-500/30 rounded-lg flex items-center justify-between gap-2 text-xs text-red-600 dark:text-red-400">
                                 <div className="flex items-center gap-2">
-                                    <AlertCircle size={15} className="shrink-0" />
+                                    <AlertCircle size={14} className="shrink-0" />
                                     <span>{errorMsg}</span>
                                 </div>
                                 <button type="button" onClick={() => setErrorMsg('')} className="text-xs font-bold hover:underline">Dismiss</button>
@@ -585,60 +576,60 @@ const ResourceRecipesTab = ({
                         )}
 
                         {selectedProjectId && !projectItemImported && (
-                            <div className="mx-6 mt-4 p-4 bg-blue-50 dark:bg-blue-950/20 border border-blue-200 dark:border-blue-500/30 rounded-xl text-xs text-blue-700 dark:text-blue-300">
+                            <div className="mx-3 mt-2.5 p-2.5 px-3 bg-blue-50 dark:bg-blue-950/20 border border-blue-200 dark:border-blue-500/30 rounded-lg text-xs text-blue-700 dark:text-blue-300">
                                 <p className="font-bold">This item is not imported into the selected project.</p>
-                                <p className="mt-1">Import the current master composition once. After that, project versions are independent from master changes.</p>
+                                <p className="mt-0.5 text-[11px]">Import the current master composition once. After that, project versions are independent from master changes.</p>
                             </div>
                         )}
 
                         {/* Recipe Table */}
-                        <div className="flex-1 overflow-y-auto custom-scrollbar p-6 space-y-6">
+                        <div className="flex-1 overflow-y-auto custom-scrollbar p-3 space-y-2.5">
                             <div className="flex items-center justify-between">
-                                <h3 className="text-xs font-black uppercase tracking-wider text-gray-400">
+                                <h3 className="text-[10px] font-black uppercase tracking-wider text-gray-400">
                                     Sub-Components ({recipeRows.length})
                                 </h3>
                                 {canWrite && projectItemImported && (
                                     <button
                                         type="button"
                                         onClick={handleAddRow}
-                                        className="flex items-center gap-1 px-3 py-1.5 bg-purple-50 dark:bg-purple-900/20 text-purple-600 dark:text-purple-400 border border-purple-200 dark:border-purple-500/20 rounded-lg text-xs font-bold hover:bg-purple-100 transition-all cursor-pointer"
+                                        className="flex items-center gap-1 px-2.5 py-1 bg-purple-50 dark:bg-purple-900/20 text-purple-600 dark:text-purple-400 border border-purple-200 dark:border-purple-500/20 rounded-md text-xs font-bold hover:bg-purple-100 transition-all cursor-pointer"
                                     >
-                                        <Plus size={13} /> Add Component
+                                        <Plus size={12} /> Add Component
                                     </button>
                                 )}
                             </div>
 
                             {isLoadingDetail ? (
-                                <div className="py-12 text-center">
-                                    <RefreshCw size={24} className="animate-spin text-purple-500 mx-auto mb-2" />
+                                <div className="py-8 text-center">
+                                    <RefreshCw size={20} className="animate-spin text-purple-500 mx-auto mb-2" />
                                     <p className="text-xs text-gray-400">Loading recipe components...</p>
                                 </div>
                             ) : recipeRows.length === 0 ? (
-                                <div className="p-8 text-center bg-gray-50 dark:bg-white/[0.02] border border-dashed border-gray-200 dark:border-white/10 rounded-2xl">
-                                    <WandSparkles size={28} className="text-gray-400 mx-auto mb-2" />
+                                <div className="p-6 text-center bg-gray-50 dark:bg-white/[0.02] border border-dashed border-gray-200 dark:border-white/10 rounded-lg">
+                                    <WandSparkles size={24} className="text-gray-400 mx-auto mb-2" />
                                     <p className="text-xs font-semibold text-gray-500">No components added to recipe yet.</p>
                                     {canWrite && projectItemImported && (
                                         <button
                                             type="button"
                                             onClick={handleAddRow}
-                                            className="inline-flex items-center gap-1 px-3 py-1.5 bg-purple-600 text-white text-xs font-bold rounded-lg hover:bg-purple-700 transition-colors mt-3"
+                                            className="inline-flex items-center gap-1 px-2.5 py-1 bg-purple-600 text-white text-xs font-bold rounded-md hover:bg-purple-700 transition-colors mt-2"
                                         >
-                                            <Plus size={13} /> Add Component
+                                            <Plus size={12} /> Add Component
                                         </button>
                                     )}
                                 </div>
                             ) : (
-                                <div className="border border-gray-200 dark:border-white/10 rounded-xl overflow-hidden shadow-xs bg-white dark:bg-[#0d1117]">
+                                <div className="border border-gray-200 dark:border-white/10 rounded-lg overflow-hidden shadow-xs bg-white dark:bg-[#0d1117]">
                                     <div className="overflow-x-auto custom-scrollbar">
                                         <table className="w-full text-left text-xs">
                                             <thead className="bg-gray-50 dark:bg-[#161b22] text-gray-500 dark:text-gray-400 uppercase tracking-wider text-[10px] border-b border-gray-200 dark:border-white/10 font-bold">
                                                 <tr>
-                                                    <th className="px-4 py-2.5">Component (Material / Labour)</th>
-                                                    <th className="px-4 py-2.5 w-32">Quantity</th>
-                                                    <th className="px-4 py-2.5 w-36">Recipe Unit</th>
-                                                    <th className="px-4 py-2.5 w-36">Unit Rate</th>
-                                                    <th className="px-4 py-2.5 w-36 text-right">Extended Cost</th>
-                                                    {canWrite && <th className="px-4 py-2.5 w-16 text-center">Actions</th>}
+                                                    <th className="px-3 py-1.5">Component (Material / Labour)</th>
+                                                    <th className="px-3 py-1.5 w-28">Quantity</th>
+                                                    <th className="px-3 py-1.5 w-32">Recipe Unit</th>
+                                                    <th className="px-3 py-1.5 w-32">Unit Rate</th>
+                                                    <th className="px-3 py-1.5 w-32 text-right">Extended Cost</th>
+                                                    {canWrite && <th className="px-3 py-1.5 w-14 text-center">Actions</th>}
                                                 </tr>
                                             </thead>
                                             <tbody className="divide-y divide-gray-100 dark:divide-white/5">
@@ -647,9 +638,9 @@ const ResourceRecipesTab = ({
                                                     const unitRate = compRateObj ? compRateObj.rate : 0;
                                                     const qty = parseFloat(row.quantity) || 0;
                                                     const extCost = qty * unitRate;
-                                                     return (
+                                                    return (
                                                         <tr key={idx} className="hover:bg-gray-50/50 dark:hover:bg-white/[0.02]">
-                                                            <td className="px-4 py-2 min-w-[220px]">
+                                                            <td className="px-3 py-1.5 min-w-[200px]">
                                                                 <CustomSelect
                                                                     value={row.component_resource_id}
                                                                     onChange={e => handleRowChange(idx, 'component_resource_id', e.target.value)}
@@ -657,17 +648,17 @@ const ResourceRecipesTab = ({
                                                                     placeholder="Select component"
                                                                 />
                                                             </td>
-                                                            <td className="px-4 py-2">
+                                                            <td className="px-3 py-1.5">
                                                                 <input
                                                                     type="number"
                                                                     step="any"
                                                                     min="0"
                                                                     value={row.quantity}
                                                                     onChange={e => handleRowChange(idx, 'quantity', e.target.value)}
-                                                                    className="w-full bg-gray-50 dark:bg-[#161b22] border border-gray-200 dark:border-white/10 rounded-lg px-2.5 py-1.5 text-xs font-bold focus:outline-none focus:ring-1 focus:ring-purple-500 text-gray-900 dark:text-gray-100"
+                                                                    className="w-full bg-gray-50 dark:bg-[#161b22] border border-gray-200 dark:border-white/10 rounded-lg px-2 py-1 text-xs font-bold focus:outline-none focus:ring-1 focus:ring-purple-500 text-gray-900 dark:text-gray-100"
                                                                 />
                                                             </td>
-                                                            <td className="px-4 py-2 min-w-[140px]">
+                                                            <td className="px-3 py-1.5 min-w-[130px]">
                                                                 <CustomSelect
                                                                     value={row.unit_code}
                                                                     onChange={e => handleRowChange(idx, 'unit_code', e.target.value)}
@@ -675,30 +666,30 @@ const ResourceRecipesTab = ({
                                                                     placeholder="Unit"
                                                                 />
                                                             </td>
-                                                            <td className="px-4 py-2 text-gray-600 dark:text-gray-300 font-mono text-xs font-medium">
+                                                            <td className="px-3 py-1.5 text-gray-600 dark:text-gray-300 font-mono text-xs font-medium">
                                                                 ₹{unitRate.toLocaleString('en-IN', { minimumFractionDigits: 2 })} / {compRateObj?.unitCode || 'unit'}
                                                             </td>
-                                                            <td className="px-4 py-2 text-right font-mono font-bold text-gray-900 dark:text-white text-xs">
+                                                            <td className="px-3 py-1.5 text-right font-mono font-bold text-gray-900 dark:text-white text-xs">
                                                                 ₹{extCost.toLocaleString('en-IN', { minimumFractionDigits: 2 })}
                                                             </td>
                                                             {canWrite && (
-                                                                <td className="px-4 py-2 text-center">
+                                                                <td className="px-3 py-1.5 text-center">
                                                                     <div className="flex items-center justify-center gap-1">
                                                                         <button
                                                                             type="button"
                                                                             onClick={() => handleDuplicateRow(idx)}
-                                                                            className="p-1 text-gray-400 hover:text-purple-600 hover:bg-purple-50 dark:hover:bg-purple-900/30 rounded-md transition-colors"
+                                                                            className="p-1 text-gray-400 hover:text-purple-600 hover:bg-purple-50 dark:hover:bg-purple-900/30 rounded transition-colors"
                                                                             title="Duplicate row"
                                                                         >
-                                                                            <Copy size={13} />
+                                                                            <Copy size={12} />
                                                                         </button>
                                                                         <button
                                                                             type="button"
                                                                             onClick={() => handleRemoveRow(idx)}
-                                                                            className="p-1 text-gray-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/30 rounded-md transition-colors"
+                                                                            className="p-1 text-gray-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/30 rounded transition-colors"
                                                                             title="Remove row"
                                                                         >
-                                                                            <Trash2 size={13} />
+                                                                            <Trash2 size={12} />
                                                                         </button>
                                                                     </div>
                                                                 </td>
@@ -713,18 +704,18 @@ const ResourceRecipesTab = ({
                             )}
 
                             {/* Live Estimated Rate Summary Card */}
-                            <div className="p-4 bg-purple-50/40 dark:bg-purple-950/20 border border-purple-200 dark:border-purple-500/20 rounded-xl flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
+                            <div className="p-3 px-3.5 bg-purple-50/40 dark:bg-purple-950/20 border border-purple-200 dark:border-purple-500/20 rounded-lg flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2.5">
                                 <div>
                                     <div className="flex items-center gap-2">
-                                        <h4 className="text-xs font-bold text-purple-900 dark:text-purple-300 uppercase tracking-wider">Live Estimated Unit Rate</h4>
-                                        <span className="px-2 py-0.5 rounded text-[9px] font-bold bg-purple-100 dark:bg-purple-900/40 text-purple-700 dark:text-purple-300 border border-purple-200 dark:border-purple-500/30">
+                                        <h4 className="text-[10px] font-bold text-purple-900 dark:text-purple-300 uppercase tracking-wider">Live Estimated Unit Rate</h4>
+                                        <span className="px-1.5 py-0.2 rounded text-[9px] font-bold bg-purple-100 dark:bg-purple-900/40 text-purple-700 dark:text-purple-300 border border-purple-200 dark:border-purple-500/30">
                                             Computed
                                         </span>
                                     </div>
                                     <p className="text-[11px] text-gray-500 dark:text-gray-400 mt-0.5">
                                         Sum of sub-component quantities × resolved component rates.
                                     </p>
-                                    <div className="flex items-center gap-3 mt-1 text-[10px] font-mono text-gray-600 dark:text-gray-300">
+                                    <div className="flex items-center gap-2.5 mt-0.5 text-[10px] font-mono text-gray-600 dark:text-gray-300">
                                         <span>Materials: ₹{recipeMetrics.materialCost.toLocaleString('en-IN', { minimumFractionDigits: 2 })}</span>
                                         <span>•</span>
                                         <span>Labour: ₹{recipeMetrics.labourCost.toLocaleString('en-IN', { minimumFractionDigits: 2 })}</span>
@@ -738,14 +729,14 @@ const ResourceRecipesTab = ({
                                             / {selectedItem.base_unit_code}
                                         </span>
                                     </p>
-                                    <p className="text-[10px] text-gray-400 mt-0.5">
+                                    <p className="text-[10px] text-gray-400">
                                         Effective as of {effectiveFrom}
                                     </p>
                                 </div>
                             </div>
 
                             {/* VERSION HISTORY TIMELINE */}
-                            <div className="pt-4 border-t border-gray-200 dark:border-white/10 space-y-4">
+                            <div className="pt-2.5 border-t border-gray-200 dark:border-white/10 space-y-2">
                                 <div className="flex items-center justify-between flex-wrap gap-2">
                                     <div>
                                         <h3 className="text-xs font-bold uppercase tracking-wider text-gray-500 dark:text-gray-400">

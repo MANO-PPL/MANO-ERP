@@ -328,87 +328,96 @@ const ResourceRatesTab = ({
     }, [resources, searchQuery]);
 
     return (
-        <div className="flex h-[calc(100vh-14rem)] bg-white dark:bg-[#0f1117] rounded-2xl border border-gray-200 dark:border-white/10 overflow-hidden shadow-xs">
-            {/* Left Column: Resource Selector */}
-            <div className="w-80 border-r border-gray-200 dark:border-white/10 flex flex-col bg-gray-50/50 dark:bg-[#0d1117]/50">
-                <div className="p-4 border-b border-gray-200 dark:border-white/10">
-                    <div className="relative">
-                        <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
+        <div className="flex-1 flex flex-col md:flex-row h-full overflow-hidden bg-white dark:bg-[#0d1117] text-gray-900 dark:text-gray-100 font-sans">
+            {/* Left Sidebar: Resource Selector */}
+            <div className="w-full md:w-72 border-r border-gray-200 dark:border-white/10 flex flex-col bg-gray-50/50 dark:bg-[#161b22]/50 shrink-0">
+                {/* Header: Search Box only */}
+                <div className="h-[52px] px-3 border-b border-gray-200 dark:border-white/10 flex items-center shrink-0">
+                    <div className="relative w-full">
+                        <Search size={13} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-400" />
                         <input
                             type="text"
-                            placeholder="Filter resources..."
+                            placeholder="Filter resources by name/code..."
                             value={searchQuery}
                             onChange={e => setSearchQuery(e.target.value)}
-                            className="w-full bg-white dark:bg-[#161b22] border border-gray-200 dark:border-white/10 rounded-xl pl-9 pr-3 py-2 text-xs focus:ring-1 focus:ring-blue-500 outline-none text-gray-900 dark:text-gray-100"
+                            className="w-full pl-8 pr-7 py-1.5 bg-white dark:bg-[#0d1117] border border-gray-200 dark:border-white/10 rounded-lg text-xs focus:ring-1 focus:ring-blue-500 focus:outline-none placeholder:text-gray-400 text-gray-900 dark:text-gray-100"
                         />
+                        {searchQuery && (
+                            <button
+                                onClick={() => setSearchQuery('')}
+                                className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 text-xs"
+                            >
+                                ✕
+                            </button>
+                        )}
                     </div>
                 </div>
 
-                <div className="flex-1 overflow-y-auto custom-scrollbar p-2 space-y-1">
-                    {filteredResources.map(res => {
-                        const isSelected = String(res.id) === String(selectedResourceId);
-                        const badge = TYPE_BADGE[res.type] || TYPE_BADGE.material;
-                        return (
-                            <button
-                                key={res.id}
-                                onClick={() => setSelectedResourceId(String(res.id))}
-                                className={`w-full text-left p-3 rounded-xl transition-all cursor-pointer ${isSelected
-                                    ? 'bg-blue-500/10 border border-blue-500/30 text-blue-700 dark:text-blue-300 shadow-xs'
-                                    : 'hover:bg-gray-100 dark:hover:bg-white/5 border border-transparent text-gray-700 dark:text-gray-300'
-                                    }`}
-                            >
-                                <div className="flex items-center justify-between">
-                                    <span className="font-semibold text-xs truncate max-w-[140px] text-gray-900 dark:text-white">
-                                        {res.name}
-                                    </span>
-                                    <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded uppercase tracking-wider ${badge.bg}`}>
-                                        {badge.label}
-                                    </span>
-                                </div>
-                                <div className="flex items-center justify-between mt-1 text-[11px] text-gray-400">
-                                    <span className="font-mono">{res.code || 'NO-CODE'}</span>
-                                    <span>{res.base_unit_code}</span>
-                                </div>
-                            </button>
-                        );
-                    })}
-
-                    {filteredResources.length === 0 && (
+                <div className="flex-1 overflow-y-auto no-scrollbar p-2 space-y-1">
+                    {filteredResources.length === 0 ? (
                         <div className="p-6 text-center text-xs text-gray-400">
                             No resources match search.
                         </div>
+                    ) : (
+                        filteredResources.map(res => {
+                            const isSelected = String(res.id) === String(selectedResourceId);
+                            const badge = TYPE_BADGE[res.type] || TYPE_BADGE.material;
+                            return (
+                                <button
+                                    key={res.id}
+                                    onClick={() => setSelectedResourceId(String(res.id))}
+                                    className={`w-full text-left px-3 py-2 rounded-lg transition-all border ${isSelected
+                                        ? 'bg-blue-50 dark:bg-blue-950/40 border-blue-300 dark:border-blue-500/40 text-blue-900 dark:text-blue-200 font-semibold shadow-xs'
+                                        : 'bg-transparent border-transparent hover:bg-gray-100/70 dark:hover:bg-white/5 text-gray-700 dark:text-gray-300'
+                                        }`}
+                                >
+                                    <div className="flex items-center justify-between gap-2">
+                                        <p className="text-xs truncate font-medium text-gray-900 dark:text-white">{res.name}</p>
+                                        <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded uppercase tracking-wider shrink-0 ${badge.bg}`}>
+                                            {badge.label}
+                                        </span>
+                                    </div>
+                                    <div className="flex items-center justify-between mt-0.5 text-[10px] text-gray-400 font-mono">
+                                        <span>{res.code ? `#${res.code}` : 'NO-CODE'}</span>
+                                        <span className="font-sans">{res.base_unit_code}</span>
+                                    </div>
+                                </button>
+                            );
+                        })
                     )}
                 </div>
             </div>
 
             {/* Right Column: Rate Details & Management */}
-            <div className="flex-1 flex flex-col overflow-hidden bg-white dark:bg-[#0f1117]">
+            <div className="flex-1 flex flex-col overflow-hidden bg-white dark:bg-[#0d1117]">
                 {selectedResource ? (
                     <>
                         {/* Header Panel */}
-                        <div className="p-6 border-b border-gray-200 dark:border-white/10 flex flex-col md:flex-row md:items-center justify-between gap-4 bg-gray-50/20 dark:bg-[#161b22]/30">
-                            <div>
+                        <div className="h-[52px] px-4 border-b border-gray-200 dark:border-white/10 bg-gray-50/50 dark:bg-[#161b22]/40 flex items-center justify-between gap-3 shrink-0">
+                            <div className="flex flex-col justify-center min-w-0">
                                 <div className="flex items-center gap-2">
-                                    <h2 className="text-base font-bold text-gray-900 dark:text-white">
-                                        {selectedResource.name}
-                                    </h2>
-                                    <span className={`text-[10px] font-bold px-2 py-0.5 rounded ${TYPE_BADGE[selectedResource.type]?.bg || ''}`}>
+                                    <span className={`text-[9px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded shrink-0 ${TYPE_BADGE[selectedResource.type]?.bg || ''}`}>
                                         {TYPE_BADGE[selectedResource.type]?.label || selectedResource.type}
                                     </span>
-                                    <span className="text-xs text-gray-400 font-mono">
-                                        ({selectedResource.code})
-                                    </span>
+                                    <h2 className="text-xs sm:text-sm font-bold text-gray-900 dark:text-white truncate">
+                                        {selectedResource.name}
+                                    </h2>
+                                    {selectedResource.code && (
+                                        <span className="text-[10px] font-mono text-gray-400 shrink-0">
+                                            #{selectedResource.code}
+                                        </span>
+                                    )}
                                 </div>
-                                <p className="text-xs text-gray-500 dark:text-gray-400">
+                                <p className="text-[10px] text-gray-500 dark:text-gray-400 truncate">
                                     Base Unit: <span className="font-semibold text-gray-700 dark:text-gray-300">{selectedResource.base_unit_name || selectedResource.base_unit_code} ({selectedResource.base_unit_code})</span>
                                 </p>
                             </div>
 
                             {/* Query scope and target date */}
-                            <div className="flex flex-wrap items-center justify-end gap-3">
-                                <div className="flex items-center gap-2">
+                            <div className="flex items-center justify-end gap-2 shrink-0">
+                                <div className="flex items-center gap-1.5">
                                     <span className="text-[10px] font-bold text-gray-400 uppercase shrink-0">Scope:</span>
-                                    <div className="w-48">
+                                    <div className="w-40">
                                         <CustomSelect
                                             value={selectedProjectId}
                                             onChange={e => setSelectedProjectId(e.target.value)}
@@ -417,9 +426,9 @@ const ResourceRatesTab = ({
                                         />
                                     </div>
                                 </div>
-                                <div className="flex items-center gap-2">
+                                <div className="flex items-center gap-1.5">
                                     <span className="text-[10px] font-bold text-gray-400 uppercase shrink-0">Target Date:</span>
-                                    <div className="w-44">
+                                    <div className="w-36">
                                         <CustomDatePicker
                                             value={asOfDate}
                                             onChange={e => setAsOfDate(e.target.value)}
@@ -430,17 +439,17 @@ const ResourceRatesTab = ({
                         </div>
 
                         {errorMsg && (
-                            <div className="mx-6 mt-4 p-3 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-500/30 rounded-xl flex items-center gap-2 text-xs text-red-600 dark:text-red-400">
-                                <AlertCircle size={15} className="shrink-0" />
+                            <div className="mx-3 mt-2.5 p-2 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-500/30 rounded-lg flex items-center gap-2 text-xs text-red-600 dark:text-red-400">
+                                <AlertCircle size={14} className="shrink-0" />
                                 <span>{errorMsg}</span>
                             </div>
                         )}
 
-                        <div className="flex-1 overflow-y-auto custom-scrollbar p-6 space-y-6">
+                        <div className="flex-1 overflow-y-auto custom-scrollbar p-3 space-y-2.5">
                             {selectedProjectId && (
-                                <div className="p-4 border border-blue-200 dark:border-blue-500/30 rounded-2xl bg-blue-50/50 dark:bg-blue-950/20">
-                                    <p className="text-xs font-black uppercase tracking-wider text-blue-700 dark:text-blue-300">Project Override</p>
-                                    <p className="text-xs text-blue-700/80 dark:text-blue-300/80 mt-1">
+                                <div className="p-2.5 px-3 border border-blue-200 dark:border-blue-500/30 rounded-lg bg-blue-50/50 dark:bg-blue-950/20">
+                                    <p className="text-[11px] font-black uppercase tracking-wider text-blue-700 dark:text-blue-300">Project Override</p>
+                                    <p className="text-[11px] text-blue-700/80 dark:text-blue-300/80 mt-0.5">
                                         Project rates apply to materials, labour, and items without allocation or import.
                                     </p>
                                 </div>
@@ -448,22 +457,21 @@ const ResourceRatesTab = ({
 
                             {/* Live Rate Summary Card */}
                             {isLoadingDetails ? (
-                                <div className="p-8 bg-emerald-50/50 dark:bg-emerald-950/20 border border-emerald-200 dark:border-emerald-500/30 rounded-2xl flex flex-col items-center justify-center text-center">
-                                    <Loader2 className="animate-spin mb-2 text-emerald-600 dark:text-emerald-400" size={24} />
+                                <div className="p-4 bg-emerald-50/50 dark:bg-emerald-950/20 border border-emerald-200 dark:border-emerald-500/30 rounded-lg flex flex-col items-center justify-center text-center">
+                                    <Loader2 className="animate-spin mb-1 text-emerald-600 dark:text-emerald-400" size={20} />
                                     <span className="text-xs font-semibold text-emerald-800 dark:text-emerald-300">Resolving Effective Rate...</span>
                                 </div>
                             ) : (
-                                <div className="p-5 bg-emerald-50/50 dark:bg-emerald-950/20 border border-emerald-200 dark:border-emerald-500/30 rounded-2xl flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
-                                    {/* Left: Calculator icon + Price details grouped together */}
-                                    <div className="flex items-center gap-4">
-                                        <div className="w-12 h-12 rounded-xl bg-emerald-600 text-white flex items-center justify-center shadow-md shrink-0">
-                                            <Calculator size={24} />
+                                <div className="p-3 px-3.5 bg-emerald-50/50 dark:bg-emerald-950/20 border border-emerald-200 dark:border-emerald-500/30 rounded-lg flex flex-col md:flex-row items-start md:items-center justify-between gap-3">
+                                    <div className="flex items-center gap-3">
+                                        <div className="w-10 h-10 rounded-lg bg-emerald-600 text-white flex items-center justify-center shadow-xs shrink-0">
+                                            <Calculator size={20} />
                                         </div>
                                         <div>
                                             <div className="flex items-center gap-2">
-                                                <h3 className="text-xs font-bold text-gray-500 uppercase tracking-wider">Effective Resolved Rate</h3>
+                                                <h3 className="text-[10px] font-bold text-gray-500 uppercase tracking-wider">Effective Resolved Rate</h3>
                                                 {resolvedRateInfo && (
-                                                    <span className={`text-[10px] font-bold px-2 py-0.5 rounded ${resolvedRateInfo.source === 'manual'
+                                                    <span className={`text-[9px] font-bold px-1.5 py-0.2 rounded ${resolvedRateInfo.source === 'manual'
                                                         ? 'bg-blue-100 dark:bg-blue-950/40 text-blue-700 dark:text-blue-300 border border-blue-200 dark:border-blue-500/30'
                                                         : 'bg-purple-100 dark:bg-purple-950/40 text-purple-700 dark:text-purple-300 border border-purple-200 dark:border-purple-500/30'
                                                         }`}>
@@ -472,7 +480,7 @@ const ResourceRatesTab = ({
                                                 )}
                                             </div>
                                             {resolvedRateInfo ? (
-                                                <p className="text-2xl font-mono font-black text-gray-900 dark:text-white mt-0.5">
+                                                <p className="text-xl font-mono font-black text-gray-900 dark:text-white mt-0.5">
                                                     ₹{Number(resolvedRateInfo.rate).toLocaleString('en-IN', { minimumFractionDigits: 2 })}
                                                     <span className="text-xs font-semibold text-gray-500 dark:text-gray-400 ml-1">
                                                         / {resolvedRateInfo.unitCode}
@@ -489,9 +497,9 @@ const ResourceRatesTab = ({
                                             type="button"
                                             onClick={handleRevertToMaster}
                                             disabled={isReverting}
-                                            className="flex items-center gap-1.5 px-3.5 py-2 bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300 border border-blue-200 dark:border-blue-500/30 rounded-xl text-xs font-bold hover:bg-blue-200 transition-all cursor-pointer"
+                                            className="flex items-center gap-1.5 px-3 py-1.5 bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300 border border-blue-200 dark:border-blue-500/30 rounded-lg text-xs font-bold hover:bg-blue-200 transition-all cursor-pointer"
                                         >
-                                            {isReverting ? <RefreshCw size={14} className="animate-spin" /> : <RotateCcw size={14} />}
+                                            {isReverting ? <RefreshCw size={12} className="animate-spin" /> : <RotateCcw size={12} />}
                                             <span>Revert to Master Rate</span>
                                         </button>
                                     ) : selectedResource.type === 'item' && activeManualRateRow && canWrite && (
@@ -499,9 +507,9 @@ const ResourceRatesTab = ({
                                             type="button"
                                             onClick={handleRevertToComputed}
                                             disabled={isReverting}
-                                            className="flex items-center gap-1.5 px-3.5 py-2 bg-purple-100 dark:bg-purple-900/30 text-purple-700 dark:text-purple-300 border border-purple-200 dark:border-purple-500/30 rounded-xl text-xs font-bold hover:bg-purple-200 transition-all cursor-pointer"
+                                            className="flex items-center gap-1.5 px-3 py-1.5 bg-purple-100 dark:bg-purple-900/30 text-purple-700 dark:text-purple-300 border border-purple-200 dark:border-purple-500/30 rounded-lg text-xs font-bold hover:bg-purple-200 transition-all cursor-pointer"
                                         >
-                                            {isReverting ? <RefreshCw size={14} className="animate-spin" /> : <RotateCcw size={14} />}
+                                            {isReverting ? <RefreshCw size={12} className="animate-spin" /> : <RotateCcw size={12} />}
                                             <span>Revert to Computed Recipe Rate</span>
                                         </button>
                                     )}
@@ -510,22 +518,22 @@ const ResourceRatesTab = ({
 
                             {/* Detailed Composition Breakdown if Computed */}
                             {resolvedRateInfo && resolvedRateInfo.source === 'computed' && resolvedRateInfo.breakdown && (
-                                <div className="border border-purple-200 dark:border-purple-500/20 rounded-xl overflow-hidden bg-purple-50/20 dark:bg-purple-950/10">
-                                    <div className="px-4 py-2.5 bg-purple-100/50 dark:bg-purple-900/20 border-b border-purple-200 dark:border-purple-500/20 flex items-center justify-between">
-                                        <h4 className="text-xs font-bold text-purple-900 dark:text-purple-300 uppercase tracking-wider">
+                                <div className="border border-purple-200 dark:border-purple-500/20 rounded-lg overflow-hidden bg-purple-50/20 dark:bg-purple-950/10">
+                                    <div className="px-3 py-1.5 bg-purple-100/50 dark:bg-purple-900/20 border-b border-purple-200 dark:border-purple-500/20 flex items-center justify-between">
+                                        <h4 className="text-[10px] font-bold text-purple-900 dark:text-purple-300 uppercase tracking-wider">
                                             Composition Cost Breakdown ({resolvedRateInfo.breakdown.length} components)
                                         </h4>
                                     </div>
-                                    <div className="p-3 space-y-1.5">
+                                    <div className="p-2 space-y-1">
                                         {resolvedRateInfo.breakdown.map((item, idx) => (
-                                            <div key={idx} className="flex items-center justify-between px-3 py-2 bg-white dark:bg-[#161b22] border border-gray-100 dark:border-white/5 rounded-lg text-xs">
+                                            <div key={idx} className="flex items-center justify-between px-2.5 py-1.5 bg-white dark:bg-[#161b22] border border-gray-100 dark:border-white/5 rounded-md text-xs">
                                                 <div>
-                                                    <p className="font-semibold text-gray-900 dark:text-white">{item.resourceName}</p>
+                                                    <p className="font-semibold text-gray-900 dark:text-white text-xs">{item.resourceName}</p>
                                                     <p className="text-[10px] text-gray-400 font-mono">
                                                         {item.quantity} {item.quantityUnitCode} × ₹{item.rate} / {item.rateUnitCode} ({item.source})
                                                     </p>
                                                 </div>
-                                                <p className="font-mono font-bold text-gray-900 dark:text-white">
+                                                <p className="font-mono font-bold text-gray-900 dark:text-white text-xs">
                                                     + ₹{item.cost.toLocaleString('en-IN', { minimumFractionDigits: 2 })}
                                                 </p>
                                             </div>
@@ -536,10 +544,10 @@ const ResourceRatesTab = ({
 
                             {/* Set New Rate Form */}
                             {canWrite && (
-                                <div className="p-5 border border-gray-200 dark:border-white/10 rounded-2xl bg-white dark:bg-[#0d1117] space-y-4">
+                                <div className="p-3 px-3.5 border border-gray-200 dark:border-white/10 rounded-lg bg-white dark:bg-[#0d1117] space-y-2.5">
                                     <div className="flex items-center justify-between flex-wrap gap-2">
-                                        <h4 className="text-xs font-black uppercase tracking-wider text-gray-400 flex items-center gap-1.5">
-                                            <Plus size={14} className="text-emerald-500" /> Set New {selectedProjectId ? 'Project' : 'Master'} Rate Version
+                                        <h4 className="text-[10px] font-black uppercase tracking-wider text-gray-400 flex items-center gap-1.5">
+                                            <Plus size={13} className="text-emerald-500" /> Set New {selectedProjectId ? 'Project' : 'Master'} Rate Version
                                         </h4>
 
                                         <div className="flex items-center gap-2 flex-wrap">
@@ -548,9 +556,9 @@ const ResourceRatesTab = ({
                                                     type="button"
                                                     onClick={handleRevertToComputed}
                                                     disabled={isReverting}
-                                                    className="flex items-center gap-1.5 px-3 py-1.5 bg-purple-50 dark:bg-purple-950/40 text-purple-700 dark:text-purple-300 border border-purple-200 dark:border-purple-500/30 rounded-lg text-xs font-bold hover:bg-purple-100 transition cursor-pointer"
+                                                    className="flex items-center gap-1.5 px-2.5 py-1 bg-purple-50 dark:bg-purple-950/40 text-purple-700 dark:text-purple-300 border border-purple-200 dark:border-purple-500/30 rounded-md text-xs font-bold hover:bg-purple-100 transition cursor-pointer"
                                                 >
-                                                    {isReverting ? <RefreshCw size={12} className="animate-spin" /> : <Calculator size={12} />}
+                                                    {isReverting ? <RefreshCw size={11} className="animate-spin" /> : <Calculator size={11} />}
                                                     <span>Revert to Computed Recipe</span>
                                                 </button>
                                             )}
@@ -560,18 +568,18 @@ const ResourceRatesTab = ({
                                                     type="button"
                                                     onClick={handleRevertToMaster}
                                                     disabled={isReverting}
-                                                    className="flex items-center gap-1.5 px-3 py-1.5 bg-blue-50 dark:bg-blue-950/40 text-blue-700 dark:text-blue-300 border border-blue-200 dark:border-blue-500/30 rounded-lg text-xs font-bold hover:bg-blue-100 transition cursor-pointer"
+                                                    className="flex items-center gap-1.5 px-2.5 py-1 bg-blue-50 dark:bg-blue-950/40 text-blue-700 dark:text-blue-300 border border-blue-200 dark:border-blue-500/30 rounded-md text-xs font-bold hover:bg-blue-100 transition cursor-pointer"
                                                 >
-                                                    {isReverting ? <RefreshCw size={12} className="animate-spin" /> : <RotateCcw size={12} />}
+                                                    {isReverting ? <RefreshCw size={11} className="animate-spin" /> : <RotateCcw size={11} />}
                                                     <span>Revert to Master Rate</span>
                                                 </button>
                                             )}
                                         </div>
                                     </div>
 
-                                    <form onSubmit={handleAddManualRate} className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-3 items-end">
+                                    <form onSubmit={handleAddManualRate} className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-2 items-end">
                                         <div>
-                                            <label className="block text-[10px] font-bold uppercase text-gray-400 mb-1">Rate Amount (₹)</label>
+                                            <label className="block text-[10px] font-bold uppercase text-gray-400 mb-0.5">Rate Amount (₹)</label>
                                             <input
                                                 type="number"
                                                 step="any"
@@ -580,12 +588,12 @@ const ResourceRatesTab = ({
                                                 placeholder="e.g. 350.00"
                                                 value={manualRate}
                                                 onChange={e => setManualRate(e.target.value)}
-                                                className="w-full bg-gray-50 dark:bg-[#161b22] border border-gray-200 dark:border-white/10 rounded-lg px-2.5 py-1.5 text-xs font-bold focus:ring-1 focus:ring-emerald-500 outline-none text-gray-900 dark:text-gray-100"
+                                                className="w-full bg-gray-50 dark:bg-[#161b22] border border-gray-200 dark:border-white/10 rounded-lg px-2.5 py-1 text-xs font-bold focus:ring-1 focus:ring-emerald-500 outline-none text-gray-900 dark:text-gray-100"
                                             />
                                         </div>
 
                                         <div>
-                                            <label className="block text-[10px] font-bold uppercase text-gray-400 mb-1">Rate Unit</label>
+                                            <label className="block text-[10px] font-bold uppercase text-gray-400 mb-0.5">Rate Unit</label>
                                             <CustomSelect
                                                 value={manualUnitCode}
                                                 onChange={e => setManualUnitCode(e.target.value)}
@@ -595,7 +603,7 @@ const ResourceRatesTab = ({
                                         </div>
 
                                         <div>
-                                            <label className="block text-[10px] font-bold uppercase text-gray-400 mb-1">Effective From</label>
+                                            <label className="block text-[10px] font-bold uppercase text-gray-400 mb-0.5">Effective From</label>
                                             <CustomDatePicker
                                                 value={effectiveFrom}
                                                 onChange={e => setEffectiveFrom(e.target.value)}
@@ -607,9 +615,9 @@ const ResourceRatesTab = ({
                                             <button
                                                 type="submit"
                                                 disabled={isSavingRate}
-                                                className="w-full flex items-center justify-center gap-1.5 px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-xs font-bold transition-colors shadow-xs disabled:opacity-50 cursor-pointer"
+                                                className="w-full flex items-center justify-center gap-1.5 px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-xs font-bold transition-colors shadow-xs disabled:opacity-50 cursor-pointer"
                                             >
-                                                {isSavingRate ? <RefreshCw size={14} className="animate-spin" /> : <Save size={14} />}
+                                                {isSavingRate ? <RefreshCw size={13} className="animate-spin" /> : <Save size={13} />}
                                                 <span>Save Rate</span>
                                             </button>
                                         </div>
@@ -618,22 +626,22 @@ const ResourceRatesTab = ({
                             )}
 
                             {/* Rate History Table */}
-                            <div className="space-y-3">
-                                <h4 className="text-xs font-black uppercase tracking-wider text-gray-400 flex items-center gap-1.5">
-                                    <History size={14} /> {selectedProjectId ? 'Project' : 'Master'} Rate Version History ({rateHistory.length})
+                            <div className="space-y-1.5">
+                                <h4 className="text-[10px] font-black uppercase tracking-wider text-gray-400 flex items-center gap-1.5">
+                                    <History size={13} /> {selectedProjectId ? 'Project' : 'Master'} Rate Version History ({rateHistory.length})
                                 </h4>
 
-                                <div className="border border-gray-200 dark:border-white/10 rounded-2xl overflow-hidden bg-white dark:bg-[#0d1117]">
+                                <div className="border border-gray-200 dark:border-white/10 rounded-lg overflow-hidden bg-white dark:bg-[#0d1117]">
                                     <table className="w-full text-left border-collapse text-xs">
                                         <thead>
                                             <tr className="border-b border-gray-200 dark:border-white/10 bg-gray-50/50 dark:bg-[#161b22]/50 text-[10px] uppercase font-bold text-gray-400">
-                                                <th className="py-2.5 px-4">Version</th>
-                                                <th className="py-2.5 px-4">Rate</th>
-                                                <th className="py-2.5 px-4">Unit</th>
-                                                <th className="py-2.5 px-4">Effective Range</th>
-                                                <th className="py-2.5 px-4">Status</th>
-                                                <th className="py-2.5 px-4">Remarks</th>
-                                                {canWrite && <th className="py-2.5 px-4 text-right">Actions</th>}
+                                                <th className="py-1.5 px-3">Version</th>
+                                                <th className="py-1.5 px-3">Rate</th>
+                                                <th className="py-1.5 px-3">Unit</th>
+                                                <th className="py-1.5 px-3">Effective Range</th>
+                                                <th className="py-1.5 px-3">Status</th>
+                                                <th className="py-1.5 px-3">Remarks</th>
+                                                {canWrite && <th className="py-1.5 px-3 text-right">Actions</th>}
                                             </tr>
                                         </thead>
                                         <tbody className="divide-y divide-gray-100 dark:divide-white/5">
@@ -642,10 +650,10 @@ const ResourceRatesTab = ({
                                                 const versionNumber = rateHistory.length - idx;
                                                 return (
                                                     <tr key={item.id} className="hover:bg-gray-50/50 dark:hover:bg-white/5 transition-colors">
-                                                        <td className="py-3 px-4 font-mono font-bold text-gray-500">
+                                                        <td className="py-2 px-3 font-mono font-bold text-gray-500">
                                                             #{versionNumber}
                                                         </td>
-                                                        <td className="py-3 px-4 font-mono font-bold text-gray-900 dark:text-white">
+                                                        <td className="py-2 px-3 font-mono font-bold text-gray-900 dark:text-white">
                                                             {item.rate !== null && item.rate !== undefined ? (
                                                                 `₹${Number(item.rate).toLocaleString('en-IN', { minimumFractionDigits: 2 })}`
                                                             ) : (
@@ -655,47 +663,47 @@ const ResourceRatesTab = ({
                                                                 </span>
                                                             )}
                                                         </td>
-                                                        <td className="py-3 px-4 text-gray-600 dark:text-gray-400">
+                                                        <td className="py-2 px-3 text-gray-600 dark:text-gray-400">
                                                             {item.unit_code || selectedResource.base_unit_code}
                                                         </td>
-                                                        <td className="py-3 px-4 text-gray-600 dark:text-gray-400 font-mono text-[11px]">
+                                                        <td className="py-2 px-3 text-gray-600 dark:text-gray-400 font-mono text-[11px]">
                                                             {formatOrdinalDate(item.effective_from)} → {item.effective_to ? formatOrdinalDate(item.effective_to) : 'Present'}
                                                         </td>
-                                                        <td className="py-3 px-4">
-                                                            <span className={`px-2 py-0.5 rounded text-[10px] font-bold ${isActive
+                                                        <td className="py-2 px-3">
+                                                            <span className={`px-1.5 py-0.2 rounded text-[9px] font-bold ${isActive
                                                                 ? 'bg-emerald-100 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-500/30'
                                                                 : 'bg-gray-100 dark:bg-gray-800 text-gray-500'
                                                                 }`}>
                                                                 {isActive ? 'Active' : 'Archived'}
                                                             </span>
                                                         </td>
-                                                        <td className="py-3 px-4 text-gray-400 italic text-[11px] truncate max-w-[150px]">
+                                                        <td className="py-2 px-3 text-gray-400 italic text-[11px] truncate max-w-[150px]">
                                                             {item.remarks || '-'}
                                                         </td>
                                                         {canWrite && (
-        <td className="py-3 px-4 text-right">
-            {isActive ? (
-                <button
-                    type="button"
-                    onClick={() => handleOpenEditModal({ ...item, versionNumber })}
-                    className="inline-flex items-center gap-1 px-2.5 py-1 text-[11px] font-semibold text-blue-600 dark:text-blue-400 hover:bg-blue-50 dark:hover:bg-blue-950/50 rounded-lg border border-transparent hover:border-blue-200 dark:hover:border-blue-500/30 transition cursor-pointer"
-                    title="Edit current active rate"
-                >
-                    <Edit2 size={12} />
-                    <span>Edit Rate</span>
-                </button>
-            ) : (
-                <span className="text-gray-400 text-[10px] italic">Locked</span>
-            )}
-        </td>
-    )}
+                                                            <td className="py-2 px-3 text-right">
+                                                                {isActive ? (
+                                                                    <button
+                                                                        type="button"
+                                                                        onClick={() => handleOpenEditModal({ ...item, versionNumber })}
+                                                                        className="inline-flex items-center gap-1 px-2 py-0.5 text-[11px] font-semibold text-blue-600 dark:text-blue-400 hover:bg-blue-50 dark:hover:bg-blue-950/50 rounded border border-transparent hover:border-blue-200 dark:hover:border-blue-500/30 transition cursor-pointer"
+                                                                        title="Edit current active rate"
+                                                                    >
+                                                                        <Edit2 size={11} />
+                                                                        <span>Edit Rate</span>
+                                                                    </button>
+                                                                ) : (
+                                                                    <span className="text-gray-400 text-[10px] italic">Locked</span>
+                                                                )}
+                                                            </td>
+                                                        )}
                                                     </tr>
                                                 );
                                             })}
 
                                             {rateHistory.length === 0 && (
                                                 <tr>
-                                                    <td colSpan={canWrite ? 7 : 6} className="py-6 text-center text-xs text-gray-400">
+                                                    <td colSpan={canWrite ? 7 : 6} className="py-4 text-center text-xs text-gray-400">
                                                         No rate version history recorded for this resource scope.
                                                     </td>
                                                 </tr>

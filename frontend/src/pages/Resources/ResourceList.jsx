@@ -5,7 +5,7 @@ import {
     Layers,
     Users,
     Plus,
-    Sparkles,
+    CopyCheck,
     Scale,
     DollarSign
 } from 'lucide-react';
@@ -350,10 +350,6 @@ export const ResourceList = () => {
                         onSave={handleSaveGridBatch}
                         onRefresh={fetchResources}
                         onViewRow={handleViewResourceDetails}
-                        onEditRow={(resource) => {
-                            setEditingResource(resource);
-                            setIsAddModalOpen(true);
-                        }}
                         emptyMessage="No resources found in database"
                         extraFilters={
                             <ResourceFilterDropdown
@@ -381,10 +377,11 @@ export const ResourceList = () => {
                                         <button
                                             type="button"
                                             onClick={() => setIsDuplicateModalOpen(true)}
-                                            className="p-1.5 hover:bg-gray-100 dark:hover:bg-white/5 text-gray-600 dark:text-gray-400 rounded-lg border border-gray-200 dark:border-white/10 transition cursor-pointer"
-                                            title="Check & Resolve Duplicates"
+                                            className="px-2.5 py-1.5 bg-gray-100 hover:bg-gray-200 dark:bg-white/5 dark:hover:bg-white/10 text-gray-700 dark:text-gray-300 border border-gray-200 dark:border-white/10 rounded-lg text-xs font-semibold transition-all cursor-pointer flex items-center gap-1.5"
+                                            title="Check & Resolve Duplicate Resources"
                                         >
-                                            <Sparkles size={13} className="text-purple-500" />
+                                            <CopyCheck size={13} className="text-amber-500 stroke-[2.5]" />
+                                            <span>Resolve Duplicates</span>
                                         </button>
                                     </>
                                 )}
