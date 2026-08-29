@@ -1252,20 +1252,21 @@ export const useExcelGrid = ({
                 return;
             }
 
-            const curFocus = selectionFocus || { r: rowIndex, c: colIndex };
-            const curAnchor = selectionAnchor || { r: rowIndex, c: colIndex };
+            const curFocus = selectionFocusRef.current || selectionFocus || { r: rowIndex, c: colIndex };
+            const curAnchor = selectionAnchorRef.current || selectionAnchor || { r: rowIndex, c: colIndex };
+
+            const updateSelection = (anchor, focus) => {
+                selectionAnchorRef.current = anchor;
+                selectionFocusRef.current = focus;
+                setSelectionAnchor(anchor);
+                setSelectionFocus(focus);
+            };
 
             // Arrow Keys Navigation
             if (e.key === 'ArrowUp') {
                 e.preventDefault();
                 const targetRow = isModifier ? 0 : Math.max(0, curFocus.r - 1);
-                if (e.shiftKey) {
-                    setSelectionAnchor(curAnchor);
-                    setSelectionFocus({ r: targetRow, c: curFocus.c });
-                } else {
-                    setSelectionAnchor({ r: targetRow, c: curFocus.c });
-                    setSelectionFocus({ r: targetRow, c: curFocus.c });
-                }
+                updateSelection(e.shiftKey ? curAnchor : { r: targetRow, c: curFocus.c }, { r: targetRow, c: curFocus.c });
                 return;
             }
 
@@ -1274,39 +1275,21 @@ export const useExcelGrid = ({
                 const targetRow = isModifier
                     ? Math.max(0, totalRows - 1)
                     : Math.min(Math.max(0, totalRows - 1), curFocus.r + 1);
-                if (e.shiftKey) {
-                    setSelectionAnchor(curAnchor);
-                    setSelectionFocus({ r: targetRow, c: curFocus.c });
-                } else {
-                    setSelectionAnchor({ r: targetRow, c: curFocus.c });
-                    setSelectionFocus({ r: targetRow, c: curFocus.c });
-                }
+                updateSelection(e.shiftKey ? curAnchor : { r: targetRow, c: curFocus.c }, { r: targetRow, c: curFocus.c });
                 return;
             }
 
             if (e.key === 'ArrowLeft') {
                 e.preventDefault();
                 const targetCol = isModifier ? 0 : Math.max(0, curFocus.c - 1);
-                if (e.shiftKey) {
-                    setSelectionAnchor(curAnchor);
-                    setSelectionFocus({ r: curFocus.r, c: targetCol });
-                } else {
-                    setSelectionAnchor({ r: curFocus.r, c: targetCol });
-                    setSelectionFocus({ r: curFocus.r, c: targetCol });
-                }
+                updateSelection(e.shiftKey ? curAnchor : { r: curFocus.r, c: targetCol }, { r: curFocus.r, c: targetCol });
                 return;
             }
 
             if (e.key === 'ArrowRight') {
                 e.preventDefault();
                 const targetCol = isModifier ? totalCols - 1 : Math.min(totalCols - 1, curFocus.c + 1);
-                if (e.shiftKey) {
-                    setSelectionAnchor(curAnchor);
-                    setSelectionFocus({ r: curFocus.r, c: targetCol });
-                } else {
-                    setSelectionAnchor({ r: curFocus.r, c: targetCol });
-                    setSelectionFocus({ r: curFocus.r, c: targetCol });
-                }
+                updateSelection(e.shiftKey ? curAnchor : { r: curFocus.r, c: targetCol }, { r: curFocus.r, c: targetCol });
                 return;
             }
 
@@ -1315,13 +1298,7 @@ export const useExcelGrid = ({
                 e.preventDefault();
                 const targetRow = isModifier ? 0 : curFocus.r;
                 const targetCol = 0;
-                if (e.shiftKey) {
-                    setSelectionAnchor(curAnchor);
-                    setSelectionFocus({ r: targetRow, c: targetCol });
-                } else {
-                    setSelectionAnchor({ r: targetRow, c: targetCol });
-                    setSelectionFocus({ r: targetRow, c: targetCol });
-                }
+                updateSelection(e.shiftKey ? curAnchor : { r: targetRow, c: targetCol }, { r: targetRow, c: targetCol });
                 return;
             }
 
@@ -1329,13 +1306,7 @@ export const useExcelGrid = ({
                 e.preventDefault();
                 const targetRow = isModifier ? Math.max(0, totalRows - 1) : curFocus.r;
                 const targetCol = totalCols - 1;
-                if (e.shiftKey) {
-                    setSelectionAnchor(curAnchor);
-                    setSelectionFocus({ r: targetRow, c: targetCol });
-                } else {
-                    setSelectionAnchor({ r: targetRow, c: targetCol });
-                    setSelectionFocus({ r: targetRow, c: targetCol });
-                }
+                updateSelection(e.shiftKey ? curAnchor : { r: targetRow, c: targetCol }, { r: targetRow, c: targetCol });
                 return;
             }
 
@@ -1345,17 +1316,10 @@ export const useExcelGrid = ({
                 if (e.altKey) {
                     // Alt+PageUp: jump 5 columns left
                     const targetCol = Math.max(0, curFocus.c - 5);
-                    setSelectionAnchor({ r: curFocus.r, c: targetCol });
-                    setSelectionFocus({ r: curFocus.r, c: targetCol });
+                    updateSelection(e.shiftKey ? curAnchor : { r: curFocus.r, c: targetCol }, { r: curFocus.r, c: targetCol });
                 } else {
                     const targetRow = Math.max(0, curFocus.r - 10);
-                    if (e.shiftKey) {
-                        setSelectionAnchor(curAnchor);
-                        setSelectionFocus({ r: targetRow, c: curFocus.c });
-                    } else {
-                        setSelectionAnchor({ r: targetRow, c: curFocus.c });
-                        setSelectionFocus({ r: targetRow, c: curFocus.c });
-                    }
+                    updateSelection(e.shiftKey ? curAnchor : { r: targetRow, c: curFocus.c }, { r: targetRow, c: targetCol });
                 }
                 return;
             }
@@ -1365,17 +1329,10 @@ export const useExcelGrid = ({
                 if (e.altKey) {
                     // Alt+PageDown: jump 5 columns right
                     const targetCol = Math.min(totalCols - 1, curFocus.c + 5);
-                    setSelectionAnchor({ r: curFocus.r, c: targetCol });
-                    setSelectionFocus({ r: curFocus.r, c: targetCol });
+                    updateSelection(e.shiftKey ? curAnchor : { r: curFocus.r, c: targetCol }, { r: curFocus.r, c: targetCol });
                 } else {
                     const targetRow = Math.min(Math.max(0, totalRows - 1), curFocus.r + 10);
-                    if (e.shiftKey) {
-                        setSelectionAnchor(curAnchor);
-                        setSelectionFocus({ r: targetRow, c: curFocus.c });
-                    } else {
-                        setSelectionAnchor({ r: targetRow, c: curFocus.c });
-                        setSelectionFocus({ r: targetRow, c: curFocus.c });
-                    }
+                    updateSelection(e.shiftKey ? curAnchor : { r: targetRow, c: curFocus.c }, { r: targetRow, c: curFocus.c });
                 }
                 return;
             }
@@ -1403,8 +1360,7 @@ export const useExcelGrid = ({
                         nextCol = totalCols - 1;
                     }
                 }
-                setSelectionAnchor({ r: nextRow, c: nextCol });
-                setSelectionFocus({ r: nextRow, c: nextCol });
+                updateSelection({ r: nextRow, c: nextCol }, { r: nextRow, c: nextCol });
                 return;
             }
 
@@ -1418,8 +1374,7 @@ export const useExcelGrid = ({
                 const nextRow = e.shiftKey
                     ? Math.max(0, curFocus.r - 1)
                     : Math.min(Math.max(0, totalRows - 1), curFocus.r + 1);
-                setSelectionAnchor({ r: nextRow, c: curFocus.c });
-                setSelectionFocus({ r: nextRow, c: curFocus.c });
+                updateSelection({ r: nextRow, c: curFocus.c }, { r: nextRow, c: curFocus.c });
                 return;
             }
 
@@ -1684,13 +1639,41 @@ export const useExcelGrid = ({
                 }
                 return;
             }
+
+            // Cell Navigation & Keyboard Gestures (When a cell is selected / active)
+            const focus = selectionFocusRef.current;
+            if (focus && !editingCell) {
+                // If user is inside an external modal / search input outside the grid, ignore
+                if (isTyping && !activeElem?.closest('td[data-excel-cell="true"]') && !activeElem?.closest('[data-excel-grid="true"]')) {
+                    return;
+                }
+
+                const col = columns[focus.c];
+                if (col) {
+                    const navKeys = [
+                        'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight',
+                        'Tab', 'Enter', 'Home', 'End', 'PageUp', 'PageDown',
+                        'Delete', 'Backspace', 'F2', ' ', 'Spacebar'
+                    ];
+                    const isNavigationKey = navKeys.includes(e.key);
+                    const isCaseTransform = isCtrlOrCmd && ['u', 'l', 'k'].includes(e.key.toLowerCase());
+                    const isDateTimeStamp = isCtrlOrCmd && (e.key === ';' || e.key === ':');
+                    const isCopyFromAbove = isCtrlOrCmd && (e.key === "'" || e.key === '"');
+                    const isDirectTyping = canWrite && e.key.length === 1 && !isCtrlOrCmd && !e.altKey && !e.metaKey;
+
+                    if (isNavigationKey || isCaseTransform || isDateTimeStamp || isCopyFromAbove || isDirectTyping) {
+                        handleCellKeyDown(e, focus.r, col.key);
+                        return;
+                    }
+                }
+            }
         };
 
         window.addEventListener('keydown', handleGlobalKeyDown);
         return () => window.removeEventListener('keydown', handleGlobalKeyDown);
     }, [
         editingCell,
-        columns.length,
+        columns,
         canWrite,
         executeCopy,
         executeCut,
@@ -1700,7 +1683,8 @@ export const useExcelGrid = ({
         handleFillDown,
         handleFillRight,
         handleAddRows,
-        handleDeleteRows
+        handleDeleteRows,
+        handleCellKeyDown
     ]);
 
     // Global MouseUp to terminate drag selection or fill drag

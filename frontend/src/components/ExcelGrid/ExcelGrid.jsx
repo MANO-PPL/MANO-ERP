@@ -75,7 +75,6 @@ export const ExcelGrid = ({
     onDelete = null,
     onRefresh = null,
     onViewRow = null,
-    onEditRow = null,
     customActions = null,
     bulkActions = null,
     topContent = null,
@@ -97,6 +96,7 @@ export const ExcelGrid = ({
     const [importModalTab, setImportModalTab] = useState('upload');
     const [extraColumns, setExtraColumns] = useState([]);
     const [isAddColumnModalOpen, setIsAddColumnModalOpen] = useState(false);
+    const [findHighlightConfig, setFindHighlightConfig] = useState(null);
 
     const mergedColumns = useMemo(() => [...columns, ...extraColumns], [columns, extraColumns]);
 
@@ -393,7 +393,6 @@ export const ExcelGrid = ({
                 onStartFillDrag={() => grid.setIsFillDragging(true)}
                 onAutoFillDown={grid.handleAutoFillDown}
                 onViewRow={onViewRow}
-                onEditRow={onEditRow}
                 onDeleteRow={handleRequestDeleteRow}
                 emptyMessage={emptyMessage}
                 onAddRows={grid.handleAddRows}
@@ -403,6 +402,7 @@ export const ExcelGrid = ({
                 }}
                 currentPage={grid.currentPage}
                 pageSize={grid.pageSize}
+                findHighlightConfig={findHighlightConfig}
             />
 
             {/* Live Calculation Status Bar */}
@@ -547,6 +547,10 @@ export const ExcelGrid = ({
                 onReplaceValue={grid.handleCellChange}
                 onReplaceAll={grid.handleReplaceAll}
                 initialMode={grid.findReplaceMode}
+                currentPage={grid.currentPage}
+                setCurrentPage={grid.setCurrentPage}
+                pageSize={grid.pageSize}
+                onFindQueryChange={setFindHighlightConfig}
             />
 
             {/* Excel Import Modal */}

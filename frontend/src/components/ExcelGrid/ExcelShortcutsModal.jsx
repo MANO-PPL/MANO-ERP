@@ -1,5 +1,5 @@
-import React from 'react';
-import { Keyboard, X, MousePointer, Command, Zap, Layers } from 'lucide-react';
+import React, { useState, useEffect } from 'react';
+import { Keyboard, X, MousePointer, Command, Zap, Search } from 'lucide-react';
 
 const SHORTCUT_CATEGORIES = [
     {
@@ -61,7 +61,7 @@ const SHORTCUT_CATEGORIES = [
             { key: 'Ctrl + R', desc: 'Fill Right leftmost column values across selected cols' },
             { key: 'Drag Fill Handle', desc: 'Drag blue corner square down to fill values into range' },
             { key: 'Double-Click Handle', desc: 'Auto-fill values all the way down to table bottom' },
-            { key: 'Ctrl + H / Ctrl + F', desc: 'Open Find and Replace modal' },
+            { key: 'Ctrl + H / Ctrl + F', desc: 'Open Find and Replace widget' },
             { key: 'Ctrl + + / Insert', desc: 'Insert new draft row below' },
             { key: 'Ctrl + -', desc: 'Delete active selected row(s)' },
             { key: 'Shift + F10 / Right Click', desc: 'Open spreadsheet Context Menu at active cell' }
@@ -70,58 +70,143 @@ const SHORTCUT_CATEGORIES = [
 ];
 
 export const ExcelShortcutsModal = ({ isOpen, onClose }) => {
+    const [searchQuery, setSearchQuery] = useState('');
+
+    useEffect(() => {
+        if (!isOpen) return;
+
+        const handleKeyDown = (e) => {
+            if (e.key === 'Escape') {
+                e.preventDefault();
+                e.stopPropagation();
+                if (onClose) onClose();
+            }
+        };
+
+        window.addEventListener('keydown', handleKeyDown, true);
+        return () => window.removeEventListener('keydown', handleKeyDown, true);
+    }, [isOpen, onClose]);
+
+    useEffect(() => {
+        if (isOpen) {
+            setSearchQuery('');
+        }
+    }, [isOpen]);
+
     if (!isOpen) return null;
 
+    const lowerQuery = searchQuery.toLowerCase().trim();
+
+    const filteredCategories = SHORTCUT_CATEGORIES.map((cat) => {
+        if (!lowerQuery) return cat;
+        const matchingShortcuts = cat.shortcuts.filter(
+            (sc) =>
+                sc.key.toLowerCase().includes(lowerQuery) ||
+                sc.desc.toLowerCase().includes(lowerQuery)
+        );
+        return { ...cat, shortcuts: matchingShortcuts };
+    }).filter((cat) => cat.shortcuts.length > 0);
+
     return (
-        <div className="fixed inset-0 z-[6000] bg-black/60 backdrop-blur-xs flex items-center justify-center p-4">
-            <div className="bg-white dark:bg-[#161b22] border border-gray-200 dark:border-white/10 rounded-xl shadow-2xl w-full max-w-4xl max-h-[85vh] flex flex-col overflow-hidden animate-in fade-in zoom-in-95 font-sans">
+        <>
+            {/* Backdrop Overlay */}
+            <div
+                className="fixed inset-0 bg-gray-900/40 dark:bg-black/60 backdrop-blur-xs z-[5999] transition-all duration-300 ease-out"
+                onClick={onClose}
+            />
+
+            {/* Right Slide-out Sidebar Drawer */}
+            <div
+                className="fixed top-0 right-0 h-full w-full max-w-lg md:max-w-xl bg-white dark:bg-[#161b22] shadow-2xl z-[6000] transform transition-transform duration-300 ease-out flex flex-col border-l border-gray-200 dark:border-white/10 overflow-hidden translate-x-0 font-sans"
+            >
                 {/* Header */}
-                <div className="px-5 py-3.5 border-b border-gray-200 dark:border-white/10 flex items-center justify-between bg-gray-50/50 dark:bg-white/[0.02]">
-                    <div className="flex items-center gap-2.5">
-                        <div className="p-2 rounded-lg bg-amber-50 dark:bg-amber-900/30 text-amber-600 dark:text-amber-400">
-                            <Keyboard size={18} />
+                <div className="px-5 py-4 flex items-center justify-between border-b border-gray-100 dark:border-white/10 bg-gray-50/70 dark:bg-white/[0.02]">
+                    <div className="flex items-center gap-3">
+                        <div className="p-2 rounded-xl bg-amber-50 dark:bg-amber-900/30 text-amber-600 dark:text-amber-400">
+                            <Keyboard size={20} />
                         </div>
                         <div>
-                            <h3 className="text-sm font-bold text-gray-900 dark:text-white">
-                                Complete Excel & Spreadsheet Keyboard Shortcuts
-                            </h3>
+                            <h2 className="text-sm font-bold text-gray-900 dark:text-white">
+                                Keyboard Shortcuts & Gestures
+                            </h2>
                             <p className="text-xs text-gray-500 dark:text-gray-400">
-                                Full reference for keyboard navigation, editing, shortcuts, and mouse gestures
+                                Excel-compatible keyboard navigation & mouse reference
                             </p>
                         </div>
                     </div>
                     <button
+                        type="button"
                         onClick={onClose}
-                        className="p-1 rounded-lg text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 hover:bg-gray-100 dark:hover:bg-white/5 transition cursor-pointer"
+                        className="p-1.5 rounded-lg text-gray-400 hover:text-gray-900 dark:hover:text-white hover:bg-gray-100 dark:hover:bg-white/10 transition-colors cursor-pointer"
+                        title="Close (Esc)"
                     >
-                        <X size={16} />
+                        <X size={18} />
                     </button>
                 </div>
 
+                {/* Search Bar */}
+                <div className="p-4 border-b border-gray-100 dark:border-white/5 bg-white dark:bg-[#161b22]">
+                    <div className="relative">
+                        <Search
+                            className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 dark:text-gray-500"
+                            size={16}
+                        />
+                        <input
+                            type="text"
+                            placeholder="Search shortcuts (e.g. date, copy, undo, navigation)..."
+                            value={searchQuery}
+                            onChange={(e) => setSearchQuery(e.target.value)}
+                            className="w-full bg-gray-50 dark:bg-[#0d1117] border border-gray-200 dark:border-white/10 rounded-xl pl-9 pr-4 py-2 text-xs text-gray-900 dark:text-white outline-none focus:ring-2 focus:ring-blue-500/30 focus:border-blue-500 transition-all placeholder:text-gray-400 font-medium"
+                        />
+                        {searchQuery && (
+                            <button
+                                type="button"
+                                onClick={() => setSearchQuery('')}
+                                className="absolute right-3 top-1/2 -translate-y-1/2 text-xs text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 cursor-pointer"
+                            >
+                                Clear
+                            </button>
+                        )}
+                    </div>
+                </div>
+
                 {/* Body Content */}
-                <div className="p-5 overflow-y-auto space-y-4 flex-1 scrollbar-thin">
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                        {SHORTCUT_CATEGORIES.map((cat, idx) => {
+                <div className="p-5 overflow-y-auto space-y-4 flex-1 [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden no-scrollbar">
+                    {filteredCategories.length === 0 ? (
+                        <div className="text-center py-12">
+                            <p className="text-xs font-semibold text-gray-500 dark:text-gray-400">
+                                No shortcuts matching "{searchQuery}"
+                            </p>
+                            <button
+                                type="button"
+                                onClick={() => setSearchQuery('')}
+                                className="mt-2 text-xs font-bold text-blue-600 dark:text-blue-400 hover:underline cursor-pointer"
+                            >
+                                Clear search filter
+                            </button>
+                        </div>
+                    ) : (
+                        filteredCategories.map((cat, idx) => {
                             const Icon = cat.icon;
                             return (
                                 <div
                                     key={idx}
-                                    className="p-3.5 rounded-xl border border-gray-200 dark:border-white/10 bg-gray-50/40 dark:bg-white/[0.01] space-y-2.5"
+                                    className="p-3.5 rounded-xl border border-gray-200 dark:border-white/10 bg-gray-50/50 dark:bg-white/[0.01] space-y-2.5"
                                 >
                                     <div className="flex items-center gap-2 text-xs font-bold text-blue-600 dark:text-blue-400">
-                                        <Icon size={14} />
+                                        <Icon size={15} />
                                         <span>{cat.title}</span>
                                     </div>
-                                    <div className="space-y-1.5">
+                                    <div className="divide-y divide-gray-100 dark:divide-white/5">
                                         {cat.shortcuts.map((sc, sIdx) => (
                                             <div
                                                 key={sIdx}
-                                                className="flex items-start justify-between gap-2 text-xs py-0.5"
+                                                className="flex items-center justify-between gap-3 text-xs py-2 hover:bg-gray-100/50 dark:hover:bg-white/[0.02] px-1.5 rounded transition-colors"
                                             >
-                                                <span className="text-gray-600 dark:text-gray-400 text-[11px] leading-tight">
+                                                <span className="text-gray-700 dark:text-gray-300 text-xs font-medium leading-tight">
                                                     {sc.desc}
                                                 </span>
-                                                <kbd className="shrink-0 px-2 py-0.5 bg-white dark:bg-[#0d1117] border border-gray-200 dark:border-white/10 rounded font-mono text-[10px] text-gray-800 dark:text-gray-200 shadow-2xs font-bold">
+                                                <kbd className="shrink-0 px-2 py-1 bg-white dark:bg-[#0d1117] border border-gray-200 dark:border-white/10 rounded-lg font-mono text-[10px] text-gray-800 dark:text-gray-200 shadow-2xs font-bold whitespace-nowrap">
                                                     {sc.key}
                                                 </kbd>
                                             </div>
@@ -129,25 +214,25 @@ export const ExcelShortcutsModal = ({ isOpen, onClose }) => {
                                     </div>
                                 </div>
                             );
-                        })}
-                    </div>
+                        })
+                    )}
                 </div>
 
                 {/* Footer */}
-                <div className="px-5 py-3 border-t border-gray-200 dark:border-white/10 flex items-center justify-between bg-gray-50/50 dark:bg-white/[0.02]">
-                    <span className="text-[11px] text-gray-400">
-                        Tip: Press <kbd className="font-mono bg-gray-200 dark:bg-white/10 px-1 py-0.5 rounded text-[10px]">F1</kbd> anytime to open this shortcut reference.
+                <div className="px-5 py-3.5 border-t border-gray-100 dark:border-white/10 bg-gray-50/70 dark:bg-white/[0.02] flex items-center justify-between">
+                    <span className="text-[11px] text-gray-500 dark:text-gray-400">
+                        Tip: Press <kbd className="font-mono bg-gray-200 dark:bg-white/10 px-1.5 py-0.5 rounded text-[10px] font-bold">F1</kbd> anytime to open
                     </span>
                     <button
                         type="button"
                         onClick={onClose}
-                        className="px-4 py-1.5 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-xs font-bold transition cursor-pointer"
+                        className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-bold transition shadow-xs cursor-pointer"
                     >
-                        Got it
+                        Close
                     </button>
                 </div>
             </div>
-        </div>
+        </>
     );
 };
 

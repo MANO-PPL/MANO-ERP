@@ -4,10 +4,78 @@ import { toast } from 'react-toastify';
 import api from '../services/api';
 import LogoLoader from './LogoLoader';
 
+const METADATA_CONFIGS = {
+    job_natures: {
+        title: "Manage Nature of Jobs",
+        endpoint: "/admin/job-natures",
+        itemNameKey: "job_name",
+        itemIdKey: "job_id",
+        listKey: "job_natures",
+        addPlaceholder: "Add new nature of job..."
+    },
+    job_nature: {
+        title: "Manage Nature of Jobs",
+        endpoint: "/admin/job-natures",
+        itemNameKey: "job_name",
+        itemIdKey: "job_id",
+        listKey: "job_natures",
+        addPlaceholder: "Add new nature of job..."
+    },
+    sectors: {
+        title: "Manage Sectors",
+        endpoint: "/admin/sectors",
+        itemNameKey: "sector_name",
+        itemIdKey: "sector_id",
+        listKey: "sectors",
+        addPlaceholder: "Add new sector..."
+    },
+    sector: {
+        title: "Manage Sectors",
+        endpoint: "/admin/sectors",
+        itemNameKey: "sector_name",
+        itemIdKey: "sector_id",
+        listKey: "sectors",
+        addPlaceholder: "Add new sector..."
+    },
+    departments: {
+        title: "Manage Departments",
+        endpoint: "/admin/departments",
+        itemNameKey: "dept_name",
+        itemIdKey: "dept_id",
+        listKey: "departments",
+        addPlaceholder: "Add new department..."
+    },
+    department: {
+        title: "Manage Departments",
+        endpoint: "/admin/departments",
+        itemNameKey: "dept_name",
+        itemIdKey: "dept_id",
+        listKey: "departments",
+        addPlaceholder: "Add new department..."
+    },
+    designations: {
+        title: "Manage Designations",
+        endpoint: "/admin/designations",
+        itemNameKey: "desg_name",
+        itemIdKey: "desg_id",
+        listKey: "designations",
+        addPlaceholder: "Add new designation..."
+    },
+    designation: {
+        title: "Manage Designations",
+        endpoint: "/admin/designations",
+        itemNameKey: "desg_name",
+        itemIdKey: "desg_id",
+        listKey: "designations",
+        addPlaceholder: "Add new designation..."
+    }
+};
+
 /**
  * A reusable modal to manage metadata like Job Natures, Sectors, Departments, and Designations.
  * 
- * @param {string} title - The title of the modal (e.g., "Manage Job Natures")
+ * @param {string} type - Preset metadata type ('job_natures' | 'sectors' | 'departments' | 'designations')
+ * @param {string} title - The title of the modal (e.g., "Manage Nature of Jobs")
  * @param {string} endpoint - The API endpoint to fetch and manage (e.g., "/admin/job-natures")
  * @param {string} itemNameKey - The key for the name field (e.g., "job_name")
  * @param {string} itemIdKey - The key for the ID field (e.g., "job_id")
@@ -17,14 +85,23 @@ import LogoLoader from './LogoLoader';
 const ManageMetadataModal = ({
     isOpen,
     onClose,
-    title,
-    endpoint,
-    itemNameKey,
-    itemIdKey,
-    listKey,
-    addPlaceholder = "Add new item...",
+    type,
+    title: propTitle,
+    endpoint: propEndpoint,
+    itemNameKey: propItemNameKey,
+    itemIdKey: propItemIdKey,
+    listKey: propListKey,
+    addPlaceholder: propAddPlaceholder,
     onUpdate
 }) => {
+    const config = (type && METADATA_CONFIGS[type]) || {};
+    const title = propTitle || config.title || "Manage Metadata";
+    const endpoint = propEndpoint || config.endpoint || "";
+    const itemNameKey = propItemNameKey || config.itemNameKey || "name";
+    const itemIdKey = propItemIdKey || config.itemIdKey || "id";
+    const listKey = propListKey || config.listKey || "items";
+    const addPlaceholder = propAddPlaceholder || config.addPlaceholder || "Add new item...";
+
     const [items, setItems] = useState([]);
     const [newItemName, setNewItemName] = useState('');
     const [searchTerm, setSearchTerm] = useState('');
@@ -47,7 +124,7 @@ const ManageMetadataModal = ({
     }, [isOpen, isActionLoading, onClose]);
 
     useEffect(() => {
-        if (isOpen) {
+        if (isOpen && endpoint) {
             fetchItems();
             setNewItemName('');
             setSearchTerm('');
@@ -55,11 +132,16 @@ const ManageMetadataModal = ({
     }, [isOpen, endpoint]);
 
     const fetchItems = async () => {
+        if (!endpoint) {
+            console.warn('ManageMetadataModal: No endpoint specified');
+            return;
+        }
         setIsLoading(true);
         try {
             const res = await api.get(endpoint);
             if (res.data.success) {
-                setItems(res.data[listKey] || []);
+                const list = res.data[listKey] || res.data.data || [];
+                setItems(Array.isArray(list) ? list : []);
             }
         } catch (err) {
             console.error(`Error fetching ${listKey}:`, err);
@@ -71,7 +153,7 @@ const ManageMetadataModal = ({
 
     const handleAdd = async (e) => {
         e.preventDefault();
-        if (!newItemName.trim() || isActionLoading) return;
+        if (!newItemName.trim() || isActionLoading || !endpoint) return;
 
         setIsActionLoading(true);
         try {
@@ -92,6 +174,7 @@ const ManageMetadataModal = ({
 
     const handleDelete = async (id) => {
         if (!window.confirm('Are you sure you want to delete this item?')) return;
+        if (!endpoint) return;
 
         setIsActionLoading(true);
         try {
@@ -129,7 +212,7 @@ const ManageMetadataModal = ({
 
                 <div className="px-6 py-4 flex justify-between items-center border-b border-gray-100 dark:border-white/5 bg-gray-50/50 dark:bg-white/[0.02]">
                     <h2 className="text-lg font-bold text-gray-900 dark:text-white">{title}</h2>
-                    <button onClick={onClose} className="text-gray-400 hover:text-gray-900 dark:hover:text-white transition-colors">
+                    <button onClick={onClose} className="text-gray-400 hover:text-gray-900 dark:hover:text-white transition-colors cursor-pointer">
                         <X size={20} />
                     </button>
                 </div>
@@ -148,7 +231,7 @@ const ManageMetadataModal = ({
                         <button
                             type="submit"
                             disabled={isActionLoading}
-                            className="bg-blue-600 hover:bg-blue-700 text-white p-2 rounded-lg transition-colors disabled:opacity-50"
+                            className="bg-blue-600 hover:bg-blue-700 text-white p-2 rounded-lg transition-colors disabled:opacity-50 cursor-pointer"
                         >
                             {isActionLoading ? <Loader2 size={20} className="animate-spin" /> : <Plus size={20} />}
                         </button>
@@ -162,12 +245,12 @@ const ManageMetadataModal = ({
                             placeholder="Search..."
                             value={searchTerm}
                             onChange={(e) => setSearchTerm(e.target.value)}
-                            className="w-full bg-gray-50 dark:bg-white/5 border border-gray-200 dark:border-white/10 rounded-lg pl-9 pr-4 py-2 text-sm text-gray-900 dark:text-white focus:outline-none focus:ring-1 focus:ring-blue-500"
+                            className="w-full bg-gray-50 dark:bg-white/5 border border-gray-200 dark:border-white/10 rounded-lg pl-9 pr-4 py-2 text-sm text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
                         />
                     </div>
 
                     {/* List */}
-                    <div className="flex-1 overflow-y-auto custom-scrollbar border border-gray-100 dark:border-white/5 rounded-lg dark:bg-[#0d1117]">
+                    <div className="flex-1 overflow-y-auto [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden no-scrollbar border border-gray-100 dark:border-white/5 rounded-lg dark:bg-[#0d1117]">
                         {isLoading ? (
                             <div className="flex items-center justify-center p-8">
                                 <LogoLoader text="Rendering Metadata..." size="sm" fullPage={false} />
@@ -180,7 +263,7 @@ const ManageMetadataModal = ({
                                         <button
                                             onClick={() => handleDelete(item[itemIdKey])}
                                             disabled={isActionLoading}
-                                            className="p-1.5 text-gray-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-md opacity-0 group-hover:opacity-100 transition-all"
+                                            className="p-1.5 text-gray-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-md opacity-0 group-hover:opacity-100 transition-all cursor-pointer"
                                             title="Delete Item"
                                         >
                                             <Trash2 size={16} />
@@ -197,7 +280,7 @@ const ManageMetadataModal = ({
                 <div className="px-6 py-4 border-t border-gray-100 dark:border-white/5 bg-gray-50/50 dark:bg-white/[0.02] flex justify-end">
                     <button
                         onClick={onClose}
-                        className="px-4 py-2 text-sm font-medium text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200"
+                        className="px-4 py-2 text-sm font-medium text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200 cursor-pointer"
                     >
                         Close
                     </button>
