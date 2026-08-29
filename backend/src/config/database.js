@@ -1,15 +1,26 @@
 import './config.js';
 import knex from 'knex';
 
+const rawUser = process.env.DB_ADMIN_USER || process.env.DB_USER || 'root';
+const rawPassword = process.env.DB_ADMIN_PASSWORD || process.env.DB_PASSWORD || '';
+const rawDatabase = process.env.DB_NAME || 'MANO-ERP';
+const rawHost = process.env.DB_HOST || '127.0.0.1';
+const rawPort = process.env.DB_PORT || 3307;
+
+const user = String(rawUser).replace(/^["']|["']$/g, '');
+const password = String(rawPassword).replace(/^["']|["']$/g, '');
+const database = String(rawDatabase).replace(/^["']|["']$/g, '');
+const host = String(rawHost).replace(/^["']|["']$/g, '');
+const port = Number(String(rawPort).replace(/^["']|["']$/g, ''));
 
 export const db = knex({
     client: 'mysql2',
     connection: {
-        host: process.env.DB_HOST || '127.0.0.1',
-        user: process.env.DB_USER || 'root',
-        password: process.env.DB_PASSWORD || '',
-        database: process.env.DB_NAME || 'mano_erp',
-        port: process.env.DB_PORT || 3307,
+        host,
+        user,
+        password,
+        database,
+        port,
         timezone: 'Z',
         enableKeepAlive: true,
         keepAliveInitialDelay: 10000
@@ -22,4 +33,5 @@ export const db = knex({
 });
 
 export default db;
+
 
