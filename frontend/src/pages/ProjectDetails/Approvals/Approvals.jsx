@@ -767,7 +767,7 @@ const Approvals = ({ setExtraBreadcrumbs, project, projectPermissions, isAdmin }
     const [employees, setEmployees] = useState([]);
     const [templates, setTemplates] = useState([]);
     const [currentConfigView, setCurrentConfigView] = useState('main');
-    const [activeSubTab, setActiveSubTab] = useState('workflows');
+    const [activeSubTab, setActiveSubTab] = useState('access');
     const [selectedSection, setSelectedSection] = useState('all');
     const [searchQuery, setSearchQuery] = useState('');
 
@@ -990,8 +990,8 @@ const Approvals = ({ setExtraBreadcrumbs, project, projectPermissions, isAdmin }
             <div className="px-3 py-1.5 bg-white dark:bg-[#0d1117] border-b border-gray-200 dark:border-white/5 flex shrink-0">
                 <div className="inline-flex p-0.5 bg-gray-100 dark:bg-white/5 border border-gray-200 dark:border-white/10 rounded-lg">
                     {[
-                        { id: 'workflows', label: 'Approval Workflows' },
-                        { id: 'access', label: 'Member Permissions' }
+                        { id: 'access', label: 'Member Permissions' },
+                        { id: 'workflows', label: 'Approval Workflows' }
                     ].map((tab) => (
                         <button
                             key={tab.id}

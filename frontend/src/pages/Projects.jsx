@@ -738,8 +738,7 @@ const Projects = () => {
     };
 
     const handleNewProjectClick = () => {
-        setProjectToEdit(null);
-        setIsNewProjectOpen(true);
+        navigate('/projects/create');
     };
 
     const handleEditProjectClick = (project) => {
