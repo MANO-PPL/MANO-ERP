@@ -36,8 +36,66 @@ const WIP = ({ setExtraBreadcrumbs, projectPermissions, isAdmin, user }) => {
         dueDate: new Date().toISOString().split('T')[0]
     });
 
-    // Selected Employee State
-    const [selectedEmployeeId, setSelectedEmployeeId] = useState(null);
+    const isQuickCreateOpenRef = React.useRef(isQuickCreateOpen);
+    isQuickCreateOpenRef.current = isQuickCreateOpen;
+    const boardSearchInputRef = React.useRef(null);
+    const employeeSearchInputRef = React.useRef(null);
+
+    // Global Keydown Handler
+    useEffect(() => {
+        const handleKeyDown = (e) => {
+            const activeEl = document.activeElement;
+            const isTyping = activeEl?.tagName?.toLowerCase() === 'input' || activeEl?.tagName?.toLowerCase() === 'textarea';
+
+            if (e.key === 'Escape') {
+                setSelectedTaskForDetails(null);
+                setIsAssigning(false);
+                setIsQuickCreateOpen(false);
+                return;
+            }
+
+            const isMac = navigator.platform.toUpperCase().includes('MAC');
+            const mod = isMac ? e.metaKey : e.ctrlKey;
+
+            // Ctrl+F Board Search
+            if (mod && (e.key === 'f' || e.key === 'F')) {
+                e.preventDefault();
+                if (boardSearchInputRef.current) {
+                    boardSearchInputRef.current.focus();
+                    boardSearchInputRef.current.select();
+                }
+                return;
+            }
+
+            // Ctrl+S
+            if (mod && (e.key === 's' || e.key === 'S')) {
+                e.preventDefault();
+                toast.success('WIP board updated');
+                return;
+            }
+
+            // Ctrl+;
+            if (mod && (e.key === ';' || e.key === ':')) {
+                e.preventDefault();
+                const today = new Date().toISOString().split('T')[0];
+                setQuickTaskForm(prev => ({ ...prev, startDate: today, dueDate: today }));
+                toast.info(`Date set to ${today}`);
+                return;
+            }
+
+            // Insert / Ctrl++
+            if (e.key === 'Insert' || (mod && (e.key === '+' || e.key === '='))) {
+                e.preventDefault();
+                if (canWrite) {
+                    setIsQuickCreateOpen(true);
+                }
+                return;
+            }
+        };
+
+        window.addEventListener('keydown', handleKeyDown);
+        return () => window.removeEventListener('keydown', handleKeyDown);
+    }, [canWrite]);
 
     const isUserAdmin = isAdmin;
 
@@ -452,8 +510,9 @@ const WIP = ({ setExtraBreadcrumbs, projectPermissions, isAdmin, user }) => {
                         <div className="relative min-w-[180px]">
                             <Search size={13} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-400" />
                             <input
+                                ref={boardSearchInputRef}
                                 type="text"
-                                placeholder="Search tasks..."
+                                placeholder="Search tasks... (Ctrl+F)"
                                 value={boardSearchTerm}
                                 onChange={(e) => setBoardSearchTerm(e.target.value)}
                                 className="w-full pl-8 pr-7 py-1.5 text-xs bg-white dark:bg-[#161b22] border border-gray-200 dark:border-gh-border rounded-lg outline-none focus:border-blue-500 text-gray-900 dark:text-white transition-all placeholder:text-gray-400"

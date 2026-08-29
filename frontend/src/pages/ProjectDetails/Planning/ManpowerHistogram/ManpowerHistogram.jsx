@@ -500,6 +500,63 @@ const ManpowerHistogram = ({ setExtraBreadcrumbs, onBack, canWrite }) => {
         }
     }, []);
 
+    const [customColWidths, setCustomColWidths] = useState({});
+
+    const handleColumnHeaderDoubleClick = React.useCallback((colKey) => {
+        let maxLen = colKey.length;
+        TRADES.forEach(t => {
+            const val = String(t[colKey] ?? '');
+            if (val.length > maxLen) maxLen = val.length;
+        });
+        const computedWidth = Math.max(100, Math.min(450, maxLen * 8.5 + 30));
+        setCustomColWidths(prev => {
+            if (prev[colKey]) {
+                const next = { ...prev };
+                delete next[colKey];
+                return next;
+            }
+            return { ...prev, [colKey]: `${computedWidth}px` };
+        });
+    }, []);
+
+    // Global Keydown Handler
+    useEffect(() => {
+        const handleKeyDown = (e) => {
+            const activeEl = document.activeElement;
+            const isTyping = activeEl?.tagName?.toLowerCase() === 'input' || activeEl?.tagName?.toLowerCase() === 'textarea';
+
+            if (e.key === 'Escape') {
+                setDrawerOpen(false);
+                setReqDrawerOpen(false);
+                setFilterOpen(false);
+                setImportModalOpen(false);
+                return;
+            }
+
+            const isMac = navigator.platform.toUpperCase().includes('MAC');
+            const mod = isMac ? e.metaKey : e.ctrlKey;
+
+            // Ctrl+S
+            if (mod && (e.key === 's' || e.key === 'S')) {
+                e.preventDefault();
+                return;
+            }
+
+            // Insert / Ctrl++
+            if (e.key === 'Insert' || (mod && (e.key === '+' || e.key === '='))) {
+                e.preventDefault();
+                if (canWrite) {
+                    setEditingPhase(null);
+                    setDrawerOpen(true);
+                }
+                return;
+            }
+        };
+
+        window.addEventListener('keydown', handleKeyDown);
+        return () => window.removeEventListener('keydown', handleKeyDown);
+    }, [canWrite]);
+
     useEffect(() => {
         const url = new URL(window.location.href);
         url.searchParams.set('mpView', view);
@@ -734,30 +791,55 @@ const ManpowerHistogram = ({ setExtraBreadcrumbs, onBack, canWrite }) => {
                                 </div>
                                 <div className="overflow-x-auto">
                                     <table className="w-full text-xs">
-                                        <thead className="bg-gray-50 dark:bg-white/[0.02]">
+                                        <thead className="bg-gray-50 dark:bg-white/[0.02] select-none">
                                             <tr>
-                                                <th className="px-4 py-2.5 text-left text-gray-500 uppercase font-bold tracking-wider">Trade</th>
-                                                <th className="px-3 py-2.5 text-center text-gray-500 uppercase font-bold tracking-wider">Rate/Day</th>
-                                                <th className="px-3 py-2.5 text-right text-gray-500 uppercase font-bold tracking-wider">Planned</th>
-                                                <th className="px-3 py-2.5 text-right text-gray-500 uppercase font-bold tracking-wider">Actual</th>
-                                                <th className="px-3 py-2.5 text-right text-gray-500 uppercase font-bold tracking-wider">Cost (Plan)</th>
+                                                <th
+                                                    onDoubleClick={() => handleColumnHeaderDoubleClick('name')}
+                                                    style={customColWidths['name'] ? { width: customColWidths['name'], minWidth: customColWidths['name'] } : {}}
+                                                    title="Trade - Double-click to Auto-Fit"
+                                                    className="px-4 py-2.5 text-left text-gray-500 uppercase font-bold tracking-wider cursor-pointer hover:bg-gray-200 dark:hover:bg-white/5 transition"
+                                                >Trade</th>
+                                                <th
+                                                    onDoubleClick={() => handleColumnHeaderDoubleClick('rate')}
+                                                    style={customColWidths['rate'] ? { width: customColWidths['rate'], minWidth: customColWidths['rate'] } : {}}
+                                                    title="Rate/Day - Double-click to Auto-Fit"
+                                                    className="px-3 py-2.5 text-center text-gray-500 uppercase font-bold tracking-wider cursor-pointer hover:bg-gray-200 dark:hover:bg-white/5 transition"
+                                                >Rate/Day</th>
+                                                <th
+                                                    onDoubleClick={() => handleColumnHeaderDoubleClick('planned')}
+                                                    style={customColWidths['planned'] ? { width: customColWidths['planned'], minWidth: customColWidths['planned'] } : {}}
+                                                    title="Planned - Double-click to Auto-Fit"
+                                                    className="px-3 py-2.5 text-right text-gray-500 uppercase font-bold tracking-wider cursor-pointer hover:bg-gray-200 dark:hover:bg-white/5 transition"
+                                                >Planned</th>
+                                                <th
+                                                    onDoubleClick={() => handleColumnHeaderDoubleClick('actual')}
+                                                    style={customColWidths['actual'] ? { width: customColWidths['actual'], minWidth: customColWidths['actual'] } : {}}
+                                                    title="Actual - Double-click to Auto-Fit"
+                                                    className="px-3 py-2.5 text-right text-gray-500 uppercase font-bold tracking-wider cursor-pointer hover:bg-gray-200 dark:hover:bg-white/5 transition"
+                                                >Actual</th>
+                                                <th
+                                                    onDoubleClick={() => handleColumnHeaderDoubleClick('costPlanned')}
+                                                    style={customColWidths['costPlanned'] ? { width: customColWidths['costPlanned'], minWidth: customColWidths['costPlanned'] } : {}}
+                                                    title="Cost (Plan) - Double-click to Auto-Fit"
+                                                    className="px-3 py-2.5 text-right text-gray-500 uppercase font-bold tracking-wider cursor-pointer hover:bg-gray-200 dark:hover:bg-white/5 transition"
+                                                >Cost (Plan)</th>
                                                 <th className="px-4 py-2.5 text-center text-gray-500 uppercase font-bold tracking-wider">Status</th>
                                             </tr>
                                         </thead>
                                         <tbody className="divide-y divide-gray-50 dark:divide-white/5">
-                                            {tableData.map(d => (
+                                            {tableData.map((d, idx) => (
                                                 <tr key={d.id} className="hover:bg-blue-50/30 dark:hover:bg-blue-900/5 transition-colors">
-                                                    <td className="px-4 py-3 font-medium text-gray-700 dark:text-gray-300">
+                                                    <td data-cell-pos={`${idx}-0`} className="px-4 py-3 font-medium text-gray-700 dark:text-gray-300">
                                                         <div className="flex items-center gap-2.5">
                                                             <span className="w-2.5 h-2.5 rounded-full shrink-0" style={{ backgroundColor: d.color }} />
                                                             <span>{d.icon}</span><span>{d.name}</span>
                                                         </div>
                                                     </td>
-                                                    <td className="px-3 py-3 text-center text-gray-500 tabular-nums">₹{d.rate}</td>
-                                                    <td className="px-3 py-3 text-right font-semibold text-gray-800 dark:text-gray-200 tabular-nums">{fmt(d.planned)}</td>
-                                                    <td className="px-3 py-3 text-right font-semibold text-gray-800 dark:text-gray-200 tabular-nums">{fmt(d.actual)}</td>
-                                                    <td className="px-3 py-3 text-right font-semibold text-gray-800 dark:text-gray-200 tabular-nums">{fmtCurrency(d.costPlanned)}</td>
-                                                    <td className="px-4 py-3 text-center">
+                                                    <td data-cell-pos={`${idx}-1`} className="px-3 py-3 text-center text-gray-500 tabular-nums">₹{d.rate}</td>
+                                                    <td data-cell-pos={`${idx}-2`} className="px-3 py-3 text-right font-semibold text-gray-800 dark:text-gray-200 tabular-nums">{fmt(d.planned)}</td>
+                                                    <td data-cell-pos={`${idx}-3`} className="px-3 py-3 text-right font-semibold text-gray-800 dark:text-gray-200 tabular-nums">{fmt(d.actual)}</td>
+                                                    <td data-cell-pos={`${idx}-4`} className="px-3 py-3 text-right font-semibold text-gray-800 dark:text-gray-200 tabular-nums">{fmtCurrency(d.costPlanned)}</td>
+                                                    <td data-cell-pos={`${idx}-5`} className="px-4 py-3 text-center">
                                                         {d.planned > 0 ? <span className="inline-flex items-center gap-1 text-[10px] font-bold text-green-500"><CheckCircle2 size={11} /> OK</span> : <span className="text-[10px] font-bold text-gray-400">No Allocation</span>}
                                                     </td>
                                                 </tr>

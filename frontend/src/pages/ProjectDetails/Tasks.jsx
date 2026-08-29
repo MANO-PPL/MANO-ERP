@@ -356,6 +356,67 @@ const Tasks = ({ setExtraBreadcrumbs, projectPermissions, isAdmin }) => {
         toast.success(`Exported ${rows.length} tasks to CSV`);
     }, [taskData]);
 
+    const searchInputRef = useRef(null);
+    const [customColWidths, setCustomColWidths] = useState({});
+    const selectionAnchorRef = useRef(selectionAnchor);
+    selectionAnchorRef.current = selectionAnchor;
+    const selectionFocusRef = useRef(selectionFocus);
+    selectionFocusRef.current = selectionFocus;
+
+    const COLUMN_LABELS = {
+        task_code: 'Task ID',
+        name: 'Task Name',
+        assigneeIds: 'Assignee',
+        status: 'Status',
+        priority: 'Priority',
+        startDate: 'Start Date',
+        dueDate: 'Due Date',
+        duration: 'Duration'
+    };
+
+    const handleColumnHeaderDoubleClick = useCallback((colName) => {
+        let maxLen = (COLUMN_LABELS[colName] || colName).length;
+        flatGridRows.forEach(row => {
+            const val = String(row.task[colName] ?? '');
+            if (val.length > maxLen) maxLen = val.length;
+        });
+        const computedWidth = Math.max(100, Math.min(450, maxLen * 8.5 + 32));
+        setCustomColWidths(prev => {
+            if (prev[colName]) {
+                const next = { ...prev };
+                delete next[colName];
+                return next;
+            }
+            return { ...prev, [colName]: `${computedWidth}px` };
+        });
+        toast.info(`Adjusted width for "${COLUMN_LABELS[colName] || colName}"`);
+    }, [flatGridRows]);
+
+    // ── Excel: Fill Right ───────────────────────────────────────────────────
+    const handleFillRight = useCallback(() => {
+        if (!canWrite) return;
+        const bounds = getSelectionBounds();
+        if (!bounds || bounds.minCol === bounds.maxCol) return;
+        pushUndoState();
+        const updatedData = JSON.parse(JSON.stringify(taskDataRef.current));
+        for (let r = bounds.minRow; r <= bounds.maxRow; r++) {
+            const rowEntry = flatGridRows[r];
+            if (!rowEntry) continue;
+            const t = updatedData[rowEntry.groupIdx].tasks[rowEntry.taskIdx];
+            const sourceCol = TASK_GRID_COLS[bounds.minCol];
+            if (!sourceCol || sourceCol === 'duration' || sourceCol === 'task_code') continue;
+            const sourceVal = t[sourceCol];
+            for (let c = bounds.minCol + 1; c <= bounds.maxCol; c++) {
+                const col = TASK_GRID_COLS[c];
+                if (col && col !== 'duration' && col !== 'task_code') {
+                    t[col] = sourceVal;
+                }
+            }
+        }
+        setTaskData(updatedData);
+        toast.success(`Filled right across selected columns`);
+    }, [canWrite, getSelectionBounds, flatGridRows, pushUndoState]);
+
     // ── Excel: Global keyboard shortcuts ────────────────────────────────────
     useEffect(() => {
         const handler = (e) => {
@@ -373,30 +434,125 @@ const Tasks = ({ setExtraBreadcrumbs, projectPermissions, isAdmin }) => {
             const isMac = navigator.platform.toUpperCase().includes('MAC');
             const mod = isMac ? e.metaKey : e.ctrlKey;
 
-            if (isTyping) {
-                if (e.key === 'Escape') setEditingCell(null);
+            // Ctrl+F Search
+            if (mod && (e.key === 'f' || e.key === 'F')) {
+                e.preventDefault();
+                if (searchInputRef.current) {
+                    searchInputRef.current.focus();
+                    searchInputRef.current.select();
+                }
                 return;
             }
 
-            if (mod && (e.key === 'c' || e.key === 'C')) { e.preventDefault(); handleExcelCopy(); return; }
-            if (mod && (e.key === 'v' || e.key === 'V')) { e.preventDefault(); handleExcelPaste(); return; }
-            if (mod && (e.key === 'd' || e.key === 'D')) { e.preventDefault(); handleFillDown(); return; }
-            if (mod && (e.key === 'z' || e.key === 'Z') && !e.shiftKey) { e.preventDefault(); handleExcelUndo(); return; }
+            // Ctrl+S Save
+            if (mod && (e.key === 's' || e.key === 'S')) {
+                e.preventDefault();
+                toast.success('Tasks saved and synced');
+                return;
+            }
 
-            // Arrow key navigation
+            // Ctrl+; Date Stamp
+            if (mod && (e.key === ';' || e.key === ':')) {
+                e.preventDefault();
+                if (selectionAnchor && canWrite) {
+                    const todayStr = new Date().toISOString().split('T')[0];
+                    const rowEntry = flatGridRows[selectionAnchor.r];
+                    if (rowEntry) {
+                        const col = TASK_GRID_COLS[selectionAnchor.c];
+                        if (col === 'startDate' || col === 'dueDate') {
+                            handleSaveTaskField(rowEntry.task.id, col, todayStr);
+                            toast.success(`Set date to ${todayStr}`);
+                        }
+                    }
+                }
+                return;
+            }
+
+            // Shift+F10 / ContextMenu
+            if ((e.shiftKey && e.key === 'F10') || e.key === 'ContextMenu') {
+                e.preventDefault();
+                const anchor = selectionAnchor || { r: 0, c: 0 };
+                setContextMenu({
+                    x: window.innerWidth / 2,
+                    y: window.innerHeight / 2,
+                    r: anchor.r,
+                    c: anchor.c
+                });
+                return;
+            }
+
+            // Insert / Ctrl++ Add Task
+            if (e.key === 'Insert' || (mod && (e.key === '+' || e.key === '='))) {
+                e.preventDefault();
+                if (taskData.length > 0 && canWrite) {
+                    const group = taskData[0];
+                    setAddingTaskInList(group.listName);
+                    toast.info(`Add task in ${group.listName}`);
+                }
+                return;
+            }
+
+            // Ctrl+- Delete Task Rows
+            if (mod && (e.key === '-' || e.key === '_')) {
+                e.preventDefault();
+                if (selectedRowIds.size > 0 && canWrite) {
+                    handleDeleteSelectedRows();
+                }
+                return;
+            }
+
+            // Ctrl+A Select All
+            if (mod && (e.key === 'a' || e.key === 'A') && !isTyping) {
+                e.preventDefault();
+                handleSelectAll();
+                return;
+            }
+
+            // Ctrl+C, Ctrl+V, Ctrl+D, Ctrl+R, Ctrl+Z
+            if (mod && (e.key === 'c' || e.key === 'C') && !isTyping) { e.preventDefault(); handleExcelCopy(); return; }
+            if (mod && (e.key === 'v' || e.key === 'V') && !isTyping) { e.preventDefault(); handleExcelPaste(); return; }
+            if (mod && (e.key === 'd' || e.key === 'D') && !isTyping) { e.preventDefault(); handleFillDown(); return; }
+            if (mod && (e.key === 'r' || e.key === 'R') && !isTyping) { e.preventDefault(); handleFillRight(); return; }
+            if (mod && (e.key === 'z' || e.key === 'Z') && !e.shiftKey && !isTyping) { e.preventDefault(); handleExcelUndo(); return; }
+
+            if (isTyping) return;
+
+            // Arrow key navigation & shortcuts
             if (!selectionAnchor) return;
             const totalRows = flatGridRows.length;
             const totalCols = TASK_GRID_COLS.length;
             let { r, c } = selectionFocus || selectionAnchor;
-            if (e.key === 'ArrowDown')  { e.preventDefault(); r = Math.min(r + 1, totalRows - 1); }
-            if (e.key === 'ArrowUp')    { e.preventDefault(); r = Math.max(r - 1, 0); }
-            if (e.key === 'ArrowRight') { e.preventDefault(); c = Math.min(c + 1, totalCols - 1); }
-            if (e.key === 'ArrowLeft')  { e.preventDefault(); c = Math.max(c - 1, 0); }
+            if (e.key === 'ArrowDown')  { e.preventDefault(); r = mod ? totalRows - 1 : Math.min(r + 1, totalRows - 1); }
+            if (e.key === 'ArrowUp')    { e.preventDefault(); r = mod ? 0 : Math.max(r - 1, 0); }
+            if (e.key === 'ArrowRight') { e.preventDefault(); c = mod ? totalCols - 1 : Math.min(c + 1, totalCols - 1); }
+            if (e.key === 'ArrowLeft')  { e.preventDefault(); c = mod ? 0 : Math.max(c - 1, 0); }
             if (e.key === 'Tab')        { e.preventDefault(); c = e.shiftKey ? Math.max(c - 1, 0) : Math.min(c + 1, totalCols - 1); }
-            if (e.key === 'Enter')      { e.preventDefault(); r = Math.min(r + 1, totalRows - 1); }
+            if (e.key === 'Enter')      { e.preventDefault(); r = e.shiftKey ? Math.max(r - 1, 0) : Math.min(r + 1, totalRows - 1); }
+            if (e.key === 'Home')       { e.preventDefault(); c = 0; if (mod) r = 0; }
+            if (e.key === 'End')        { e.preventDefault(); c = totalCols - 1; if (mod) r = totalRows - 1; }
+            if (e.key === 'PageUp')     { e.preventDefault(); r = Math.max(0, r - 10); }
+            if (e.key === 'PageDown')   { e.preventDefault(); r = Math.min(totalRows - 1, r + 10); }
 
-            if (['ArrowDown','ArrowUp','ArrowRight','ArrowLeft','Tab','Enter'].includes(e.key)) {
-                if (e.shiftKey && e.key !== 'Tab') {
+            // Space selection
+            if (e.key === ' ' || e.key === 'Spacebar') {
+                if (e.shiftKey && !mod) {
+                    e.preventDefault();
+                    setSelectionAnchor({ r, c: 0 });
+                    setSelectionFocus({ r, c: totalCols - 1 });
+                    const row = flatGridRows[r];
+                    if (row) setSelectedRowIds(new Set([row.task.id]));
+                    return;
+                }
+                if (mod && !e.shiftKey) {
+                    e.preventDefault();
+                    setSelectionAnchor({ r: 0, c });
+                    setSelectionFocus({ r: totalRows - 1, c });
+                    return;
+                }
+            }
+
+            if (['ArrowDown','ArrowUp','ArrowRight','ArrowLeft','Tab','Enter','Home','End','PageUp','PageDown'].includes(e.key)) {
+                if (e.shiftKey && e.key !== 'Tab' && e.key !== 'Enter') {
                     setSelectionFocus({ r, c });
                 } else {
                     setSelectionAnchor({ r, c });
@@ -406,7 +562,7 @@ const Tasks = ({ setExtraBreadcrumbs, projectPermissions, isAdmin }) => {
         };
         window.addEventListener('keydown', handler);
         return () => window.removeEventListener('keydown', handler);
-    }, [selectionAnchor, selectionFocus, flatGridRows, handleExcelCopy, handleExcelPaste, handleFillDown, handleExcelUndo]);
+    }, [selectionAnchor, selectionFocus, flatGridRows, canWrite, taskData, selectedRowIds, handleExcelCopy, handleExcelPaste, handleFillDown, handleFillRight, handleExcelUndo, handleSelectAll, handleDeleteSelectedRows, handleSaveTaskField]);
 
     // Mouse up anywhere stops range selection
     useEffect(() => {
@@ -1252,8 +1408,9 @@ const Tasks = ({ setExtraBreadcrumbs, projectPermissions, isAdmin }) => {
                     <div className="relative min-w-[220px]">
                         <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
                         <input
+                            ref={searchInputRef}
                             type="text"
-                            placeholder="Search tasks, codes, assignees..."
+                            placeholder="Search tasks, codes, assignees... (Ctrl+F)"
                             value={searchTerm}
                             onChange={(e) => setSearchTerm(e.target.value)}
                             className="w-full pl-9 pr-8 py-1.5 text-xs bg-gray-50 dark:bg-[#161b22] border border-gray-200 dark:border-gh-border rounded-lg outline-none focus:border-blue-500 dark:focus:border-blue-500 focus:ring-1 focus:ring-blue-500/20 text-gray-900 dark:text-white transition-all placeholder:text-gray-400"
@@ -1458,14 +1615,54 @@ const Tasks = ({ setExtraBreadcrumbs, projectPermissions, isAdmin }) => {
                                     </div>
                                 </th>
                                 <th className="px-3 py-2.5 w-6 border-r border-gray-200 dark:border-gray-700/60"></th>
-                                <th className="px-4 py-2.5 uppercase text-[10px] tracking-wider border-r border-gray-200 dark:border-gray-700/60">ID</th>
-                                <th className="px-4 py-2.5 uppercase text-[10px] tracking-wider min-w-[220px] border-r border-gray-200 dark:border-gray-700/60">Task Name</th>
-                                <th className="px-4 py-2.5 uppercase text-[10px] tracking-wider min-w-[130px] border-r border-gray-200 dark:border-gray-700/60">Assignee</th>
-                                <th className="px-4 py-2.5 uppercase text-[10px] tracking-wider border-r border-gray-200 dark:border-gray-700/60">Status</th>
-                                <th className="px-4 py-2.5 uppercase text-[10px] tracking-wider border-r border-gray-200 dark:border-gray-700/60">Priority</th>
-                                <th className="px-4 py-2.5 uppercase text-[10px] tracking-wider min-w-[110px] border-r border-gray-200 dark:border-gray-700/60">Start Date</th>
-                                <th className="px-4 py-2.5 uppercase text-[10px] tracking-wider min-w-[160px] border-r border-gray-200 dark:border-gray-700/60">Due Date</th>
-                                <th className="px-4 py-2.5 uppercase text-[10px] tracking-wider border-r border-gray-200 dark:border-gray-700/60">Duration</th>
+                                <th
+                                    onDoubleClick={(e) => { e.stopPropagation(); handleColumnHeaderDoubleClick('task_code'); }}
+                                    style={customColWidths['task_code'] ? { width: customColWidths['task_code'], minWidth: customColWidths['task_code'] } : {}}
+                                    title="Task ID - Double-click to Auto-Fit"
+                                    className="px-4 py-2.5 uppercase text-[10px] tracking-wider border-r border-gray-200 dark:border-gray-700/60 cursor-pointer hover:bg-gray-100 dark:hover:bg-white/5 transition"
+                                >ID</th>
+                                <th
+                                    onDoubleClick={(e) => { e.stopPropagation(); handleColumnHeaderDoubleClick('name'); }}
+                                    style={customColWidths['name'] ? { width: customColWidths['name'], minWidth: customColWidths['name'] } : {}}
+                                    title="Task Name - Double-click to Auto-Fit"
+                                    className="px-4 py-2.5 uppercase text-[10px] tracking-wider min-w-[220px] border-r border-gray-200 dark:border-gray-700/60 cursor-pointer hover:bg-gray-100 dark:hover:bg-white/5 transition"
+                                >Task Name</th>
+                                <th
+                                    onDoubleClick={(e) => { e.stopPropagation(); handleColumnHeaderDoubleClick('assigneeIds'); }}
+                                    style={customColWidths['assigneeIds'] ? { width: customColWidths['assigneeIds'], minWidth: customColWidths['assigneeIds'] } : {}}
+                                    title="Assignee - Double-click to Auto-Fit"
+                                    className="px-4 py-2.5 uppercase text-[10px] tracking-wider min-w-[130px] border-r border-gray-200 dark:border-gray-700/60 cursor-pointer hover:bg-gray-100 dark:hover:bg-white/5 transition"
+                                >Assignee</th>
+                                <th
+                                    onDoubleClick={(e) => { e.stopPropagation(); handleColumnHeaderDoubleClick('status'); }}
+                                    style={customColWidths['status'] ? { width: customColWidths['status'], minWidth: customColWidths['status'] } : {}}
+                                    title="Status - Double-click to Auto-Fit"
+                                    className="px-4 py-2.5 uppercase text-[10px] tracking-wider border-r border-gray-200 dark:border-gray-700/60 cursor-pointer hover:bg-gray-100 dark:hover:bg-white/5 transition"
+                                >Status</th>
+                                <th
+                                    onDoubleClick={(e) => { e.stopPropagation(); handleColumnHeaderDoubleClick('priority'); }}
+                                    style={customColWidths['priority'] ? { width: customColWidths['priority'], minWidth: customColWidths['priority'] } : {}}
+                                    title="Priority - Double-click to Auto-Fit"
+                                    className="px-4 py-2.5 uppercase text-[10px] tracking-wider border-r border-gray-200 dark:border-gray-700/60 cursor-pointer hover:bg-gray-100 dark:hover:bg-white/5 transition"
+                                >Priority</th>
+                                <th
+                                    onDoubleClick={(e) => { e.stopPropagation(); handleColumnHeaderDoubleClick('startDate'); }}
+                                    style={customColWidths['startDate'] ? { width: customColWidths['startDate'], minWidth: customColWidths['startDate'] } : {}}
+                                    title="Start Date - Double-click to Auto-Fit"
+                                    className="px-4 py-2.5 uppercase text-[10px] tracking-wider min-w-[110px] border-r border-gray-200 dark:border-gray-700/60 cursor-pointer hover:bg-gray-100 dark:hover:bg-white/5 transition"
+                                >Start Date</th>
+                                <th
+                                    onDoubleClick={(e) => { e.stopPropagation(); handleColumnHeaderDoubleClick('dueDate'); }}
+                                    style={customColWidths['dueDate'] ? { width: customColWidths['dueDate'], minWidth: customColWidths['dueDate'] } : {}}
+                                    title="Due Date - Double-click to Auto-Fit"
+                                    className="px-4 py-2.5 uppercase text-[10px] tracking-wider min-w-[160px] border-r border-gray-200 dark:border-gray-700/60 cursor-pointer hover:bg-gray-100 dark:hover:bg-white/5 transition"
+                                >Due Date</th>
+                                <th
+                                    onDoubleClick={(e) => { e.stopPropagation(); handleColumnHeaderDoubleClick('duration'); }}
+                                    style={customColWidths['duration'] ? { width: customColWidths['duration'], minWidth: customColWidths['duration'] } : {}}
+                                    title="Duration - Double-click to Auto-Fit"
+                                    className="px-4 py-2.5 uppercase text-[10px] tracking-wider border-r border-gray-200 dark:border-gray-700/60 cursor-pointer hover:bg-gray-100 dark:hover:bg-white/5 transition"
+                                >Duration</th>
                                 <th className="px-4 py-2.5 uppercase text-[10px] tracking-wider text-center">Actions</th>
                             </tr>
                         </thead>
