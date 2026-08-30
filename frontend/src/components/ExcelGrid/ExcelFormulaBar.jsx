@@ -2,9 +2,11 @@ import React, { useState, useEffect, useRef } from 'react';
 import {
     Check,
     X,
-    Search
+    Search,
+    Calculator
 } from 'lucide-react';
 import { getA1Notation } from './excelUtils';
+import { ExcelFormulaAssistantModal } from '../common/ExcelFormulas';
 
 export const ExcelFormulaBar = ({
     selectionFocus,
@@ -20,6 +22,7 @@ export const ExcelFormulaBar = ({
 
     const [formulaValue, setFormulaValue] = useState(activeValue);
     const [isFocused, setIsFocused] = useState(false);
+    const [showFormulaModal, setShowFormulaModal] = useState(false);
     const inputRef = useRef(null);
 
     useEffect(() => {
@@ -63,10 +66,16 @@ export const ExcelFormulaBar = ({
                 {selectionFocus ? a1Address : '—'}
             </div>
 
-            {/* Formula fx Symbol */}
-            <div className="font-serif italic font-bold text-gray-400 dark:text-gray-500 text-xs px-1 select-none">
+            {/* Formula fx Symbol / Function Inserter Button */}
+            <button
+                type="button"
+                onClick={() => setShowFormulaModal(true)}
+                disabled={!canWrite}
+                className="px-1.5 py-0.5 font-serif italic font-bold text-gray-500 hover:text-blue-600 dark:text-gray-400 dark:hover:text-blue-400 hover:bg-blue-50 dark:hover:bg-blue-950/40 rounded transition cursor-pointer text-xs select-none border border-transparent hover:border-blue-200 dark:hover:border-blue-800/40"
+                title="Insert Function / Excel Formula Assistant (fx)"
+            >
                 fx
-            </div>
+            </button>
 
             {/* Commit & Discard Mini Buttons (visible when modified or focused) */}
             {canWrite && selectionFocus && (
@@ -129,6 +138,18 @@ export const ExcelFormulaBar = ({
                     </button>
                 </div>
             )}
+
+            {/* Excel Formula Assistant & Calculator Modal */}
+            <ExcelFormulaAssistantModal
+                isOpen={showFormulaModal}
+                onClose={() => setShowFormulaModal(false)}
+                onInsertFormula={(insertedFormula) => {
+                    setFormulaValue(insertedFormula);
+                    if (selectionFocus && activeCol && canWrite) {
+                        onChangeValue(selectionFocus.r, activeCol.key, insertedFormula, true);
+                    }
+                }}
+            />
         </div>
     );
 };

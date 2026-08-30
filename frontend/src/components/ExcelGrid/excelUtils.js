@@ -193,24 +193,185 @@ export const calculateSelectionMetrics = (rows = [], columns = [], bounds = null
 };
 
 /**
- * Downloads a starter Excel template file (.xlsx) configured from the column schema.
+ * Generates realistic sample/demo rows based on column schema and entity type.
  */
-export const downloadExcelTemplate = (columns = [], entityName = 'Data') => {
-    const headers = columns.map(c => c.label || c.key);
-    const ws = XLSX.utils.aoa_to_sheet([headers]);
+export const generateDemoSampleRows = (columns = [], entityName = 'Data') => {
+    const activeCols = columns.filter(c => !c.readOnly && c.key !== 'permissions_access' && c.key !== 'permissions_action');
+    const entityLower = (entityName || '').toLowerCase();
 
-    ws['!cols'] = columns.map(c => {
+    // 3 sample rows
+    const row1 = {};
+    const row2 = {};
+    const row3 = {};
+
+    activeCols.forEach((col) => {
+        const key = col.key.toLowerCase();
+        const label = (col.label || col.key).toLowerCase();
+
+        if (col.type === 'select' && Array.isArray(col.options) && col.options.length > 0) {
+            const opts = col.options.map(o => typeof o === 'object' ? o.value : o);
+            row1[col.key] = opts[0] || '';
+            row2[col.key] = opts[Math.min(1, opts.length - 1)] || opts[0] || '';
+            row3[col.key] = opts[Math.min(2, opts.length - 1)] || opts[0] || '';
+        } else if (key.includes('email') || label.includes('email')) {
+            if (entityLower.includes('employee') || entityLower.includes('user') || entityLower.includes('admin')) {
+                row1[col.key] = 'john.doe@company.com';
+                row2[col.key] = 'sarah.smith@company.com';
+                row3[col.key] = 'alex.johnson@company.com';
+            } else if (entityLower.includes('vendor')) {
+                row1[col.key] = 'sales@supremesteels.com';
+                row2[col.key] = 'contact@apexinfra.com';
+                row3[col.key] = 'orders@premiercement.com';
+            } else if (entityLower.includes('client')) {
+                row1[col.key] = 'projects@horizontowers.in';
+                row2[col.key] = 'procure@metroinfra.in';
+                row3[col.key] = 'contracts@apexdev.in';
+            } else {
+                row1[col.key] = 'demo1@example.com';
+                row2[col.key] = 'demo2@example.com';
+                row3[col.key] = 'demo3@example.com';
+            }
+        } else if (key.includes('name') || label.includes('name')) {
+            if (entityLower.includes('employee') || entityLower.includes('user') || entityLower.includes('admin')) {
+                row1[col.key] = 'John Doe';
+                row2[col.key] = 'Sarah Smith';
+                row3[col.key] = 'Alex Johnson';
+            } else if (entityLower.includes('vendor')) {
+                row1[col.key] = 'Supreme Steels & Hardware';
+                row2[col.key] = 'Apex Infra Materials';
+                row3[col.key] = 'Premier Ready Mix Concrete';
+            } else if (entityLower.includes('client')) {
+                row1[col.key] = 'Horizon Towers Pvt Ltd';
+                row2[col.key] = 'Metro Infrastructure Corp';
+                row3[col.key] = 'Apex Developers & Builders';
+            } else if (entityLower.includes('resource') || entityLower.includes('material')) {
+                row1[col.key] = 'TMT Steel Bars 16mm';
+                row2[col.key] = 'OPC 53 Grade Cement';
+                row3[col.key] = 'M-Sand Aggregate 20mm';
+            } else {
+                row1[col.key] = `Sample ${col.label || col.key} 1`;
+                row2[col.key] = `Sample ${col.label || col.key} 2`;
+                row3[col.key] = `Sample ${col.label || col.key} 3`;
+            }
+        } else if (key.includes('phone') || key.includes('mobile') || key.includes('contact') || label.includes('mobile') || label.includes('phone')) {
+            row1[col.key] = '9876543210';
+            row2[col.key] = '9812345678';
+            row3[col.key] = '9765432109';
+        } else if (key.includes('dept') || label.includes('department')) {
+            row1[col.key] = 'Engineering';
+            row2[col.key] = 'Operations';
+            row3[col.key] = 'Finance & Accounts';
+        } else if (key.includes('status') || label.includes('status')) {
+            row1[col.key] = 'Active';
+            row2[col.key] = 'Active';
+            row3[col.key] = 'Active';
+        } else if (key.includes('gst') || label.includes('gst')) {
+            row1[col.key] = '33AAAAA0000A1Z5';
+            row2[col.key] = '33BBBBB1111B2Z6';
+            row3[col.key] = '33CCCCC2222C3Z7';
+        } else if (key.includes('pan') || label.includes('pan')) {
+            row1[col.key] = 'ABCDE1234F';
+            row2[col.key] = 'FGHIJ5678K';
+            row3[col.key] = 'LMNOP9012Q';
+        } else if (key.includes('rate') || key.includes('price') || key.includes('cost') || key.includes('amount') || label.includes('rate') || label.includes('price') || label.includes('amount')) {
+            row1[col.key] = 1250;
+            row2[col.key] = 3400;
+            row3[col.key] = 850;
+        } else if (key.includes('qty') || key.includes('quantity') || label.includes('quantity') || label.includes('qty')) {
+            row1[col.key] = 100;
+            row2[col.key] = 250;
+            row3[col.key] = 50;
+        } else if (key.includes('unit') || label.includes('unit')) {
+            row1[col.key] = 'Nos';
+            row2[col.key] = 'MT';
+            row3[col.key] = 'Bags';
+        } else if (key.includes('date') || label.includes('date') || col.type === 'date') {
+            row1[col.key] = '2026-03-01';
+            row2[col.key] = '2026-03-15';
+            row3[col.key] = '2026-03-28';
+        } else if (key.includes('city') || label.includes('city')) {
+            row1[col.key] = 'Chennai';
+            row2[col.key] = 'Coimbatore';
+            row3[col.key] = 'Bangalore';
+        } else if (key.includes('state') || label.includes('state')) {
+            row1[col.key] = 'Tamil Nadu';
+            row2[col.key] = 'Tamil Nadu';
+            row3[col.key] = 'Karnataka';
+        } else if (key.includes('address') || label.includes('address')) {
+            row1[col.key] = '123 Industrial Area, Phase 1';
+            row2[col.key] = '45 Commercial Complex, 2nd Main';
+            row3[col.key] = '78 SIDCO Industrial Estate';
+        } else if (col.type === 'number') {
+            row1[col.key] = 100;
+            row2[col.key] = 250;
+            row3[col.key] = 500;
+        } else {
+            row1[col.key] = col.defaultValue || `Sample 1`;
+            row2[col.key] = col.defaultValue || `Sample 2`;
+            row3[col.key] = col.defaultValue || `Sample 3`;
+        }
+    });
+
+    return [row1, row2, row3];
+};
+
+/**
+ * Downloads a starter Excel template file (.xlsx) prefilled with sample demo rows.
+ */
+export const downloadExcelTemplate = (columns = [], entityName = 'Data', includeSampleRows = true) => {
+    const activeCols = columns.filter(c => !c.readOnly && c.key !== 'permissions_access' && c.key !== 'permissions_action');
+    const headers = activeCols.map(c => c.label || c.key);
+    
+    let aoa = [headers];
+    if (includeSampleRows) {
+        const sampleRows = generateDemoSampleRows(activeCols, entityName);
+        const dataRows = sampleRows.map(row => activeCols.map(c => row[c.key] ?? ''));
+        aoa = [headers, ...dataRows];
+    }
+
+    const ws = XLSX.utils.aoa_to_sheet(aoa);
+
+    ws['!cols'] = activeCols.map(c => {
         let width = 20;
         if (c.width) {
             const parsed = parseInt(c.width, 10);
-            if (!isNaN(parsed)) width = Math.max(12, Math.round(parsed / 8));
+            if (!isNaN(parsed)) width = Math.max(14, Math.round(parsed / 8));
         }
         return { wch: width };
     });
 
     const wb = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(wb, ws, entityName);
-    XLSX.writeFile(wb, `${entityName}_Template.xlsx`);
+    XLSX.utils.book_append_sheet(wb, ws, `${entityName} Template`);
+    XLSX.writeFile(wb, `${entityName}_Demo_Template.xlsx`);
+};
+
+/**
+ * Downloads a starter CSV template file (.csv) prefilled with sample demo rows.
+ */
+export const downloadCSVTemplate = (columns = [], entityName = 'Data', includeSampleRows = true) => {
+    const activeCols = columns.filter(c => !c.readOnly && c.key !== 'permissions_access' && c.key !== 'permissions_action');
+    const headers = activeCols.map(c => c.label || c.key);
+    
+    let dataRows = [];
+    if (includeSampleRows) {
+        const sampleRows = generateDemoSampleRows(activeCols, entityName);
+        dataRows = sampleRows.map(row => activeCols.map(c => row[c.key] ?? ''));
+    }
+
+    const csvContent = Papa.unparse({
+        fields: headers,
+        data: dataRows
+    });
+
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `${entityName}_Demo_Template.csv`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
 };
 
 /**
@@ -333,6 +494,13 @@ export const parseRawRowsToEntities = (rawRows = [], columns = [], primaryKey = 
                 entity[col.key] = isNaN(num) ? val : num;
             } else {
                 entity[col.key] = val;
+            }
+
+            if (col.required && (val === '' || val === null || val === undefined)) {
+                entity._errors[col.key] = `${col.label || col.key} is required`;
+            } else if (typeof col.validate === 'function') {
+                const err = col.validate(val, entity);
+                if (err) entity._errors[col.key] = err;
             }
         });
 

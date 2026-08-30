@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import {
     FileSpreadsheet,
     Plus,
@@ -29,6 +29,7 @@ import {
     exportToXLSX
 } from '../../utils/spreadsheetConverters';
 import { customToast } from '../../utils/toast';
+import { ExcelFormulaAssistantModal } from '../../components/common/ExcelFormulas';
 
 const SpreadsheetPage = () => {
     const { user, isAdmin, hasPermission } = useAuth();
@@ -41,6 +42,7 @@ const SpreadsheetPage = () => {
     const [searchQuery, setSearchQuery] = useState('');
     const [deleteModalOpen, setDeleteModalOpen] = useState(false);
     const [wbToDelete, setWbToDelete] = useState(null);
+    const [showFormulaModal, setShowFormulaModal] = useState(false);
     const fileInputRef = React.useRef(null);
 
     const refreshList = () => {
@@ -191,6 +193,16 @@ const SpreadsheetPage = () => {
                 </div>
 
                 <div className="flex items-center space-x-2">
+                    <button
+                        type="button"
+                        onClick={() => setShowFormulaModal(true)}
+                        className="inline-flex items-center space-x-1.5 px-3 py-1.5 text-xs font-semibold text-blue-700 dark:text-blue-300 bg-blue-50 dark:bg-blue-950/40 border border-blue-200 dark:border-blue-800/40 hover:bg-blue-100 dark:hover:bg-blue-900/50 rounded-sm shadow-xs transition cursor-pointer"
+                        title="Browse 450+ Excel Formulas & Calculate"
+                    >
+                        <Calculator size={14} className="text-blue-600 dark:text-blue-400" />
+                        <span>Formula Assistant (fx)</span>
+                    </button>
+
                     {canWrite && (
                         <>
                             <input
@@ -359,6 +371,12 @@ const SpreadsheetPage = () => {
                 confirmText="Delete Spreadsheet"
                 cancelText="Cancel"
                 variant="danger"
+            />
+
+            {/* Excel Formula Assistant & Calculator Modal */}
+            <ExcelFormulaAssistantModal
+                isOpen={showFormulaModal}
+                onClose={() => setShowFormulaModal(false)}
             />
         </div>
     );

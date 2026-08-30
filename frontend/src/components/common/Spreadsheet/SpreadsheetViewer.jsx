@@ -39,6 +39,7 @@ import {
     deleteWorkbook,
     registerCustomFonts
 } from '../../../utils/spreadsheetConverters';
+import { ExcelFormulaAssistantModal } from '../ExcelFormulas';
 
 const SpreadsheetViewer = ({
     initialWorkbookId = null,
@@ -718,74 +719,17 @@ const SpreadsheetViewer = ({
                 </div>
             )}
 
-            {/* ─── MODAL 3: Formula Reference Cheatsheet ─────────────────────────────── */}
-            {showFormulaHelp && (
-                <div className="fixed inset-0 z-50 bg-black/50 backdrop-blur-sm flex items-center justify-center p-4">
-                    <div className="bg-white dark:bg-[#161b22] border border-gray-200 dark:border-gh-border rounded-sm shadow-2xl w-full max-w-2xl max-h-[85vh] flex flex-col overflow-hidden animate-in fade-in zoom-in-95">
-                        <div className="px-5 py-3 border-b border-gray-200 dark:border-gray-800 flex items-center justify-between bg-gray-50/50 dark:bg-gray-800/40">
-                            <div className="flex items-center space-x-2">
-                                <HelpCircle className="text-blue-600 dark:text-blue-400" size={18} />
-                                <div>
-                                    <h3 className="text-sm font-semibold text-gray-900 dark:text-white">
-                                        Formula & Function Cheatsheet
-                                    </h3>
-                                    <p className="text-[11px] text-gray-500 dark:text-gray-400">
-                                        300+ standard Excel functions supported in formulas (prefix with =)
-                                    </p>
-                                </div>
-                            </div>
-                            <button
-                                onClick={() => setShowFormulaHelp(false)}
-                                className="p-1 text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 rounded-sm"
-                            >
-                                <X size={16} />
-                            </button>
-                        </div>
-
-                        <div className="p-4 overflow-y-auto space-y-3 text-xs">
-                            <div className="p-2.5 bg-blue-50 dark:bg-blue-950/40 border border-blue-200 dark:border-blue-900/50 rounded-sm">
-                                <span className="font-semibold text-blue-800 dark:text-blue-300">Tip: </span>
-                                <span className="text-blue-700 dark:text-blue-400">
-                                    Type <code className="bg-blue-100 dark:bg-blue-900 px-1 py-0.5 rounded-xs font-mono">=</code> into any cell to begin writing formulas. Drag cell corner handle to auto-fill formula series down or across.
-                                </span>
-                            </div>
-
-                            <div className="grid grid-cols-1 md:grid-cols-2 gap-2.5">
-                                <div className="p-2.5 rounded-sm border border-gray-200 dark:border-gray-700 bg-gray-50/50 dark:bg-gray-800/30">
-                                    <div className="font-bold text-gray-900 dark:text-white mb-1">SUM / Math</div>
-                                    <code className="font-mono text-blue-600 dark:text-blue-400 block">=SUM(A1:A10)</code>
-                                    <p className="text-gray-500 mt-0.5 text-[11px]">Calculates the total of numbers in a range.</p>
-                                </div>
-                                <div className="p-2.5 rounded-sm border border-gray-200 dark:border-gray-700 bg-gray-50/50 dark:bg-gray-800/30">
-                                    <div className="font-bold text-gray-900 dark:text-white mb-1">AVERAGE / Statistics</div>
-                                    <code className="font-mono text-blue-600 dark:text-blue-400 block">=AVERAGE(B1:B20)</code>
-                                    <p className="text-gray-500 mt-0.5 text-[11px]">Calculates arithmetic mean of values.</p>
-                                </div>
-                                <div className="p-2.5 rounded-sm border border-gray-200 dark:border-gray-700 bg-gray-50/50 dark:bg-gray-800/30">
-                                    <div className="font-bold text-gray-900 dark:text-white mb-1">IF / Logic</div>
-                                    <code className="font-mono text-blue-600 dark:text-blue-400 block">=IF(C5&gt;1000, "High", "Normal")</code>
-                                    <p className="text-gray-500 mt-0.5 text-[11px]">Conditional value evaluation.</p>
-                                </div>
-                                <div className="p-2.5 rounded-sm border border-gray-200 dark:border-gray-700 bg-gray-50/50 dark:bg-gray-800/30">
-                                    <div className="font-bold text-gray-900 dark:text-white mb-1">VLOOKUP / Lookup</div>
-                                    <code className="font-mono text-blue-600 dark:text-blue-400 block">=VLOOKUP(A2, Sheet2!A:D, 3, FALSE)</code>
-                                    <p className="text-gray-500 mt-0.5 text-[11px]">Vertical table search and value extraction.</p>
-                                </div>
-                                <div className="p-2.5 rounded-sm border border-gray-200 dark:border-gray-700 bg-gray-50/50 dark:bg-gray-800/30">
-                                    <div className="font-bold text-gray-900 dark:text-white mb-1">COUNT / COUNTA</div>
-                                    <code className="font-mono text-blue-600 dark:text-blue-400 block">=COUNT(D1:D50)</code>
-                                    <p className="text-gray-500 mt-0.5 text-[11px]">Counts number of numeric or populated cells.</p>
-                                </div>
-                                <div className="p-2.5 rounded-sm border border-gray-200 dark:border-gray-700 bg-gray-50/50 dark:bg-gray-800/30">
-                                    <div className="font-bold text-gray-900 dark:text-white mb-1">CONCATENATE / Text</div>
-                                    <code className="font-mono text-blue-600 dark:text-blue-400 block">=CONCATENATE(A2, " - ", B2)</code>
-                                    <p className="text-gray-500 mt-0.5 text-[11px]">Combines text strings together.</p>
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-            )}
+            {/* ─── MODAL 3: Excel Formula Assistant & Interactive Calculator ──────── */}
+            <ExcelFormulaAssistantModal
+                isOpen={showFormulaHelp}
+                onClose={() => setShowFormulaHelp(false)}
+                onInsertFormula={(insertedFormula) => {
+                    if (navigator.clipboard) {
+                        navigator.clipboard.writeText(insertedFormula);
+                    }
+                    customToast.success(`Copied "${insertedFormula}" to clipboard. Click any cell to paste or type formulas.`, 'Formula Ready');
+                }}
+            />
 
             {/* ─── MODAL 4: Delete Workbook Confirmation ───────────────────────────── */}
             <ConfirmModal
