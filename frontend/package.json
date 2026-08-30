@@ -10,6 +10,7 @@
     "preview": "vite preview"
   },
   "dependencies": {
+    "@formulajs/formulajs": "^4.6.1",
     "@fortune-sheet/core": "^1.0.4",
     "@fortune-sheet/react": "^1.0.4",
     "@mlightcad/cad-simple-viewer": "1.5.7",
