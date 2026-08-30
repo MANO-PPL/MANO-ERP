@@ -21,6 +21,10 @@ import {
     Sparkles
 } from 'lucide-react';
 
+/**
+ * ExcelToolbar - Modernized Spreadsheet Toolbar with Excel Tools Dropdown
+ * Provides search, filter, bulk selection actions, imports, and demo templates.
+ */
 export const ExcelToolbar = ({
     entityName = 'Items',
     searchTerm,

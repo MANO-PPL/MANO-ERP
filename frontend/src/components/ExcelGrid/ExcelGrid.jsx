@@ -19,6 +19,10 @@ import ConfirmModal from '../ConfirmModal';
 import Toast from '../Toast';
 import { ChevronDown, ChevronLeft, ChevronRight, Check } from 'lucide-react';
 
+/**
+ * ExcelGrid - Unified Enterprise Spreadsheet Grid Component
+ * Supports dynamic formulas, inline multi-cell editing, real-time imports, and responsive drawers.
+ */
 const PageSizeDropdown = ({ pageSize, setPageSize, totalCount }) => {
     const [isOpen, setIsOpen] = useState(false);
     const options = [50, 100, 250, 500, 1000, 'All'];

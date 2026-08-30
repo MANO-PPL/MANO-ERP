@@ -1,4 +1,4 @@
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useMemo } from 'react';
 import * as XLSX from 'xlsx';
 import Papa from 'papaparse';
 import {
@@ -6,12 +6,29 @@ import {
     ClipboardPaste,
     FileSpreadsheet,
     FileText,
-    CheckCircle,
+    CheckCircle2,
     X,
     Check,
-    AlertCircle
+    AlertCircle,
+    Download,
+    Copy,
+    ChevronDown,
+    ChevronUp,
+    Sparkles,
+    Eye,
+    TableProperties,
+    Layers,
+    ShieldAlert,
+    ArrowRight
 } from 'lucide-react';
-import { parseRawRowsToEntities, parseTSV } from './excelUtils';
+import {
+    parseRawRowsToEntities,
+    parseTSV,
+    stringifyTSV,
+    generateDemoSampleRows,
+    downloadExcelTemplate,
+    downloadCSVTemplate
+} from './excelUtils';
 
 export const ExcelImportModal = ({
     isOpen,
@@ -28,7 +45,28 @@ export const ExcelImportModal = ({
     const [parsedData, setParsedData] = useState([]);
     const [importMode, setImportMode] = useState('append'); // 'append' | 'replace'
     const [errorMsg, setErrorMsg] = useState('');
+    const [isCopiedSample, setIsCopiedSample] = useState(false);
+    const [showDemoPreview, setShowDemoPreview] = useState(false);
     const fileInputRef = useRef(null);
+
+    const visibleCols = useMemo(() => {
+        return columns.filter(c => !c.readOnly && c.key !== 'permissions_access' && c.key !== 'permissions_action');
+    }, [columns]);
+
+    const demoSampleRows = useMemo(() => {
+        return generateDemoSampleRows(visibleCols, entityName);
+    }, [visibleCols, entityName]);
+
+    // Calculate validation issue count in parsed data
+    const validationIssues = useMemo(() => {
+        let count = 0;
+        parsedData.forEach(row => {
+            if (row._errors && Object.keys(row._errors).length > 0) {
+                count += Object.keys(row._errors).length;
+            }
+        });
+        return count;
+    }, [parsedData]);
 
     if (!isOpen) return null;
 
@@ -111,6 +149,27 @@ export const ExcelImportModal = ({
         }
     };
 
+    const handleCopyDemoSample = () => {
+        if (demoSampleRows.length === 0) return;
+        const headers = visibleCols.map(c => c.label || c.key);
+        const dataRows = demoSampleRows.map(r => visibleCols.map(c => r[c.key] ?? ''));
+        const matrix = [headers, ...dataRows];
+        const tsv = stringifyTSV(matrix);
+
+        navigator.clipboard.writeText(tsv).then(() => {
+            setIsCopiedSample(true);
+            setTimeout(() => setIsCopiedSample(false), 2000);
+        });
+    };
+
+    const handleLoadSampleDataIntoPaste = () => {
+        const headers = visibleCols.map(c => c.label || c.key);
+        const dataRows = demoSampleRows.map(r => visibleCols.map(c => r[c.key] ?? ''));
+        const matrix = [headers, ...dataRows];
+        const tsv = stringifyTSV(matrix);
+        handlePasteTextParse(tsv);
+    };
+
     const handleCommit = () => {
         if (parsedData.length === 0) return;
         onCommitImport(parsedData, importMode);
@@ -118,68 +177,179 @@ export const ExcelImportModal = ({
     };
 
     return (
-        <div className="fixed inset-0 z-[6000] bg-black/60 backdrop-blur-xs flex items-center justify-center p-4">
-            <div className="bg-white dark:bg-[#161b22] border border-gray-200 dark:border-white/10 rounded-xl shadow-2xl w-full max-w-3xl max-h-[90vh] flex flex-col overflow-hidden animate-in fade-in zoom-in-95">
+        <>
+            {/* Backdrop */}
+            <div
+                className="fixed inset-0 z-[6000] bg-black/40 backdrop-blur-xs animate-in fade-in duration-200"
+                onClick={onClose}
+            />
+
+            {/* Generous High-Visibility Right Slide-in Sidebar Drawer */}
+            <div className="fixed inset-y-0 right-0 w-full max-w-2xl md:max-w-3xl lg:max-w-4xl bg-white dark:bg-[#161b22] shadow-2xl z-[6001] flex flex-col border-l border-gray-200 dark:border-white/10 animate-in slide-in-from-right duration-200">
                 {/* Header */}
-                <div className="px-5 py-3.5 border-b border-gray-200 dark:border-white/10 flex items-center justify-between bg-gray-50/50 dark:bg-white/[0.02]">
-                    <div className="flex items-center gap-2.5">
-                        <div className="p-2 rounded-lg bg-blue-50 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400">
+                <div className="px-5 py-3 border-b border-gray-100 dark:border-white/10 flex items-center justify-between shrink-0 bg-gray-50/50 dark:bg-[#0d1117]">
+                    <div className="flex items-center gap-3">
+                        <div className="w-8 h-8 rounded-lg bg-blue-50 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400 flex items-center justify-center border border-blue-200/50 dark:border-blue-500/20 shadow-2xs">
                             <FileSpreadsheet size={18} />
                         </div>
                         <div>
-                            <h3 className="text-sm font-bold text-gray-900 dark:text-white">
-                                Import {entityName} Spreadsheet
-                            </h3>
+                            <div className="flex items-center gap-2">
+                                <h2 className="text-sm font-bold text-gray-900 dark:text-white">
+                                    Import {entityName} Spreadsheet
+                                </h2>
+                                <span className="px-2 py-0.5 rounded-md bg-blue-100 dark:bg-blue-900/40 text-blue-700 dark:text-blue-300 text-[10px] font-bold">
+                                    Excel / CSV
+                                </span>
+                            </div>
                             <p className="text-xs text-gray-500 dark:text-gray-400">
-                                Upload Excel/CSV file or paste copied cells directly from Excel
+                                Upload a spreadsheet file or paste copied cells directly for real-time validation and import
                             </p>
                         </div>
                     </div>
                     <button
+                        type="button"
                         onClick={onClose}
-                        className="p-1 rounded-lg text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 hover:bg-gray-100 dark:hover:bg-white/5 transition"
+                        className="p-1.5 rounded-lg text-gray-400 hover:text-gray-600 dark:hover:text-white hover:bg-gray-100 dark:hover:bg-white/5 transition cursor-pointer"
                     >
-                        <X size={16} />
+                        <X size={18} />
                     </button>
                 </div>
 
-                {/* Tabs */}
-                <div className="px-5 pt-3 border-b border-gray-200 dark:border-white/10 flex items-center gap-4 bg-gray-50/20 dark:bg-transparent text-xs font-bold">
+                {/* Tab Switcher */}
+                <div className="px-5 pt-2 border-b border-gray-100 dark:border-white/10 flex items-center gap-4 bg-gray-50/30 dark:bg-transparent text-xs font-bold shrink-0">
                     <button
+                        type="button"
                         onClick={() => {
                             setActiveTab('upload');
                             setErrorMsg('');
                         }}
-                        className={`pb-2.5 flex items-center gap-1.5 border-b-2 transition-colors cursor-pointer ${
+                        className={`pb-2 flex items-center gap-1.5 border-b-2 transition-colors cursor-pointer ${
                             activeTab === 'upload'
-                                ? 'border-blue-600 text-blue-600 dark:border-blue-400 dark:text-blue-400'
+                                ? 'border-blue-600 text-blue-600 dark:border-blue-400 dark:text-blue-400 font-bold'
                                 : 'border-transparent text-gray-500 hover:text-gray-700 dark:text-gray-400'
                         }`}
                     >
-                        <UploadCloud size={14} />
+                        <UploadCloud size={15} />
                         <span>Upload File (.xlsx, .csv)</span>
                     </button>
                     <button
+                        type="button"
                         onClick={() => {
                             setActiveTab('paste');
                             setErrorMsg('');
                         }}
-                        className={`pb-2.5 flex items-center gap-1.5 border-b-2 transition-colors cursor-pointer ${
+                        className={`pb-2 flex items-center gap-1.5 border-b-2 transition-colors cursor-pointer ${
                             activeTab === 'paste'
-                                ? 'border-blue-600 text-blue-600 dark:border-blue-400 dark:text-blue-400'
+                                ? 'border-blue-600 text-blue-600 dark:border-blue-400 dark:text-blue-400 font-bold'
                                 : 'border-transparent text-gray-500 hover:text-gray-700 dark:text-gray-400'
                         }`}
                     >
-                        <ClipboardPaste size={14} />
+                        <ClipboardPaste size={15} />
                         <span>Paste from Excel / Clipboard</span>
                     </button>
                 </div>
 
                 {/* Body Content */}
-                <div className="p-5 overflow-y-auto space-y-4 flex-1">
+                <div className="p-4 overflow-y-auto space-y-3.5 flex-1 custom-scrollbar">
+                    {/* Starter Demo Template Box */}
+                    <div className="p-3 bg-gradient-to-br from-blue-50/80 to-indigo-50/40 dark:from-blue-950/30 dark:to-indigo-950/20 border border-blue-200/70 dark:border-blue-800/40 rounded-xl space-y-2.5">
+                        <div className="flex items-center justify-between">
+                            <div className="flex items-center gap-2">
+                                <Sparkles size={15} className="text-blue-600 dark:text-blue-400" />
+                                <span className="text-xs font-bold text-gray-900 dark:text-white">
+                                    Starter Demo Template
+                                </span>
+                                <span className="text-[11px] text-gray-500 dark:text-gray-400 hidden sm:inline">
+                                    — formatted sample data for {entityName}
+                                </span>
+                            </div>
+                            <button
+                                type="button"
+                                onClick={() => setShowDemoPreview(!showDemoPreview)}
+                                className="flex items-center gap-1 text-xs font-bold text-blue-600 dark:text-blue-400 hover:underline cursor-pointer"
+                            >
+                                <Eye size={13} />
+                                <span>{showDemoPreview ? 'Hide Sample Preview' : 'Preview Sample Structure'}</span>
+                                {showDemoPreview ? <ChevronUp size={13} /> : <ChevronDown size={13} />}
+                            </button>
+                        </div>
+
+                        {/* Quick Action Download / Copy Buttons */}
+                        <div className="flex flex-wrap items-center gap-2">
+                            <button
+                                type="button"
+                                onClick={() => downloadExcelTemplate(columns, entityName, true)}
+                                className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-xs font-bold shadow-xs transition-all flex items-center gap-1.5 cursor-pointer active:scale-95"
+                                title={`Download pre-filled ${entityName} Excel template`}
+                            >
+                                <Download size={13} className="stroke-[2.5]" />
+                                <span>Download Demo (.xlsx)</span>
+                            </button>
+
+                            <button
+                                type="button"
+                                onClick={() => downloadCSVTemplate(columns, entityName, true)}
+                                className="px-3 py-1.5 bg-white dark:bg-[#161b22] hover:bg-gray-50 dark:hover:bg-white/5 border border-gray-200 dark:border-white/10 text-gray-800 dark:text-gray-200 rounded-lg text-xs font-semibold transition-all flex items-center gap-1.5 cursor-pointer shadow-2xs"
+                                title={`Download pre-filled ${entityName} CSV template`}
+                            >
+                                <FileText size={13} className="text-blue-500" />
+                                <span>Download CSV (.csv)</span>
+                            </button>
+
+                            <button
+                                type="button"
+                                onClick={handleCopyDemoSample}
+                                className={`px-3 py-1.5 rounded-lg text-xs font-semibold border transition-all flex items-center gap-1.5 cursor-pointer ${
+                                    isCopiedSample
+                                        ? 'bg-emerald-50 text-emerald-700 border-emerald-300 dark:bg-emerald-950/40 dark:text-emerald-300'
+                                        : 'bg-white dark:bg-[#161b22] text-gray-700 dark:text-gray-300 border-gray-200 dark:border-white/10 hover:bg-gray-50 dark:hover:bg-white/5'
+                                }`}
+                                title="Copy sample table rows to clipboard for instant pasting"
+                            >
+                                {isCopiedSample ? <Check size={13} className="text-emerald-600 stroke-[3]" /> : <Copy size={13} className="text-purple-500" />}
+                                <span>{isCopiedSample ? 'Copied to Clipboard!' : 'Copy Sample Rows'}</span>
+                            </button>
+                        </div>
+
+                        {/* Collapsible Sample Table Preview */}
+                        {showDemoPreview && (
+                            <div className="pt-1.5 space-y-1.5 animate-in fade-in duration-150">
+                                <div className="max-h-36 overflow-auto border border-blue-200 dark:border-blue-800/40 rounded-xl text-xs bg-white dark:bg-[#161b22] scrollbar-thin">
+                                    <table className="w-full border-collapse">
+                                        <thead className="sticky top-0 bg-blue-50 dark:bg-blue-950/90 text-[10px] uppercase font-bold text-blue-900 dark:text-blue-200 border-b border-blue-200 dark:border-blue-800/40">
+                                            <tr>
+                                                <th className="px-3 py-2 text-center w-8">#</th>
+                                                {visibleCols.map(c => (
+                                                    <th key={c.key} className="px-3 py-2 text-left truncate min-w-[130px]">
+                                                        {c.label || c.key}
+                                                        {c.required && <span className="text-red-500 ml-0.5">*</span>}
+                                                    </th>
+                                                ))}
+                                            </tr>
+                                        </thead>
+                                        <tbody className="divide-y divide-gray-100 dark:divide-white/5 text-xs">
+                                            {demoSampleRows.map((r, i) => (
+                                                <tr key={i} className="hover:bg-blue-50/30 dark:hover:bg-white/[0.02]">
+                                                    <td className="px-3 py-2 text-center text-gray-400 font-mono text-[11px]">
+                                                        {i + 1}
+                                                    </td>
+                                                    {visibleCols.map(c => (
+                                                        <td key={c.key} className="px-3 py-2 truncate max-w-[180px] text-gray-800 dark:text-gray-200 font-medium">
+                                                            {r[c.key] !== undefined && r[c.key] !== null ? String(r[c.key]) : '—'}
+                                                        </td>
+                                                    ))}
+                                                </tr>
+                                            ))}
+                                        </tbody>
+                                    </table>
+                                </div>
+                            </div>
+                        )}
+                    </div>
+
                     {/* Tab 1: Upload File */}
                     {activeTab === 'upload' && (
-                        <div>
+                        <div className="space-y-2">
                             <input
                                 ref={fileInputRef}
                                 type="file"
@@ -194,131 +364,207 @@ export const ExcelImportModal = ({
                                     e.preventDefault();
                                     handleFile(e.dataTransfer.files?.[0]);
                                 }}
-                                className="border-2 border-dashed border-gray-300 dark:border-white/10 hover:border-blue-500 dark:hover:border-blue-500/50 rounded-xl p-8 text-center cursor-pointer transition-all bg-gray-50/50 dark:bg-white/[0.01]"
+                                className="border-2 border-dashed border-gray-300 dark:border-white/10 hover:border-blue-500 dark:hover:border-blue-500/50 rounded-xl p-5 text-center cursor-pointer transition-all bg-gray-50/50 dark:bg-white/[0.01] hover:bg-blue-50/20 group"
                             >
-                                <UploadCloud size={36} className="mx-auto text-blue-600 dark:text-blue-400 mb-2" />
+                                <UploadCloud size={28} className="mx-auto text-blue-600 dark:text-blue-400 mb-1.5 stroke-[1.8] group-hover:scale-110 transition-transform" />
                                 <p className="text-xs font-bold text-gray-800 dark:text-gray-200">
-                                    {fileName ? fileName : 'Click to select or drag & drop spreadsheet file'}
+                                    {fileName ? fileName : 'Click to browse or drag & drop spreadsheet file (.xlsx, .csv)'}
                                 </p>
-                                <p className="text-[11px] text-gray-400 mt-1">Supports Microsoft Excel (.xlsx, .xls) and CSV (.csv)</p>
+                                <p className="text-[11px] text-gray-400 mt-0.5">Supports Microsoft Excel (.xlsx, .xls) and standard CSV (.csv)</p>
                             </div>
                         </div>
                     )}
 
                     {/* Tab 2: Paste Textarea */}
                     {activeTab === 'paste' && (
-                        <div>
+                        <div className="space-y-1.5">
+                            <div className="flex items-center justify-between">
+                                <label className="block text-xs font-bold text-gray-700 dark:text-gray-300">
+                                    Paste table cells copied directly from Excel (Ctrl + V):
+                                </label>
+                                <button
+                                    type="button"
+                                    onClick={handleLoadSampleDataIntoPaste}
+                                    className="text-xs font-bold text-blue-600 dark:text-blue-400 hover:underline flex items-center gap-1 cursor-pointer"
+                                    title="Load starter demo sample rows into this box"
+                                >
+                                    <Sparkles size={13} />
+                                    <span>Fill with Demo Sample</span>
+                                </button>
+                            </div>
                             <textarea
-                                rows={6}
+                                rows={4}
                                 value={pasteText}
                                 onChange={(e) => handlePasteTextParse(e.target.value)}
                                 placeholder="Click here and press Ctrl+V to paste copied cells from Microsoft Excel or Google Sheets..."
-                                className="w-full p-3 text-xs font-mono bg-gray-50 dark:bg-white/5 border border-gray-200 dark:border-white/10 rounded-lg text-gray-900 dark:text-white placeholder-gray-400 focus:outline-none focus:ring-1 focus:ring-blue-500"
+                                className="w-full p-2.5 text-xs font-mono bg-gray-50 dark:bg-white/5 border border-gray-200 dark:border-white/10 rounded-xl text-gray-900 dark:text-white placeholder-gray-400 focus:outline-none focus:ring-1 focus:ring-blue-500 leading-relaxed"
                             />
                         </div>
                     )}
 
                     {/* Error Message */}
                     {errorMsg && (
-                        <div className="flex items-center gap-2 p-3 bg-red-50 dark:bg-red-950/30 border border-red-200 dark:border-red-500/20 text-red-600 dark:text-red-400 rounded-lg text-xs font-semibold">
+                        <div className="flex items-center gap-2 p-2.5 bg-red-50 dark:bg-red-950/30 border border-red-200 dark:border-red-500/20 text-red-600 dark:text-red-400 rounded-xl text-xs font-semibold animate-in fade-in">
                             <AlertCircle size={14} className="shrink-0" />
                             <span>{errorMsg}</span>
                         </div>
                     )}
 
-                    {/* Preview Table */}
+                    {/* Real-time Data Preview & Confirmation Card */}
                     {parsedData.length > 0 && (
-                        <div className="space-y-2">
-                            <div className="flex items-center justify-between">
-                                <span className="text-xs font-bold text-gray-800 dark:text-gray-200 flex items-center gap-1.5">
-                                    <CheckCircle size={14} className="text-emerald-500" />
-                                    Parsed {parsedData.length} valid row(s) ready to import
-                                </span>
+                        <div className="space-y-3 pt-1 animate-in fade-in duration-200">
+                            {/* Live Status and Mode Bar */}
+                            <div className="p-3 bg-gray-50/80 dark:bg-white/[0.03] border border-gray-200 dark:border-white/10 rounded-xl flex flex-wrap items-center justify-between gap-3">
+                                <div className="flex items-center gap-2">
+                                    <span className="w-2.5 h-2.5 rounded-full bg-emerald-500 animate-pulse" />
+                                    <span className="text-xs font-bold text-gray-900 dark:text-white flex items-center gap-1.5">
+                                        <CheckCircle2 size={15} className="text-emerald-500" />
+                                        <span>{parsedData.length} Row(s) Parsed in Real-Time</span>
+                                    </span>
+                                    {validationIssues > 0 && (
+                                        <span className="px-2 py-0.5 rounded-md bg-amber-50 dark:bg-amber-950/40 text-amber-700 dark:text-amber-400 text-[10px] font-bold border border-amber-200 dark:border-amber-800/50 flex items-center gap-1">
+                                            <ShieldAlert size={12} />
+                                            <span>{validationIssues} field warning(s)</span>
+                                        </span>
+                                    )}
+                                </div>
 
-                                {/* Append vs Replace Mode */}
-                                <div className="flex items-center gap-2 text-xs font-semibold">
-                                    <label className="flex items-center gap-1.5 cursor-pointer">
-                                        <input
-                                            type="radio"
-                                            name="importMode"
-                                            value="append"
-                                            checked={importMode === 'append'}
-                                            onChange={() => setImportMode('append')}
-                                            className="text-blue-600 focus:ring-blue-500"
-                                        />
-                                        <span>Append to Table</span>
-                                    </label>
-                                    <label className="flex items-center gap-1.5 cursor-pointer ml-2">
-                                        <input
-                                            type="radio"
-                                            name="importMode"
-                                            value="replace"
-                                            checked={importMode === 'replace'}
-                                            onChange={() => setImportMode('replace')}
-                                            className="text-blue-600 focus:ring-blue-500"
-                                        />
-                                        <span>Replace Existing</span>
-                                    </label>
+                                {/* Append vs Replace Mode Switcher */}
+                                <div className="flex items-center gap-2 text-xs font-semibold bg-white dark:bg-[#161b22] p-1 rounded-lg border border-gray-200 dark:border-white/10 shadow-2xs">
+                                    <button
+                                        type="button"
+                                        onClick={() => setImportMode('append')}
+                                        className={`px-2.5 py-1 rounded-md transition-all cursor-pointer ${
+                                            importMode === 'append'
+                                                ? 'bg-blue-600 text-white font-bold shadow-2xs'
+                                                : 'text-gray-600 dark:text-gray-400 hover:text-gray-900'
+                                        }`}
+                                    >
+                                        Append (+{parsedData.length})
+                                    </button>
+                                    <button
+                                        type="button"
+                                        onClick={() => setImportMode('replace')}
+                                        className={`px-2.5 py-1 rounded-md transition-all cursor-pointer ${
+                                            importMode === 'replace'
+                                                ? 'bg-blue-600 text-white font-bold shadow-2xs'
+                                                : 'text-gray-600 dark:text-gray-400 hover:text-gray-900'
+                                        }`}
+                                    >
+                                        Replace Existing
+                                    </button>
                                 </div>
                             </div>
 
-                            {/* Preview Grid Table */}
-                            <div className="max-h-48 overflow-auto border border-gray-200 dark:border-white/10 rounded-lg text-xs scrollbar-thin">
-                                <table className="w-full border-collapse">
-                                    <thead className="sticky top-0 bg-gray-100 dark:bg-[#161b22] text-[10px] uppercase font-bold text-gray-500 dark:text-gray-400 border-b border-gray-200 dark:border-white/10">
-                                        <tr>
-                                            <th className="px-2.5 py-1.5 text-center w-8">#</th>
-                                            {columns.slice(0, 6).map((c) => (
-                                                <th key={c.key} className="px-2.5 py-1.5 text-left truncate">
-                                                    {c.label || c.key}
+                            {/* Clear, Large Real-Time Table Preview */}
+                            <div className="space-y-1.5">
+                                <div className="flex items-center justify-between text-[11px] font-bold text-gray-500 dark:text-gray-400 uppercase tracking-wider">
+                                    <span>Real-Time Data Verification Preview:</span>
+                                    <span>{visibleCols.length} Columns Mapped</span>
+                                </div>
+
+                                <div className="max-h-64 overflow-auto border border-gray-200 dark:border-white/10 rounded-xl text-xs bg-white dark:bg-[#161b22] shadow-xs scrollbar-thin">
+                                    <table className="w-full border-collapse">
+                                        <thead className="sticky top-0 bg-gray-100 dark:bg-[#0d1117] text-[11px] uppercase font-bold text-gray-600 dark:text-gray-300 border-b border-gray-200 dark:border-white/10 z-10">
+                                            <tr>
+                                                <th className="px-3 py-2.5 text-center w-10 border-r border-gray-200 dark:border-white/10">
+                                                    #
                                                 </th>
-                                            ))}
-                                        </tr>
-                                    </thead>
-                                    <tbody className="divide-y divide-gray-100 dark:divide-white/5">
-                                        {parsedData.slice(0, 10).map((r, i) => (
-                                            <tr key={i} className="hover:bg-gray-50 dark:hover:bg-white/[0.02]">
-                                                <td className="px-2.5 py-1.5 text-center text-gray-400 font-mono text-[10px]">
-                                                    {i + 1}
-                                                </td>
-                                                {columns.slice(0, 6).map((c) => (
-                                                    <td key={c.key} className="px-2.5 py-1.5 truncate max-w-[140px] text-gray-800 dark:text-gray-200">
-                                                        {r[c.key] !== undefined && r[c.key] !== null ? String(r[c.key]) : '—'}
-                                                    </td>
+                                                {visibleCols.map((c) => (
+                                                    <th key={c.key} className="px-3.5 py-2.5 text-left truncate min-w-[150px] border-r border-gray-200/50 dark:border-white/5 last:border-r-0">
+                                                        <div className="flex items-center justify-between">
+                                                            <span>{c.label || c.key}</span>
+                                                            {c.required && <span className="text-red-500 font-bold ml-1">*</span>}
+                                                        </div>
+                                                    </th>
                                                 ))}
                                             </tr>
-                                        ))}
-                                    </tbody>
-                                </table>
+                                        </thead>
+                                        <tbody className="divide-y divide-gray-100 dark:divide-white/5">
+                                            {parsedData.map((r, i) => (
+                                                <tr key={i} className="hover:bg-blue-50/30 dark:hover:bg-white/[0.02] transition-colors">
+                                                    <td className="px-3 py-2.5 text-center text-gray-400 font-mono text-xs border-r border-gray-100 dark:border-white/5">
+                                                        {i + 1}
+                                                    </td>
+                                                    {visibleCols.map((c) => {
+                                                        const val = r[c.key];
+                                                        const hasError = r._errors?.[c.key];
+                                                        return (
+                                                            <td
+                                                                key={c.key}
+                                                                className={`px-3.5 py-2.5 truncate max-w-[220px] font-medium border-r border-gray-100 dark:border-white/5 last:border-r-0 ${
+                                                                    hasError
+                                                                        ? 'bg-red-50/50 dark:bg-red-950/20 text-red-600 dark:text-red-400 font-bold'
+                                                                        : 'text-gray-900 dark:text-gray-100'
+                                                                }`}
+                                                                title={hasError || String(val || '')}
+                                                            >
+                                                                {val !== undefined && val !== null && String(val).trim() !== '' ? (
+                                                                    String(val)
+                                                                ) : (
+                                                                    <span className="text-gray-400 dark:text-gray-600 italic">
+                                                                        {c.required ? 'Missing Required *' : '—'}
+                                                                    </span>
+                                                                )}
+                                                            </td>
+                                                        );
+                                                    })}
+                                                </tr>
+                                            ))}
+                                        </tbody>
+                                    </table>
+                                </div>
                             </div>
-                            {parsedData.length > 10 && (
-                                <p className="text-[10px] text-gray-400 italic">Showing first 10 of {parsedData.length} rows</p>
-                            )}
+
+                            {/* Confirmation Callout Banner */}
+                            <div className="p-3 bg-blue-50/60 dark:bg-blue-950/30 border border-blue-200/80 dark:border-blue-800/40 rounded-xl flex items-center justify-between gap-3">
+                                <div className="text-xs text-blue-900 dark:text-blue-200">
+                                    <span className="font-bold">Confirmation Summary:</span> Ready to {importMode === 'append' ? 'append' : 'replace with'}{' '}
+                                    <span className="font-extrabold">{parsedData.length} row(s)</span> into the <span className="font-bold">{entityName}</span> table.
+                                </div>
+                                <button
+                                    type="button"
+                                    onClick={handleCommit}
+                                    className="px-3.5 py-1.5 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-xs font-bold transition shadow-xs cursor-pointer flex items-center gap-1.5 shrink-0 active:scale-95"
+                                >
+                                    <span>Proceed Import</span>
+                                    <ArrowRight size={13} />
+                                </button>
+                            </div>
                         </div>
                     )}
                 </div>
 
-                {/* Footer */}
-                <div className="px-5 py-3 border-t border-gray-200 dark:border-white/10 flex items-center justify-end gap-2 bg-gray-50/50 dark:bg-white/[0.02]">
-                    <button
-                        type="button"
-                        onClick={onClose}
-                        className="px-3.5 py-1.5 text-xs font-semibold text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-white/5 rounded-lg transition"
-                    >
-                        Cancel
-                    </button>
-                    <button
-                        type="button"
-                        onClick={handleCommit}
-                        disabled={parsedData.length === 0}
-                        className="px-4 py-1.5 bg-blue-600 hover:bg-blue-700 disabled:opacity-40 disabled:hover:bg-blue-600 text-white rounded-lg text-xs font-bold transition shadow-xs cursor-pointer flex items-center gap-1.5"
-                    >
-                        <Check size={13} className="stroke-[3]" />
-                        <span>Import {parsedData.length > 0 ? `(${parsedData.length} Rows)` : ''}</span>
-                    </button>
+                {/* Sticky Bottom Footer */}
+                <div className="px-5 py-3 border-t border-gray-100 dark:border-white/10 flex items-center justify-between shrink-0 bg-white dark:bg-[#161b22]">
+                    <div className="text-xs text-gray-500 dark:text-gray-400">
+                        {parsedData.length > 0 ? (
+                            <span>{parsedData.length} item(s) selected for import</span>
+                        ) : (
+                            <span>Select file or paste text to preview</span>
+                        )}
+                    </div>
+                    <div className="flex items-center gap-2">
+                        <button
+                            type="button"
+                            onClick={onClose}
+                            className="px-3.5 py-1.5 text-xs font-semibold text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-white/5 rounded-lg transition cursor-pointer"
+                        >
+                            Cancel
+                        </button>
+                        <button
+                            type="button"
+                            onClick={handleCommit}
+                            disabled={parsedData.length === 0}
+                            className="px-4 py-1.5 bg-blue-600 hover:bg-blue-700 disabled:opacity-40 disabled:hover:bg-blue-600 text-white rounded-lg text-xs font-bold transition shadow-xs cursor-pointer flex items-center gap-1.5 active:scale-95"
+                        >
+                            <Check size={14} className="stroke-[3]" />
+                            <span>Import {parsedData.length > 0 ? `(${parsedData.length} Rows)` : ''}</span>
+                        </button>
+                    </div>
                 </div>
             </div>
-        </div>
+        </>
     );
 };
 

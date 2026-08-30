@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import {
     UserPlus, Search, MoreHorizontal, Filter, Download,
     Mail, Shield, Calendar, X, Upload, FileText,
@@ -11,6 +11,8 @@ import {
 import { toast } from 'react-toastify';
 import { adminApi } from '../../services/adminApi';
 import { projectApi } from '../../services/projectApi';
+import { ExcelGrid } from '../../components/ExcelGrid';
+import { useAuth } from '../../context/AuthContext';
 
 // ─── Base Page Tree Structure (System Modules) ─────────────────────────────
 const BASE_PAGE_TREE = [
@@ -1175,13 +1177,274 @@ const UserDetailDrawer = ({ user, open, onClose, onUpdate, onDelete, initialEdit
 };
 
 // ─── Permission Templates Manager Tab View ─────────────────────────────────────
+// ─── Assign Template to Employees Drawer (Right Sidebar Popup) ────────────────
+const AssignTemplateDrawer = ({
+    open,
+    onClose,
+    template,
+    users = [],
+    onAssign
+}) => {
+    const [search, setSearch] = useState('');
+    const [selectedDept, setSelectedDept] = useState('All');
+    const [selectedUserIds, setSelectedUserIds] = useState(new Set());
+    const [isSaving, setIsSaving] = useState(false);
+
+    useEffect(() => {
+        if (template && open) {
+            // Pre-select users who currently have this template
+            const currentAssigned = users
+                .filter(u => u.template_name === template.name || String(u.template_id) === String(template.id))
+                .map(u => u.id);
+            setSelectedUserIds(new Set(currentAssigned));
+            setSearch('');
+            setSelectedDept('All');
+        }
+    }, [template, open, users]);
+
+    if (!open || !template) return null;
+
+    const allDepts = ['All', ...Array.from(new Set(users.map(u => u.department).filter(Boolean)))];
+
+    const filteredUsers = users.filter(u => {
+        const matchesDept = selectedDept === 'All' || u.department === selectedDept;
+        const matchesSearch = !search.trim() ||
+            (u.name || '').toLowerCase().includes(search.toLowerCase()) ||
+            (u.email || '').toLowerCase().includes(search.toLowerCase()) ||
+            (u.department || '').toLowerCase().includes(search.toLowerCase());
+        return matchesDept && matchesSearch;
+    });
+
+    const toggleUser = (id) => {
+        const next = new Set(selectedUserIds);
+        if (next.has(id)) next.delete(id);
+        else next.add(id);
+        setSelectedUserIds(next);
+    };
+
+    const handleSelectAllFiltered = () => {
+        const next = new Set(selectedUserIds);
+        filteredUsers.forEach(u => next.add(u.id));
+        setSelectedUserIds(next);
+    };
+
+    const handleClearFiltered = () => {
+        const next = new Set(selectedUserIds);
+        filteredUsers.forEach(u => next.delete(u.id));
+        setSelectedUserIds(next);
+    };
+
+    const handleConfirm = async () => {
+        setIsSaving(true);
+        try {
+            await onAssign(template, Array.from(selectedUserIds));
+            onClose();
+        } catch (e) {
+            console.error(e);
+        } finally {
+            setIsSaving(false);
+        }
+    };
+
+    return (
+        <>
+            <div className="fixed inset-0 bg-black/40 backdrop-blur-xs z-[6000]" onClick={onClose} />
+            <div className="fixed inset-y-0 right-0 w-full max-w-xl md:max-w-2xl bg-white dark:bg-[#161b22] shadow-2xl z-[6001] flex flex-col border-l border-gray-200 dark:border-white/10 animate-in slide-in-from-right duration-200">
+                {/* Header */}
+                <div className="px-5 py-3.5 border-b border-gray-100 dark:border-white/10 flex items-center justify-between shrink-0 bg-gray-50/50 dark:bg-[#0d1117]">
+                    <div className="flex items-center gap-3">
+                        <div className="w-9 h-9 rounded-xl bg-blue-50 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400 flex items-center justify-center border border-blue-200/50 dark:border-blue-500/20 shadow-2xs">
+                            <UserPlus size={18} />
+                        </div>
+                        <div>
+                            <div className="flex items-center gap-2">
+                                <h2 className="text-sm font-bold text-gray-900 dark:text-white">
+                                    Assign Template: {template.name}
+                                </h2>
+                                <span className="px-2 py-0.5 rounded-md bg-blue-100 dark:bg-blue-900/40 text-blue-700 dark:text-blue-300 text-[10px] font-bold">
+                                    System Scope
+                                </span>
+                            </div>
+                            <p className="text-xs text-gray-500 dark:text-gray-400">
+                                Select employees to batch-assign this template and synchronize their page permissions
+                            </p>
+                        </div>
+                    </div>
+                    <button
+                        type="button"
+                        onClick={onClose}
+                        className="p-1.5 rounded-lg text-gray-400 hover:text-gray-600 dark:hover:text-white hover:bg-gray-100 dark:hover:bg-white/5 transition cursor-pointer"
+                    >
+                        <X size={18} />
+                    </button>
+                </div>
+
+                {/* Filter and Search Bar */}
+                <div className="p-4 border-b border-gray-100 dark:border-white/10 space-y-2.5 bg-gray-50/20 dark:bg-transparent shrink-0">
+                    <div className="relative">
+                        <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={14} />
+                        <input
+                            type="text"
+                            placeholder="Search employee by name, email, department..."
+                            value={search}
+                            onChange={(e) => setSearch(e.target.value)}
+                            className="w-full pl-9 pr-3 py-2 bg-white dark:bg-[#161b22] border border-gray-200 dark:border-white/10 rounded-xl text-xs text-gray-900 dark:text-white placeholder-gray-400 focus:outline-none focus:ring-1 focus:ring-blue-500"
+                        />
+                    </div>
+
+                    {/* Department Filter Pills */}
+                    <div className="flex items-center justify-between gap-2">
+                        <div className="flex flex-wrap items-center gap-1.5">
+                            {allDepts.slice(0, 5).map(dept => (
+                                <button
+                                    key={dept}
+                                    type="button"
+                                    onClick={() => setSelectedDept(dept)}
+                                    className={`px-2.5 py-1 rounded-lg text-[11px] font-semibold transition-all cursor-pointer ${
+                                        selectedDept === dept
+                                            ? 'bg-blue-600 text-white font-bold shadow-2xs'
+                                            : 'bg-gray-100 dark:bg-white/5 text-gray-600 dark:text-gray-400 hover:bg-gray-200'
+                                    }`}
+                                >
+                                    {dept}
+                                </button>
+                            ))}
+                        </div>
+
+                        <div className="flex items-center gap-2 text-xs">
+                            <button
+                                type="button"
+                                onClick={handleSelectAllFiltered}
+                                className="text-blue-600 dark:text-blue-400 font-bold hover:underline cursor-pointer"
+                            >
+                                Select All ({filteredUsers.length})
+                            </button>
+                            <span className="text-gray-300 dark:text-gray-700">•</span>
+                            <button
+                                type="button"
+                                onClick={handleClearFiltered}
+                                className="text-gray-500 hover:text-gray-700 dark:text-gray-400 cursor-pointer"
+                            >
+                                Clear
+                            </button>
+                        </div>
+                    </div>
+                </div>
+
+                {/* Employee List with Checkboxes */}
+                <div className="flex-1 overflow-y-auto p-4 space-y-1.5 custom-scrollbar">
+                    {filteredUsers.length === 0 ? (
+                        <div className="py-12 text-center text-gray-400 text-xs font-medium">
+                            No matching employees found for the search criteria.
+                        </div>
+                    ) : (
+                        filteredUsers.map(u => {
+                            const isSelected = selectedUserIds.has(u.id);
+                            const isCurrentlyAssigned = u.template_name === template.name || String(u.template_id) === String(template.id);
+                            const initials = (u.name || 'U').split(' ').map(n => n[0]).join('').slice(0, 2).toUpperCase();
+
+                            return (
+                                <div
+                                    key={u.id}
+                                    onClick={() => toggleUser(u.id)}
+                                    className={`p-3 rounded-xl border transition-all flex items-center justify-between gap-3 cursor-pointer group select-none ${
+                                        isSelected
+                                            ? 'border-blue-500/80 bg-blue-50/50 dark:bg-blue-950/20 shadow-2xs'
+                                            : 'border-gray-200/80 dark:border-white/5 bg-white dark:bg-[#161b22] hover:bg-gray-50 dark:hover:bg-white/[0.02]'
+                                    }`}
+                                >
+                                    <div className="flex items-center gap-3 min-w-0">
+                                        {/* Themed Custom Checkbox */}
+                                        <div
+                                            className={`w-4 h-4 rounded-md border transition-all flex items-center justify-center shrink-0 ${
+                                                isSelected
+                                                    ? 'bg-blue-600 border-blue-600 text-white dark:bg-blue-500 dark:border-blue-500 shadow-2xs'
+                                                    : 'border-gray-300 dark:border-white/20 bg-white dark:bg-[#161b22] group-hover:border-blue-400 dark:group-hover:border-blue-400'
+                                            }`}
+                                        >
+                                            {isSelected && <Check size={11} className="stroke-[3.5]" />}
+                                        </div>
+
+                                        <div className="w-8 h-8 rounded-full bg-gray-100 dark:bg-white/10 text-gray-700 dark:text-gray-300 font-bold text-xs flex items-center justify-center shrink-0">
+                                            {initials}
+                                        </div>
+
+                                        <div className="min-w-0">
+                                            <div className="flex items-center gap-2">
+                                                <h4 className="text-xs font-bold text-gray-900 dark:text-white truncate">
+                                                    {u.name}
+                                                </h4>
+                                                <span className="px-1.5 py-0.2 rounded bg-gray-100 dark:bg-white/10 text-[10px] text-gray-600 dark:text-gray-400 font-medium">
+                                                    {u.department || 'General'}
+                                                </span>
+                                            </div>
+                                            <p className="text-[11px] text-gray-500 dark:text-gray-400 truncate">
+                                                {u.email}
+                                            </p>
+                                        </div>
+                                    </div>
+
+                                    <div className="text-right shrink-0">
+                                        {isCurrentlyAssigned ? (
+                                            <span className="px-2 py-0.5 rounded-md bg-emerald-100 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-300 text-[10px] font-bold border border-emerald-300 dark:border-emerald-800/50">
+                                                Currently Assigned
+                                            </span>
+                                        ) : u.template_name ? (
+                                            <span className="px-2 py-0.5 rounded-md bg-gray-100 dark:bg-white/5 text-gray-600 dark:text-gray-400 text-[10px] font-medium">
+                                                {u.template_name}
+                                            </span>
+                                        ) : (
+                                            <span className="px-2 py-0.5 rounded-md bg-blue-50 dark:bg-blue-950/30 text-blue-600 dark:text-blue-400 text-[10px] font-medium">
+                                                Standard Access
+                                            </span>
+                                        )}
+                                    </div>
+                                </div>
+                            );
+                        })
+                    )}
+                </div>
+
+                {/* Sticky Footer */}
+                <div className="px-5 py-3 border-t border-gray-100 dark:border-white/10 flex items-center justify-between shrink-0 bg-white dark:bg-[#161b22]">
+                    <div className="text-xs font-bold text-gray-700 dark:text-gray-300">
+                        <span>{selectedUserIds.size} Employee(s) Selected</span>
+                    </div>
+
+                    <div className="flex items-center gap-2">
+                        <button
+                            type="button"
+                            onClick={onClose}
+                            className="px-3.5 py-1.5 text-xs font-semibold text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-white/5 rounded-lg transition cursor-pointer"
+                        >
+                            Cancel
+                        </button>
+                        <button
+                            type="button"
+                            onClick={handleConfirm}
+                            disabled={isSaving}
+                            className="px-4 py-1.5 bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white rounded-lg text-xs font-bold transition shadow-xs cursor-pointer flex items-center gap-1.5 active:scale-95"
+                        >
+                            <Check size={14} className="stroke-[3]" />
+                            <span>{isSaving ? 'Assigning...' : `Apply Template (${selectedUserIds.size})`}</span>
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </>
+    );
+};
+
+// ─── Permission Templates Manager Tab View ─────────────────────────────────────
 const PermissionTemplatesTab = ({
     templates,
+    users = [],
     isLoading,
     searchQuery = '',
     onCreateClick,
     onEditClick,
-    onDeleteClick
+    onDeleteClick,
+    onAssignEmployeesClick
 }) => {
     // Only show system templates in Admin page
     const systemTemplates = templates.filter(t => t.type !== 'project');
@@ -1205,38 +1468,39 @@ const PermissionTemplatesTab = ({
 
     return (
         <div className="flex-1 flex flex-col overflow-hidden bg-gray-50/50 dark:bg-[#0d1117]">
-            {/* Grid View */}
-            <div className="flex-1 overflow-y-auto custom-scrollbar p-6">
+            {/* Grid View with minimal padding aligned with top toolbar */}
+            <div className="flex-1 overflow-y-auto custom-scrollbar p-3">
                 {isLoading ? (
-                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
+                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
                         {Array.from({ length: 6 }).map((_, i) => (
-                            <div key={i} className="h-44 bg-white dark:bg-[#161b22] rounded-md border border-gray-200 dark:border-white/10 p-5 animate-pulse space-y-4">
+                            <div key={i} className="h-44 bg-white dark:bg-[#161b22] rounded-xl border border-gray-200 dark:border-white/10 p-3.5 animate-pulse space-y-3">
                                 <div className="h-4 bg-gray-200 dark:bg-white/10 rounded w-2/3"></div>
                                 <div className="h-3 bg-gray-100 dark:bg-white/5 rounded w-1/2"></div>
-                                <div className="h-10 bg-gray-100 dark:bg-white/5 rounded-md"></div>
+                                <div className="h-9 bg-gray-100 dark:bg-white/5 rounded-lg"></div>
                             </div>
                         ))}
                     </div>
                 ) : filteredTemplates.length > 0 ? (
-                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
+                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
                         {filteredTemplates.map(template => {
                             const stats = getPermissionStats(template);
+                            const assignedUsers = (users || []).filter(u => u.template_name === template.name || String(u.template_id) === String(template.id));
 
                             return (
                                 <div
                                     key={template.id}
                                     onClick={() => onEditClick(template)}
-                                    className="bg-white dark:bg-[#161b22] rounded-md border border-gray-200 dark:border-white/10 shadow-xs hover:shadow-md hover:border-blue-500/40 cursor-pointer transition-all p-5 flex flex-col justify-between group"
+                                    className="bg-white dark:bg-[#161b22] rounded-xl border border-gray-200 dark:border-white/10 shadow-2xs hover:shadow-md hover:border-blue-500/40 cursor-pointer transition-all p-3.5 flex flex-col justify-between group"
                                 >
                                     <div>
                                         {/* Header */}
-                                        <div className="flex items-start justify-between gap-3 mb-4">
-                                            <div className="flex items-center gap-3 min-w-0">
-                                                <div className="w-9 h-9 rounded-md flex items-center justify-center shrink-0 border bg-blue-50 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400 border-blue-200/50 dark:border-blue-500/20">
-                                                    <Shield size={18} />
+                                        <div className="flex items-start justify-between gap-3 mb-3">
+                                            <div className="flex items-center gap-2.5 min-w-0">
+                                                <div className="w-8 h-8 rounded-lg flex items-center justify-center shrink-0 border bg-blue-50 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400 border-blue-200/50 dark:border-blue-500/20 shadow-2xs">
+                                                    <Shield size={16} />
                                                 </div>
                                                 <div className="min-w-0">
-                                                    <h3 className="text-sm font-bold text-gray-900 dark:text-white truncate">
+                                                    <h3 className="text-xs font-bold text-gray-900 dark:text-white truncate">
                                                         {template.name}
                                                     </h3>
                                                     <span className="inline-block mt-0.5 px-2 py-0.2 rounded-md text-[10px] font-bold bg-blue-100 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400">
@@ -1249,23 +1513,23 @@ const PermissionTemplatesTab = ({
                                             <div className="flex items-center gap-1 opacity-90 group-hover:opacity-100 transition-opacity" onClick={e => e.stopPropagation()}>
                                                 <button
                                                     onClick={() => onEditClick(template)}
-                                                    className="p-1.5 text-gray-400 hover:text-blue-600 dark:hover:text-blue-400 hover:bg-blue-50 dark:hover:bg-blue-900/20 rounded-md transition-all"
+                                                    className="p-1.5 text-gray-400 hover:text-blue-600 dark:hover:text-blue-400 hover:bg-blue-50 dark:hover:bg-blue-900/20 rounded-md transition-all cursor-pointer"
                                                     title="Edit Template in Drawer"
                                                 >
-                                                    <Edit3 size={15} />
+                                                    <Edit3 size={14} />
                                                 </button>
                                                 <button
                                                     onClick={() => onDeleteClick(template)}
-                                                    className="p-1.5 text-gray-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-950/30 rounded-md transition-all"
+                                                    className="p-1.5 text-gray-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-950/30 rounded-md transition-all cursor-pointer"
                                                     title="Delete Template"
                                                 >
-                                                    <Trash2 size={15} />
+                                                    <Trash2 size={14} />
                                                 </button>
                                             </div>
                                         </div>
 
                                         {/* Stats Summary */}
-                                        <div className="grid grid-cols-3 gap-2 p-2.5 bg-gray-50 dark:bg-[#0d1117] rounded-md border border-gray-100 dark:border-white/5 text-center text-xs">
+                                        <div className="grid grid-cols-3 gap-2 p-2 bg-gray-50 dark:bg-[#0d1117] rounded-lg border border-gray-100 dark:border-white/5 text-center text-xs">
                                             <div>
                                                 <span className="block text-[10px] font-bold text-gray-400">Full Access</span>
                                                 <span className="font-bold text-emerald-600 dark:text-emerald-400">{stats.full}</span>
@@ -1280,13 +1544,36 @@ const PermissionTemplatesTab = ({
                                             </div>
                                         </div>
                                     </div>
+
+                                    {/* Footer: Employee Assignment Provision */}
+                                    <div className="pt-2.5 mt-2.5 border-t border-gray-100 dark:border-white/5 flex items-center justify-between gap-2">
+                                        <div className="flex items-center gap-1.5 min-w-0">
+                                            <Users size={13} className="text-gray-400 shrink-0" />
+                                            <span className="text-[11px] font-semibold text-gray-600 dark:text-gray-400 truncate">
+                                                {assignedUsers.length === 1 ? '1 Employee' : `${assignedUsers.length} Employees`}
+                                            </span>
+                                        </div>
+
+                                        <button
+                                            type="button"
+                                            onClick={(e) => {
+                                                e.stopPropagation();
+                                                onAssignEmployeesClick(template);
+                                            }}
+                                            className="px-2.5 py-1 bg-blue-50 dark:bg-blue-900/30 hover:bg-blue-600 hover:text-white dark:hover:bg-blue-600 text-blue-600 dark:text-blue-400 rounded-lg text-[11px] font-bold transition-all flex items-center gap-1.5 cursor-pointer shrink-0 shadow-2xs active:scale-95"
+                                            title={`Assign ${template.name} to employees`}
+                                        >
+                                            <UserPlus size={12} />
+                                            <span>Assign Employees</span>
+                                        </button>
+                                    </div>
                                 </div>
                             );
                         })}
                     </div>
                 ) : (
                     <div className="py-16 text-center text-gray-500 dark:text-gray-400">
-                        <div className="w-14 h-14 bg-blue-50 dark:bg-blue-900/20 text-blue-500 rounded-md flex items-center justify-center mx-auto mb-3">
+                        <div className="w-14 h-14 bg-blue-50 dark:bg-blue-900/20 text-blue-500 rounded-xl flex items-center justify-center mx-auto mb-3">
                             <Sparkles size={24} />
                         </div>
                         <h4 className="text-sm font-bold text-gray-900 dark:text-white">No System Permission Templates Found</h4>
@@ -1295,7 +1582,7 @@ const PermissionTemplatesTab = ({
                         </p>
                         <button
                             onClick={onCreateClick}
-                            className="mt-4 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-md text-xs font-bold shadow-md shadow-blue-500/20 transition-all inline-flex items-center gap-2"
+                            className="mt-4 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-bold shadow-md shadow-blue-500/20 transition-all inline-flex items-center gap-2 cursor-pointer"
                         >
                             <Plus size={15} /> Create First Template
                         </button>
@@ -1306,20 +1593,31 @@ const PermissionTemplatesTab = ({
     );
 };
 
+// ─── Employee Column Aliases for Excel Paste & Import ────────────────────────
+const EMPLOYEE_COLUMN_ALIASES = {
+    name: ['employee name', 'name', 'full name', 'user name', 'staff name', 'member', 'employee'],
+    email: ['email', 'email id', 'e-mail', 'mail', 'email address', 'official email'],
+    user_type: ['account type', 'role', 'user type', 'type', 'access role', 'privilege', 'user_type'],
+    department: ['department', 'dept', 'division', 'team', 'unit', 'function'],
+    phone_no: ['mobile', 'phone', 'contact', 'mobile no', 'phone no', 'contact number', 'telephone', 'mobile number', 'cell', 'phone_no'],
+    status: ['status', 'account status', 'active status', 'state', 'user_status'],
+    joined: ['joined date', 'date of joining', 'created at', 'joining date', 'created on', 'joined on', 'joined']
+};
+
 // ─── MAIN ADMIN / EMPLOYEES PAGE COMPONENT ────────────────────────────────────
 const AdminPage = () => {
+    const { hasPermission, isAdmin } = useAuth();
+    const canWrite = isAdmin || hasPermission('admin', 2);
+
     const [mainTab, setMainTab] = useState('employees'); // 'employees' or 'templates'
     const [users, setUsers] = useState([]);
     const [projects, setProjects] = useState([]);
     const [templates, setTemplates] = useState([]);
     const [isLoadingUsers, setIsLoadingUsers] = useState(true);
     const [isLoadingTemplates, setIsLoadingTemplates] = useState(true);
-
-    // Employee Filters & Search
-    const [searchTerm, setSearchTerm] = useState('');
+    // Employee Filters
     const [activeFilters, setActiveFilters] = useState({ userTypes: [], departments: [] });
     const [isFilterDropdownOpen, setIsFilterDropdownOpen] = useState(false);
-    const [isManageDropdownOpen, setIsManageDropdownOpen] = useState(false);
     const [drawerTab, setDrawerTab] = useState('form');
 
     // User Modals & Drawers
@@ -1333,18 +1631,15 @@ const AdminPage = () => {
     const [templateEditorOpen, setTemplateEditorOpen] = useState(false);
     const [templateToEdit, setTemplateToEdit] = useState(null);
     const [deletingTemplate, setDeletingTemplate] = useState(null);
+    const [assigningTemplate, setAssigningTemplate] = useState(null);
     const [isSavingTemplate, setIsSavingTemplate] = useState(false);
     const [isDeletingTemplate, setIsDeletingTemplate] = useState(false);
     const [templateSearchQuery, setTemplateSearchQuery] = useState('');
 
-    const dropdownRef = useRef(null);
     const filterDropdownRef = useRef(null);
 
     useEffect(() => {
         const handleClickOutside = (event) => {
-            if (dropdownRef.current && !dropdownRef.current.contains(event.target)) {
-                setIsManageDropdownOpen(false);
-            }
             if (filterDropdownRef.current && !filterDropdownRef.current.contains(event.target)) {
                 setIsFilterDropdownOpen(false);
             }
@@ -1530,8 +1825,232 @@ const AdminPage = () => {
         }
     };
 
+    const handleAssignTemplateToUsers = async (template, selectedUserIds) => {
+        try {
+            const rawPerms = template.permissions || template.system_permissions || {};
+            const parsedPerms = typeof rawPerms === 'string' ? JSON.parse(rawPerms) : rawPerms;
+
+            const backendPerms = {};
+            const map = { 0: 'none', 1: 'view', 2: 'edit', 'none': 'none', 'view': 'view', 'read': 'view', 'edit': 'edit', 'write': 'edit' };
+            for (const [k, v] of Object.entries(parsedPerms)) {
+                backendPerms[k] = typeof v === 'number' ? (map[v] || 'none') : (map[v] || 'none');
+            }
+
+            for (const uid of selectedUserIds) {
+                const user = users.find(u => u.id === uid);
+                if (!user) continue;
+                await adminApi.updateUser(uid, {
+                    ...user,
+                    system_permissions: backendPerms,
+                    template_name: template.name,
+                    template_id: template.id
+                });
+            }
+
+            toast.success(`Assigned template "${template.name}" to ${selectedUserIds.length} employee(s)!`);
+            fetchUsers();
+        } catch (err) {
+            console.error(err);
+            toast.error('Failed to assign template to selected employees');
+            throw err;
+        }
+    };
+
     // Filters for Employees
-    const allDepartments = Array.from(new Set(users.map(u => u.department).filter(Boolean)));
+    const allDepartments = useMemo(() => {
+        return Array.from(new Set(users.map(u => u.department).filter(Boolean)));
+    }, [users]);
+
+    const stats = useMemo(() => {
+        const total = users.length;
+        const active = users.filter(u => (u.status || '').toLowerCase() === 'active').length;
+        const admins = users.filter(u => (u.user_type || '').toLowerCase() === 'admin').length;
+        const depts = new Set(users.map(u => u.department).filter(Boolean)).size;
+        return { total, active, admins, depts };
+    }, [users]);
+
+    const columns = useMemo(() => {
+        const deptOptions = Array.from(new Set([
+            'Engineering',
+            'Operations',
+            'Project Management',
+            'Finance & Accounts',
+            'Procurement & Stores',
+            'Quality & Safety',
+            'Human Resources',
+            'Administration',
+            'Executive / Management',
+            ...allDepartments
+        ])).filter(Boolean);
+
+        return [
+            {
+                key: 'name',
+                label: 'Employee Name',
+                width: '210px',
+                minWidth: '180px',
+                required: true,
+                aliases: EMPLOYEE_COLUMN_ALIASES.name
+            },
+            {
+                key: 'email',
+                label: 'Email ID',
+                width: '230px',
+                minWidth: '200px',
+                required: true,
+                aliases: EMPLOYEE_COLUMN_ALIASES.email,
+                validate: (val) => {
+                    if (!val) return 'Email is required';
+                    if (!/\S+@\S+\.\S+/.test(val)) return 'Invalid email format';
+                    return null;
+                }
+            },
+            {
+                key: 'user_type',
+                label: 'Account Type',
+                width: '140px',
+                minWidth: '130px',
+                type: 'select',
+                options: ['Employee', 'Admin'],
+                defaultValue: 'Employee',
+                aliases: EMPLOYEE_COLUMN_ALIASES.user_type
+            },
+            {
+                key: 'department',
+                label: 'Department',
+                width: '180px',
+                minWidth: '150px',
+                type: 'select',
+                options: deptOptions,
+                defaultValue: 'Engineering',
+                aliases: EMPLOYEE_COLUMN_ALIASES.department
+            },
+            {
+                key: 'phone_no',
+                label: 'Mobile Number',
+                width: '150px',
+                minWidth: '140px',
+                aliases: EMPLOYEE_COLUMN_ALIASES.phone_no
+            },
+            {
+                key: 'status',
+                label: 'Status',
+                width: '120px',
+                minWidth: '110px',
+                type: 'select',
+                options: ['Active', 'Inactive', 'Suspended'],
+                defaultValue: 'Active',
+                aliases: EMPLOYEE_COLUMN_ALIASES.status
+            },
+            {
+                key: 'permissions_access',
+                label: 'Permissions & Access Control',
+                width: '270px',
+                minWidth: '250px',
+                renderCell: (val, row) => {
+                    const isAdminUser = (row.user_type || '').toLowerCase() === 'admin';
+                    
+                    let accessLabel = 'Standard Access';
+                    if (isAdminUser) {
+                        accessLabel = 'Admin Privileges';
+                    } else if (row.template_name) {
+                        accessLabel = row.template_name;
+                    } else if (row.system_permissions || row.permissions) {
+                        try {
+                            const raw = typeof (row.system_permissions || row.permissions) === 'string'
+                                ? JSON.parse(row.system_permissions || row.permissions)
+                                : (row.system_permissions || row.permissions);
+                            const activeCount = Object.values(raw || {}).filter(v => Number(v) > 0).length;
+                            if (activeCount > 0) {
+                                accessLabel = `${activeCount} Modules`;
+                            }
+                        } catch (e) {
+                            accessLabel = 'Custom Access';
+                        }
+                    }
+
+                    return (
+                        <div className="flex items-center justify-between w-full gap-2 px-1 py-0.5">
+                            <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md text-[11px] font-bold whitespace-nowrap border shrink-0 ${
+                                isAdminUser
+                                    ? 'bg-purple-50 dark:bg-purple-950/40 text-purple-700 dark:text-purple-300 border-purple-200 dark:border-purple-800/50 shadow-2xs'
+                                    : 'bg-blue-50 dark:bg-blue-950/40 text-blue-700 dark:text-blue-300 border-blue-200 dark:border-blue-800/50 shadow-2xs'
+                            }`}>
+                                <Shield size={12} className={isAdminUser ? 'text-purple-500' : 'text-blue-500'} />
+                                <span>{accessLabel}</span>
+                            </span>
+
+                            <button
+                                type="button"
+                                onClick={(e) => {
+                                    e.stopPropagation();
+                                    openViewUser(row, true);
+                                }}
+                                className="px-2.5 py-1 rounded-md bg-blue-600 hover:bg-blue-700 text-white text-[11px] font-bold transition-all shadow-xs flex items-center gap-1.5 cursor-pointer shrink-0 whitespace-nowrap active:scale-95"
+                                title="Configure Module Access & Project Assignments"
+                            >
+                                <Sliders size={12} />
+                                <span>Edit Access</span>
+                            </button>
+                        </div>
+                    );
+                }
+            },
+            {
+                key: 'joined',
+                label: 'Joined Date',
+                width: '130px',
+                minWidth: '120px',
+                readOnly: true,
+                aliases: EMPLOYEE_COLUMN_ALIASES.joined
+            }
+        ];
+    }, [allDepartments]);
+
+    const handleSaveGridBatch = async (payload) => {
+        const { created, updated, deleted } = payload;
+
+        if (deleted.length > 0) {
+            for (const id of deleted) {
+                await adminApi.deleteUser(id);
+            }
+        }
+
+        if (created.length > 0) {
+            for (const item of created) {
+                if (item.name && item.email) {
+                    await adminApi.createUser({
+                        name: item.name,
+                        email: item.email,
+                        department: item.department || '',
+                        phone_no: item.phone_no || '',
+                        password: item.password || 'Mano@1234',
+                        user_type: item.user_type || 'employee',
+                        status: item.status || 'Active',
+                        system_permissions: defaultPermissions()
+                    });
+                }
+            }
+        }
+
+        if (updated.length > 0) {
+            for (const item of updated) {
+                if (item.id && item.name) {
+                    await adminApi.updateUser(item.id, {
+                        name: item.name,
+                        email: item.email,
+                        department: item.department,
+                        phone_no: item.phone_no,
+                        user_type: item.user_type,
+                        status: item.status
+                    });
+                }
+            }
+        }
+
+        toast.success('Employee grid changes saved successfully!');
+        await fetchUsers();
+    };
 
     const toggleFilter = (type, val) => {
         setActiveFilters(prev => {
@@ -1543,102 +2062,179 @@ const AdminPage = () => {
 
     const activeFilterCount = (activeFilters.userTypes?.length || 0) + (activeFilters.departments?.length || 0);
 
-    const filteredUsers = users
-        .filter(u => {
-            const matchesSearch = !searchTerm.trim() ||
-                u.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                u.email.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                (u.department && u.department.toLowerCase().includes(searchTerm.toLowerCase()));
-
-            const matchesType = !activeFilters.userTypes?.length || activeFilters.userTypes.includes(u.user_type);
-            const matchesDept = !activeFilters.departments?.length || activeFilters.departments.includes(u.department);
-
-            return matchesSearch && matchesType && matchesDept;
-        })
-        .sort((a, b) => (a.name || '').localeCompare(b.name || '', undefined, { sensitivity: 'base' }));
+    const filteredUsers = useMemo(() => {
+        return users
+            .filter(u => {
+                const matchesType = !activeFilters.userTypes?.length || activeFilters.userTypes.includes(u.user_type);
+                const matchesDept = !activeFilters.departments?.length || activeFilters.departments.includes(u.department);
+                return matchesType && matchesDept;
+            })
+            .sort((a, b) => (a.name || '').localeCompare(b.name || '', undefined, { sensitivity: 'base' }));
+    }, [users, activeFilters]);
 
     return (
         <div className="flex flex-col h-full bg-white dark:bg-[#0d1117] text-gray-900 dark:text-gray-100 overflow-hidden font-sans">
-            {/* Top Toolbar Navigation Header */}
-            <div className="px-3 py-2.5 flex flex-wrap items-center justify-between border-b border-gray-200 dark:border-white/5 bg-white dark:bg-[#0d1117] shrink-0 gap-3">
+            {/* Top Navigation Switcher Header */}
+            <div className="px-3 py-2 flex flex-wrap items-center justify-between border-b border-gray-200 dark:border-white/5 bg-white dark:bg-[#0d1117] shrink-0 gap-3">
                 <div className="flex items-center gap-3">
-                    {/* Main Section Navigation Switcher */}
-                    <div className="flex items-center gap-1 bg-gray-100 dark:bg-white/5 p-1 rounded-md">
+                    {/* Main Section Switcher */}
+                    <div className="flex items-center gap-1 bg-gray-100 dark:bg-white/5 p-1 rounded-lg">
                         <button
+                            type="button"
                             onClick={() => setMainTab('employees')}
-                            className={`flex items-center gap-2 px-3 py-1.5 rounded text-xs font-bold transition-all ${
+                            className={`flex items-center gap-2 px-3 py-1.5 rounded-md text-xs font-bold transition-all cursor-pointer ${
                                 mainTab === 'employees'
                                     ? 'bg-white dark:bg-[#161b22] text-blue-600 dark:text-blue-400 shadow-xs'
                                     : 'text-gray-600 dark:text-gray-400 hover:text-gray-900'
                             }`}
                         >
                             <span>Employees Management</span>
-                            <span className="px-1.5 py-0.2 bg-blue-100 dark:bg-blue-900/40 text-blue-600 dark:text-blue-400 text-[10px] rounded-md">
+                            <span className="px-1.5 py-0.2 bg-blue-100 dark:bg-blue-900/40 text-blue-600 dark:text-blue-400 text-[10px] rounded-md font-extrabold">
                                 {users.length}
                             </span>
                         </button>
 
                         <button
+                            type="button"
                             onClick={() => setMainTab('templates')}
-                            className={`flex items-center gap-2 px-3 py-1.5 rounded text-xs font-bold transition-all ${
+                            className={`flex items-center gap-2 px-3 py-1.5 rounded-md text-xs font-bold transition-all cursor-pointer ${
                                 mainTab === 'templates'
                                     ? 'bg-white dark:bg-[#161b22] text-purple-600 dark:text-purple-400 shadow-xs'
                                     : 'text-gray-600 dark:text-gray-400 hover:text-gray-900'
                             }`}
                         >
                             <span>Permission Templates</span>
-                            <span className="px-1.5 py-0.2 bg-purple-100 dark:bg-purple-900/40 text-purple-600 dark:text-purple-400 text-[10px] rounded-md">
+                            <span className="px-1.5 py-0.2 bg-purple-100 dark:bg-purple-900/40 text-purple-600 dark:text-purple-400 text-[10px] rounded-md font-extrabold">
                                 {templates.length}
                             </span>
                         </button>
                     </div>
                 </div>
 
-                {/* Inline Search, Filter & Action Buttons on the Tab Bar */}
-                <div className="flex items-center gap-3">
-                    {mainTab === 'employees' ? (
-                        <>
-                            <div className="relative w-56 md:w-72">
-                                <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={14} />
-                                <input
-                                    type="text"
-                                    placeholder="Search employees..."
-                                    className="w-full pl-9 pr-3 py-1.5 bg-gray-50 dark:bg-white/[0.02] border border-gray-200 dark:border-white/10 rounded-md text-xs text-gray-900 dark:text-white focus:outline-none focus:ring-1 focus:ring-blue-500 placeholder-gray-400"
-                                    value={searchTerm}
-                                    onChange={e => setSearchTerm(e.target.value)}
-                                />
-                            </div>
+                {/* Templates Tab Specific Actions */}
+                {mainTab === 'templates' && (
+                    <div className="flex items-center gap-3">
+                        <div className="relative w-56 md:w-72">
+                            <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={14} />
+                            <input
+                                type="text"
+                                placeholder="Search templates..."
+                                value={templateSearchQuery}
+                                onChange={e => setTemplateSearchQuery(e.target.value)}
+                                className="w-full pl-9 pr-3 py-1.5 bg-gray-50 dark:bg-white/[0.02] border border-gray-200 dark:border-white/10 rounded-md text-xs text-gray-900 dark:text-white focus:outline-none focus:ring-1 focus:ring-blue-500 placeholder-gray-400"
+                            />
+                        </div>
 
-                            {/* Inline Filter Dropdown */}
+                        <button
+                            type="button"
+                            onClick={() => {
+                                setTemplateToEdit(null);
+                                setTemplateEditorOpen(true);
+                            }}
+                            className="px-3.5 py-1.5 bg-blue-600 hover:bg-blue-700 text-white rounded-md text-xs font-bold shadow-sm transition-all flex items-center gap-2 shrink-0 cursor-pointer"
+                        >
+                            <Plus size={14} />
+                            <span>Create Permission Template</span>
+                        </button>
+                    </div>
+                )}
+            </div>
+
+            {/* TAB CONTENT */}
+            {mainTab === 'employees' ? (
+                /* EMPLOYEES TAB WITH UNIFIED EXCEL GRID & MERGED EMPLOYEE TOOLS */
+                <div className="flex-1 min-h-0 flex flex-col h-full overflow-hidden bg-white dark:bg-[#0d1117]">
+                    {/* Top Stats Banner */}
+                    <div className="px-3 pt-1.5 pb-1.5 border-b border-gray-200 dark:border-white/5 shrink-0">
+                        <div className="grid grid-cols-4 gap-2">
+                            {[
+                                {
+                                    id: 'total',
+                                    label: 'Total Employees',
+                                    value: stats.total,
+                                    color: 'text-gray-900 dark:text-white',
+                                    bg: 'bg-gray-50 dark:bg-white/[0.03]'
+                                },
+                                {
+                                    id: 'active',
+                                    label: 'Active Accounts',
+                                    value: stats.active,
+                                    color: 'text-emerald-600 dark:text-emerald-400',
+                                    bg: 'bg-emerald-50 dark:bg-emerald-900/10'
+                                },
+                                {
+                                    id: 'admins',
+                                    label: 'Admin Privileges',
+                                    value: stats.admins,
+                                    color: 'text-purple-600 dark:text-purple-400',
+                                    bg: 'bg-purple-50 dark:bg-purple-900/10'
+                                },
+                                {
+                                    id: 'depts',
+                                    label: 'Departments',
+                                    value: stats.depts,
+                                    color: 'text-blue-600 dark:text-blue-400',
+                                    bg: 'bg-blue-50 dark:bg-blue-900/10'
+                                }
+                            ].map((s) => (
+                                <div
+                                    key={s.id}
+                                    className={`${s.bg} rounded-lg p-2 px-3 border border-gray-100 dark:border-white/5`}
+                                >
+                                    <p className="text-[10px] font-bold text-gray-500 dark:text-gray-400 uppercase tracking-wider">
+                                        {s.label}
+                                    </p>
+                                    <p className={`text-xl font-black mt-0.5 ${s.color}`}>{s.value}</p>
+                                </div>
+                            ))}
+                        </div>
+                    </div>
+
+                    {/* Centralized & Unified ExcelGrid Component */}
+                    <ExcelGrid
+                        data={filteredUsers}
+                        columns={columns}
+                        primaryKey="id"
+                        entityName="Employees"
+                        canWrite={canWrite}
+                        isLoading={isLoadingUsers}
+                        onSave={handleSaveGridBatch}
+                        onRefresh={fetchUsers}
+                        onViewRow={(row) => openViewUser(row, true)}
+                        emptyMessage="No employees found in database"
+                        showFormulaBar={false}
+                        extraFilters={
                             <div className="relative" ref={filterDropdownRef}>
                                 <button
+                                    type="button"
                                     onClick={() => setIsFilterDropdownOpen(!isFilterDropdownOpen)}
-                                    className={`flex items-center space-x-2 px-3 py-1.5 border rounded-md text-xs font-bold transition-all ${
+                                    className={`flex items-center space-x-1.5 px-2.5 py-1.5 border rounded-lg text-xs font-bold transition-all cursor-pointer ${
                                         activeFilterCount > 0
                                             ? 'border-blue-500 bg-blue-500/10 text-blue-600 dark:text-blue-400'
-                                            : 'border-gray-200 dark:border-white/10 bg-gray-50 dark:bg-white/5 text-gray-700 dark:text-gray-300 hover:bg-gray-100'
+                                            : 'border-gray-200 dark:border-white/10 bg-white dark:bg-[#161b22] text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-white/5'
                                     }`}
                                 >
-                                    <Filter size={14} />
+                                    <Filter size={13} />
                                     <span>Filter</span>
                                     {activeFilterCount > 0 && (
                                         <span className="bg-blue-600 text-white text-[10px] w-4 h-4 rounded-md flex items-center justify-center font-bold">
                                             {activeFilterCount}
                                         </span>
                                     )}
-                                    <ChevronDown size={13} className={`transition-transform duration-200 ${isFilterDropdownOpen ? 'rotate-180' : ''}`} />
+                                    <ChevronDown size={12} className={`transition-transform duration-200 ${isFilterDropdownOpen ? 'rotate-180' : ''}`} />
                                 </button>
 
                                 {isFilterDropdownOpen && (
-                                    <div className="absolute right-0 mt-2 w-80 bg-white dark:bg-[#161b22] border border-gray-200 dark:border-white/10 rounded-md shadow-2xl z-[5000] p-4 space-y-4 text-xs">
+                                    <div className="absolute left-0 mt-1.5 w-80 bg-white dark:bg-[#161b22] border border-gray-200 dark:border-white/10 rounded-xl shadow-2xl z-[5000] p-4 space-y-4 text-xs animate-in fade-in zoom-in-95">
                                         <div className="flex justify-between items-center pb-2 border-b border-gray-100 dark:border-white/10">
                                             <h4 className="font-bold text-gray-900 dark:text-white flex items-center gap-1.5">
                                                 <Filter size={14} className="text-blue-500" /> Filter Employees
                                             </h4>
                                             {activeFilterCount > 0 && (
                                                 <button
+                                                    type="button"
                                                     onClick={() => setActiveFilters({ userTypes: [], departments: [] })}
-                                                    className="text-[11px] text-blue-600 dark:text-blue-400 font-bold hover:underline"
+                                                    className="text-[11px] text-blue-600 dark:text-blue-400 font-bold hover:underline cursor-pointer"
                                                 >
                                                     Clear All ({activeFilterCount})
                                                 </button>
@@ -1656,7 +2252,7 @@ const AdminPage = () => {
                                                             key={type}
                                                             type="button"
                                                             onClick={() => toggleFilter('userTypes', type)}
-                                                            className={`px-2.5 py-1 rounded-md text-[11px] font-bold border transition-all ${
+                                                            className={`px-2.5 py-1 rounded-md text-[11px] font-bold border transition-all cursor-pointer ${
                                                                 isChecked
                                                                     ? 'bg-blue-600 text-white border-blue-600 shadow-xs'
                                                                     : 'bg-gray-50 dark:bg-white/5 border-gray-200 dark:border-white/10 text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-white/10'
@@ -1681,7 +2277,7 @@ const AdminPage = () => {
                                                                 key={dept}
                                                                 type="button"
                                                                 onClick={() => toggleFilter('departments', dept)}
-                                                                className={`px-2.5 py-1 rounded-md text-[11px] font-bold border transition-all ${
+                                                                className={`px-2.5 py-1 rounded-md text-[11px] font-bold border transition-all cursor-pointer ${
                                                                     isChecked
                                                                         ? 'bg-blue-600 text-white border-blue-600 shadow-xs'
                                                                         : 'bg-gray-50 dark:bg-white/5 border-gray-200 dark:border-white/10 text-gray-600 dark:text-gray-400 hover:bg-gray-100'
@@ -1697,189 +2293,14 @@ const AdminPage = () => {
                                     </div>
                                 )}
                             </div>
-
-                            <div className="relative" ref={dropdownRef}>
-                                <button
-                                    onClick={() => setIsManageDropdownOpen(!isManageDropdownOpen)}
-                                    className="flex items-center space-x-2 px-3.5 py-1.5 bg-blue-600 hover:bg-blue-700 text-white rounded-md text-xs font-bold shadow-sm transition-all"
-                                >
-                                    <UserPlus size={14} />
-                                    <span>Manage Employees</span>
-                                    <ChevronDown size={14} className={`transition-transform duration-200 ${isManageDropdownOpen ? 'rotate-180' : ''}`} />
-                                </button>
-
-                                {isManageDropdownOpen && (
-                                    <div className="absolute right-0 mt-2 w-52 bg-white dark:bg-[#161b22] rounded-md shadow-xl border border-gray-200 dark:border-white/10 z-[5000] overflow-hidden">
-                                        <button
-                                            onClick={() => { setDrawerTab('form'); setAddOpen(true); setIsManageDropdownOpen(false); }}
-                                            className="w-full flex items-center px-4 py-2.5 text-xs font-bold text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-white/5 transition-colors"
-                                        >
-                                            <UserPlus size={15} className="mr-3 text-emerald-500" />
-                                            Add New Employee
-                                        </button>
-                                        <button
-                                            onClick={() => { setDrawerTab('bulk'); setAddOpen(true); setIsManageDropdownOpen(false); }}
-                                            className="w-full flex items-center px-4 py-2.5 text-xs font-bold text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-white/5 border-t border-gray-100 dark:border-white/5 transition-colors"
-                                        >
-                                            <UploadCloud size={15} className="mr-3 text-blue-500" />
-                                            Bulk Upload CSV
-                                        </button>
-                                    </div>
-                                )}
-                            </div>
-                        </>
-                    ) : (
-                        <>
-                            <div className="relative w-56 md:w-72">
-                                <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={14} />
-                                <input
-                                    type="text"
-                                    placeholder="Search templates..."
-                                    value={templateSearchQuery}
-                                    onChange={e => setTemplateSearchQuery(e.target.value)}
-                                    className="w-full pl-9 pr-3 py-1.5 bg-gray-50 dark:bg-white/[0.02] border border-gray-200 dark:border-white/10 rounded-md text-xs text-gray-900 dark:text-white focus:outline-none focus:ring-1 focus:ring-blue-500 placeholder-gray-400"
-                                />
-                            </div>
-
-                            <button
-                                onClick={() => {
-                                    setTemplateToEdit(null);
-                                    setTemplateEditorOpen(true);
-                                }}
-                                className="px-3.5 py-1.5 bg-blue-600 hover:bg-blue-700 text-white rounded-md text-xs font-bold shadow-sm transition-all flex items-center gap-2 shrink-0"
-                            >
-                                <Plus size={14} />
-                                <span>Create Permission Template</span>
-                            </button>
-                        </>
-                    )}
-                </div>
-            </div>
-
-            {/* TAB CONTENT */}
-            {mainTab === 'employees' ? (
-                /* EMPLOYEES TAB */
-                <div className="flex-1 flex flex-col overflow-hidden">
-                    {/* Table View */}
-                    <div className="flex-1 overflow-auto custom-scrollbar p-0">
-                        <table className="w-full text-left whitespace-nowrap text-[13px] border-collapse bg-white dark:bg-[#0d1117]">
-                            <thead className="bg-[#f9fafb] dark:bg-[#161b22] text-gray-500 dark:text-gray-400 sticky top-0 z-10 border-b border-gray-200 dark:border-white/5 tracking-widest text-[10px] uppercase font-bold">
-                                <tr>
-                                    <th className="pl-2 pr-0.5 py-2.5 w-4"></th>
-                                    <th className="pl-0.5 pr-2 py-2.5 text-center">SR NO</th>
-                                    <th className="px-4 py-2.5">EMPLOYEE NAME</th>
-                                    <th className="px-4 py-2.5">ACCOUNT TYPE</th>
-                                    <th className="px-4 py-2.5">DEPARTMENT</th>
-                                    <th className="px-4 py-2.5">EMAIL ID</th>
-                                    <th className="px-4 py-2.5">STATUS</th>
-                                    <th className="px-4 py-2.5">JOINED DATE</th>
-                                    <th className="px-4 py-2.5 text-right pr-6">ACTIONS</th>
-                                </tr>
-                            </thead>
-                            <tbody className="divide-y divide-gray-100 dark:divide-white/5 bg-white dark:bg-[#0d1117]">
-                                {isLoadingUsers ? (
-                                    Array.from({ length: 5 }).map((_, i) => (
-                                        <tr key={i} className="animate-pulse">
-                                            {Array.from({ length: 9 }).map((_, j) => (
-                                                <td key={j} className="px-4 py-3">
-                                                    <div className="h-3 bg-gray-100 dark:bg-white/5 rounded"></div>
-                                                </td>
-                                            ))}
-                                        </tr>
-                                    ))
-                                ) : filteredUsers.length > 0 ? (
-                                    filteredUsers.map((user, idx) => (
-                                        <tr
-                                            key={user.id}
-                                            className="hover:bg-blue-50/30 dark:hover:bg-white/[0.02] transition-colors group/row text-gray-700 dark:text-gray-300 relative cursor-pointer"
-                                            onClick={() => openViewUser(user)}
-                                        >
-                                            <td className="pl-2 pr-0.5 py-1.5 text-center" onClick={e => e.stopPropagation()}>
-                                                <GripVertical size={14} className="text-transparent group-hover/row:text-gray-400 dark:group-hover/row:text-gray-500 hover:!text-blue-500 transition-colors mx-auto" />
-                                            </td>
-                                            <td className="pl-0.5 pr-2 py-1.5 text-center font-mono text-gray-400 text-xs">{idx + 1}</td>
-                                            <td className="px-4 py-1.5 font-medium text-gray-900 dark:text-gray-100">
-                                                <div className="flex items-center gap-3">
-                                                    <Avatar name={user.name} />
-                                                    <div>
-                                                        <span className="font-semibold text-xs">{user.name}</span>
-                                                        {user.user_code && (
-                                                            <p className="text-[10px] font-mono text-gray-400">{user.user_code}</p>
-                                                        )}
-                                                    </div>
-                                                </div>
-                                            </td>
-                                            <td className="px-4 py-1.5">
-                                                <span className={`inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-bold ${user.user_type === 'Admin' ? 'bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-300' : 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300'}`}>
-                                                    <Shield size={11} /> {user.user_type}
-                                                </span>
-                                            </td>
-                                            <td className="px-4 py-1.5 text-xs">{user.department}</td>
-                                            <td className="px-4 py-1.5 text-xs text-gray-700 dark:text-gray-300">{user.email}</td>
-                                            <td className="px-4 py-1.5">
-                                                <StatusBadge status={user.status} />
-                                            </td>
-                                            <td className="px-4 py-1.5 text-xs text-gray-500 dark:text-gray-400">{user.joined}</td>
-                                            <td className="px-4 py-1.5 text-right pr-6" onClick={e => e.stopPropagation()}>
-                                                <div className="flex items-center justify-end gap-2">
-                                                    <button
-                                                        type="button"
-                                                        onClick={(e) => {
-                                                            e.stopPropagation();
-                                                            openViewUser(user, true);
-                                                        }}
-                                                        className="px-2.5 py-1 rounded-lg text-[11px] font-bold bg-blue-50 dark:bg-blue-900/20 text-blue-600 dark:text-blue-400 hover:bg-blue-600 hover:text-white transition-all flex items-center gap-1.5 border border-blue-200/50 dark:border-blue-500/20 shadow-2xs"
-                                                        title="Edit Permissions"
-                                                    >
-                                                        <Edit3 size={13} />
-                                                        <span>Edit Access</span>
-                                                    </button>
-                                                    <button
-                                                        type="button"
-                                                        onClick={(e) => {
-                                                            e.stopPropagation();
-                                                            setDeletingUser(user);
-                                                        }}
-                                                        className="p-1.5 rounded-lg text-gray-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-950/30 transition-all border border-transparent hover:border-red-200/40"
-                                                        title="Delete Employee"
-                                                    >
-                                                        <Trash2 size={14} />
-                                                    </button>
-                                                </div>
-                                            </td>
-                                        </tr>
-                                    ))
-                                ) : (
-                                    <tr>
-                                        <td colSpan="9" className="py-12 text-center text-gray-500 dark:text-gray-400">
-                                            <div className="flex flex-col items-center justify-center">
-                                                <div className="w-14 h-14 bg-gray-50 dark:bg-white/5 rounded-full flex items-center justify-center mb-3">
-                                                    <Users className="text-gray-400" size={22} />
-                                                </div>
-                                                <p className="text-sm font-semibold mb-1">No employees found</p>
-                                                <p className="text-xs text-gray-400">Try adjusting search or filters</p>
-                                            </div>
-                                        </td>
-                                    </tr>
-                                )}
-                            </tbody>
-                        </table>
-                    </div>
-
-                    {/* Table Footer */}
-                    <div className="px-6 py-3 border-t border-gray-200 dark:border-white/5 flex justify-between items-center text-xs text-gray-400 shrink-0 bg-white dark:bg-[#0d1117]">
-                        <p>Showing <span className="font-semibold text-gray-700 dark:text-gray-300">{filteredUsers.length}</span> of <span className="font-semibold text-gray-700 dark:text-gray-300">{users.length}</span> employees</p>
-                        <div className="flex gap-2">
-                            <button className="px-3 py-1.5 border border-gray-200 dark:border-white/10 rounded-lg opacity-40 cursor-not-allowed">Previous</button>
-                            <button className="px-3 py-1.5 border border-blue-500/30 rounded-lg bg-blue-50 dark:bg-blue-900/20 text-blue-600 dark:text-blue-400 font-bold">1</button>
-                            <button className="px-3 py-1.5 border border-gray-200 dark:border-white/10 rounded-lg hover:bg-gray-50 transition-all">Next</button>
-                        </div>
-                    </div>
+                        }
+                    />
                 </div>
             ) : (
                 /* PERMISSION TEMPLATES TAB */
                 <PermissionTemplatesTab
                     templates={templates}
+                    users={users}
                     isLoading={isLoadingTemplates}
                     searchQuery={templateSearchQuery}
                     onCreateClick={() => {
@@ -1892,6 +2313,9 @@ const AdminPage = () => {
                     }}
                     onDeleteClick={(tpl) => {
                         setDeletingTemplate(tpl);
+                    }}
+                    onAssignEmployeesClick={(tpl) => {
+                        setAssigningTemplate(tpl);
                     }}
                 />
             )}
@@ -1944,6 +2368,15 @@ const AdminPage = () => {
                 onConfirm={confirmDeleteTemplate}
                 template={deletingTemplate}
                 isDeleting={isDeletingTemplate}
+            />
+
+            {/* Assign Template to Employees Drawer */}
+            <AssignTemplateDrawer
+                open={!!assigningTemplate}
+                onClose={() => setAssigningTemplate(null)}
+                template={assigningTemplate}
+                users={users}
+                onAssign={handleAssignTemplateToUsers}
             />
         </div>
     );
