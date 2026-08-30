@@ -1,9 +1,9 @@
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { useParams, useSearchParams } from 'react-router-dom';
-import ProjectResourceList from './ProjectResourceList';
-import ResourceRecipesTab from '../../Resources/ResourceRecipesTab';
-import ResourceRatesTab from '../../Resources/ResourceRatesTab';
-import ResourceConversionsTab from '../../Resources/ResourceConversionsTab';
+import ProjectResourceGridTab from './ProjectResourceGridTab';
+import ProjectResourceRecipesTab from './ProjectResourceRecipesTab';
+import ProjectResourceRatesTab from './ProjectResourceRatesTab';
+import ProjectResourceConversionsTab from './ProjectResourceConversionsTab';
 import { resourceApi } from '../../../services/resourceApi';
 import { projectApi } from '../../../services/projectApi';
 
@@ -39,7 +39,7 @@ const ProjectMaterialSubNav = ({ activeTab, onChange, projectItemCount, totalRes
     );
 };
 
-const MaterialManagementIndex = ({
+export const MaterialManagementIndex = ({
     projectId,
     project,
     setExtraBreadcrumbs,
@@ -190,7 +190,7 @@ const MaterialManagementIndex = ({
 
             {/* Tab 1: Project Resource Grid */}
             <div className={`flex-1 min-h-0 flex flex-col overflow-hidden ${activeTab === 'grid' ? '' : 'hidden'}`}>
-                <ProjectResourceList
+                <ProjectResourceGridTab
                     projectId={activeProjectId}
                     setExtraBreadcrumbs={setExtraBreadcrumbs}
                     canWrite={canWrite}
@@ -199,10 +199,10 @@ const MaterialManagementIndex = ({
                 />
             </div>
 
-            {/* Tab 2: Recipes & History (With all project and master components resolved) */}
+            {/* Tab 2: Recipes & History */}
             {visitedTabs.has('recipes') && (
                 <div className={`flex-1 min-h-0 overflow-hidden ${activeTab === 'recipes' ? 'flex flex-col' : 'hidden'}`}>
-                    <ResourceRecipesTab
+                    <ProjectResourceRecipesTab
                         initialResourceId={targetResourceId}
                         resources={projectItems}
                         availableComponents={combinedComponents}
@@ -213,10 +213,10 @@ const MaterialManagementIndex = ({
                 </div>
             )}
 
-            {/* Tab 3: Rates (All Project Materials, Labour, and Items) */}
+            {/* Tab 3: Rates */}
             {visitedTabs.has('rates') && (
                 <div className={`flex-1 min-h-0 overflow-hidden ${activeTab === 'rates' ? 'flex flex-col' : 'hidden'}`}>
-                    <ResourceRatesTab
+                    <ProjectResourceRatesTab
                         initialResourceId={targetResourceId}
                         resources={allProjectResources.length > 0 ? allProjectResources : projectItems}
                         initialProjectId={activeProjectId}
@@ -229,7 +229,7 @@ const MaterialManagementIndex = ({
             {/* Tab 4: Conversions */}
             {visitedTabs.has('conversions') && (
                 <div className={`flex-1 min-h-0 overflow-hidden ${activeTab === 'conversions' ? 'flex flex-col' : 'hidden'}`}>
-                    <ResourceConversionsTab
+                    <ProjectResourceConversionsTab
                         initialResourceId={targetResourceId}
                         resources={allProjectResources.length > 0 ? allProjectResources : projectItems}
                         onRefreshResources={loadResources}
