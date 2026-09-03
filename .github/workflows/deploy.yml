@@ -79,6 +79,16 @@ jobs:
           echo "🔄 Reloading backend with PM2..."
           pm2 reload "MANO-ERP-BACKEND" --update-env
 
+          # Keep the 72-hour OKF runner alive under the existing PM2 manager.
+          # The host must have PM2 startup/resurrection configured separately.
+          if pm2 describe "mano-erp-okf-auto-runner" >/dev/null 2>&1; then
+            pm2 reload "mano-erp-okf-auto-runner" --update-env
+          else
+            pm2 start ecosystem.config.cjs --only mano-erp-okf-auto-runner --update-env
+          fi
+          pm2 describe "mano-erp-okf-auto-runner" >/dev/null 2>&1
+          pm2 save
+
 
       - name: Deploy Frontend to Nginx Target
         run: |

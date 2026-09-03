@@ -1,0 +1,167 @@
+name: Validate OKF Bundle
+
+on:
+  pull_request:
+    branches:
+      - main
+  push:
+    branches:
+      - main
+
+permissions:
+  contents: read
+
+jobs:
+  validate-pull-request:
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out trusted base
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.base.sha }}
+          path: trusted-base
+          fetch-depth: 0
+
+      - name: Check out proposed data only
+        uses: actions/checkout@v4
+        with:
+          repository: ${{ github.event.pull_request.head.repo.full_name }}
+          ref: ${{ github.event.pull_request.head.sha }}
+          path: proposed-data
+          fetch-depth: 1
+
+      - name: Materialize proposed Stage 9 data
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          HEAD_REPOSITORY: ${{ github.event.pull_request.head.repo.clone_url }}
+        run: |
+          set -euo pipefail
+          test -n "$BASE_SHA" && test -n "$HEAD_SHA"
+          git -C trusted-base cat-file -e "$BASE_SHA^{commit}"
+          test "$(git -C trusted-base rev-parse HEAD)" = "$BASE_SHA"
+          test "$(git -C proposed-data rev-parse HEAD)" = "$HEAD_SHA"
+          git -C trusted-base fetch --no-tags --depth=1 "$HEAD_REPOSITORY" "$HEAD_SHA"
+          git -C trusted-base cat-file -e "$HEAD_SHA^{commit}"
+          git -C trusted-base diff --name-only --no-renames -z "$BASE_SHA" "$HEAD_SHA" > "$RUNNER_TEMP/okf-pr-files.txt"
+          node <<'NODE'
+          const fs = require('node:fs');
+          const path = require('node:path');
+          const { spawnSync } = require('node:child_process');
+          const root = process.cwd();
+          const base = path.join(root, 'trusted-base');
+          const proposed = path.join(root, 'proposed-data');
+          const validation = path.join(root, 'validation-tree');
+          const allowed = [
+            'backend/knowledge/index.md',
+            'backend/knowledge/vendors/index.md',
+            'backend/knowledge/vendors/relationships.md',
+            'backend/knowledge/clients/index.md',
+            'backend/knowledge/resources/index.md',
+            'backend/knowledge/resources/rate-versioning.md',
+            'backend/knowledge/resources/compositions.md',
+            'backend/knowledge/resources/impact-tracing.md',
+            'backend/knowledge/interactions/index.md',
+            'backend/knowledge/projects/index.md',
+            'backend/knowledge/.okf-system/source-map.json',
+            'backend/knowledge/.okf-system/okf-metadata.json'
+          ];
+          // Only git blobs become data. No head script, package, import or hook executes.
+          const run = (cwd, args) => {
+            const result = spawnSync('git', args, { cwd, encoding: 'buffer', windowsHide: true });
+            if (result.error || result.status !== 0) throw new Error('Unable to read pinned validation input.');
+            return result.stdout;
+          };
+          const blob = (cwd, sha, relative) => {
+            const records = run(cwd, ['ls-tree', '-z', sha, '--', relative]).toString('utf8').split('\0').filter(Boolean);
+            if (!records.length) return null; // A head deletion stays absent, never falls back to base.
+            if (records.length !== 1) throw new Error('Ambiguous validation input.');
+            const match = /^(100644|100755) blob ([0-9a-f]+)\t(.+)$/.exec(records[0]);
+            if (!match || match[3] !== relative) throw new Error('Unsafe or symlinked validation input.');
+            return run(cwd, ['cat-file', 'blob', match[2]]);
+          };
+          if (fs.existsSync(validation)) throw new Error('Validation tree must be fresh.');
+          const put = (relative, bytes) => {
+            const destination = path.join(validation, relative);
+            fs.mkdirSync(path.dirname(destination), { recursive: true });
+            fs.writeFileSync(destination, bytes, { flag: 'wx' });
+          };
+          const trusted = blob(base, process.env.BASE_SHA, 'backend/scripts/okf-validate-bundle.js');
+          if (!trusted) throw new Error('Trusted Stage 9 missing at exact base SHA.');
+          // .mjs preserves the exact executable bytes without loading a package.json.
+          put('backend/scripts/okf-validate-bundle.mjs', trusted);
+          for (const relative of allowed) {
+            const bytes = blob(proposed, process.env.HEAD_SHA, relative);
+            if (bytes !== null) put(relative, bytes);
+          }
+          const sourceMapPath = 'backend/knowledge/.okf-system/source-map.json';
+          const sourceMap = JSON.parse(fs.readFileSync(path.join(validation, sourceMapPath), 'utf8'));
+          if (!Array.isArray(sourceMap)) throw new Error('Invalid proposed source map.');
+          const dependencies = new Set();
+          for (const entry of sourceMap) {
+            if (!Array.isArray(entry.primarySources)) throw new Error('Invalid primarySources.');
+            for (const source of entry.primarySources) {
+              if (typeof source !== 'string' || !source.trim()) throw new Error('Invalid mapped source.');
+              const normalized = source.replace(/\\/g, '/');
+              if (normalized.startsWith('/') || /^[A-Za-z]:/.test(normalized) || normalized.split('/').includes('..')) throw new Error('Escaping mapped source.');
+              const canonical = path.posix.normalize(normalized);
+              if (canonical === 'backend/src') throw new Error('Mapped source is a directory.');
+              if (canonical.startsWith('backend/src/')) dependencies.add(canonical);
+            }
+          }
+          for (const relative of [...dependencies].sort()) {
+            const bytes = blob(proposed, process.env.HEAD_SHA, relative);
+            if (bytes === null) throw new Error(`Mapped dependency missing/deleted at head: ${relative}`);
+            put(relative, bytes);
+          }
+          NODE
+
+      - name: Run trusted base Stage 9
+        id: stage9
+        working-directory: validation-tree
+        run: |
+          set +e
+          node backend/scripts/okf-validate-bundle.mjs > "$RUNNER_TEMP/stage9.json" 2> "$RUNNER_TEMP/stage9.stderr"
+          status=$?
+          set -e
+          echo "Stage 9 exit: $status" >> "$GITHUB_STEP_SUMMARY"
+          if [ -s "$RUNNER_TEMP/stage9.json" ]; then
+            echo '```json' >> "$GITHUB_STEP_SUMMARY"
+            cat "$RUNNER_TEMP/stage9.json" >> "$GITHUB_STEP_SUMMARY"
+            echo '```' >> "$GITHUB_STEP_SUMMARY"
+          fi
+          if [ -s "$RUNNER_TEMP/stage9.stderr" ]; then
+            echo 'Stage 9 stderr:' >> "$GITHUB_STEP_SUMMARY"
+            cat "$RUNNER_TEMP/stage9.stderr" >> "$GITHUB_STEP_SUMMARY"
+          fi
+          exit "$status"
+
+  validate-main:
+    if: github.event_name == 'push'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out exact pushed commit
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 1
+
+      - name: Run Stage 9
+        working-directory: .
+        run: |
+          set +e
+          node backend/scripts/okf-validate-bundle.js > "$RUNNER_TEMP/stage9.json" 2> "$RUNNER_TEMP/stage9.stderr"
+          status=$?
+          set -e
+          echo "Stage 9 exit: $status" >> "$GITHUB_STEP_SUMMARY"
+          if [ -s "$RUNNER_TEMP/stage9.json" ]; then
+            echo '```json' >> "$GITHUB_STEP_SUMMARY"
+            cat "$RUNNER_TEMP/stage9.json" >> "$GITHUB_STEP_SUMMARY"
+            echo '```' >> "$GITHUB_STEP_SUMMARY"
+          fi
+          if [ -s "$RUNNER_TEMP/stage9.stderr" ]; then
+            echo 'Stage 9 stderr:' >> "$GITHUB_STEP_SUMMARY"
+            cat "$RUNNER_TEMP/stage9.stderr" >> "$GITHUB_STEP_SUMMARY"
+          fi
+          exit "$status"

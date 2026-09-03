@@ -1,0 +1,76 @@
+{
+  "version": "1.0.0",
+  "created": "2026-08-23",
+  "lastUpdated": "2026-08-23",
+  "knowledgeDir": "backend/knowledge",
+  "systemDir": "backend/knowledge/.okf-system",
+  "totalFiles": 10,
+  "schemaInitOrder": [
+    "initializeCrmSchema",
+    "initializeQualitySchema",
+    "initializeProjectSchema",
+    "initializeResourceSchema",
+    "initializeProjectPartiesSchema"
+  ],
+  "evidenceHierarchy": [
+    "live_database_schema",
+    "schema_initialization_code",
+    "service_layer",
+    "controllers_and_routes",
+    "existing_okf_stated_facts",
+    "existing_okf_inferred_facts",
+    "update_history",
+    "learned_patterns"
+  ],
+  "hardRules": [
+    "No evidence = no change",
+    "Never invent tables, columns, relationships, enums, or business rules",
+    "Never rewrite unaffected sections",
+    "Do not promote [INFERRED] to confirmed without new evidence",
+    "Do not remove knowledge because one file no longer contains it - investigate all relevant sources first",
+    "If authoritative sources conflict, do not guess",
+    "Every automatic update must be traceable to evidence",
+    "Current repository/database evidence outranks learned patterns",
+    "Only update specific affected OKF files and sections",
+    "The bundle must remain manually editable by developers"
+  ],
+  "initializerTableCoverage": {
+    "initializeCrmSchema": {
+      "ownedTables": [
+        "crm_contacts",
+        "crm_interactions",
+        "crm_job_nature",
+        "crm_sectors"
+      ]
+    },
+    "initializeQualitySchema": {
+      "ownedTables": [
+        "proj_qaqc_observations",
+        "proj_quality_methodologies",
+        "proj_quality_checklists"
+      ]
+    },
+    "initializeProjectSchema": {
+      "ownedTables": [
+        "proj_projects"
+      ]
+    },
+    "initializeResourceSchema": {
+      "ownedTables": [
+        "res_resources",
+        "res_compositions",
+        "res_rates",
+        "res_conversions"
+      ]
+    },
+    "initializeProjectPartiesSchema": {
+      "ownedTables": [
+        "pdoc_parties"
+      ]
+    },
+    "initializeProjectResourceSchema": {
+      "ownedTables": [],
+      "delegatesTo": "initializeResourceSchema"
+    }
+  }
+}

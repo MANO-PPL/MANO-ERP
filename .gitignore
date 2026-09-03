@@ -133,3 +133,28 @@ extracted_export*.json
 # Uploads
 backend/uploads/
 uploads/
+
+# OKF environment/runtime state: retain externally or locally where continuity matters.
+/backend/knowledge/.okf-system/db-schema-snapshot.json
+/backend/knowledge/.okf-system/update-history.json
+/backend/knowledge/.okf-system/learned-patterns.md
+/backend/knowledge/.okf-system/auto-runner-state.json
+
+# OKF retained runtime/audit backups remain outside Git; update history may reference them.
+/backend/knowledge/.okf-system/backups/
+
+# OKF generated evidence and review artifacts are disposable pipeline outputs.
+/backend/knowledge/.okf-system/evidence-bundles/
+/backend/knowledge/.okf-system/change-proposals/
+/backend/knowledge/.okf-system/validated-proposals/
+/backend/knowledge/.okf-system/human-review-required.json
+
+# Explicit OKF stage diagnostics from test/catch-up runs.
+/stage2-catchup.json
+/stage2-changes.json
+/stage2-smoke.json
+/stage3-diff.json
+/stage3-smoke.json
+/stage4-analysis.json
+/stage4-catchup.json
+/stage4-smoke.json

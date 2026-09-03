@@ -1,0 +1,226 @@
+[
+  {
+    "okfFile": "index.md",
+    "tables": [
+      "crm_contacts",
+      "crm_interactions",
+      "crm_job_nature",
+      "crm_sectors",
+      "proj_projects",
+      "proj_members",
+      "pdoc_parties",
+      "res_resources",
+      "res_rates",
+      "res_compositions",
+      "res_conversions"
+    ],
+    "primarySources": [
+      "backend/src/modules/vendors/vendorService.js",
+      "backend/src/modules/clients/clientService.js",
+      "backend/src/modules/projects/core/projectService.js",
+      "backend/src/modules/projects/parties/partyService.js",
+      "backend/src/modules/inventory/resourceService.js",
+      "backend/src/services/compositionResolver.js",
+      "backend/src/modules/shared/jobNatureService.js",
+      "backend/src/modules/shared/sectorService.js",
+      "backend/server.js"
+    ],
+    "schemaInitFunctions": [
+      "initializeCrmSchema",
+      "initializeProjectSchema",
+      "initializeProjectPartiesSchema",
+      "initializeResourceSchema"
+    ],
+    "description": "Bundle-wide graph and tracing overview across CRM, project, and resource layers used by the current 10-file OKF set."
+  },
+  {
+    "okfFile": "vendors/index.md",
+    "tables": [
+      "crm_contacts",
+      "crm_interactions",
+      "crm_job_nature",
+      "crm_sectors"
+    ],
+    "primarySources": [
+      "backend/src/modules/vendors/vendorService.js",
+      "backend/src/modules/vendors/vendorController.js",
+      "backend/src/modules/vendors/vendorRoutes.js",
+      "backend/src/modules/clients/clientService.js",
+      "backend/src/modules/shared/jobNatureService.js",
+      "backend/src/modules/shared/sectorService.js",
+      "backend/src/modules/admin/adminController.js",
+      "backend/src/modules/admin/adminRoutes.js"
+    ],
+    "schemaInitFunctions": [
+      "initializeCrmSchema"
+    ],
+    "description": "Vendor contact model, category handling, CRUD behavior, and interaction coupling in shared CRM tables."
+  },
+  {
+    "okfFile": "vendors/relationships.md",
+    "tables": [
+      "pdoc_parties",
+      "crm_contacts",
+      "proj_projects"
+    ],
+    "primarySources": [
+      "backend/src/modules/projects/parties/partyService.js",
+      "backend/src/modules/projects/parties/partyController.js",
+      "backend/src/modules/projects/parties/partyRoutes.js",
+      "backend/src/modules/vendors/vendorService.js",
+      "backend/src/modules/clients/clientService.js",
+      "backend/src/modules/clients/clientController.js",
+      "backend/src/modules/projects/projectRoutes.js"
+    ],
+    "schemaInitFunctions": [
+      "initializeProjectPartiesSchema",
+      "initializeCrmSchema"
+    ],
+    "description": "Project-party join behavior linking projects and contacts, including vendor relationship semantics and ranking context."
+  },
+  {
+    "okfFile": "clients/index.md",
+    "tables": [
+      "crm_contacts",
+      "crm_interactions",
+      "crm_job_nature",
+      "crm_sectors"
+    ],
+    "primarySources": [
+      "backend/src/modules/clients/clientService.js",
+      "backend/src/modules/clients/clientController.js",
+      "backend/src/modules/clients/clientRoutes.js",
+      "backend/src/modules/shared/jobNatureService.js",
+      "backend/src/modules/shared/sectorService.js",
+      "backend/src/modules/admin/adminController.js",
+      "backend/src/modules/admin/adminRoutes.js"
+    ],
+    "schemaInitFunctions": [
+      "initializeCrmSchema"
+    ],
+    "description": "Client-specific behavior on the shared CRM tables, including category filtering and interaction projection fields."
+  },
+  {
+    "okfFile": "resources/index.md",
+    "tables": [
+      "res_resources",
+      "res_rates",
+      "res_compositions",
+      "res_conversions"
+    ],
+    "primarySources": [
+      "backend/src/modules/inventory/resourceService.js",
+      "backend/src/modules/inventory/resourceController.js",
+      "backend/src/modules/inventory/resourceRoutes.js",
+      "backend/src/modules/projects/resources/projectResourceService.js",
+      "backend/src/modules/projects/resources/projectResourceController.js",
+      "backend/src/modules/projects/resources/projectResourceRoutes.js",
+      "backend/src/services/unitRegistry.js"
+    ],
+    "schemaInitFunctions": [
+      "initializeResourceSchema"
+    ],
+    "description": "Resource entity model, supported resource types, unit behavior, and project-copy representation for resource scope."
+  },
+  {
+    "okfFile": "resources/rate-versioning.md",
+    "tables": [
+      "res_rates"
+    ],
+    "primarySources": [
+      "backend/src/modules/inventory/resourceService.js",
+      "backend/src/modules/inventory/resourceController.js",
+      "backend/src/modules/projects/resources/projectResourceService.js",
+      "backend/src/modules/projects/resources/projectResourceController.js",
+      "backend/src/modules/projects/resources/projectResourceRoutes.js"
+    ],
+    "schemaInitFunctions": [
+      "initializeResourceSchema"
+    ],
+    "description": "Manual rate versioning and effective-date resolution rules for resource pricing."
+  },
+  {
+    "okfFile": "resources/compositions.md",
+    "tables": [
+      "res_compositions",
+      "res_resources"
+    ],
+    "primarySources": [
+      "backend/src/modules/inventory/resourceService.js",
+      "backend/src/services/compositionResolver.js",
+      "backend/src/modules/projects/resources/projectResourceService.js",
+      "backend/src/modules/projects/resources/projectResourceController.js",
+      "backend/src/modules/projects/resources/projectResourceRoutes.js"
+    ],
+    "schemaInitFunctions": [
+      "initializeResourceSchema"
+    ],
+    "description": "Composition schema compatibility, versioning fields, and cycle-safe composition write behavior for item resources."
+  },
+  {
+    "okfFile": "resources/impact-tracing.md",
+    "tables": [
+      "res_rates",
+      "res_compositions",
+      "res_resources"
+    ],
+    "primarySources": [
+      "backend/src/modules/inventory/resourceService.js",
+      "backend/src/modules/projects/resources/projectResourceService.js",
+      "backend/src/modules/projects/resources/projectResourceController.js",
+      "backend/src/modules/projects/resources/projectResourceRoutes.js",
+      "backend/src/services/compositionResolver.js",
+      "backend/src/modules/ai/ai.controller.js",
+      "backend/src/modules/ai/ai.service.js",
+      "frontend/src/pages/ProjectDetails/Contracts/Budget/budgetData.js"
+    ],
+    "schemaInitFunctions": [
+      "initializeResourceSchema"
+    ],
+    "description": "Upstream rate impact traversal through compositions and project-scoped resource copies, with backend budget-boundary limits."
+  },
+  {
+    "okfFile": "interactions/index.md",
+    "tables": [
+      "crm_interactions",
+      "crm_contacts"
+    ],
+    "primarySources": [
+      "backend/src/modules/vendors/vendorService.js",
+      "backend/src/modules/vendors/vendorController.js",
+      "backend/src/modules/clients/clientService.js",
+      "backend/src/modules/clients/clientController.js"
+    ],
+    "schemaInitFunctions": [
+      "initializeCrmSchema"
+    ],
+    "description": "Interaction logging, follow-up semantics, and client/vendor interaction field behavior on shared CRM interaction tables."
+  },
+  {
+    "okfFile": "projects/index.md",
+    "tables": [
+      "proj_projects",
+      "proj_members",
+      "pdoc_parties",
+      "res_resources"
+    ],
+    "primarySources": [
+      "backend/src/modules/projects/core/projectService.js",
+      "backend/src/modules/projects/core/projectController.js",
+      "backend/src/modules/projects/projectRoutes.js",
+      "backend/src/modules/projects/parties/partyService.js",
+      "backend/src/modules/projects/resources/projectResourceService.js",
+      "backend/src/modules/clients/clientService.js",
+      "backend/src/modules/clients/clientController.js",
+      "backend/src/modules/admin/adminController.js",
+      "backend/src/modules/admin/adminRoutes.js",
+      "backend/src/modules/projects/resources/projectResourceController.js",
+      "backend/src/modules/projects/resources/projectResourceRoutes.js"
+    ],
+    "schemaInitFunctions": [
+      "initializeProjectSchema",
+      "initializeProjectPartiesSchema"
+    ],
+    "description": "Project identity, membership usage, project-party links, and project-scoped resource integration points."
+  }
+]
