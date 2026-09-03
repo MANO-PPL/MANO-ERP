@@ -40,7 +40,7 @@ const ProjectSummary = ({ onBack, setExtraBreadcrumbs, canWrite }) => {
                 const mappedLogs = res.logs.map(log => {
                     let actionText = log.action;
                     let logType = 'update';
-                    
+
                     if (log.action === 'cycle_initiated') {
                         actionText = `Revision cycle V${log.version_number} started`;
                         logType = 'create';
@@ -119,15 +119,15 @@ const ProjectSummary = ({ onBack, setExtraBreadcrumbs, canWrite }) => {
                     if (workflowState.cycleId) {
                         try {
                             const res = await workflowApi.getDraftContent(workflowState.instanceId);
-                            rows = res.content_tables?.pdoc_summary || [];
+                            rows = res.content_tables?.proj_summary || [];
                         } catch (err) {
                             // Fall back to approved if draft is not accessible
                             const res = await workflowApi.getApprovedContent(workflowState.instanceId);
-                            rows = res.content?.pdoc_summary || [];
+                            rows = res.content?.proj_summary || [];
                         }
                     } else {
                         const res = await workflowApi.getApprovedContent(workflowState.instanceId);
-                        rows = res.content?.pdoc_summary || [];
+                        rows = res.content?.proj_summary || [];
                     }
 
                     // If no workflow content yet, fall back to base summaries
@@ -351,7 +351,7 @@ const ProjectSummary = ({ onBack, setExtraBreadcrumbs, canWrite }) => {
                                     {isEditable && <th className="px-3 py-3 font-semibold text-[11px] uppercase tracking-wider text-center text-gray-500 dark:text-gray-400">Actions</th>}
                                 </tr>
                             </thead>
-                            <Reorder.Group axis="y" values={milestones} onReorder={isEditable ? setMilestones : () => {}} as="tbody" className="divide-y divide-gray-100 dark:divide-white/[0.04]">
+                            <Reorder.Group axis="y" values={milestones} onReorder={isEditable ? setMilestones : () => { }} as="tbody" className="divide-y divide-gray-100 dark:divide-white/[0.04]">
                                 <AnimatePresence initial={false}>
                                     {milestones.map((milestone, idx) => {
                                         const isEditing = editingId === milestone.id;
@@ -417,12 +417,11 @@ const ProjectSummary = ({ onBack, setExtraBreadcrumbs, canWrite }) => {
                                                             <option value="pending">Pending</option>
                                                         </select>
                                                     ) : (
-                                                        <span className={`inline-flex px-2.5 py-0.5 rounded-full text-[10px] font-semibold uppercase tracking-wider border shadow-2xs ${
-                                                            milestone.status === 'completed' 
+                                                        <span className={`inline-flex px-2.5 py-0.5 rounded-full text-[10px] font-semibold uppercase tracking-wider border shadow-2xs ${milestone.status === 'completed'
                                                                 ? 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-500/25' :
-                                                            milestone.status === 'in_progress' 
-                                                                ? 'bg-blue-500/10 text-blue-600 dark:text-blue-400 border-blue-500/25' :
-                                                                'bg-amber-500/10 text-amber-600 dark:text-amber-400 border-amber-500/25'
+                                                                milestone.status === 'in_progress'
+                                                                    ? 'bg-blue-500/10 text-blue-600 dark:text-blue-400 border-blue-500/25' :
+                                                                    'bg-amber-500/10 text-amber-600 dark:text-amber-400 border-amber-500/25'
                                                             }`}>
                                                             {milestone.status?.replace('_', ' ') || '-'}
                                                         </span>

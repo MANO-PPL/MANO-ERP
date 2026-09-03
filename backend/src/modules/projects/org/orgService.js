@@ -33,14 +33,15 @@ export async function getProjectOrgChart(projectId) {
     }
 
     // 2. Fetch Parties (Project Parties + Contacts Join)
-    const parties = await db('pdoc_parties as pp')
-        .leftJoin('crm_contacts as c', 'pp.party_id', 'c.id')
+    const parties = await db('proj_parties as pp')
+        .leftJoin('crm_contacts as c', 'pp.contact_id', 'c.id')
         .leftJoin('crm_job_nature as jn', 'c.job_nature_id', 'jn.job_id')
         .where('pp.project_id', projectId)
-        .whereNull('pp.deleted_at')
         .select([
-            'pp.pv_id',
-            'pp.party_id as party_id',
+            'pp.id as pv_id',
+            'pp.id as id',
+            'pp.contact_id as party_id',
+            'pp.contact_id as contact_id',
             'c.name as company_name',
             'c.category',
             'jn.job_name as job_nature',
@@ -55,15 +56,16 @@ export async function getProjectOrgChart(projectId) {
     }
 
     // 3. Fetch Directory (Project Directory + Contacts Join)
-    const directory = await db('pdoc_directory as pd')
-        .leftJoin('pdoc_parties as pp', 'pd.pv_id', 'pp.pv_id')
-        .leftJoin('crm_contacts as c', 'pp.party_id', 'c.id')
+    const directory = await db('proj_directory as pd')
+        .leftJoin('proj_parties as pp', 'pd.party_id', 'pp.id')
+        .leftJoin('crm_contacts as c', 'pp.contact_id', 'c.id')
         .leftJoin('crm_job_nature as jn', 'c.job_nature_id', 'jn.job_id')
         .where('pd.project_id', projectId)
         .select([
             'pd.pd_id',
-            'pd.pv_id',
-            'pp.party_id as party_id',
+            'pd.party_id as pv_id',
+            'pd.party_id as party_id',
+            'pp.contact_id as contact_id',
             'c.name as company_name',
             'jn.job_name as job_nature',
             'pd.contact_person',

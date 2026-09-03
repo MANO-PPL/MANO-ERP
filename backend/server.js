@@ -2,6 +2,7 @@ import { createServer } from 'http';
 import { Server as SocketIO } from 'socket.io';
 import { spawn } from 'child_process';
 import path from 'path';
+import fs from 'fs';
 import { fileURLToPath } from 'url';
 import './src/config/config.js';
 
@@ -58,36 +59,40 @@ server.listen(PORT, '0.0.0.0', async () => {
     }
 
     
-    // Auto-start Python AI Microservice
+    // Auto-start Python AI Microservice if virtual environment is set up
     try {
         const pythonDir = path.join(__dirname, 'src', 'modules', 'ai', 'python_engine');
-        console.log('Booting Python AI Engine...');
+        const venvDir = path.join(pythonDir, 'venv');
         
-        const isWin = process.platform === 'win32';
-        const command = isWin ? 'cmd.exe' : path.join(pythonDir, 'venv', 'bin', 'uvicorn');
-        const args = isWin 
-            ? ['/c', 'venv\\Scripts\\uvicorn main:app --port 8000 --reload'] 
-            : ['main:app', '--port', '8000', '--reload'];
+        if (fs.existsSync(venvDir)) {
+            console.log('Booting Python AI Engine...');
+            
+            const isWin = process.platform === 'win32';
+            const command = isWin ? 'cmd.exe' : path.join(venvDir, 'bin', 'uvicorn');
+            const args = isWin 
+                ? ['/c', 'venv\\Scripts\\uvicorn main:app --port 8000 --reload'] 
+                : ['main:app', '--port', '8000', '--reload'];
 
-        const pythonProcess = spawn(command, args, {
-            cwd: pythonDir,
-            stdio: 'inherit',
-            shell: isWin
-        });
+            const pythonProcess = spawn(command, args, {
+                cwd: pythonDir,
+                stdio: 'inherit',
+                shell: isWin
+            });
 
-        pythonProcess.on('error', (err) => {
-            console.error('Failed to start Python Microservice:', err);
-        });
-        
-        // Gracefully kill Python when Node shuts down
-        const shutdown = () => {
-            console.log('\nShutting down Python AI Engine...');
-            try { pythonProcess.kill(); } catch (e) {}
-            process.exit();
-        };
-        
-        process.on('SIGINT', shutdown);
-        process.on('SIGTERM', shutdown);
+            pythonProcess.on('error', (err) => {
+                console.error('Failed to start Python Microservice:', err);
+            });
+            
+            // Gracefully kill Python when Node shuts down
+            const shutdown = () => {
+                console.log('\nShutting down Python AI Engine...');
+                try { pythonProcess.kill(); } catch (e) {}
+                process.exit();
+            };
+            
+            process.on('SIGINT', shutdown);
+            process.on('SIGTERM', shutdown);
+        }
     } catch (pyErr) {
         console.error('Error starting Python Microservice:', pyErr.message || pyErr);
     }

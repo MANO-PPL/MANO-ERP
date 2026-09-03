@@ -199,7 +199,6 @@ export const requireProjectPermission = (module) => {
             const generalDocsMapping = {
                 'directory': 'General Documents',
                 'parties': 'General Documents',
-                'staff': 'General Documents',
                 'summary': 'General Documents',
                 'agenda': 'General Documents',
                 'mom': 'General Documents',

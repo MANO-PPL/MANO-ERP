@@ -4,10 +4,16 @@ import { isAdmin } from '../../utils/userUtils.js';
 
 const CONTENT_TABLES = [
     { name: 'wf_document_lines', pk: 'line_id' },
+    { name: 'proj_directory', pk: 'pd_id' },
     { name: 'pdoc_directory', pk: 'pd_id' },
+    { name: 'proj_parties', pk: 'id' },
     { name: 'pdoc_vendors', pk: 'pv_id' },
-    { name: 'pdoc_staff_responsible', pk: 'psrr_id' },
-    { name: 'pdoc_summary', pk: 'id' },
+    { name: 'proj_summary', pk: 'id' },
+    {
+        name: 'proj_meetings',
+        pk: 'id',
+        children: [{ name: 'proj_meetings_participants', fk: 'meeting_id', pk: 'id' }]
+    },
     {
         name: 'pdoc_meeting',
         pk: 'meeting_id',
@@ -115,6 +121,7 @@ export async function getApprovedContent(orgId, instanceId, userId, versionIdPar
     const contentData = {};
 
     for (const tableConf of CONTENT_TABLES) {
+        if (!(await db.schema.hasTable(tableConf.name))) continue;
         let rows = await db(tableConf.name).where({
             instance_id: instanceId,
             version_id: targetVersionId
@@ -159,6 +166,7 @@ export async function getDraftContent(orgId, instanceId, userId) {
     const contentData = {};
 
     for (const tableConf of CONTENT_TABLES) {
+        if (!(await db.schema.hasTable(tableConf.name))) continue;
         let rows = await db(tableConf.name)
             .where({ instance_id: instanceId, cycle_id: activeCycle.cycle_id })
             .whereNull('version_id');

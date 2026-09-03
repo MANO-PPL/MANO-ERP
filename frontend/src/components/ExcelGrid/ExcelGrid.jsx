@@ -168,20 +168,24 @@ export const ExcelGrid = ({
         };
 
         setIsSaving(true);
+        if (grid.isSavingRef) grid.isSavingRef.current = true;
         try {
             await onSave(payload);
             setLastSavedTime(new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }));
             grid.setDeletedIds(new Set());
             grid.setGridData((prev) =>
-                prev.map((r) => ({
-                    ...r,
-                    _status: 'saved',
-                    _errors: {}
-                }))
+                (prev || [])
+                    .filter((r) => !String(r[primaryKey]).startsWith('temp_') || r._status !== 'new')
+                    .map((r) => ({
+                        ...r,
+                        _status: 'saved',
+                        _errors: {}
+                    }))
             );
             showToast('success', 'Saved', 'All spreadsheet changes saved successfully');
             if (onRefresh) onRefresh();
         } catch (err) {
+            if (grid.isSavingRef) grid.isSavingRef.current = false;
             console.error('Save failed:', err);
             showToast(
                 'error',
@@ -189,6 +193,7 @@ export const ExcelGrid = ({
                 err.response?.data?.message || err.message || 'Failed to save changes'
             );
         } finally {
+            if (grid.isSavingRef) grid.isSavingRef.current = false;
             setIsSaving(false);
         }
     };

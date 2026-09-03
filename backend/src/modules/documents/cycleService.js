@@ -8,8 +8,7 @@ const CONTENT_TABLES = [
     { name: 'wf_document_lines', pk: 'line_id', projectScoped: false },
     { name: 'pdoc_vendors', pk: 'pv_id' },
     { name: 'pdoc_directory', pk: 'pd_id' },
-    { name: 'pdoc_staff_responsible', pk: 'psrr_id' },
-    { name: 'pdoc_summary', pk: 'id' },
+    { name: 'proj_summary', pk: 'id' },
     {
         name: 'pdoc_meeting',
         pk: 'meeting_id',
@@ -67,13 +66,13 @@ async function cloneContentToNewCycle(trx, instanceId, cycleId, latestApprovedVe
             for (const row of sourceRows) {
                 try {
                     const oldPkVal = row[tableConf.pk];
-                    
+
                     const clonedRow = { ...row };
                     delete clonedRow[tableConf.pk]; // Remove PK for auto-increment
                     clonedRow.instance_id = instanceId;
                     clonedRow.cycle_id = cycleId;
                     clonedRow.version_id = null;
-                    
+
                     if (clonedRow.created_at) clonedRow.created_at = new Date();
                     if (clonedRow.updated_at) clonedRow.updated_at = new Date();
 

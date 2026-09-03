@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useRef, useMemo } from 'react';
+import React, { useEffect, useState, useRef, useMemo, useCallback } from 'react';
 import { createPortal } from 'react-dom';
 import { Plus, Edit2, GripVertical, Trash2, Info, X, Clock, ArrowLeft, Search, ChevronDown, Users, Loader2, Building2 } from 'lucide-react';
 import { Reorder, AnimatePresence, motion } from 'framer-motion';
@@ -21,8 +21,8 @@ const PartySelector = ({ value, onChange, projectParties }) => {
     const listRef = useRef(null);
 
     useEffect(() => {
-        const handler = (e) => { 
-            if (ref.current && !ref.current.contains(e.target) && !e.target.closest('.portal-dropdown')) setOpen(false); 
+        const handler = (e) => {
+            if (ref.current && !ref.current.contains(e.target) && !e.target.closest('.portal-dropdown')) setOpen(false);
         };
         document.addEventListener('mousedown', handler);
         return () => document.removeEventListener('mousedown', handler);
@@ -31,10 +31,10 @@ const PartySelector = ({ value, onChange, projectParties }) => {
     const handleToggle = () => {
         if (!open && ref.current) {
             const rect = ref.current.getBoundingClientRect();
-            setCoords({ 
-                top: rect.bottom + window.scrollY, 
-                left: rect.left + window.scrollX, 
-                width: Math.max(rect.width, 300) 
+            setCoords({
+                top: rect.bottom + window.scrollY,
+                left: rect.left + window.scrollX,
+                width: Math.max(rect.width, 300)
             });
             setSearch('');
             setActiveIndex(0);
@@ -98,9 +98,9 @@ const PartySelector = ({ value, onChange, projectParties }) => {
                     initial={{ opacity: 0, y: 6 }}
                     animate={{ opacity: 1, y: 0 }}
                     className="portal-dropdown fixed bg-white dark:bg-[#161b22] border border-gray-200 dark:border-white/10 rounded-xl shadow-2xl z-[9999] overflow-hidden flex flex-col p-1.5"
-                    style={{ 
-                        top: coords.top - window.scrollY, 
-                        left: coords.left - window.scrollX, 
+                    style={{
+                        top: coords.top - window.scrollY,
+                        left: coords.left - window.scrollX,
                         width: coords.width,
                         maxHeight: '300px'
                     }}
@@ -142,11 +142,10 @@ const PartySelector = ({ value, onChange, projectParties }) => {
                                     type="button"
                                     onMouseEnter={() => setActiveIndex(idx)}
                                     onClick={() => { onChange(v); setOpen(false); setSearch(''); }}
-                                    className={`w-full px-2.5 py-2 flex flex-col items-start rounded-lg text-left transition-colors cursor-pointer ${
-                                        isActive
+                                    className={`w-full px-2.5 py-2 flex flex-col items-start rounded-lg text-left transition-colors cursor-pointer ${isActive
                                             ? 'bg-blue-50 dark:bg-blue-900/30'
                                             : 'hover:bg-gray-50 dark:hover:bg-white/5'
-                                    }`}
+                                        }`}
                                 >
                                     <span className="text-xs font-semibold text-gray-900 dark:text-white uppercase tracking-tight">
                                         <HighlightMatch text={v.name} query={search} />
@@ -192,6 +191,7 @@ const ProjectDirectory = ({ onBack, setExtraBreadcrumbs, canWrite }) => {
     const [contacts, setContacts] = useState([]);
     const [loading, setLoading] = useState(true);
     const [workflowState, setWorkflowState] = useState({ mode: 'read', cycleId: null, instanceId: null, loading: false, notConfigured: true });
+    const isEditable = canWrite && (workflowState.notConfigured || (workflowState.mode === 'edit' && workflowState.cycleId));
 
     const [editingId, setEditingId] = useState(null);
     const [editData, setEditData] = useState(null);
@@ -264,7 +264,7 @@ const ProjectDirectory = ({ onBack, setExtraBreadcrumbs, canWrite }) => {
             }
             lines.push(cells.join('\t'));
         }
-        navigator.clipboard.writeText(lines.join('\n')).catch(() => {});
+        navigator.clipboard.writeText(lines.join('\n')).catch(() => { });
         toast.info(`Copied ${lines.length} row(s) to clipboard`);
     }, [getBoundsFromRefs, contacts]);
 
@@ -356,16 +356,16 @@ const ProjectDirectory = ({ onBack, setExtraBreadcrumbs, canWrite }) => {
                 const totalCols = DIRECTORY_COLS.length;
                 let { r, c } = selectionFocus || selectionAnchor;
 
-                if (e.key === 'ArrowDown')  { e.preventDefault(); r = mod ? totalRows - 1 : Math.min(r + 1, totalRows - 1); }
-                if (e.key === 'ArrowUp')    { e.preventDefault(); r = mod ? 0 : Math.max(r - 1, 0); }
+                if (e.key === 'ArrowDown') { e.preventDefault(); r = mod ? totalRows - 1 : Math.min(r + 1, totalRows - 1); }
+                if (e.key === 'ArrowUp') { e.preventDefault(); r = mod ? 0 : Math.max(r - 1, 0); }
                 if (e.key === 'ArrowRight') { e.preventDefault(); c = mod ? totalCols - 1 : Math.min(c + 1, totalCols - 1); }
-                if (e.key === 'ArrowLeft')  { e.preventDefault(); c = mod ? 0 : Math.max(c - 1, 0); }
-                if (e.key === 'Tab')        { e.preventDefault(); c = e.shiftKey ? Math.max(c - 1, 0) : Math.min(c + 1, totalCols - 1); }
-                if (e.key === 'Enter')      { e.preventDefault(); r = e.shiftKey ? Math.max(r - 1, 0) : Math.min(r + 1, totalRows - 1); }
-                if (e.key === 'Home')       { e.preventDefault(); c = 0; if (mod) r = 0; }
-                if (e.key === 'End')        { e.preventDefault(); c = totalCols - 1; if (mod) r = totalRows - 1; }
-                if (e.key === 'PageUp')     { e.preventDefault(); r = Math.max(0, r - 10); }
-                if (e.key === 'PageDown')   { e.preventDefault(); r = Math.min(totalRows - 1, r + 10); }
+                if (e.key === 'ArrowLeft') { e.preventDefault(); c = mod ? 0 : Math.max(c - 1, 0); }
+                if (e.key === 'Tab') { e.preventDefault(); c = e.shiftKey ? Math.max(c - 1, 0) : Math.min(c + 1, totalCols - 1); }
+                if (e.key === 'Enter') { e.preventDefault(); r = e.shiftKey ? Math.max(r - 1, 0) : Math.min(r + 1, totalRows - 1); }
+                if (e.key === 'Home') { e.preventDefault(); c = 0; if (mod) r = 0; }
+                if (e.key === 'End') { e.preventDefault(); c = totalCols - 1; if (mod) r = totalRows - 1; }
+                if (e.key === 'PageUp') { e.preventDefault(); r = Math.max(0, r - 10); }
+                if (e.key === 'PageDown') { e.preventDefault(); r = Math.min(totalRows - 1, r + 10); }
 
                 // Space
                 if (e.key === ' ' || e.key === 'Spacebar') {
@@ -383,7 +383,7 @@ const ProjectDirectory = ({ onBack, setExtraBreadcrumbs, canWrite }) => {
                     }
                 }
 
-                if (['ArrowDown','ArrowUp','ArrowRight','ArrowLeft','Tab','Enter','Home','End','PageUp','PageDown'].includes(e.key)) {
+                if (['ArrowDown', 'ArrowUp', 'ArrowRight', 'ArrowLeft', 'Tab', 'Enter', 'Home', 'End', 'PageUp', 'PageDown'].includes(e.key)) {
                     if (e.shiftKey && e.key !== 'Tab' && e.key !== 'Enter') {
                         setSelectionFocus({ r, c });
                     } else {
@@ -398,8 +398,6 @@ const ProjectDirectory = ({ onBack, setExtraBreadcrumbs, canWrite }) => {
         return () => window.removeEventListener('keydown', handleKeyDown);
     }, [selectionAnchor, selectionFocus, contacts, isEditable, handleExcelCopy, handleFillDown, handleFillRight]);
 
-    const isEditable = canWrite && (workflowState.notConfigured || (workflowState.mode === 'edit' && workflowState.cycleId));
-
     const [auditTrail, setAuditTrail] = useState([]);
 
     const fetchLogs = async (instanceId) => {
@@ -410,7 +408,7 @@ const ProjectDirectory = ({ onBack, setExtraBreadcrumbs, canWrite }) => {
                 const mappedLogs = res.logs.map(log => {
                     let actionText = log.action;
                     let logType = 'update';
-                    
+
                     if (log.action === 'cycle_initiated') {
                         actionText = `Revision cycle V${log.version_number} started`;
                         logType = 'create';
@@ -501,7 +499,7 @@ const ProjectDirectory = ({ onBack, setExtraBreadcrumbs, canWrite }) => {
 
         try {
             if (contacts.length === 0 && !isSilent) setLoading(true);
-            
+
             // Check if workflow is active and has an instance
             if (workflowState && workflowState.instanceId && !workflowState.notConfigured) {
                 try {
@@ -511,18 +509,18 @@ const ProjectDirectory = ({ onBack, setExtraBreadcrumbs, canWrite }) => {
                     if (workflowState.cycleId) {
                         try {
                             const res = await workflowApi.getDraftContent(workflowState.instanceId);
-                            rows = res.content_tables?.pdoc_directory || [];
-                            cycleParties = res.content_tables?.pdoc_vendors || [];
+                            rows = res.content_tables?.proj_directory || res.content_tables?.pdoc_directory || [];
+                            cycleParties = res.content_tables?.proj_parties || res.content_tables?.pdoc_vendors || [];
                         } catch (err) {
                             // Fall back to approved if draft is not accessible
                             const res = await workflowApi.getApprovedContent(workflowState.instanceId);
-                            rows = res.content?.pdoc_directory || [];
-                            cycleParties = res.content?.pdoc_vendors || [];
+                            rows = res.content?.proj_directory || res.content?.pdoc_directory || [];
+                            cycleParties = res.content?.proj_parties || res.content?.pdoc_vendors || [];
                         }
                     } else {
                         const res = await workflowApi.getApprovedContent(workflowState.instanceId);
-                        rows = res.content?.pdoc_directory || [];
-                        cycleParties = res.content?.pdoc_vendors || [];
+                        rows = res.content?.proj_directory || res.content?.pdoc_directory || [];
+                        cycleParties = res.content?.proj_parties || res.content?.pdoc_vendors || [];
                     }
 
                     if (cycleParties.length > 0) {
@@ -535,7 +533,8 @@ const ProjectDirectory = ({ onBack, setExtraBreadcrumbs, canWrite }) => {
                         if (data && data.directory) {
                             const mappedContacts = data.directory.map(c => ({
                                 id: c.pd_id,
-                                pv_id: c.pv_id,
+                                party_id: c.party_id || c.pv_id,
+                                pv_id: c.party_id || c.pv_id,
                                 name: c.company_name,
                                 category: c.category,
                                 nature: c.job_nature,
@@ -553,10 +552,12 @@ const ProjectDirectory = ({ onBack, setExtraBreadcrumbs, canWrite }) => {
                     }
 
                     const mappedContacts = rows.map(c => {
-                        const matchedParty = (list || []).find(party => party.pv_id === c.pv_id);
+                        const partyKey = c.party_id || c.pv_id;
+                        const matchedParty = (list || []).find(party => (party.id === partyKey) || (party.pv_id === partyKey));
                         return {
                             id: c.pd_id,
-                            pv_id: c.pv_id,
+                            party_id: partyKey,
+                            pv_id: partyKey,
                             name: matchedParty?.name || c.company_name || '-',
                             category: matchedParty?.category || c.category || 'Uncategorized',
                             nature: matchedParty?.job_nature || c.job_nature || '-',
@@ -580,7 +581,8 @@ const ProjectDirectory = ({ onBack, setExtraBreadcrumbs, canWrite }) => {
             if (data && data.directory) {
                 const mappedContacts = data.directory.map(c => ({
                     id: c.pd_id,
-                    pv_id: c.pv_id,
+                    party_id: c.party_id || c.pv_id,
+                    pv_id: c.party_id || c.pv_id,
                     name: c.company_name,
                     category: c.category,
                     nature: c.job_nature,
@@ -604,6 +606,7 @@ const ProjectDirectory = ({ onBack, setExtraBreadcrumbs, canWrite }) => {
         if (!isEditable) return;
         const newRecord = {
             id: `new-${Date.now()}`,
+            party_id: null,
             pv_id: null,
             name: '',
             category: '',
@@ -623,9 +626,11 @@ const ProjectDirectory = ({ onBack, setExtraBreadcrumbs, canWrite }) => {
 
     // Called when user picks a party from the inline dropdown
     const handlePartySelect = (party) => {
+        const partyId = party.id || party.pv_id;
         setEditData(prev => ({
             ...prev,
-            pv_id: party.pv_id,
+            party_id: partyId,
+            pv_id: partyId,
             name: party.name || '',
             category: party.category || party.contact_category || party.party_category || 'Uncategorized',
             nature: party.job_nature || party.jobNature || ''
@@ -640,8 +645,10 @@ const ProjectDirectory = ({ onBack, setExtraBreadcrumbs, canWrite }) => {
 
     const handleSave = async () => {
         try {
+            const partyId = editData.party_id || editData.pv_id || null;
             const payload = {
-                pv_id: editData.pv_id || null,
+                party_id: partyId,
+                pv_id: partyId,
                 contact_person: editData.person,
                 designation: editData.designation,
                 responsibilities: editData.responsibilities,
@@ -649,7 +656,7 @@ const ProjectDirectory = ({ onBack, setExtraBreadcrumbs, canWrite }) => {
                 email: editData.email,
                 address_line: editData.address
             };
-            
+
             if (workflowState && workflowState.cycleId) {
                 if (editData.isNew) {
                     await workflowApi.addDirectoryDraft(workflowState.cycleId, payload);
@@ -841,7 +848,7 @@ const ProjectDirectory = ({ onBack, setExtraBreadcrumbs, canWrite }) => {
                                     {isEditable && <th className="px-3 py-3 font-semibold text-[11px] uppercase tracking-wider text-center text-gray-500 dark:text-gray-400">Actions</th>}
                                 </tr>
                             </thead>
-                            <Reorder.Group axis="y" values={contacts} onReorder={isEditable ? setContacts : () => {}} as="tbody" className="divide-y divide-gray-100 dark:divide-white/[0.04]">
+                            <Reorder.Group axis="y" values={contacts} onReorder={isEditable ? setContacts : () => { }} as="tbody" className="divide-y divide-gray-100 dark:divide-white/[0.04]">
                                 <AnimatePresence initial={false}>
                                     {contacts.map((contact, idx) => {
                                         const isEditing = editingId === contact.id;

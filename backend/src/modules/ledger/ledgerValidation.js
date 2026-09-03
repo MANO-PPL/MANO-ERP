@@ -1,20 +1,20 @@
 import AppError from '../../utils/AppError.js';
 
 export const TXN_TYPES = {
-    SUPPLY_ASSIGN:   'SUPPLY_ASSIGN',
-    TRANSFER_PARTY:  'TRANSFER_PARTY',
-    DAILY_PROGRESS:  'DAILY_PROGRESS',
+    SUPPLY_ASSIGN: 'SUPPLY_ASSIGN',
+    TRANSFER_PARTY: 'TRANSFER_PARTY',
+    DAILY_PROGRESS: 'DAILY_PROGRESS',
     // CONSUME_ACTIVITY and ADJUSTMENT are disabled — pending activity module integration
 };
 
 export const TXN_STATUS = {
-    DRAFT:     'DRAFT',
+    DRAFT: 'DRAFT',
     CONFIRMED: 'CONFIRMED',
     CANCELLED: 'CANCELLED',
 };
 
 export const ROLES = {
-    OWNER:    'OWNER',
+    OWNER: 'OWNER',
     EXECUTOR: 'EXECUTOR',
     SUPPLIER: 'SUPPLIER',
 };
@@ -24,7 +24,7 @@ export const ROLES = {
  *
  * Rules:
  * 1. Minimum 1 line.
- * 2. Every line must have party_id (INT, pdoc_parties.pv_id) and valid signed_qty.
+ * 2. Every line must have party_id (INT, proj_parties.pv_id) and valid signed_qty.
  * 3. SUM(signed_qty) grouped per project_resource_id must be zero for inventory movement transactions (SUPPLY_ASSIGN, TRANSFER_PARTY).
  * 4. Type-specific rules for SUPPLY_ASSIGN, TRANSFER_PARTY, and DAILY_PROGRESS.
  */
@@ -49,7 +49,7 @@ export function validateTransaction(header, lines) {
 
         const partyId = Number(line.party_id);
         if (!partyId || isNaN(partyId) || partyId <= 0) {
-            throw new AppError(`Line at index ${i} has invalid party_id "${line.party_id}". Must be a positive integer (pdoc_parties.pv_id)`, 400);
+            throw new AppError(`Line at index ${i} has invalid party_id "${line.party_id}". Must be a positive integer (proj_parties.pv_id)`, 400);
         }
 
         const signedQty = Number(line.signed_qty);
@@ -76,7 +76,7 @@ export function validateTransaction(header, lines) {
     switch (header.txn_type) {
         case TXN_TYPES.SUPPLY_ASSIGN: {
             const hasFrom = lines.some((l) => Number(l.signed_qty) < 0);
-            const hasTo   = lines.some((l) => Number(l.signed_qty) > 0);
+            const hasTo = lines.some((l) => Number(l.signed_qty) > 0);
             if (!hasFrom || !hasTo) {
                 throw new AppError('SUPPLY_ASSIGN must have at least one source line (negative) and one target line (positive)', 400);
             }
@@ -85,7 +85,7 @@ export function validateTransaction(header, lines) {
 
         case TXN_TYPES.TRANSFER_PARTY: {
             const hasFrom = lines.some((l) => Number(l.signed_qty) < 0);
-            const hasTo   = lines.some((l) => Number(l.signed_qty) > 0);
+            const hasTo = lines.some((l) => Number(l.signed_qty) > 0);
             if (!hasFrom || !hasTo) {
                 throw new AppError('TRANSFER_PARTY must have at least one source line (negative) and one target line (positive)', 400);
             }

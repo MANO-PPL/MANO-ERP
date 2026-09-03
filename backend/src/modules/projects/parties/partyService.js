@@ -6,7 +6,7 @@ import {
 } from '../../clients/clientService.js';
 import { findOrCreateJobNature } from '../../shared/jobNatureService.js';
 
-// Project parties are stored in pdoc_parties and resolved from CRM contacts.
+// Project parties are stored in proj_parties and resolved from CRM contacts.
 
 const FIELD_MAP = {
     name: 'c.name',
@@ -22,68 +22,26 @@ const FIELD_MAP = {
 };
 
 /**
- * Create the direct project-party table on installations that still have only
- * the legacy approval-backed pdoc_vendors table. The legacy table is kept for
- * the other document workflows; Project Parties uses this table exclusively.
+ * Ensure proj_parties schema is configured with joined_at and correct indices.
  */
 export async function initializeProjectPartiesSchema() {
-    if (await db.schema.hasTable('pdoc_parties')) {
-        const hasPartyId = await db.schema.hasColumn('pdoc_parties', 'party_id');
-        const hasLegacyPartyColumn = await db.schema.hasColumn('pdoc_parties', 'vendors_id');
-        if (!hasPartyId && hasLegacyPartyColumn) {
-            await db.schema.alterTable('pdoc_parties', (table) => {
-                table.renameColumn('vendors_id', 'party_id');
-            });
-            console.log('Renamed pdoc_parties.vendors_id to pdoc_parties.party_id');
+    if (await db.schema.hasTable('proj_parties')) {
+        const hasImportedAt = await db.schema.hasColumn('proj_parties', 'imported_at');
+        const hasJoinedAt = await db.schema.hasColumn('proj_parties', 'joined_at');
+        if (hasImportedAt && !hasJoinedAt) {
+            await db.raw('ALTER TABLE proj_parties CHANGE COLUMN imported_at joined_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP');
         }
-        return;
+
+        const [indexes] = await db.raw("SHOW INDEXES FROM proj_parties WHERE Key_name = 'proj_parties_project'");
+        if (indexes && indexes.length > 0) {
+            await db.raw('ALTER TABLE proj_parties DROP INDEX proj_parties_project');
+        }
+
+        const [projIdx] = await db.raw("SHOW INDEXES FROM proj_parties WHERE Key_name = 'idx_proj_parties_project_id'");
+        if (!projIdx || projIdx.length === 0) {
+            await db.raw('ALTER TABLE proj_parties ADD INDEX idx_proj_parties_project_id (project_id)');
+        }
     }
-
-    const [hasProjects, hasContacts] = await Promise.all([
-        db.schema.hasTable('proj_projects'),
-        db.schema.hasTable('crm_contacts'),
-    ]);
-    if (!hasProjects || !hasContacts) return;
-
-    await db.schema.createTable('pdoc_parties', (table) => {
-        table.increments('pv_id').primary();
-        table.integer('project_id').unsigned().notNullable();
-        table.integer('party_id').unsigned().notNullable();
-        table.timestamp('created_at').nullable().defaultTo(db.fn.now());
-        table.timestamp('updated_at').nullable().defaultTo(db.fn.now());
-        table.timestamp('deleted_at').nullable();
-
-        table.index('project_id', 'fk_pp_project');
-        table.index('party_id', 'fk_pp_party');
-        table.unique(['project_id', 'party_id'], 'uq_pdoc_parties_project_party');
-        table.foreign('project_id', 'fk_pp_project_ref')
-            .references('id')
-            .inTable('proj_projects')
-            .onDelete('CASCADE');
-        table.foreign('party_id', 'fk_pp_party_ref')
-            .references('id')
-            .inTable('crm_contacts')
-            .onDelete('RESTRICT');
-    });
-
-    // Preserve existing direct project-party IDs because pdoc_directory rows
-    // already reference the legacy pv_id values.
-    if (await db.schema.hasTable('pdoc_vendors')) {
-        await db.raw(`
-            INSERT INTO pdoc_parties
-                (pv_id, project_id, party_id, created_at, updated_at, deleted_at)
-            SELECT pv.pv_id, pv.project_id, pv.vendors_id,
-                   pv.created_at, pv.updated_at, pv.deleted_at
-            FROM pdoc_vendors pv
-            INNER JOIN crm_contacts c ON c.id = pv.vendors_id
-            WHERE pv.instance_id IS NULL
-              AND pv.cycle_id IS NULL
-              AND pv.version_id IS NULL
-              AND pv.deleted_at IS NULL
-        `);
-    }
-
-    console.log('Created table: pdoc_parties');
 }
 
 /* -------------------------------------------------------
@@ -98,8 +56,11 @@ export async function getProjectParties(projectId, fields, orgId) {
     }
 
     const BASE_FIELDS = [
-        'pp.pv_id as pv_id',
-        'pp.party_id as party_id',
+        'pp.id as id',
+        'pp.id as pv_id',
+        'pp.contact_id as party_id',
+        'pp.contact_id as contact_id',
+        'pp.joined_at as joined_at',
         'c.category as category',
     ];
 
@@ -124,13 +85,10 @@ export async function getProjectParties(projectId, fields, orgId) {
         );
     }
 
-    const parties = await db('pdoc_parties as pp')
-        // A project-party link without a live CRM contact is not renderable.
-        // Exclude orphaned links instead of returning rows full of nulls.
-        .join('crm_contacts as c', 'pp.party_id', 'c.id')
+    const parties = await db('proj_parties as pp')
+        .join('crm_contacts as c', 'pp.contact_id', 'c.id')
         .leftJoin('crm_job_nature as jn', 'c.job_nature_id', 'jn.job_id')
         .where('pp.project_id', projectId)
-        .whereNull('pp.deleted_at')
         .select(selectedFields)
         .orderBy('c.name', 'asc');
 
@@ -160,23 +118,25 @@ export async function addPartiesToProject(projectId, partyIds, orgId) {
    DELETE PARTIES FROM PROJECT (bulk by pp_ids)
 -------------------------------------------------------- */
 export async function removePartiesFromProject(projectId, ppIds) {
-    const existing = await db('pdoc_parties')
+    const existing = await db('proj_parties')
         .where('project_id', projectId)
-        .whereIn('pv_id', ppIds);
+        .where(function () {
+            this.whereIn('id', ppIds).orWhereIn('contact_id', ppIds);
+        });
 
     if (existing.length === 0) {
         throw new AppError('No matching project parties found', 404);
     }
 
-    const existingPvIds = existing.map(e => e.pv_id);
-    const notFound = ppIds.filter(id => !existingPvIds.includes(id));
+    const existingIds = existing.map(e => e.id);
+    const notFound = ppIds.filter(id => !existingIds.includes(id) && !existing.some(e => e.contact_id === id));
 
-    const deletedCount = await db('pdoc_parties')
+    const deletedCount = await db('proj_parties')
         .where('project_id', projectId)
-        .whereIn('pv_id', ppIds)
+        .whereIn('id', existingIds)
         .del();
 
-    return { deletedCount, deletedPvIds: existingPvIds, notFoundPvIds: notFound };
+    return { deletedCount, deletedPvIds: existingIds, notFoundPvIds: notFound };
 }
 
 /* -------------------------------------------------------
@@ -186,16 +146,35 @@ export async function syncProjectParties(projectId, { parties = [], deleted_ids 
     if (!projectId) throw new AppError('projectId is required', 400);
 
     return await db.transaction(async (trx) => {
+        const deleteIdSet = new Set((deleted_ids || []).map(String));
+
         // 1. Delete removed parties from project
         if (Array.isArray(deleted_ids) && deleted_ids.length > 0) {
-            await trx('pdoc_parties')
-                .where('project_id', projectId)
-                .whereIn('pv_id', deleted_ids)
-                .del();
+            const numericIds = deleted_ids.map(Number).filter(n => !isNaN(n));
+            if (numericIds.length > 0) {
+                await trx('proj_parties')
+                    .where('project_id', projectId)
+                    .where(function () {
+                        this.whereIn('id', numericIds)
+                            .orWhereIn('contact_id', numericIds);
+                    })
+                    .del();
+            }
         }
 
-        // 2. Process incoming party rows
-        for (const p of parties) {
+        // 2. Process incoming party rows (excluding any that were flagged for deletion)
+        const partiesToProcess = parties.filter((p) => {
+            const id1 = p.id != null ? String(p.id) : null;
+            const id2 = p.pv_id != null ? String(p.pv_id) : null;
+            const id3 = p.party_id != null ? String(p.party_id) : null;
+            const id4 = p.contact_id != null ? String(p.contact_id) : null;
+            return (!id1 || !deleteIdSet.has(id1)) &&
+                (!id2 || !deleteIdSet.has(id2)) &&
+                (!id3 || !deleteIdSet.has(id3)) &&
+                (!id4 || !deleteIdSet.has(id4));
+        });
+
+        for (const p of partiesToProcess) {
             if (!p.name || !String(p.name).trim()) continue;
 
             const name = String(p.name).trim();
@@ -214,12 +193,12 @@ export async function syncProjectParties(projectId, { parties = [], deleted_ids 
                 jobNatureId = await findOrCreateJobNature(orgId, jobNatureName);
             }
 
-            let contactId = p.party_id || (p.id && !String(p.id).startsWith('temp_') ? p.id : null);
+            let contactId = p.contact_id || p.party_id || (p.id && !String(p.id).startsWith('temp_') ? p.id : null);
 
             if (contactId) {
-                const existingPartyRow = await trx('pdoc_parties').where({ pv_id: contactId, project_id: projectId }).first();
+                const existingPartyRow = await trx('proj_parties').where({ id: contactId, project_id: projectId }).first();
                 if (existingPartyRow) {
-                    contactId = existingPartyRow.party_id;
+                    contactId = existingPartyRow.contact_id;
                 }
             }
 
@@ -246,16 +225,14 @@ export async function syncProjectParties(projectId, { parties = [], deleted_ids 
                     })
                     .update(updatePayload);
 
-                // Ensure linked in pdoc_parties
-                const isLinked = await trx('pdoc_parties')
-                    .where({ project_id: projectId, party_id: contactId })
+                // Ensure linked in proj_parties
+                const isLinked = await trx('proj_parties')
+                    .where({ project_id: projectId, contact_id: contactId })
                     .first();
                 if (!isLinked) {
-                    await trx('pdoc_parties').insert({
+                    await trx('proj_parties').insert({
                         project_id: projectId,
-                        party_id: contactId,
-                        created_at: new Date(),
-                        updated_at: new Date()
+                        contact_id: contactId
                     });
                 }
             } else {
@@ -289,16 +266,14 @@ export async function syncProjectParties(projectId, { parties = [], deleted_ids 
                     contactId = existingContact.id;
                 }
 
-                // Link in pdoc_parties
-                const isLinked = await trx('pdoc_parties')
-                    .where({ project_id: projectId, party_id: contactId })
+                // Link in proj_parties
+                const isLinked = await trx('proj_parties')
+                    .where({ project_id: projectId, contact_id: contactId })
                     .first();
                 if (!isLinked) {
-                    await trx('pdoc_parties').insert({
+                    await trx('proj_parties').insert({
                         project_id: projectId,
-                        party_id: contactId,
-                        created_at: new Date(),
-                        updated_at: new Date()
+                        contact_id: contactId
                     });
                 }
             }

@@ -133,11 +133,10 @@ export async function getProjects(orgId, userId, userType) {
     const isUserAdmin = isAdmin(userType);
     const employerSubquery = db.raw(`(
         SELECT GROUP_CONCAT(c.name SEPARATOR ', ')
-        FROM pdoc_parties pp
-        JOIN crm_contacts c ON pp.party_id = c.id
+        FROM proj_parties pp
+        JOIN crm_contacts c ON pp.contact_id = c.id
         WHERE pp.project_id = p.id 
           AND LOWER(c.category) = 'client'
-          AND pp.deleted_at IS NULL
     ) as employer`);
 
     let projects = [];
@@ -187,11 +186,10 @@ export async function getProjectById(orgId, projectId) {
             'p.*',
             db.raw(`(
                 SELECT GROUP_CONCAT(c.name SEPARATOR ', ')
-                FROM pdoc_parties pp
-                JOIN crm_contacts c ON pp.party_id = c.id
+                FROM proj_parties pp
+                JOIN crm_contacts c ON pp.contact_id = c.id
                 WHERE pp.project_id = p.id 
                   AND LOWER(c.category) = 'client'
-                  AND pp.deleted_at IS NULL
             ) as employer`)
         )
         .first();

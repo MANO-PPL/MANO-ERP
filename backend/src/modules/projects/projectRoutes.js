@@ -3,10 +3,10 @@ import multer from 'multer';
 import projectController from './core/projectController.js';
 import directoryRoutes from './directory/directoryRoutes.js';
 import partyRoutes from './parties/partyRoutes.js';
-import staffRoutes from './staff/staffRoutes.js';
 import summaryRoutes from './summary/summaryRoutes.js';
 import agendaRoutes from './agenda/agendaRoutes.js';
 import momRoutes from './mom/momRoutes.js';
+import meetingRoutes from './meetings/meetingRoutes.js';
 import orgRoutes from './org/orgRoutes.js';
 import projectInstanceRoutes from './instances/projectInstanceRoutes.js';
 import tasksRoutes from './tasks/tasksRoutes.js';
@@ -40,15 +40,12 @@ router.delete('/:id/members/:user_id', restrictTo('admin'), projectController.re
 // Project Directory (sub-resource under each project)
 router.use('/:id/directory', requireProjectPermission('directory'), directoryRoutes);
 
-// Project Parties (backed by pdoc_parties)
+// Project Parties (backed by proj_parties)
 router.use('/:id/parties', requireProjectPermission('parties'), partyRoutes);
 
 // Scope-aware contacts: project-exclusive creation and project dropdown data.
 router.post('/:id/contacts', requireProjectPermission('parties'), clientController.createProjectContact);
 router.get('/:id/available-contacts', requireProjectPermission('parties'), clientController.listAvailableContacts);
-
-// Project Staff (sub-resource under each project)
-router.use('/:id/staff', requireProjectPermission('staff'), staffRoutes);
 
 // Project Summary (sub-resource under each project)
 router.use('/:id/summary', requireProjectPermission('summary'), summaryRoutes);
@@ -58,6 +55,9 @@ router.use('/:id/agendas', requireProjectPermission('agenda'), agendaRoutes);
 
 // Project Minutes of Meeting (sub-resource under each project)
 router.use('/:id/moms', requireProjectPermission('mom'), momRoutes);
+
+// Project Meetings (Unified Agenda & MoM sub-resource)
+router.use('/:id/meetings', meetingRoutes);
 
 // Project Organization Chart
 router.use('/:id/org', requireProjectPermission('org'), orgRoutes);

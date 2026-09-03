@@ -640,7 +640,7 @@ export async function createProjectContact(orgId, projectId, data) {
         const resolved = await resolveContactReferences(orgId, data, trx);
         const [contactId] = await trx('crm_contacts').insert(buildScopedContact(orgId, resolved, 'project'));
         try {
-            const [projectPartyId] = await trx('pdoc_parties').insert({ project_id: projectIdValue, party_id: contactId });
+            const [projectPartyId] = await trx('proj_parties').insert({ project_id: projectIdValue, contact_id: contactId });
             const contact = await trx('crm_contacts')
                 .where({ id: contactId, org_id: orgId })
                 .select(CONTACT_FIELDS)
@@ -656,16 +656,14 @@ export async function createProjectContact(orgId, projectId, data) {
 async function linkContactInTransaction(trx, orgId, projectId, contactId) {
     await getScopedProject(trx, projectId, orgId);
     const contact = await getScopedContact(trx, contactId, orgId);
-    const currentLink = await trx('pdoc_parties')
-        .where({ project_id: projectId, party_id: contactId })
-        .whereNull('deleted_at')
+    const currentLink = await trx('proj_parties')
+        .where({ project_id: projectId, contact_id: contactId })
         .first();
     if (currentLink) throw duplicateLinkError(contactId, projectId);
 
     if (contact.scope === 'project') {
-        const otherLink = await trx('pdoc_parties as pp')
-            .where('pp.party_id', contactId)
-            .whereNull('pp.deleted_at')
+        const otherLink = await trx('proj_parties as pp')
+            .where('pp.contact_id', contactId)
             .whereNot('pp.project_id', projectId)
             .first('pp.project_id');
         if (otherLink) {
@@ -677,7 +675,7 @@ async function linkContactInTransaction(trx, orgId, projectId, contactId) {
     }
 
     try {
-        const [projectPartyId] = await trx('pdoc_parties').insert({ project_id: projectId, party_id: contactId });
+        const [projectPartyId] = await trx('proj_parties').insert({ project_id: projectId, contact_id: contactId });
         return { project_party_id: projectPartyId, contact_id: contactId };
     } catch (error) {
         if (isDuplicateEntry(error)) throw duplicateLinkError(contactId, projectId);
@@ -737,10 +735,9 @@ async function eligibleContacts(orgId, projectId, query = {}, connection = db) {
             .orWhere('c.scope', '')
             .orWhereExists(function () {
                 this.select(connection.raw('1'))
-                    .from('pdoc_parties as own_pp')
-                    .whereRaw('own_pp.party_id = c.id')
-                    .andWhere('own_pp.project_id', projectId)
-                    .whereNull('own_pp.deleted_at');
+                    .from('proj_parties as own_pp')
+                    .whereRaw('own_pp.contact_id = c.id')
+                    .andWhere('own_pp.project_id', projectId);
             });
     });
 
@@ -750,8 +747,8 @@ async function eligibleContacts(orgId, projectId, query = {}, connection = db) {
             ...CONTACT_FIELDS.map(field => `c.${field}`),
             'jn.job_name',
             connection.raw(`(
-                SELECT pp.pv_id FROM pdoc_parties pp
-                WHERE pp.party_id = c.id AND pp.project_id = ? AND pp.deleted_at IS NULL
+                SELECT pp.id FROM proj_parties pp
+                WHERE pp.contact_id = c.id AND pp.project_id = ?
                 LIMIT 1
             ) as project_party_id`, [projectId])
         )

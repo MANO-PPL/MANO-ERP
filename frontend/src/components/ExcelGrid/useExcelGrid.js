@@ -39,13 +39,46 @@ export const useExcelGrid = ({
     );
     const gridDataRef = useRef(gridData);
     gridDataRef.current = gridData;
+    const isSavingRef = useRef(false);
 
     // Synchronize whenever prop data changes
     useEffect(() => {
         setGridData((prevGrid) => {
-            const newUnsaved = prevGrid.filter(
-                (r) => r._status === 'new' || String(r[primaryKey]).startsWith('temp_')
+            if (isSavingRef.current) {
+                // When a save completes, data from server is authoritative.
+                // Reset to saved rows and clear any lingering temporary rows.
+                isSavingRef.current = false;
+                deletedIdsRef.current = new Set();
+                setDeletedIds(new Set());
+                return (data || []).map((item) => ({
+                    ...item,
+                    _status: 'saved',
+                    _errors: {}
+                }));
+            }
+
+            const existingNames = new Set(
+                (data || []).map((d) => (d.name ? String(d.name).trim().toLowerCase() : null)).filter(Boolean)
             );
+
+            const newUnsaved = prevGrid.filter((r) => {
+                const isTemp = String(r[primaryKey]).startsWith('temp_');
+                if (!isTemp && r._status !== 'new') return false;
+
+                // Do not resurrect completely empty temp rows
+                const hasAnyContent = Object.entries(r).some(
+                    ([k, v]) => !k.startsWith('_') && k !== primaryKey && v != null && String(v).trim() !== ''
+                );
+                if (!hasAnyContent) return false;
+
+                // Do not keep as new if already represented in incoming server data
+                if (r.name && existingNames.has(String(r.name).trim().toLowerCase())) {
+                    return false;
+                }
+
+                return true;
+            });
+
             const modifiedMap = new Map(
                 prevGrid
                     .filter((r) => r._status === 'modified' || r._status === 'error')
@@ -1872,6 +1905,7 @@ export const useExcelGrid = ({
         setContextMenu,
 
         // Dirty status & Undo/Redo
+        isSavingRef,
         hasUnsavedChanges,
         unsavedCount,
         dirtyCounts,
