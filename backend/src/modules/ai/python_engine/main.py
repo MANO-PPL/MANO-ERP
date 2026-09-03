@@ -12,6 +12,10 @@ load_dotenv(env_path)
 
 app = FastAPI(title="MANO-ERP AI Engine")
 
+# Agent reasoning is internal-only and cannot authorize or execute ERP tools.
+from agent_routes import create_agent_router
+app.include_router(create_agent_router())
+
 # Initialize Groq client
 import logging
 if not os.getenv("GROQ_API_KEY"):

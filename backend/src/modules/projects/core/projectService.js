@@ -129,8 +129,17 @@ export async function createProject(orgId, { name, location, status = 'active', 
     });
 }
 
-export async function getProjects(orgId, userId, userType) {
+export async function getProjects(orgId, userId, userType, options = {}) {
     const isUserAdmin = isAdmin(userType);
+    if (options.agentRead === true) {
+        const query = db('proj_projects as p').where('p.org_id', orgId)
+            .select('p.id', 'p.name', 'p.project_code', 'p.location', 'p.status')
+            .orderBy('p.id').limit(Math.min(options.limit || 20, 50)).offset(options.offset || 0);
+        if (options.query) query.where('p.name', 'like', `%${options.query}%`);
+        if (!isUserAdmin) query.whereExists(db('proj_members as pm').select('pm.user_id')
+            .whereRaw('pm.project_id = p.id').where({ 'pm.user_id': userId, 'pm.org_id': orgId }));
+        return query;
+    }
     const employerSubquery = db.raw(`(
         SELECT GROUP_CONCAT(c.name SEPARATOR ', ')
         FROM pdoc_parties pp
@@ -180,7 +189,13 @@ export async function getProjects(orgId, userId, userType) {
     return projects;
 }
 
-export async function getProjectById(orgId, projectId) {
+export async function getProjectById(orgId, projectId, options = {}) {
+    if (options.agentRead === true) {
+        const project = await db('proj_projects').where({ id: projectId, org_id: orgId })
+            .first('id', 'name', 'project_code', 'location', 'status');
+        if (!project) throw new AppError('Project not found', 404);
+        return project;
+    }
     const project = await db('proj_projects as p')
         .where({ 'p.id': projectId, 'p.org_id': orgId })
         .select(

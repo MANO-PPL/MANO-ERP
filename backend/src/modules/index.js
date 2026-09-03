@@ -12,6 +12,7 @@ import documentRoutes from './documents/documentRoutes.js';
 import instanceRoutes from './documents/instanceRoutes.js';
 import cycleRoutes from './documents/cycleRoutes.js';
 import aiRoutes from './ai/aiRoutes.js';
+import agentRoutes from './agent/agentRoutes.js';
 import drawingsTestRoutes from './projects/drawings/testDrawings.js';
 import ledgerRoutes from './ledger/ledgerRoutes.js';
 
@@ -30,6 +31,7 @@ router.use('/v1/documents', documentRoutes);
 router.use('/v1/instances', instanceRoutes);
 router.use('/v1/cycles', cycleRoutes);
 router.use('/ai', aiRoutes);
+router.use('/agent', agentRoutes);
 router.use('/drawings-test', drawingsTestRoutes);
 router.use('/ledger', ledgerRoutes);
 

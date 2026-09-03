@@ -3,6 +3,8 @@ import React from 'react';
 import { Outlet } from 'react-router-dom';
 import Sidebar from './Sidebar';
 import TopBar from './TopBar';
+import AgentShell from '../Agent/AgentShell';
+import { connectedTransport } from '../../services/agentTransport';
 
 const MainLayout = () => {
     return (
@@ -14,6 +16,7 @@ const MainLayout = () => {
                     <Outlet />
                 </main>
             </div>
+            <AgentShell transport={connectedTransport} />
         </div>
     );
 };

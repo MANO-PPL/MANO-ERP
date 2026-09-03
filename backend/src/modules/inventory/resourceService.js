@@ -349,6 +349,12 @@ async function resolveRateInternal(orgId, resourceId, asOfDate, dbClient, path =
         throw new AppError('Resource not found in your organization', 404);
     }
 
+    if (context?.agentBounds) {
+        context.agentBounds.visited.add(numericResourceId);
+        if (path.size >= 8 || context.agentBounds.visited.size > 200) throw new AppError('Agent composition traversal limit exceeded', 400);
+        await context.agentBounds.authorizeResource(resource);
+    }
+
     if (path.has(numericResourceId)) {
         const chain = [...path, numericResourceId].join(' -> ');
         throw new AppError(`Circular composition detected while resolving rate: ${chain}`, 400);
@@ -446,6 +452,7 @@ async function resolveRateInternal(orgId, resourceId, asOfDate, dbClient, path =
                 this.whereNull('c.effective_to').orWhere('c.effective_to', '>=', asOfDate);
             })
             .andWhere('component.org_id', orgId)
+            .modify(query => { if (context?.agentBounds) query.limit(201); })
             .select(
                 `c.${compositionColumns.component} as component_resource_id`,
                 'c.quantity',
@@ -456,6 +463,8 @@ async function resolveRateInternal(orgId, resourceId, asOfDate, dbClient, path =
             );
         context?.compositionCache?.set(numericResourceId, compositions);
     }
+
+    if (context?.agentBounds && compositions.length > 200) throw new AppError('Agent composition row limit exceeded', 400);
 
     if (compositions.length === 0) {
         throw new AppError(
@@ -536,11 +545,12 @@ async function resolveRateInternal(orgId, resourceId, asOfDate, dbClient, path =
  * Public rate entry point. All callers should use this method rather than
  * joining res_rates or calculating composition costs themselves.
  */
-export async function getResolvedRate(orgId, resourceId, asOfDate, projectId = null) {
+export async function getResolvedRate(orgId, resourceId, asOfDate, projectId = null, options = {}) {
     const effectiveDate = toDateOnly(asOfDate);
     if (projectId) await ensureProjectExists(orgId, projectId);
     try {
-        return await resolveRateInternal(orgId, resourceId, effectiveDate, db, new Set(), null, projectId);
+        const context = options.authorizeResource ? { agentBounds: { visited: new Set(), authorizeResource: options.authorizeResource } } : null;
+        return await resolveRateInternal(orgId, resourceId, effectiveDate, db, new Set(), context, projectId);
     } catch (err) {
         if (err.statusCode === 404 || err.message?.includes('no composition and no manual rate') || err.message?.includes('No effective manual rate')) {
             const scopedResourceId = await resolveProjectResourceId(orgId, resourceId, projectId, db);
@@ -672,6 +682,8 @@ export async function getResolvedRates(orgId, resourceIds, asOfDate, projectId =
  * manual; no rate_type column is required for the current business rule.
  */
 async function _writeManualRateVersion(orgId, resource, { rate, unit_code, effective_from, remarks }, dbClient = db) {
+    // Serialize even the first rate version, where no res_rates row exists to lock.
+    if (dbClient.isTransaction) await dbClient('res_resources').where({ id: resource.id, org_id: orgId }).forUpdate().first('id');
     const numericRate = Number(rate);
     if (rate === undefined || rate === null || rate === '' || !Number.isFinite(numericRate) || numericRate < 0) {
         throw new AppError('rate must be a non-negative number', 400);
@@ -818,11 +830,18 @@ export async function updateRate(orgId, resourceId, rateId, rateData = {}, proje
     });
 }
 
-export async function addRate(orgId, resourceId, rateData = {}) {
+export async function addRate(orgId, resourceId, rateData = {}, options = {}) {
     const projectId = rateData.project_id || null;
-    if (projectId) await ensureProjectExists(orgId, projectId);
+    const execute = async (trx) => {
+        if (projectId) await ensureProjectExists(orgId, projectId, trx);
+        if (options.agentExistingOnly === true) {
+            if (!trx.isTransaction) throw new AppError('Agent rates require a caller transaction', 400);
+            const resource = await trx('res_resources').where({ id: resourceId, org_id: orgId }).forUpdate().first();
+            if (!resource || !['material', 'labour'].includes(resource.type)
+                || Number(resource.project_id || 0) !== Number(projectId || 0)) throw new AppError('Agent rate target must be an existing material/labour in the exact scope', 400);
+            return _writeManualRateVersion(orgId, resource, rateData, trx);
+        }
 
-    return db.transaction(async (trx) => {
         const requestedResource = await ensureResourceExists(orgId, resourceId, trx);
         let scopedResourceId;
         if (projectId && requestedResource.type === 'item') {
@@ -836,7 +855,8 @@ export async function addRate(orgId, resourceId, rateData = {}) {
         }
         const resource = await ensureResourceExists(orgId, scopedResourceId, trx);
         return _writeManualRateVersion(orgId, resource, rateData, trx);
-    });
+    };
+    return options.transaction ? execute(options.transaction) : db.transaction(execute);
 }
 
 /**
@@ -1073,7 +1093,7 @@ export async function getResources(orgId, {
 // Get single resource with full detail
 // ─────────────────────────────────────────────────────────────────────────────
 
-export async function getResourceById(orgId, id, asOfDate, projectId = null) {
+export async function getResourceById(orgId, id, asOfDate, projectId = null, options = {}) {
     if (projectId) await ensureProjectExists(orgId, projectId);
     const scopedResourceId = projectId
         ? await resolveProjectResourceId(orgId, id, projectId)
@@ -1090,10 +1110,15 @@ export async function getResourceById(orgId, id, asOfDate, projectId = null) {
     resource.base_unit_name = baseUnit ? baseUnit.name : '';
     resource.base_unit_symbol = baseUnit ? baseUnit.symbol : '';
 
+    if (options.agentSummary === true) return resource;
+
     // Fetch unit conversions
     const conversions = await db('res_conversions')
         .where({ resource_id: scopedResourceId, org_id: orgId })
+        .modify(query => { if (options.agentBounded === true) query.limit(201); })
         .select('id', 'name', 'quantity', 'unit_code');
+
+    if (options.agentBounded === true && conversions.length > 200) throw new AppError('Agent conversion row limit exceeded', 400);
 
     conversions.forEach(c => {
         const u = UNIT_REGISTRY[c.unit_code];
@@ -1110,6 +1135,7 @@ export async function getResourceById(orgId, id, asOfDate, projectId = null) {
             .join('res_resources as r2', `c.${compositionColumns.component}`, 'r2.id')
             .where(`c.${compositionColumns.item}`, scopedResourceId)
             .andWhere('r2.org_id', orgId)
+            .modify(query => { if (options.agentBounded === true) query.limit(201); })
             .andWhere('c.effective_from', '<=', compositionDate)
             .andWhere(function () {
                 this.whereNull('c.effective_to').orWhere('c.effective_to', '>=', compositionDate);
@@ -1124,6 +1150,8 @@ export async function getResourceById(orgId, id, asOfDate, projectId = null) {
                 'c.effective_from',
                 'c.effective_to'
             );
+
+        if (options.agentBounded === true && compositions.length > 200) throw new AppError('Agent composition row limit exceeded', 400);
 
         compositions.forEach(c => {
             const u = UNIT_REGISTRY[c.unit_code];

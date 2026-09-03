@@ -20,6 +20,7 @@ import { initializeQualitySchema } from './src/modules/projects/quality/qualityS
 import { initializeProjectSchema } from './src/modules/projects/core/projectService.js';
 import { initializeResourceSchema } from './src/modules/inventory/resourceService.js';
 import { initializeProjectPartiesSchema } from './src/modules/projects/parties/partyService.js';
+import { agentInternalSecret, initializeAgentRuntime } from './src/modules/agent/agentRuntime.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -57,22 +58,25 @@ server.listen(PORT, '0.0.0.0', async () => {
         console.error('Schema initialization warning/error:', schemaErr.message || schemaErr);
     }
 
-    
-    // Auto-start Python AI Microservice
+    try { await initializeAgentRuntime(); }
+    catch { console.error('ERP agent unavailable: initialization/safety verification failed.'); }
+
+    // Auto-start the existing Python AI Microservice; agent authentication is process-local.
     try {
         const pythonDir = path.join(__dirname, 'src', 'modules', 'ai', 'python_engine');
         console.log('Booting Python AI Engine...');
         
         const isWin = process.platform === 'win32';
-        const command = isWin ? 'cmd.exe' : path.join(pythonDir, 'venv', 'bin', 'uvicorn');
-        const args = isWin 
-            ? ['/c', 'venv\\Scripts\\uvicorn main:app --port 8000 --reload'] 
-            : ['main:app', '--port', '8000', '--reload'];
+        const command = isWin ? path.join(pythonDir, 'venv', 'Scripts', 'python.exe') : path.join(pythonDir, 'venv', 'bin', 'python');
+        const args = ['-m', 'uvicorn', 'main:app', '--host', '127.0.0.1', '--port', '8000'];
+        if (process.env.NODE_ENV !== 'production') args.push('--reload');
 
         const pythonProcess = spawn(command, args, {
             cwd: pythonDir,
             stdio: 'inherit',
-            shell: isWin
+            shell: false,
+            windowsHide: true,
+            env: { ...process.env, MANO_AGENT_INTERNAL_SECRET: agentInternalSecret }
         });
 
         pythonProcess.on('error', (err) => {

@@ -6,7 +6,7 @@ import { findOrCreateJobNature } from '../shared/jobNatureService.js';
 export async function getVendors(orgId, query = {}) {
     const page = parseInt(query.page) || 1;
     const limit = parseInt(query.limit) || 10;
-    const offset = (page - 1) * limit;
+    const offset = query.agentRead === true ? (query.agentOffset || 0) : (page - 1) * limit;
 
     const baseQuery = db('crm_contacts as c')
         .leftJoin('crm_job_nature as jn', 'c.job_nature_id', 'jn.job_id')
@@ -18,6 +18,7 @@ export async function getVendors(orgId, query = {}) {
 
     // Apply filters to both count and data queries
     const applyFilters = (qb) => {
+        if (query.agentMasterOnly === true) qb.where('c.scope', 'master');
         if (query.company || query.name) {
             qb = qb.where('c.name', 'like', `%${query.company || query.name}%`);
         }
@@ -107,7 +108,7 @@ export async function getVendors(orgId, query = {}) {
     };
 }
 
-export async function getVendorById(orgId, id) {
+export async function getVendorById(orgId, id, options = {}) {
     const vendor = await db('crm_contacts')
         .where({ id, org_id: orgId })
         .where(function () {
@@ -119,6 +120,8 @@ export async function getVendorById(orgId, id) {
     if (!vendor) {
         throw new AppError('Vendor not found', 404);
     }
+
+    if (options.agentRead === true) return vendor;
 
     const interactions = await db('crm_interactions as i')
         .leftJoin('iam_users as u', 'i.interacted_by', 'u.user_id')
@@ -165,7 +168,12 @@ function resolveCategory(cat, fallback = 'Contractor') {
     throw new AppError(`Invalid category "${cat}". Allowed categories are: ${VALID_CATEGORIES.join(', ')}`, 400);
 }
 
-export async function createVendor(orgId, data) {
+export async function createVendor(orgId, data, options = {}) {
+    const connection = options.transaction || db;
+    if (options.agentSupplierOnly === true && (!connection.isTransaction || data.category !== 'Supplier'
+        || Object.keys(data).some(key => !['name', 'category', 'contact_person', 'mobile', 'email', 'address'].includes(key)))) {
+        throw new AppError('Agent supplier creation requires an exact caller transaction operation', 400);
+    }
     if (!data.name) {
         throw new AppError('Vendor name is required', 400);
     }
@@ -196,7 +204,7 @@ export async function createVendor(orgId, data) {
         insertData.job_nature_id = await findOrCreateJobNature(orgId, data.job_nature || data.job_name);
     }
 
-    const [newId] = await db('crm_contacts').insert(insertData);
+    const [newId] = await connection('crm_contacts').insert(insertData);
     return newId;
 }
 

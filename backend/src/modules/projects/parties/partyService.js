@@ -89,7 +89,7 @@ export async function initializeProjectPartiesSchema() {
 /* -------------------------------------------------------
    FETCH PROJECT PARTIES
 -------------------------------------------------------- */
-export async function getProjectParties(projectId, fields, orgId) {
+export async function getProjectParties(projectId, fields, orgId, options = {}) {
     if (!projectId) throw new AppError('projectId is required', 400);
 
     if (orgId) {
@@ -131,6 +131,12 @@ export async function getProjectParties(projectId, fields, orgId) {
         .leftJoin('crm_job_nature as jn', 'c.job_nature_id', 'jn.job_id')
         .where('pp.project_id', projectId)
         .whereNull('pp.deleted_at')
+        .modify(query => {
+            if (options.agentRead === true) {
+                query.where('c.org_id', orgId).limit(Math.min(options.limit || 20, 50)).offset(options.offset || 0);
+                if (options.category) query.where('c.category', options.category);
+            }
+        })
         .select(selectedFields)
         .orderBy('c.name', 'asc');
 

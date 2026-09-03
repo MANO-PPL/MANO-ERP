@@ -36,7 +36,7 @@ export async function getClients(orgId, query = {}) {
 
     const page = parseInt(query.page) || 1;
     const limit = parseInt(query.limit) || 20;
-    const offset = (page - 1) * limit;
+    const offset = query.agentRead === true ? (query.agentOffset || 0) : (page - 1) * limit;
 
     const baseQuery = db('crm_contacts as c')
         .leftJoin('crm_job_nature as jn', 'c.job_nature_id', 'jn.job_id')
@@ -45,6 +45,7 @@ export async function getClients(orgId, query = {}) {
         .whereRaw('LOWER(??) = ?', ['c.category', 'client']);
 
     const applyFilters = (qb) => {
+        if (query.agentMasterOnly === true) qb.where('c.scope', 'master');
         if (query.company || query.name) {
             qb = qb.where('c.name', 'like', `%${query.company || query.name}%`);
         }
@@ -91,7 +92,7 @@ export async function getClients(orgId, query = {}) {
         .limit(limit)
         .offset(offset);
 
-    if (clients.length === 0) return { clients: [], total, page, limit };
+    if (query.agentRead === true || clients.length === 0) return { clients, total, page, limit };
 
     const clientIds = clients.map(c => c.id);
 
@@ -154,7 +155,7 @@ export async function getClients(orgId, query = {}) {
     };
 }
 
-export async function getClientById(orgId, id) {
+export async function getClientById(orgId, id, options = {}) {
     const client = await db('crm_contacts as c')
         .leftJoin('crm_job_nature as jn', 'c.job_nature_id', 'jn.job_id')
         .leftJoin('crm_sectors as s', 'c.sector_id', 's.sector_id')
@@ -166,6 +167,8 @@ export async function getClientById(orgId, id) {
     if (!client) {
         throw new AppError('Client not found', 404);
     }
+
+    if (options.agentRead === true) return client;
 
     const interactions = await db('crm_interactions as i')
         .leftJoin('iam_users as u', 'i.interacted_by', 'u.user_id')
