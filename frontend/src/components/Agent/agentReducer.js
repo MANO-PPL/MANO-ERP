@@ -65,7 +65,11 @@ export function agentReducer(state, action) {
             return { ...next, pending: null, decisionBusy: false, status: 'thinking', messages: state.messages.map(message =>
                 message.confirmation?.confirmationId === event.confirmationId ? { ...message, decision: event.decision } : message) };
         case 'tool_started': return { ...next, status: state.pending ? 'waiting_for_confirmation' : 'executing' };
-        case 'tool_completed': return append({ id: event.eventId, kind: 'result', result: event.result, provenance: event.provenance });
+        case 'tool_completed': {
+            const action = state.messages.find(message => message.kind === 'action' && message.actionId === event.actionId);
+            return append({ id: event.eventId, kind: 'result', actionRiskLevel: action?.action?.riskLevel,
+                result: event.result, provenance: event.provenance });
+        }
         case 'tool_failed':
         case 'agent_error': return agentReducer(next, { type: 'failure', requestId: event.requestId, error: event.error });
         case 'conversation_completed':

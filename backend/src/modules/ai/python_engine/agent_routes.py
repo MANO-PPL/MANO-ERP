@@ -5,6 +5,7 @@ from fastapi import APIRouter, Request, Response
 from agent_schemas import ModelRequest, strict_json
 from agent_security import InternalSecurity
 from agent_reasoning import reason
+from agent_provider import ProviderFailure
 
 
 def create_agent_router(secret=None, reasoning=reason):
@@ -30,6 +31,11 @@ def create_agent_router(secret=None, reasoning=reason):
                 async with slots:
                     result = await reasoning(envelope)
             payload = result.model_dump(exclude_none=True)
+        except ProviderFailure as error:
+            status = 503
+            # Fixed public categories only; never expose provider bodies or credentials.
+            print("Agent provider failure: " + json.dumps(error.safe_metadata(), separators=(",", ":")))
+            payload = {"error": "model_unavailable" if str(error) == "provider_model_unavailable" else "provider_unavailable"}
         except Exception:
             status = 503
             payload = {"error": "reasoning_unavailable"}

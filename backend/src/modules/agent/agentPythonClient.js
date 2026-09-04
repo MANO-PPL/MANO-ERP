@@ -31,16 +31,24 @@ export function createPythonClient({ secret, fetchImpl = fetch, now = Date.now, 
         } catch { fail('backend_unavailable', 'python_transport_failure'); }
         const expected = signature(secret, `${nonce}\n${response.status}\n${sha256(bytes)}`);
         if (!secureEqual(response.headers.get('X-Agent-Signature'), expected)) fail('protocol_error', 'python_signature');
-        if (!response.ok) fail('backend_unavailable', 'python_reasoning_failed');
+        if (!response.ok) {
+            let failure;
+            try { failure = JSON.parse(bytes.toString('utf8')); } catch { /* Unrecognized failures stay generic. */ }
+            if (response.status === 503 && failure && Object.keys(failure).length === 1
+                && ['provider_unavailable', 'model_unavailable'].includes(failure.error)) fail(failure.error);
+            fail('backend_unavailable', 'python_reasoning_failed');
+        }
         let value;
         try { value = JSON.parse(bytes.toString('utf8')); } catch { fail('protocol_error', 'python_json'); }
         object(value, ['protocol', 'requestId', 'stepId', 'toolNames', 'response', 'diagnostics']);
         if (value.protocol !== CONTRACT_VERSION || value.requestId !== request.requestId || value.stepId !== request.stepId
             || !Array.isArray(value.toolNames) || JSON.stringify([...value.toolNames].sort()) !== JSON.stringify(Object.keys(TOOLS).sort())) fail('protocol_error', 'python_contract');
         const d = object(value.diagnostics, ['provider', 'finishReason', 'promptTokens', 'completionTokens', 'totalTokens', 'hasReasoningContent']);
-        if (d.provider !== 'nvidia' || typeof d.hasReasoningContent !== 'boolean') fail('protocol_error', 'provider_contract');
+        if (!['nvidia', 'groq'].includes(d.provider) || typeof d.hasReasoningContent !== 'boolean') fail('protocol_error', 'provider_contract');
         text(d.finishReason, 40); integer(d.promptTokens, 0, 200000); integer(d.completionTokens, 0, 4096); integer(d.totalTokens, 0, 204096);
-        if (d.finishReason !== 'stop' || d.totalTokens !== d.promptTokens + d.completionTokens) fail('protocol_error', 'provider_completion_integrity');
-        return validateModelResponse(value.response);
+        const modelResponse = validateModelResponse(value.response);
+        if ((d.finishReason !== 'stop' && !(d.finishReason === 'tool_calls' && modelResponse.kind === 'tool'))
+            || d.totalTokens !== d.promptTokens + d.completionTokens) fail('protocol_error', 'provider_completion_integrity');
+        return modelResponse;
     };
 }

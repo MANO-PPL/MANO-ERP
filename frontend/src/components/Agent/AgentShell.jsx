@@ -58,7 +58,9 @@ export default function AgentShell({ transport = previewTransport }) {
         if (!canSend(current) || (retry && !current.error?.retryable)) return;
         const message = retry ? current.request?.message : draft.trim();
         if (!message) return;
-        const request = retry ? current.request : { conversationId: current.conversationId, message, context: { ...context } };
+        const activeProjectName = projectName?.id === context.projectId ? projectName.name : null;
+        const requestContext = activeProjectName ? { ...context, projectName: activeProjectName } : { ...context };
+        const request = retry ? current.request : { conversationId: current.conversationId, message, context: requestContext };
         const requestId = makeId();
         const controller = new AbortController();
         activeRef.current?.controller.abort();

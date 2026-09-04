@@ -39,3 +39,15 @@ test('Node independently rejects a non-stop provider completion', async () => {
     }) });
     await assert.rejects(reason(request), { code: 'protocol_error' });
 });
+
+test('Node accepts a signed native tool completion only for a validated tool intent', async () => {
+    const intent = { kind: 'tool', tool: 'projects.search', version: 1, arguments: { query: 'Holy Smokes', limit: 10 } };
+    const reason = createPythonClient({ secret, fetchImpl: async (url, options) => responseFor(options.headers, intent, {
+        diagnostics: { provider: 'groq', finishReason: 'tool_calls', promptTokens: 10, completionTokens: 20, totalTokens: 30, hasReasoningContent: false }
+    }) });
+    assert.deepEqual(await reason(request), intent);
+    const invalid = createPythonClient({ secret, fetchImpl: async (url, options) => responseFor(options.headers, answer, {
+        diagnostics: { provider: 'groq', finishReason: 'tool_calls', promptTokens: 10, completionTokens: 20, totalTokens: 30, hasReasoningContent: false }
+    }) });
+    await assert.rejects(invalid(request), { code: 'protocol_error' });
+});

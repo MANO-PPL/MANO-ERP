@@ -44,10 +44,12 @@ export const fingerprint = value => sha256(stable(value));
 export function validateRequest(value) {
     object(value, ['conversationId', 'message', 'context']);
     identity(value.conversationId); text(value.message);
-    const c = object(value.context, ['route', 'module', 'organizationId', 'projectId', 'selectedEntityType', 'selectedEntityId']);
+    const c = object(value.context, ['route', 'module', 'organizationId', 'projectId', 'projectName', 'selectedEntityType', 'selectedEntityId']);
     text(c.route, 512); text(c.module, 80);
     const context = { route: c.route, module: c.module };
-    for (const key of ['projectId', 'selectedEntityType', 'selectedEntityId']) if (c[key] !== undefined) context[key] = text(c[key], 80);
+    if (c.projectId !== undefined) context.projectId = text(c.projectId, 80);
+    if (c.projectName !== undefined) context.projectName = text(c.projectName, 200);
+    for (const key of ['selectedEntityType', 'selectedEntityId']) if (c[key] !== undefined) context[key] = text(c[key], 80);
     // organizationId is intentionally not forwarded, persisted, or used for authorization.
     return { conversationId: value.conversationId, message: value.message, context };
 }
@@ -57,6 +59,6 @@ export function validateDecision(value) {
     return value;
 }
 export function safeError(error) {
-    const allowed = ['backend_unavailable', 'network_failure', 'request_rejected', 'authorization_denied', 'confirmation_expired', 'validation_error', 'execution_failure', 'protocol_error'];
+    const allowed = ['backend_unavailable', 'provider_unavailable', 'model_unavailable', 'network_failure', 'request_rejected', 'authorization_denied', 'confirmation_expired', 'validation_error', 'execution_failure', 'protocol_error'];
     return { code: allowed.includes(error?.code) ? error.code : 'execution_failure', retryable: false };
 }

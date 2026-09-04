@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { agentReducer, initialAgentState, canSend } from '../../src/components/Agent/agentReducer.js';
-import { isAgentEvent, isExpired, ERROR_COPY } from '../../src/components/Agent/agentModel.js';
+import { isAgentEvent, isExpired, ERROR_COPY, isUserVisibleConversationMessage } from '../../src/components/Agent/agentModel.js';
 import { fixtureAction, fixtureConfirmation, fixtureResults } from './fixtures.js';
 
 const request = { conversationId: 'c1', message: 'Fixture request', context: { route: '/projects/42', module: 'Reports', projectId: '42' } };
@@ -119,4 +119,15 @@ test('tool-started events expose executing state and block new requests', () => 
     const state = event(start(), { type: 'tool_started', actionId: 'a1' });
     assert.equal(state.status, 'executing');
     assert.equal(canSend(state), false);
+});
+
+test('internal read planning and raw read results are hidden without hiding write confirmations', () => {
+    const readAction = { ...fixtureAction, riskLevel: 'READ' };
+    let state = event(start(), { type: 'tool_proposed', actionId: 'read-1', action: readAction });
+    state = event(state, { type: 'tool_completed', actionId: 'read-1', result: fixtureResults[0] });
+    state = event(state, { type: 'tool_proposed', actionId: 'write-1', action: fixtureAction });
+
+    assert.equal(state.messages[1].actionRiskLevel, undefined);
+    assert.equal(state.messages[2].actionRiskLevel, 'READ');
+    assert.deepEqual(state.messages.filter(isUserVisibleConversationMessage).map(message => message.kind), ['text', 'action']);
 });

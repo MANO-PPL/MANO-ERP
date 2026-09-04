@@ -1,5 +1,5 @@
 import { TOOLS } from './agentTools.js';
-import { fail } from './agentValidation.js';
+import { fail, integer } from './agentValidation.js';
 
 const fields = ['id', 'name', 'category', 'contact_person', 'mobile', 'email', 'address', 'location', 'project_code', 'status', 'code', 'type', 'base_unit_code', 'description', 'project_id', 'parent_id'];
 const project = row => Object.fromEntries(fields.filter(k => row[k] !== undefined && row[k] !== null).map(k => [k, row[k]]));
@@ -56,6 +56,15 @@ export function createReadService({ db, projects, clients, vendors, resources, p
         if (!Array.isArray(result) || result.length > (tool.name === 'resources.getComposition' ? 200 : 50)) fail('execution_failure', 'read_result_limit');
         const encoded = JSON.stringify(result);
         if (Buffer.byteLength(encoded) > 32768) fail('request_rejected', 'read_result_bytes');
+        // Search permission is broader than membership-filtered project results.
+        // Persist these entity references with the result in the caller's transaction.
+        if (tool.name === 'projects.search') {
+            for (const row of result) {
+                const ref = { projectId: integer(row.id) };
+                await authorize(actor, TOOLS['projects.get'], ref);
+                options.recordAuthorization(TOOLS['projects.get'], ref);
+            }
+        }
         return JSON.parse(encoded);
     };
 }

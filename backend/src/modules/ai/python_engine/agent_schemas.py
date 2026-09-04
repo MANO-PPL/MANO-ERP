@@ -138,6 +138,7 @@ class Context(StrictModel):
     route: Annotated[str, Field(min_length=1, max_length=512)]
     module: Short
     projectId: Short | None = None
+    projectName: Annotated[str, Field(min_length=1, max_length=200)] | None = None
     selectedEntityType: Short | None = None
     selectedEntityId: Short | None = None
 
@@ -172,7 +173,7 @@ class ModelRequest(StrictModel):
 
 
 class Diagnostics(StrictModel):
-    provider: Literal["nvidia"] = "nvidia"
+    provider: Literal["nvidia", "groq"] = "nvidia"
     finishReason: Short
     promptTokens: Annotated[int, Field(ge=0, le=200000)]
     completionTokens: Annotated[int, Field(ge=0, le=4096)]

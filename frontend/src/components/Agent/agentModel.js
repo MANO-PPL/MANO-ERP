@@ -3,7 +3,7 @@
  * Stage 12 owns authentication, risk classification, confirmation and execution.
  *
  * @typedef {{route: string, module: string, organizationId?: string,
- * projectId?: string, selectedEntityType?: string, selectedEntityId?: string}} AgentContext
+ * projectId?: string, projectName?: string, selectedEntityType?: string, selectedEntityId?: string}} AgentContext
  * @typedef {{conversationId: string, message: string, context: AgentContext}} AgentRequest
  * @typedef {{confirmationId: string, decision: 'confirm'|'cancel'}} AgentDecision
  * @typedef {{label: string, value?: string|number, before?: string|number,
@@ -46,8 +46,18 @@
 
 export const BUSY_STATES = new Set(['submitting', 'thinking', 'waiting_for_confirmation', 'executing']);
 export const RISKS = ['READ', 'WRITE', 'DESTRUCTIVE', 'BULK_WRITE'];
+
+// Read planning and raw tool results are retained in the conversation state for
+// correlation, but are implementation detail rather than user-facing chat.
+// Write proposals remain visible because they require an explicit confirmation.
+export const isUserVisibleConversationMessage = message => !(message?.kind === 'action'
+    && message.action?.riskLevel === 'READ') && !(message?.kind === 'result'
+    && message.actionRiskLevel === 'READ');
+
 export const ERROR_COPY = {
     backend_unavailable: 'The ERP agent backend is not connected yet.',
+    provider_unavailable: 'The AI provider could not complete this request. No answer is available; please try again later.',
+    model_unavailable: 'The configured AI model is no longer available. An administrator needs to update the Agent model.',
     network_failure: 'The connection was interrupted. The action outcome is unknown.',
     request_rejected: 'The request was rejected.',
     authorization_denied: 'You do not have permission for this request.',
