@@ -151,13 +151,14 @@ export async function fetchMeetingById(projectId, meetingId) {
     if (!meeting) throw new AppError('Meeting not found', 404);
 
     const participants = await db('proj_meetings_participants as pmp')
-        .join('proj_directory as pd', 'pmp.pd_id', 'pd.pd_id')
+        .join('proj_directory as pd', 'pmp.pd_id', 'pd.id')
         .leftJoin('proj_parties as pp', 'pd.party_id', 'pp.id')
         .leftJoin('crm_contacts as c', 'pp.contact_id', 'c.id')
         .where('pmp.meeting_id', meetingId)
         .select([
             'pmp.id as participant_entry_id',
-            'pd.pd_id',
+            'pmp.pd_id',
+            'pd.id',
             'pd.contact_person',
             'pd.designation',
             'pd.responsibilities',

@@ -62,7 +62,7 @@ export async function getProjectOrgChart(projectId) {
         .leftJoin('crm_job_nature as jn', 'c.job_nature_id', 'jn.id')
         .where('pd.project_id', projectId)
         .select([
-            'pd.pd_id',
+            'pd.id',
             'pd.party_id as pv_id',
             'pd.party_id as party_id',
             'pp.contact_id as contact_id',

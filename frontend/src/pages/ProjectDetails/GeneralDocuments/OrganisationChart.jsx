@@ -370,7 +370,7 @@ const OrganisationChart = ({ onBack, setExtraBreadcrumbs, canWrite }) => {
             const associatedDir = dirByParty[party.pv_id] || [];
             associatedDir.forEach(d => {
                 partyNode.children.push({
-                    id: `dir-${d.pd_id}`,
+                    id: `dir-${d.id}`,
                     name: d.contact_person || 'N/A',
                     role: d.designation || 'Staff',
                     type: 'staff',
@@ -387,13 +387,13 @@ const OrganisationChart = ({ onBack, setExtraBreadcrumbs, canWrite }) => {
         // Standalone directories as their own
         standaloneDir.forEach(d => {
             clientChildren.push({
-                id: `dir-solo-${d.pd_id}`,
+                id: `dir-solo-${d.id}`,
                 name: d.company_name || d.contact_person || 'Unknown',
                 role: d.job_nature || d.designation || 'Entity',
                 type: 'department',
                 children: [
                     {
-                        id: `dir-child-${d.pd_id}`,
+                        id: `dir-child-${d.id}`,
                         name: d.contact_person || 'N/A',
                         role: d.designation || 'Staff',
                         type: 'staff',
@@ -553,10 +553,10 @@ const OrganisationChart = ({ onBack, setExtraBreadcrumbs, canWrite }) => {
                 let newPdId;
                 if (workflowState && workflowState.cycleId) {
                     const res = await workflowApi.addDirectoryDraft(workflowState.cycleId, payload);
-                    newPdId = res.pd_id;
+                    newPdId = res.id;
                 } else {
                     const res = await generalDocsApi.addDirectoryItem(projectId, payload);
-                    newPdId = res.pd_id;
+                    newPdId = res.id;
                 }
 
                 await fetchOrgChart();

@@ -174,7 +174,7 @@ const MeetingDetail = ({ onBack, setExtraBreadcrumbs, meetingId: id, canWrite })
 
     // Add / Remove Participants
     const handleAddParticipant = (dirPerson) => {
-        if (participants.some(p => p.pd_id === dirPerson.pd_id)) {
+        if (participants.some(p => p.pd_id === dirPerson.id)) {
             toast.info('Person already added to participants');
             return;
         }
@@ -185,7 +185,7 @@ const MeetingDetail = ({ onBack, setExtraBreadcrumbs, meetingId: id, canWrite })
         setParticipants(prev => [
             ...prev,
             {
-                pd_id: dirPerson.pd_id,
+                pd_id: dirPerson.id,
                 contact_person: dirPerson.contact_person,
                 designation: dirPerson.designation,
                 responsibilities: dirPerson.responsibilities,
@@ -395,7 +395,7 @@ const MeetingDetail = ({ onBack, setExtraBreadcrumbs, meetingId: id, canWrite })
     const availableDirectoryToAdd = useMemo(() => {
         const addedIds = new Set(participants.map(p => p.pd_id));
         return directoryContacts.filter(d => {
-            if (addedIds.has(d.pd_id)) return false;
+            if (addedIds.has(d.id)) return false;
             const term = participantSearch.toLowerCase();
             return (
                 (d.contact_person || '').toLowerCase().includes(term) ||
@@ -696,7 +696,7 @@ const MeetingDetail = ({ onBack, setExtraBreadcrumbs, meetingId: id, canWrite })
                                                 ) : (
                                                     availableDirectoryToAdd.map(d => (
                                                         <button
-                                                            key={d.pd_id}
+                                                            key={d.id}
                                                             type="button"
                                                             onClick={() => handleAddParticipant(d)}
                                                             className="w-full text-left px-2.5 py-1.5 rounded-lg hover:bg-blue-50 dark:hover:bg-blue-950/40 transition-colors flex flex-col cursor-pointer"

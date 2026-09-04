@@ -28,7 +28,7 @@ export const addDirectoryItem = catchAsync(async (req, res) => {
     const payload = { ...req.body, project_id: projectId };
     const result = await directoryService.insertDirectoryItem(payload);
 
-    res.status(201).json({ success: true, message: 'Directory item added', pd_id: result.pd_id });
+    res.status(201).json({ success: true, message: 'Directory item added', id: result.id });
 });
 
 /* -------------------------------------------------------
