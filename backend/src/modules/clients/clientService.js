@@ -39,8 +39,8 @@ export async function getClients(orgId, query = {}) {
     const offset = query.agentRead === true ? (query.agentOffset || 0) : (page - 1) * limit;
 
     const baseQuery = db('crm_contacts as c')
-        .leftJoin('crm_job_nature as jn', 'c.job_nature_id', 'jn.job_id')
-        .leftJoin('crm_sectors as s', 'c.sector_id', 's.sector_id')
+        .leftJoin('crm_job_nature as jn', 'c.job_nature_id', 'jn.id')
+        .leftJoin('crm_sectors as s', 'c.sector_id', 's.id')
         .andWhere('c.org_id', orgId)
         .whereRaw('LOWER(??) = ?', ['c.category', 'client']);
 
@@ -157,8 +157,8 @@ export async function getClients(orgId, query = {}) {
 
 export async function getClientById(orgId, id, options = {}) {
     const client = await db('crm_contacts as c')
-        .leftJoin('crm_job_nature as jn', 'c.job_nature_id', 'jn.job_id')
-        .leftJoin('crm_sectors as s', 'c.sector_id', 's.sector_id')
+        .leftJoin('crm_job_nature as jn', 'c.job_nature_id', 'jn.id')
+        .leftJoin('crm_sectors as s', 'c.sector_id', 's.id')
         .where({ 'c.id': id, 'c.org_id': orgId })
         .whereRaw('LOWER(??) = ?', ['c.category', 'client'])
         .select('c.*', 'jn.job_name', 's.sector_name')
@@ -171,7 +171,7 @@ export async function getClientById(orgId, id, options = {}) {
     if (options.agentRead === true) return client;
 
     const interactions = await db('crm_interactions as i')
-        .leftJoin('iam_users as u', 'i.interacted_by', 'u.user_id')
+        .leftJoin('iam_users as u', 'i.interacted_by', 'u.id')
         .where({ 'i.contact_id': id, 'i.org_id': orgId })
         .select('i.*', 'u.user_name as interacted_by_name')
         .orderBy('i.interaction_date', 'desc');
@@ -206,7 +206,7 @@ export async function createClient(orgId, data) {
         org_id: orgId,
         name: data.name,
         sector_id: data.sector_id || null,
-        job_nature_id: data.job_nature_id || null,
+        job_nature_id: data.job_nature_id || data.job_id || null,
         category: 'Client',
         contact_person: data.contact_person || null,
         designation: data.designation || null,
@@ -228,7 +228,7 @@ export async function createClient(orgId, data) {
         insertData.sector_id = await findOrCreateSector(orgId, data.sector || data.sector_name);
     }
     // Resolve job nature name to ID if provided as string
-    if ((data.job_nature || data.job_nature_name || data.job_name) && !data.job_nature_id && !insertData.job_nature_id) {
+    if ((data.job_nature || data.job_nature_name || data.job_name) && !data.job_nature_id && !data.job_id && !insertData.job_nature_id) {
         insertData.job_nature_id = await findOrCreateJobNature(orgId, data.job_nature || data.job_nature_name || data.job_name);
     }
 
@@ -505,7 +505,7 @@ export async function batchSaveClients(orgId, payload = {}) {
             const clientName = item.name || item.company;
             if (!clientName) continue;
 
-            let jobNatureId = item.job_nature_id || null;
+            let jobNatureId = item.job_nature_id || item.job_id || null;
             if (!jobNatureId && (item.job_name || item.job_nature)) {
                 jobNatureId = await findOrCreateJobNature(orgId, item.job_name || item.job_nature, trx);
             }
@@ -643,7 +643,7 @@ export async function createProjectContact(orgId, projectId, data) {
         const resolved = await resolveContactReferences(orgId, data, trx);
         const [contactId] = await trx('crm_contacts').insert(buildScopedContact(orgId, resolved, 'project'));
         try {
-            const [projectPartyId] = await trx('pdoc_parties').insert({ project_id: projectIdValue, party_id: contactId });
+            const [projectPartyId] = await trx('proj_parties').insert({ project_id: projectIdValue, contact_id: contactId });
             const contact = await trx('crm_contacts')
                 .where({ id: contactId, org_id: orgId })
                 .select(CONTACT_FIELDS)
@@ -659,16 +659,14 @@ export async function createProjectContact(orgId, projectId, data) {
 async function linkContactInTransaction(trx, orgId, projectId, contactId) {
     await getScopedProject(trx, projectId, orgId);
     const contact = await getScopedContact(trx, contactId, orgId);
-    const currentLink = await trx('pdoc_parties')
-        .where({ project_id: projectId, party_id: contactId })
-        .whereNull('deleted_at')
+    const currentLink = await trx('proj_parties')
+        .where({ project_id: projectId, contact_id: contactId })
         .first();
     if (currentLink) throw duplicateLinkError(contactId, projectId);
 
     if (contact.scope === 'project') {
-        const otherLink = await trx('pdoc_parties as pp')
-            .where('pp.party_id', contactId)
-            .whereNull('pp.deleted_at')
+        const otherLink = await trx('proj_parties as pp')
+            .where('pp.contact_id', contactId)
             .whereNot('pp.project_id', projectId)
             .first('pp.project_id');
         if (otherLink) {
@@ -680,7 +678,7 @@ async function linkContactInTransaction(trx, orgId, projectId, contactId) {
     }
 
     try {
-        const [projectPartyId] = await trx('pdoc_parties').insert({ project_id: projectId, party_id: contactId });
+        const [projectPartyId] = await trx('proj_parties').insert({ project_id: projectId, contact_id: contactId });
         return { project_party_id: projectPartyId, contact_id: contactId };
     } catch (error) {
         if (isDuplicateEntry(error)) throw duplicateLinkError(contactId, projectId);
@@ -726,7 +724,7 @@ function applyContactSearch(queryBuilder, query = {}) {
 async function eligibleContacts(orgId, projectId, query = {}, connection = db) {
     await getScopedProject(connection, projectId, orgId);
     let builder = connection('crm_contacts as c')
-        .leftJoin('crm_job_nature as jn', 'c.job_nature_id', 'jn.job_id');
+        .leftJoin('crm_job_nature as jn', 'c.job_nature_id', 'jn.id');
 
     if (orgId) {
         builder = builder.where(function () {
@@ -740,10 +738,9 @@ async function eligibleContacts(orgId, projectId, query = {}, connection = db) {
             .orWhere('c.scope', '')
             .orWhereExists(function () {
                 this.select(connection.raw('1'))
-                    .from('pdoc_parties as own_pp')
-                    .whereRaw('own_pp.party_id = c.id')
-                    .andWhere('own_pp.project_id', projectId)
-                    .whereNull('own_pp.deleted_at');
+                    .from('proj_parties as own_pp')
+                    .whereRaw('own_pp.contact_id = c.id')
+                    .andWhere('own_pp.project_id', projectId);
             });
     });
 
@@ -753,8 +750,8 @@ async function eligibleContacts(orgId, projectId, query = {}, connection = db) {
             ...CONTACT_FIELDS.map(field => `c.${field}`),
             'jn.job_name',
             connection.raw(`(
-                SELECT pp.pv_id FROM pdoc_parties pp
-                WHERE pp.party_id = c.id AND pp.project_id = ? AND pp.deleted_at IS NULL
+                SELECT pp.id FROM proj_parties pp
+                WHERE pp.contact_id = c.id AND pp.project_id = ?
                 LIMIT 1
             ) as project_party_id`, [projectId])
         )

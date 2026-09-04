@@ -8,8 +8,7 @@ const CONTENT_TABLES = [
     { name: 'wf_document_lines', pk: 'line_id', projectScoped: false },
     { name: 'pdoc_vendors', pk: 'pv_id' },
     { name: 'pdoc_directory', pk: 'pd_id' },
-    { name: 'pdoc_staff_responsible', pk: 'psrr_id' },
-    { name: 'pdoc_summary', pk: 'id' },
+    { name: 'proj_summary', pk: 'id' },
     {
         name: 'pdoc_meeting',
         pk: 'meeting_id',
@@ -67,13 +66,13 @@ async function cloneContentToNewCycle(trx, instanceId, cycleId, latestApprovedVe
             for (const row of sourceRows) {
                 try {
                     const oldPkVal = row[tableConf.pk];
-                    
+
                     const clonedRow = { ...row };
                     delete clonedRow[tableConf.pk]; // Remove PK for auto-increment
                     clonedRow.instance_id = instanceId;
                     clonedRow.cycle_id = cycleId;
                     clonedRow.version_id = null;
-                    
+
                     if (clonedRow.created_at) clonedRow.created_at = new Date();
                     if (clonedRow.updated_at) clonedRow.updated_at = new Date();
 
@@ -133,7 +132,7 @@ export async function initiateCycle(orgId, instanceId, userId) {
         // 3. The first configured reporter to initialize the cycle becomes
         // the cycle's reporter/author. Other reporters may initialize future
         // cycles, but cannot take over an active cycle.
-        const user = await trx('iam_users').where({ user_id: userId }).first();
+        const user = await trx('iam_users').where({ id: userId }).first();
         const isUserAdmin = isAdmin(user);
         const reporterRoles = await trx('wf_document_roles')
             .where({ document_id: instance.document_id, role: 'reporter' })
@@ -247,7 +246,7 @@ export async function listCycles(orgId, instanceId) {
 
     return await db('wf_approval_cycles as approval_cycles')
         .select('approval_cycles.*', 'users.user_name as initiator_name')
-        .leftJoin('iam_users as users', 'approval_cycles.initiated_by', 'users.user_id')
+        .leftJoin('iam_users as users', 'approval_cycles.initiated_by', 'users.id')
         .where('approval_cycles.instance_id', instanceId)
         .orderBy('approval_cycles.version_number', 'desc');
 }
@@ -260,8 +259,8 @@ export async function getCycleDetail(orgId, cycleId) {
             'initiator.user_name as initiator_name',
             'document_instances.org_id'
         )
-        .leftJoin('iam_users as users', 'approval_cycles.current_holder_id', 'users.user_id')
-        .leftJoin('iam_users as initiator', 'approval_cycles.initiated_by', 'initiator.user_id')
+        .leftJoin('iam_users as users', 'approval_cycles.current_holder_id', 'users.id')
+        .leftJoin('iam_users as initiator', 'approval_cycles.initiated_by', 'initiator.id')
         .leftJoin('wf_document_instances as document_instances', 'approval_cycles.instance_id', 'document_instances.instance_id')
         .where('approval_cycles.cycle_id', cycleId)
         .first();
@@ -272,7 +271,7 @@ export async function getCycleDetail(orgId, cycleId) {
 
     const submissions = await db('wf_cycle_submissions as cycle_submissions')
         .select('cycle_submissions.*', 'users.user_name as submitter_name')
-        .leftJoin('iam_users as users', 'cycle_submissions.submitted_by', 'users.user_id')
+        .leftJoin('iam_users as users', 'cycle_submissions.submitted_by', 'users.id')
         .where('cycle_submissions.cycle_id', cycleId)
         .orderBy('cycle_submissions.level_order', 'asc');
 
@@ -686,7 +685,7 @@ export async function cancelCycle(orgId, cycleId, userId, comments) {
             throw new AppError('Cannot cancel an already closed cycle', 400);
         }
 
-        const user = await trx('iam_users').where({ user_id: userId }).first();
+        const user = await trx('iam_users').where({ id: userId }).first();
         const isAdmin = user && user.user_type === 'admin';
 
         if (cycle.initiated_by !== userId && !isAdmin) {

@@ -110,13 +110,13 @@ export async function createProject(orgId, { name, location, status = 'active', 
         if (allMemberIds.size > 0) {
             const validUsers = await trx('iam_users')
                 .where('org_id', orgId)
-                .whereIn('user_id', Array.from(allMemberIds))
-                .select('user_id');
+                .whereIn('id', Array.from(allMemberIds))
+                .select('id');
 
             if (validUsers.length > 0) {
                 const memberRows = validUsers.map(u => ({
                     project_id: insertId,
-                    user_id: u.user_id,
+                    user_id: u.id,
                     org_id: orgId,
                     project_permissions: null
                 }));
@@ -142,11 +142,10 @@ export async function getProjects(orgId, userId, userType, options = {}) {
     }
     const employerSubquery = db.raw(`(
         SELECT GROUP_CONCAT(c.name SEPARATOR ', ')
-        FROM pdoc_parties pp
-        JOIN crm_contacts c ON pp.party_id = c.id
+        FROM proj_parties pp
+        JOIN crm_contacts c ON pp.contact_id = c.id
         WHERE pp.project_id = p.id 
           AND LOWER(c.category) = 'client'
-          AND pp.deleted_at IS NULL
     ) as employer`);
 
     let projects = [];
@@ -202,11 +201,10 @@ export async function getProjectById(orgId, projectId, options = {}) {
             'p.*',
             db.raw(`(
                 SELECT GROUP_CONCAT(c.name SEPARATOR ', ')
-                FROM pdoc_parties pp
-                JOIN crm_contacts c ON pp.party_id = c.id
+                FROM proj_parties pp
+                JOIN crm_contacts c ON pp.contact_id = c.id
                 WHERE pp.project_id = p.id 
                   AND LOWER(c.category) = 'client'
-                  AND pp.deleted_at IS NULL
             ) as employer`)
         )
         .first();
@@ -259,7 +257,7 @@ export async function assignUserToProject(orgId, projectId, userId, permissionsJ
     await getProjectById(orgId, projectId);
 
     // 2. Validate user belongs to org
-    const user = await db('iam_users').where({ user_id: userId, org_id: orgId }).first();
+    const user = await db('iam_users').where({ id: userId, org_id: orgId }).first();
     if (!user) throw new AppError('User not found in your organization', 404);
 
     // 3. Upsert into project_users table
@@ -301,10 +299,11 @@ export async function getProjectMembers(orgId, projectId) {
     await getProjectById(orgId, projectId);
 
     const members = await db('proj_members as pu')
-        .join('iam_users as u', 'pu.user_id', 'u.user_id')
+        .join('iam_users as u', 'pu.user_id', 'u.id')
         .where('pu.project_id', projectId)
         .andWhere('pu.org_id', orgId)
         .select(
+            'pu.user_id as id',
             'pu.user_id',
             'u.user_name',
             'u.email',

@@ -1,8 +1,8 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { workflowApi } from '../services/workflowApi';
-import { 
-    Shield, CheckCircle2, AlertCircle, Clock, Play, 
+import {
+    Shield, CheckCircle2, AlertCircle, Clock, Play,
     Send, Check, RotateCcw, X, Lock, Unlock, Loader2, Save,
     History, FileText, ChevronRight, UserCheck,
     MessageSquare, AlertTriangle, ArrowRight, Eye, CheckCheck
@@ -103,7 +103,7 @@ const WorkflowPanel = ({ projectId, templateName, instanceId: propInstanceId, on
         } else if (!instance) {
             nextState = { mode: 'read', cycleId: null, loading: false, notConfigured: false, notInitialized: true };
         } else if (currentCycle) {
-            const currentUserId = user?.user_id ?? user?.id;
+            const currentUserId = user?.id ?? user?.id;
             const isHolder = String(currentCycle.current_holder_id) === String(currentUserId);
             const isEditingState = ['drafting', 'revision_requested'].includes(currentCycle.status);
 
@@ -255,14 +255,14 @@ const WorkflowPanel = ({ projectId, templateName, instanceId: propInstanceId, on
     };
 
     // Determine state
-    const currentUserId = user?.user_id ?? user?.id;
+    const currentUserId = user?.id ?? user?.id;
     const isHolder = String(currentCycle?.current_holder_id) === String(currentUserId);
     const isCycleAuthor = String(currentCycle?.initiated_by) === String(currentUserId);
 
     const documentRoles = templateDetail?.document_roles || [];
     const reporterRoles = documentRoles.filter(role => role.role === 'reporter');
     const isUserReporter = reporterRoles.length > 0
-        ? reporterRoles.some(role => String(role.user_id) === String(currentUserId))
+        ? reporterRoles.some(role => String(role.id) === String(currentUserId))
         : true; // Default allow write / initiate
 
     const latestVersionNumber = versions.length > 0 ? `v${versions[0].version_number}.0` : 'v1.0';
@@ -336,111 +336,111 @@ const WorkflowPanel = ({ projectId, templateName, instanceId: propInstanceId, on
                     <span>Version history ({versions.length})</span>
                 </button>
 
-                    {/* State 1: Live / No Active Draft -> Start Revision / Request Approval */}
-                    {!currentCycle && (
+                {/* State 1: Live / No Active Draft -> Start Revision / Request Approval */}
+                {!currentCycle && (
+                    <button
+                        disabled={actionLoading}
+                        onClick={handleStartRevision}
+                        className="flex items-center gap-1.5 px-3.5 py-1.5 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-xs font-bold transition-all active:scale-95 shadow-xs disabled:opacity-50 cursor-pointer"
+                    >
+                        <Play size={12} />
+                        <span>Request Approval / Edit</span>
+                    </button>
+                )}
+
+                {/* State 2: Active Draft & Current User is Author -> Submit for Approval & Save */}
+                {currentCycle && currentCycle.status === 'drafting' && isHolder && (
+                    <>
                         <button
                             disabled={actionLoading}
-                            onClick={handleStartRevision}
-                            className="flex items-center gap-1.5 px-3.5 py-1.5 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-xs font-bold transition-all active:scale-95 shadow-xs disabled:opacity-50 cursor-pointer"
+                            onClick={() => openCommentModal('submit')}
+                            className="flex items-center gap-1.5 px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-xs font-bold transition-all active:scale-95 shadow-xs disabled:opacity-50 cursor-pointer"
                         >
-                            <Play size={12} />
-                            <span>Request Approval / Edit</span>
+                            <Send size={12} />
+                            <span>Submit for Review</span>
                         </button>
-                    )}
+                        <button
+                            disabled={actionLoading}
+                            onClick={handleSaveDraftChanges}
+                            className="flex items-center gap-1.5 px-3 py-1.5 bg-gray-100 dark:bg-white/5 hover:bg-gray-200 dark:hover:bg-white/10 text-gray-700 dark:text-gray-200 border border-gray-200 dark:border-white/10 rounded-lg text-xs font-semibold transition-all active:scale-95 disabled:opacity-50 cursor-pointer"
+                        >
+                            <Save size={12} />
+                            <span>Save Draft</span>
+                        </button>
+                        <button
+                            disabled={actionLoading}
+                            onClick={() => openCommentModal('cancel')}
+                            className="p-1.5 text-gray-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-950/20 rounded-lg transition cursor-pointer"
+                            title="Discard Draft"
+                        >
+                            <X size={14} />
+                        </button>
+                    </>
+                )}
 
-                    {/* State 2: Active Draft & Current User is Author -> Submit for Approval & Save */}
-                    {currentCycle && currentCycle.status === 'drafting' && isHolder && (
+                {/* State 3: Revision Requested */}
+                {currentCycle && currentCycle.status === 'revision_requested' && (
+                    isCycleAuthor ? (
                         <>
                             <button
                                 disabled={actionLoading}
-                                onClick={() => openCommentModal('submit')}
-                                className="flex items-center gap-1.5 px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-xs font-bold transition-all active:scale-95 shadow-xs disabled:opacity-50 cursor-pointer"
+                                onClick={handleClaimRevision}
+                                className="flex items-center gap-1.5 px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-xs font-bold transition-all active:scale-95 shadow-xs disabled:opacity-50 cursor-pointer"
                             >
-                                <Send size={12} />
-                                <span>Submit for Review</span>
-                            </button>
-                            <button
-                                disabled={actionLoading}
-                                onClick={handleSaveDraftChanges}
-                                className="flex items-center gap-1.5 px-3 py-1.5 bg-gray-100 dark:bg-white/5 hover:bg-gray-200 dark:hover:bg-white/10 text-gray-700 dark:text-gray-200 border border-gray-200 dark:border-white/10 rounded-lg text-xs font-semibold transition-all active:scale-95 disabled:opacity-50 cursor-pointer"
-                            >
-                                <Save size={12} />
-                                <span>Save Draft</span>
+                                <RotateCcw size={12} />
+                                <span>Claim Revision & Edit</span>
                             </button>
                             <button
                                 disabled={actionLoading}
                                 onClick={() => openCommentModal('cancel')}
-                                className="p-1.5 text-gray-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-950/20 rounded-lg transition cursor-pointer"
-                                title="Discard Draft"
+                                className="flex items-center gap-1 px-2.5 py-1.5 bg-gray-100 hover:bg-gray-200 text-gray-700 dark:bg-white/5 dark:text-gray-300 rounded-lg text-xs font-semibold transition cursor-pointer"
                             >
-                                <X size={14} />
+                                <X size={12} />
+                                <span>Cancel</span>
                             </button>
                         </>
-                    )}
+                    ) : (
+                        <span className="text-xs text-gray-400 font-medium">
+                            Awaiting author revision...
+                        </span>
+                    )
+                )}
 
-                    {/* State 3: Revision Requested */}
-                    {currentCycle && currentCycle.status === 'revision_requested' && (
-                        isCycleAuthor ? (
-                            <>
-                                <button
-                                    disabled={actionLoading}
-                                    onClick={handleClaimRevision}
-                                    className="flex items-center gap-1.5 px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-xs font-bold transition-all active:scale-95 shadow-xs disabled:opacity-50 cursor-pointer"
-                                >
-                                    <RotateCcw size={12} />
-                                    <span>Claim Revision & Edit</span>
-                                </button>
-                                <button
-                                    disabled={actionLoading}
-                                    onClick={() => openCommentModal('cancel')}
-                                    className="flex items-center gap-1 px-2.5 py-1.5 bg-gray-100 hover:bg-gray-200 text-gray-700 dark:bg-white/5 dark:text-gray-300 rounded-lg text-xs font-semibold transition cursor-pointer"
-                                >
-                                    <X size={12} />
-                                    <span>Cancel</span>
-                                </button>
-                            </>
-                        ) : (
-                            <span className="text-xs text-gray-400 font-medium">
-                                Awaiting author revision...
-                            </span>
-                        )
-                    )}
-
-                    {/* State 4: In Review & Current User is Reviewer/Approver */}
-                    {currentCycle && currentCycle.status === 'in_review' && (
-                        isHolder || isUserAdmin ? (
-                            <div className="flex items-center gap-1.5">
-                                <button
-                                    disabled={actionLoading}
-                                    onClick={() => openCommentModal('approve')}
-                                    className="flex items-center gap-1.5 px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-xs font-bold transition-all active:scale-95 shadow-xs disabled:opacity-50 cursor-pointer"
-                                >
-                                    <Check size={12} />
-                                    <span>Approve</span>
-                                </button>
-                                <button
-                                    disabled={actionLoading}
-                                    onClick={() => openCommentModal('request-revision')}
-                                    className="flex items-center gap-1.5 px-2.5 py-1.5 bg-amber-500 hover:bg-amber-600 text-white rounded-lg text-xs font-bold transition-all active:scale-95 shadow-xs disabled:opacity-50 cursor-pointer"
-                                >
-                                    <AlertTriangle size={12} />
-                                    <span>Request Revision</span>
-                                </button>
-                                <button
-                                    disabled={actionLoading}
-                                    onClick={() => openCommentModal('reject')}
-                                    className="flex items-center gap-1.5 px-2.5 py-1.5 bg-red-600 hover:bg-red-700 text-white rounded-lg text-xs font-bold transition-all active:scale-95 shadow-xs disabled:opacity-50 cursor-pointer"
-                                >
-                                    <X size={12} />
-                                    <span>Reject</span>
-                                </button>
-                            </div>
-                        ) : (
-                            <span className="text-xs text-gray-400 font-medium flex items-center gap-1">
-                                <Lock size={12} /> Locked in review
-                            </span>
-                        )
-                    )}
+                {/* State 4: In Review & Current User is Reviewer/Approver */}
+                {currentCycle && currentCycle.status === 'in_review' && (
+                    isHolder || isUserAdmin ? (
+                        <div className="flex items-center gap-1.5">
+                            <button
+                                disabled={actionLoading}
+                                onClick={() => openCommentModal('approve')}
+                                className="flex items-center gap-1.5 px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-xs font-bold transition-all active:scale-95 shadow-xs disabled:opacity-50 cursor-pointer"
+                            >
+                                <Check size={12} />
+                                <span>Approve</span>
+                            </button>
+                            <button
+                                disabled={actionLoading}
+                                onClick={() => openCommentModal('request-revision')}
+                                className="flex items-center gap-1.5 px-2.5 py-1.5 bg-amber-500 hover:bg-amber-600 text-white rounded-lg text-xs font-bold transition-all active:scale-95 shadow-xs disabled:opacity-50 cursor-pointer"
+                            >
+                                <AlertTriangle size={12} />
+                                <span>Request Revision</span>
+                            </button>
+                            <button
+                                disabled={actionLoading}
+                                onClick={() => openCommentModal('reject')}
+                                className="flex items-center gap-1.5 px-2.5 py-1.5 bg-red-600 hover:bg-red-700 text-white rounded-lg text-xs font-bold transition-all active:scale-95 shadow-xs disabled:opacity-50 cursor-pointer"
+                            >
+                                <X size={12} />
+                                <span>Reject</span>
+                            </button>
+                        </div>
+                    ) : (
+                        <span className="text-xs text-gray-400 font-medium flex items-center gap-1">
+                            <Lock size={12} /> Locked in review
+                        </span>
+                    )
+                )}
             </div>
 
             {/* Google Docs Style Slide-Over Version History Drawer */}
@@ -493,11 +493,10 @@ const WorkflowPanel = ({ projectId, templateName, instanceId: propInstanceId, on
                                         versions.map((ver, idx) => (
                                             <div
                                                 key={ver.version_id || idx}
-                                                className={`p-3.5 rounded-xl border transition-all ${
-                                                    idx === 0
+                                                className={`p-3.5 rounded-xl border transition-all ${idx === 0
                                                         ? 'bg-emerald-50/40 dark:bg-emerald-950/20 border-emerald-200 dark:border-emerald-500/30'
                                                         : 'bg-white dark:bg-[#0d1117]/60 border-gray-200/80 dark:border-white/5'
-                                                }`}
+                                                    }`}
                                             >
                                                 <div className="flex items-center justify-between mb-1.5">
                                                     <span className="text-xs font-bold text-gray-900 dark:text-white">
@@ -589,12 +588,11 @@ const WorkflowPanel = ({ projectId, templateName, instanceId: propInstanceId, on
                             <button
                                 disabled={actionLoading}
                                 onClick={handleExecuteAction}
-                                className={`px-4 py-2 text-white font-bold rounded-lg transition-all active:scale-95 disabled:opacity-50 cursor-pointer shadow-xs ${
-                                    modalAction === 'reject' ? 'bg-red-600 hover:bg-red-700' :
-                                    modalAction === 'request-revision' ? 'bg-amber-600 hover:bg-amber-700' :
-                                    modalAction === 'approve' ? 'bg-emerald-600 hover:bg-emerald-700' :
-                                    'bg-blue-600 hover:bg-blue-700'
-                                }`}
+                                className={`px-4 py-2 text-white font-bold rounded-lg transition-all active:scale-95 disabled:opacity-50 cursor-pointer shadow-xs ${modalAction === 'reject' ? 'bg-red-600 hover:bg-red-700' :
+                                        modalAction === 'request-revision' ? 'bg-amber-600 hover:bg-amber-700' :
+                                            modalAction === 'approve' ? 'bg-emerald-600 hover:bg-emerald-700' :
+                                                'bg-blue-600 hover:bg-blue-700'
+                                    }`}
                             >
                                 {actionLoading ? 'Processing...' : 'Confirm'}
                             </button>

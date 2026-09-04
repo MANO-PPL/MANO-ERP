@@ -4,15 +4,17 @@ import AppError from '../../../utils/AppError.js';
 export async function fetchProjectDirectory(projectId) {
     if (!projectId) throw new AppError('projectId is required', 400);
 
-    const directory = await db('pdoc_directory as pd')
-        .leftJoin('pdoc_parties as pp', 'pd.pv_id', 'pp.pv_id')
-        .leftJoin('crm_contacts as c', 'pp.party_id', 'c.id')
-        .leftJoin('crm_job_nature as jn', 'c.job_nature_id', 'jn.job_id')
+    const directory = await db('proj_directory as pd')
+        .leftJoin('proj_parties as pp', 'pd.party_id', 'pp.id')
+        .leftJoin('crm_contacts as c', 'pp.contact_id', 'c.id')
+        .leftJoin('crm_job_nature as jn', 'c.job_nature_id', 'jn.id')
         .where('pd.project_id', projectId)
         .select([
             'pd.pd_id',
             'pd.project_id',
-            'pp.party_id as party_id',
+            'pd.party_id as party_id',
+            'pd.party_id as pv_id',
+            'pp.contact_id as contact_id',
             'c.name as company_name',
             'c.category as category',
             'jn.job_name as job_nature',
@@ -21,14 +23,16 @@ export async function fetchProjectDirectory(projectId) {
             'pd.responsibilities',
             'pd.mobile_no',
             'pd.email',
-            'pd.address_line'
+            'pd.address_line',
+            'pd.created_at',
+            'pd.updated_at'
         ]);
 
     return { directory, count: directory.length };
 }
 
 export async function fetchDirectoryCount(projectId = null) {
-    const query = db('pdoc_directory');
+    const query = db('proj_directory');
     if (projectId) {
         query.where('project_id', projectId);
     }
@@ -37,18 +41,19 @@ export async function fetchDirectoryCount(projectId = null) {
 }
 
 export async function insertDirectoryItem(data) {
-    // Find pv_id from pdoc_parties based on the master party ID.
-    let pv_id = data.pv_id || null;
-    if (!pv_id && data.party_id) {
-        const v = await db('pdoc_parties')
-            .where({ project_id: data.project_id, party_id: data.party_id })
+    // Find party_id from proj_parties based on id or contact_id
+    let party_id = data.party_id || data.pv_id || null;
+    if (party_id) {
+        const v = await db('proj_parties')
+            .where({ project_id: data.project_id, id: party_id })
+            .orWhere({ project_id: data.project_id, contact_id: party_id })
             .first();
-        if (v) pv_id = v.pv_id;
+        if (v) party_id = v.id;
     }
 
-    const [pd_id] = await db('pdoc_directory').insert({
+    const [pd_id] = await db('proj_directory').insert({
         project_id: data.project_id,
-        pv_id: pv_id,
+        party_id: party_id,
         contact_person: data.contact_person,
         designation: data.designation || null,
         responsibilities: data.responsibilities || null,
@@ -63,15 +68,15 @@ export async function insertDirectoryItem(data) {
 export async function updateDirectoryItem(projectId, id, data = {}) {
     const updateData = {};
     if (data.party_id !== undefined || data.pv_id !== undefined) {
-        let pv_id = data.pv_id || null;
-        const vId = data.party_id || data.pv_id;
-        if (vId) {
-            const v = await db('pdoc_parties')
-                .where({ project_id: projectId, party_id: vId })
+        let party_id = data.party_id || data.pv_id || null;
+        if (party_id) {
+            const v = await db('proj_parties')
+                .where({ project_id: projectId, id: party_id })
+                .orWhere({ project_id: projectId, contact_id: party_id })
                 .first();
-            if (v) pv_id = v.pv_id;
+            if (v) party_id = v.id;
         }
-        updateData.pv_id = pv_id;
+        updateData.party_id = party_id;
     }
     if (data.contact_person !== undefined) updateData.contact_person = data.contact_person;
     if (data.designation !== undefined) updateData.designation = data.designation;
@@ -80,7 +85,7 @@ export async function updateDirectoryItem(projectId, id, data = {}) {
     if (data.email !== undefined) updateData.email = data.email;
     if (data.address_line !== undefined) updateData.address_line = data.address_line;
 
-    const affected = await db('pdoc_directory')
+    const affected = await db('proj_directory')
         .where({ pd_id: id, project_id: projectId })
         .update(updateData);
 
@@ -89,7 +94,7 @@ export async function updateDirectoryItem(projectId, id, data = {}) {
 }
 
 export async function deleteDirectoryItem(projectId, id) {
-    const affectedRows = await db('pdoc_directory')
+    const affectedRows = await db('proj_directory')
         .where({ pd_id: id, project_id: projectId })
         .del();
 

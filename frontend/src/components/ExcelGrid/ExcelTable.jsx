@@ -297,7 +297,7 @@ export const ExcelTable = ({
                             const rowIndex =
                                 pageSize === 'All' ? index : (currentPage - 1) * Number(pageSize) + index;
                             const rowId = row[primaryKey] || `row-${rowIndex}`;
-                            const isNew = row._status === 'new' || String(rowId).startsWith('temp_');
+                            const isNew = row._status === 'new' || (row._status !== 'saved' && String(rowId).startsWith('temp_'));
                             const isError = row._status === 'error' || (row._errors && Object.keys(row._errors).length > 0);
                             const isModified = row._status === 'modified';
                             const isRowSelected = selectedIds.has(rowId);

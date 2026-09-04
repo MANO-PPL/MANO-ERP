@@ -9,7 +9,7 @@ const METADATA_CONFIGS = {
         title: "Manage Nature of Jobs",
         endpoint: "/admin/job-natures",
         itemNameKey: "job_name",
-        itemIdKey: "job_id",
+        itemIdKey: "id",
         listKey: "job_natures",
         addPlaceholder: "Add new nature of job..."
     },
@@ -17,7 +17,7 @@ const METADATA_CONFIGS = {
         title: "Manage Nature of Jobs",
         endpoint: "/admin/job-natures",
         itemNameKey: "job_name",
-        itemIdKey: "job_id",
+        itemIdKey: "id",
         listKey: "job_natures",
         addPlaceholder: "Add new nature of job..."
     },
@@ -25,7 +25,7 @@ const METADATA_CONFIGS = {
         title: "Manage Sectors",
         endpoint: "/admin/sectors",
         itemNameKey: "sector_name",
-        itemIdKey: "sector_id",
+        itemIdKey: "id",
         listKey: "sectors",
         addPlaceholder: "Add new sector..."
     },
@@ -33,7 +33,7 @@ const METADATA_CONFIGS = {
         title: "Manage Sectors",
         endpoint: "/admin/sectors",
         itemNameKey: "sector_name",
-        itemIdKey: "sector_id",
+        itemIdKey: "id",
         listKey: "sectors",
         addPlaceholder: "Add new sector..."
     },
@@ -41,7 +41,7 @@ const METADATA_CONFIGS = {
         title: "Manage Departments",
         endpoint: "/admin/departments",
         itemNameKey: "dept_name",
-        itemIdKey: "dept_id",
+        itemIdKey: "id",
         listKey: "departments",
         addPlaceholder: "Add new department..."
     },
@@ -49,7 +49,7 @@ const METADATA_CONFIGS = {
         title: "Manage Departments",
         endpoint: "/admin/departments",
         itemNameKey: "dept_name",
-        itemIdKey: "dept_id",
+        itemIdKey: "id",
         listKey: "departments",
         addPlaceholder: "Add new department..."
     },
@@ -57,7 +57,7 @@ const METADATA_CONFIGS = {
         title: "Manage Designations",
         endpoint: "/admin/designations",
         itemNameKey: "desg_name",
-        itemIdKey: "desg_id",
+        itemIdKey: "id",
         listKey: "designations",
         addPlaceholder: "Add new designation..."
     },
@@ -65,7 +65,7 @@ const METADATA_CONFIGS = {
         title: "Manage Designations",
         endpoint: "/admin/designations",
         itemNameKey: "desg_name",
-        itemIdKey: "desg_id",
+        itemIdKey: "id",
         listKey: "designations",
         addPlaceholder: "Add new designation..."
     }

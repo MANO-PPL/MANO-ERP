@@ -21,10 +21,10 @@ router.get('/job-natures', restrictTo('admin', 'employee'), adminController.list
 router.use(restrictTo('admin'));
 
 // Users detail/mutation routes
-router.get('/user/:user_id', adminController.getUser);
+router.get('/user/:id', adminController.getUser);
 router.post('/user', adminController.createUser);
-router.put('/user/:user_id', upload.single('profile_image'), adminController.updateUser); // image is optional
-router.delete('/user/:user_id', adminController.deleteUser);
+router.put('/user/:id', upload.single('profile_image'), adminController.updateUser); // image is optional
+router.delete('/user/:id', adminController.deleteUser);
 
 // Bulk endpoints
 router.post('/users/bulk', upload.single('file'), adminController.bulkUpload);

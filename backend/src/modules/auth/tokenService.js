@@ -59,7 +59,7 @@ export async function verifyRefreshToken(token) {
 
                 if (timeDiff < GRACE_PERIOD_MS) {
                     console.log(`Grace period active for token reuse. Returning valid replacement.`);
-                    const user = await db('iam_users').where('user_id', refreshTokenRecord.user_id).first();
+                    const user = await db('iam_users').where('id', refreshTokenRecord.user_id).first();
                     return {
                         user,
                         gracePeriodActive: true,
@@ -82,7 +82,7 @@ export async function verifyRefreshToken(token) {
     }
 
     // Token is valid, return user details
-    const user = await db('iam_users').where('user_id', refreshTokenRecord.user_id).first();
+    const user = await db('iam_users').where('id', refreshTokenRecord.user_id).first();
     return { user, refreshTokenRecord };
 }
 

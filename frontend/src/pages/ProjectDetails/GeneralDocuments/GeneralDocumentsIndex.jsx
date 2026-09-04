@@ -1,16 +1,13 @@
 import React, { useState } from 'react';
-import { FileText, FileSpreadsheet, FileImage, FileStack, ChevronRight } from 'lucide-react';
+import { FileText, FileSpreadsheet, FileImage, Calendar, ChevronRight } from 'lucide-react';
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import ProjectPartiesList from './ProjectPartiesList';
 import ProjectDirectory from './ProjectDirectory';
-import StaffRoles from './StaffRoles';
 import ProjectSummary from './ProjectSummary';
 import OrganisationChart from './OrganisationChart';
-import AgendaList from './Agenda/AgendaList';
-import AgendaDetail from './Agenda/AgendaDetail';
-import MoMList from './MinutesOfMeeting/MoMList';
-import MoMDetail from './MinutesOfMeeting/MoMDetail';
+import MeetingList from './Meetings/MeetingList';
+import MeetingDetail from './Meetings/MeetingDetail';
 
 const GeneralDocumentsIndex = ({ setExtraBreadcrumbs, canWrite }) => {
     const { id } = useParams();
@@ -25,8 +22,7 @@ const GeneralDocumentsIndex = ({ setExtraBreadcrumbs, canWrite }) => {
     }, [searchParams, setSearchParams]);
 
     const handleBack = React.useCallback(() => setCurrentView('grid'), [setCurrentView]);
-    const handleAgendaBack = React.useCallback(() => setCurrentView('agenda-list'), [setCurrentView]);
-    const handleMomBack = React.useCallback(() => setCurrentView('mom-list'), [setCurrentView]);
+    const handleMeetingBack = React.useCallback(() => setCurrentView('meeting-list'), [setCurrentView]);
 
     const navigate = useNavigate();
 
@@ -42,36 +38,86 @@ const GeneralDocumentsIndex = ({ setExtraBreadcrumbs, canWrite }) => {
     if (currentView === 'directory') {
         return <ProjectDirectory onBack={handleBack} setExtraBreadcrumbs={setExtraBreadcrumbs} canWrite={canWrite} />;
     }
-    if (currentView === 'staff-roles') {
-        return <StaffRoles onBack={handleBack} setExtraBreadcrumbs={setExtraBreadcrumbs} canWrite={canWrite} />;
-    }
     if (currentView === 'project-summary') {
         return <ProjectSummary onBack={handleBack} setExtraBreadcrumbs={setExtraBreadcrumbs} canWrite={canWrite} />;
     }
     if (currentView === 'org-chart') {
         return <OrganisationChart onBack={handleBack} setExtraBreadcrumbs={setExtraBreadcrumbs} canWrite={canWrite} />;
     }
+    if (currentView === 'meeting-list') {
+        return (
+            <MeetingList
+                onBack={handleBack}
+                setExtraBreadcrumbs={setExtraBreadcrumbs}
+                canWrite={canWrite}
+                onSelect={(mid) => {
+                    const newParams = new URLSearchParams(searchParams);
+                    newParams.set('view', 'meeting-detail');
+                    newParams.set('mid', mid);
+                    setSearchParams(newParams);
+                }}
+            />
+        );
+    }
+    if (currentView === 'meeting-detail') {
+        return (
+            <MeetingDetail
+                onBack={handleMeetingBack}
+                setExtraBreadcrumbs={setExtraBreadcrumbs}
+                meetingId={searchParams.get('mid')}
+                canWrite={canWrite}
+            />
+        );
+    }
     if (currentView === 'agenda-list') {
-        return <AgendaList onBack={handleBack} setExtraBreadcrumbs={setExtraBreadcrumbs} canWrite={canWrite} onSelect={(aid) => {
-            const newParams = new URLSearchParams(searchParams);
-            newParams.set('view', 'agenda-detail');
-            newParams.set('aid', aid);
-            setSearchParams(newParams);
-        }} />;
+        return (
+            <MeetingList
+                onBack={handleBack}
+                setExtraBreadcrumbs={setExtraBreadcrumbs}
+                canWrite={canWrite}
+                onSelect={(aid) => {
+                    const newParams = new URLSearchParams(searchParams);
+                    newParams.set('view', 'meeting-detail');
+                    newParams.set('mid', aid);
+                    setSearchParams(newParams);
+                }}
+            />
+        );
     }
     if (currentView === 'agenda-detail') {
-        return <AgendaDetail onBack={handleAgendaBack} setExtraBreadcrumbs={setExtraBreadcrumbs} agendaId={searchParams.get('aid')} canWrite={canWrite} />;
+        return (
+            <MeetingDetail
+                onBack={handleMeetingBack}
+                setExtraBreadcrumbs={setExtraBreadcrumbs}
+                meetingId={searchParams.get('aid') || searchParams.get('mid')}
+                canWrite={canWrite}
+            />
+        );
     }
     if (currentView === 'mom-list') {
-        return <MoMList onBack={handleBack} setExtraBreadcrumbs={setExtraBreadcrumbs} canWrite={canWrite} onSelect={(mid) => {
-            const newParams = new URLSearchParams(searchParams);
-            newParams.set('view', 'mom-detail');
-            newParams.set('mid', mid);
-            setSearchParams(newParams);
-        }} />;
+        return (
+            <MeetingList
+                onBack={handleBack}
+                setExtraBreadcrumbs={setExtraBreadcrumbs}
+                canWrite={canWrite}
+                onSelect={(mid) => {
+                    const newParams = new URLSearchParams(searchParams);
+                    newParams.set('view', 'meeting-detail');
+                    newParams.set('mid', mid);
+                    setSearchParams(newParams);
+                }}
+            />
+        );
     }
     if (currentView === 'mom-detail') {
-        return <MoMDetail onBack={handleMomBack} setExtraBreadcrumbs={setExtraBreadcrumbs} momId={searchParams.get('mid')} canWrite={canWrite} />;
+        return (
+            <MeetingDetail
+                onBack={handleMeetingBack}
+                setExtraBreadcrumbs={setExtraBreadcrumbs}
+                meetingId={searchParams.get('mid')}
+                canWrite={canWrite}
+            />
+        );
     }
 
     const categories = [
@@ -90,13 +136,6 @@ const GeneralDocumentsIndex = ({ setExtraBreadcrumbs, canWrite }) => {
             type: 'Single Instance'
         },
         { 
-            name: "Staff Role & Responsibilities", 
-            desc: "Internal staff assignments, primary roles, and core responsibilities.", 
-            icon: <FileStack size={20} />, 
-            view: 'staff-roles', 
-            type: 'Single Instance'
-        },
-        { 
             name: 'Project Summary', 
             desc: 'High-level project scope summary, milestones, and active status updates.', 
             icon: <FileText size={20} />, 
@@ -104,17 +143,10 @@ const GeneralDocumentsIndex = ({ setExtraBreadcrumbs, canWrite }) => {
             type: 'Single Instance'
         },
         { 
-            name: 'Agenda of Meeting', 
-            desc: 'List of meeting schedules, subjects, participants, and discussion points.', 
-            icon: <FileText size={20} />, 
-            view: 'agenda-list', 
-            type: 'Episodic'
-        },
-        { 
-            name: 'Minutes of Meeting', 
-            desc: 'Official discussion records, action items, assignees, and target dates.', 
-            icon: <FileText size={20} />, 
-            view: 'mom-list', 
+            name: 'Project Meetings', 
+            desc: 'Meeting schedules, discussion agendas, participants, and minutes of meeting (MoM).', 
+            icon: <Calendar size={20} />, 
+            view: 'meeting-list', 
             type: 'Episodic'
         },
         { 

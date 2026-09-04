@@ -70,7 +70,7 @@ const NewProjectSlideOut = ({ isOpen, onClose, onProjectCreated, projectToEdit =
                             if (p.metadata) {
                                 try {
                                     meta = typeof p.metadata === 'string' ? JSON.parse(p.metadata) : p.metadata;
-                                } catch (e) {}
+                                } catch (e) { }
                             }
                             setFormData(prev => ({
                                 ...prev,
@@ -106,7 +106,7 @@ const NewProjectSlideOut = ({ isOpen, onClose, onProjectCreated, projectToEdit =
             const res = await adminApi.getUsers();
             if (res.success) {
                 const mappedUsers = res.users.map((u, idx) => ({
-                    id: u.user_id,
+                    id: u.id,
                     name: u.user_name,
                     role: u.user_type,
                     initials: u.user_name.substring(0, 2).toUpperCase(),
@@ -117,7 +117,7 @@ const NewProjectSlideOut = ({ isOpen, onClose, onProjectCreated, projectToEdit =
                 if (projectToEdit) {
                     const membersRes = await projectApi.getProjectMembers(projectToEdit.dbId);
                     if (membersRes.success) {
-                        const assignedIds = membersRes.members.map(m => m.user_id);
+                        const assignedIds = membersRes.members.map(m => m.id);
                         const assignedEmployees = mappedUsers.filter(u => assignedIds.includes(u.id));
                         setSelectedEmployees(assignedEmployees);
                     }
@@ -186,7 +186,7 @@ const NewProjectSlideOut = ({ isOpen, onClose, onProjectCreated, projectToEdit =
 
             if (res.success) {
                 const projectId = projectToEdit ? projectToEdit.dbId : res.project_id;
-                
+
                 // Upload logo to S3 if a new file was selected
                 if (logoFile && projectId) {
                     try {
@@ -201,7 +201,7 @@ const NewProjectSlideOut = ({ isOpen, onClose, onProjectCreated, projectToEdit =
                     let currentMemberIds = [];
                     const membersRes = await projectApi.getProjectMembers(projectId);
                     if (membersRes.success) {
-                        currentMemberIds = membersRes.members.map(m => m.user_id);
+                        currentMemberIds = membersRes.members.map(m => m.id);
                     }
 
                     const toAdd = selectedEmployees.filter(e => !currentMemberIds.includes(e.id));
@@ -210,7 +210,7 @@ const NewProjectSlideOut = ({ isOpen, onClose, onProjectCreated, projectToEdit =
 
                     for (const emp of toAdd) {
                         await projectApi.assignProjectMember(projectId, {
-                            user_id: emp.id
+                            id: emp.id
                         });
                     }
 
@@ -218,7 +218,7 @@ const NewProjectSlideOut = ({ isOpen, onClose, onProjectCreated, projectToEdit =
                         await projectApi.removeProjectMember(projectId, userId);
                     }
                 }
-                
+
                 customToast.success(projectToEdit ? 'Project updated successfully' : 'New project created successfully', projectToEdit ? 'Project Updated' : 'Project Created');
                 setFormData({
                     name: '', projectCode: '', description: '', location: '', startDate: '', endDate: ''
@@ -242,17 +242,15 @@ const NewProjectSlideOut = ({ isOpen, onClose, onProjectCreated, projectToEdit =
         <>
             {/* Backdrop */}
             <div
-                className={`fixed inset-0 bg-black/40 backdrop-blur-xs z-40 transition-opacity duration-300 ${
-                    isOpen ? 'opacity-100' : 'opacity-0 pointer-events-none'
-                }`}
+                className={`fixed inset-0 bg-black/40 backdrop-blur-xs z-40 transition-opacity duration-300 ${isOpen ? 'opacity-100' : 'opacity-0 pointer-events-none'
+                    }`}
                 onClick={onClose}
             />
 
             {/* Slide-out Panel */}
             <div
-                className={`fixed top-0 right-0 h-full w-full max-w-[550px] bg-white dark:bg-[#0D1117] shadow-2xl z-50 transform transition-transform duration-300 ease-in-out flex flex-col border-l border-gray-200 dark:border-[#1E2640] ${
-                    isOpen ? 'translate-x-0' : 'translate-x-full'
-                }`}
+                className={`fixed top-0 right-0 h-full w-full max-w-[550px] bg-white dark:bg-[#0D1117] shadow-2xl z-50 transform transition-transform duration-300 ease-in-out flex flex-col border-l border-gray-200 dark:border-[#1E2640] ${isOpen ? 'translate-x-0' : 'translate-x-full'
+                    }`}
             >
                 {/* Header */}
                 <div className="flex items-center justify-between px-6 py-5 border-b border-gray-100 dark:border-[#1E2640]">

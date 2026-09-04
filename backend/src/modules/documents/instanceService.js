@@ -58,7 +58,7 @@ export async function listProjectInstances(orgId, projectId, { document_id } = {
             'users.user_name as locked_by_name'
         )
         .leftJoin('wf_documents as documents', 'document_instances.document_id', 'documents.document_id')
-        .leftJoin('iam_users as users', 'document_instances.locked_by', 'users.user_id')
+        .leftJoin('iam_users as users', 'document_instances.locked_by', 'users.id')
         .where('document_instances.project_id', projectId)
         .andWhere('document_instances.org_id', orgId);
 
@@ -78,7 +78,7 @@ export async function getInstanceDetail(orgId, instanceId) {
             'document_instances.*',
             'users.user_name as locked_by_name'
         )
-        .leftJoin('iam_users as users', 'document_instances.locked_by', 'users.user_id')
+        .leftJoin('iam_users as users', 'document_instances.locked_by', 'users.id')
         .where({ 'document_instances.instance_id': instanceId, 'document_instances.org_id': orgId })
         .first();
 
@@ -92,7 +92,7 @@ export async function getInstanceDetail(orgId, instanceId) {
 
     // Check for an active approval cycle — join users to get holder name
     const currentCycle = await db('wf_approval_cycles as ac')
-        .leftJoin('iam_users as holder', 'ac.current_holder_id', 'holder.user_id')
+        .leftJoin('iam_users as holder', 'ac.current_holder_id', 'holder.id')
         .select(
             'ac.*',
             'holder.user_name as holder_name'
@@ -146,7 +146,7 @@ export async function getInstanceLogs(orgId, instanceId) {
 
     return await db('wf_approval_logs as logs')
         .join('wf_approval_cycles as cycles', 'logs.cycle_id', 'cycles.cycle_id')
-        .leftJoin('iam_users as users', 'logs.acted_by', 'users.user_id')
+        .leftJoin('iam_users as users', 'logs.acted_by', 'users.id')
         .select(
             'logs.*',
             'users.user_name as acted_by_name',
@@ -177,16 +177,16 @@ export async function getTemplateWorkflowStatus(orgId, projectId, templateName, 
         if (!u) {
             u = await db('iam_users').first();
         }
-        creatorUserId = u?.user_id || 1;
+        creatorUserId = u?.id || 1;
     }
 
     // 1. Fetch document template by name (case-insensitive, matching org_id or global)
     let template = await db('wf_documents')
-        .where(function() {
+        .where(function () {
             this.where('name', templateName)
                 .orWhereRaw('LOWER(name) = LOWER(?)', [templateName]);
         })
-        .where(function() {
+        .where(function () {
             if (effectiveOrgId) {
                 this.where('org_id', effectiveOrgId).orWhereNull('org_id');
             }
@@ -235,7 +235,7 @@ export async function getTemplateWorkflowStatus(orgId, projectId, templateName, 
     const documentId = template.document_id;
     const document_roles = await db('wf_document_roles as document_roles')
         .select('document_roles.*', 'users.user_name', 'users.email')
-        .leftJoin('iam_users as users', 'document_roles.user_id', 'users.user_id')
+        .leftJoin('iam_users as users', 'document_roles.user_id', 'users.id')
         .where('document_roles.document_id', documentId);
 
     const approval_levels = await db('wf_approval_levels')
@@ -259,14 +259,14 @@ export async function getTemplateWorkflowStatus(orgId, projectId, templateName, 
             'document_instances.*',
             'users.user_name as locked_by_name'
         )
-        .leftJoin('iam_users as users', 'document_instances.locked_by', 'users.user_id')
+        .leftJoin('iam_users as users', 'document_instances.locked_by', 'users.id')
         .where({
             'document_instances.project_id': projectId,
             'document_instances.document_id': documentId
         });
 
     if (orgId) {
-        instQuery.andWhere(function() {
+        instQuery.andWhere(function () {
             this.where('document_instances.org_id', orgId).orWhereNull('document_instances.org_id');
         });
     }
@@ -301,7 +301,7 @@ export async function getTemplateWorkflowStatus(orgId, projectId, templateName, 
 
         // Check for active cycle
         currentCycle = await db('wf_approval_cycles as ac')
-            .leftJoin('iam_users as holder', 'ac.current_holder_id', 'holder.user_id')
+            .leftJoin('iam_users as holder', 'ac.current_holder_id', 'holder.id')
             .select(
                 'ac.*',
                 'holder.user_name as holder_name'
@@ -313,14 +313,14 @@ export async function getTemplateWorkflowStatus(orgId, projectId, templateName, 
 
         // Get versions
         versions = await db('wf_document_versions as versions')
-            .leftJoin('iam_users as users', 'versions.final_approved_by', 'users.user_id')
+            .leftJoin('iam_users as users', 'versions.final_approved_by', 'users.id')
             .select('versions.*', 'users.user_name as created_by_name')
             .where('versions.instance_id', inst.instance_id)
             .orderBy('versions.version_number', 'desc');
 
         // Get cycles
         allCycles = await db('wf_approval_cycles as cycles')
-            .leftJoin('iam_users as users', 'cycles.initiated_by', 'users.user_id')
+            .leftJoin('iam_users as users', 'cycles.initiated_by', 'users.id')
             .select('cycles.*', 'users.user_name as initiated_by_name')
             .where('cycles.instance_id', inst.instance_id)
             .orderBy('cycles.created_at', 'desc');

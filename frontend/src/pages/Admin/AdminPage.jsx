@@ -326,11 +326,10 @@ const TemplateEditorDrawer = ({ open, onClose, onSave, templateToEdit, isSaving 
                                                     key={i}
                                                     type="button"
                                                     onClick={() => setPermissions(p => ({ ...p, [section.id]: i }))}
-                                                    className={`px-2.5 py-1 rounded-md text-[11px] font-bold transition-all ${
-                                                        lvl === i
+                                                    className={`px-2.5 py-1 rounded-md text-[11px] font-bold transition-all ${lvl === i
                                                             ? i === 2 ? 'bg-emerald-600 text-white shadow-xs' : i === 1 ? 'bg-blue-600 text-white shadow-xs' : 'bg-gray-600 text-white'
                                                             : 'bg-gray-100 dark:bg-white/5 text-gray-400 hover:bg-gray-200 dark:hover:bg-white/10'
-                                                    }`}
+                                                        }`}
                                                 >
                                                     {name}
                                                 </button>
@@ -412,11 +411,10 @@ const CustomSelect = ({ value, options, onChange, placeholder = 'Select option',
                                 onChange(opt.value);
                                 setIsOpen(false);
                             }}
-                            className={`w-full px-3.5 py-2 text-left text-xs font-semibold flex items-center justify-between transition-colors ${
-                                String(opt.value) === String(value)
+                            className={`w-full px-3.5 py-2 text-left text-xs font-semibold flex items-center justify-between transition-colors ${String(opt.value) === String(value)
                                     ? 'bg-blue-50 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400 font-bold'
                                     : 'text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-white/5'
-                            }`}
+                                }`}
                         >
                             <span className="truncate">{opt.label}</span>
                             {String(opt.value) === String(value) && <Check size={13} className="text-blue-500 shrink-0 ml-2" />}
@@ -498,11 +496,10 @@ const VisualTemplateSelector = ({ templates = [], onSelectTemplate }) => {
                                     setSelectedId(t.id);
                                     onSelectTemplate(t);
                                 }}
-                                className={`p-3 rounded-xl border transition-all cursor-pointer ${
-                                    isSelected
+                                className={`p-3 rounded-xl border transition-all cursor-pointer ${isSelected
                                         ? 'border-blue-500 bg-white dark:bg-[#161b22] shadow-xs ring-1 ring-blue-500/30'
                                         : 'border-gray-200/80 dark:border-white/10 bg-white/70 dark:bg-[#161b22]/70 hover:border-blue-300 dark:hover:border-blue-500/40 hover:bg-white'
-                                }`}
+                                    }`}
                             >
                                 <div className="flex items-center justify-between mb-1">
                                     <div className="flex items-center gap-2">
@@ -515,11 +512,10 @@ const VisualTemplateSelector = ({ templates = [], onSelectTemplate }) => {
                                     </div>
                                     <button
                                         type="button"
-                                        className={`px-2 py-0.5 rounded-lg text-[10px] font-bold transition-all ${
-                                            isSelected
+                                        className={`px-2 py-0.5 rounded-lg text-[10px] font-bold transition-all ${isSelected
                                                 ? 'bg-blue-600 text-white'
                                                 : 'bg-blue-50 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400 hover:bg-blue-600 hover:text-white'
-                                        }`}
+                                            }`}
                                     >
                                         {isSelected ? 'Applied' : 'Apply'}
                                     </button>
@@ -528,13 +524,12 @@ const VisualTemplateSelector = ({ templates = [], onSelectTemplate }) => {
                                     {badges.map(b => (
                                         <span
                                             key={b.label}
-                                            className={`px-1.5 py-0.5 rounded text-[9px] font-bold ${
-                                                b.level === 2
+                                            className={`px-1.5 py-0.5 rounded text-[9px] font-bold ${b.level === 2
                                                     ? 'bg-emerald-50 dark:bg-emerald-950/40 text-emerald-600 dark:text-emerald-400 border border-emerald-200/40 dark:border-emerald-500/20'
                                                     : b.level === 1
-                                                    ? 'bg-blue-50 dark:bg-blue-950/40 text-blue-600 dark:text-blue-400 border border-blue-200/40 dark:border-blue-500/20'
-                                                    : 'bg-gray-100 dark:bg-white/5 text-gray-400'
-                                            }`}
+                                                        ? 'bg-blue-50 dark:bg-blue-950/40 text-blue-600 dark:text-blue-400 border border-blue-200/40 dark:border-blue-500/20'
+                                                        : 'bg-gray-100 dark:bg-white/5 text-gray-400'
+                                                }`}
                                         >
                                             {b.label}: {b.level === 2 ? 'Write' : b.level === 1 ? 'Read' : 'None'}
                                         </span>
@@ -1012,11 +1007,10 @@ const UserDetailDrawer = ({ user, open, onClose, onUpdate, onDelete, initialEdit
                                         [id]: isProjectNode ? (i === 0 ? 0 : 1) : i
                                     }
                                 }))}
-                                className={`px-2.5 py-1 rounded-lg text-[10px] font-bold transition-all ${
-                                    isActive
+                                className={`px-2.5 py-1 rounded-lg text-[10px] font-bold transition-all ${isActive
                                         ? 'bg-blue-600 text-white shadow-xs'
                                         : 'bg-gray-100 dark:bg-white/5 text-gray-400 hover:bg-gray-200'
-                                } ${!editing ? 'cursor-default opacity-80' : ''}`}
+                                    } ${!editing ? 'cursor-default opacity-80' : ''}`}
                             >
                                 {name}
                             </button>
@@ -1300,11 +1294,10 @@ const AssignTemplateDrawer = ({
                                     key={dept}
                                     type="button"
                                     onClick={() => setSelectedDept(dept)}
-                                    className={`px-2.5 py-1 rounded-lg text-[11px] font-semibold transition-all cursor-pointer ${
-                                        selectedDept === dept
+                                    className={`px-2.5 py-1 rounded-lg text-[11px] font-semibold transition-all cursor-pointer ${selectedDept === dept
                                             ? 'bg-blue-600 text-white font-bold shadow-2xs'
                                             : 'bg-gray-100 dark:bg-white/5 text-gray-600 dark:text-gray-400 hover:bg-gray-200'
-                                    }`}
+                                        }`}
                                 >
                                     {dept}
                                 </button>
@@ -1347,20 +1340,18 @@ const AssignTemplateDrawer = ({
                                 <div
                                     key={u.id}
                                     onClick={() => toggleUser(u.id)}
-                                    className={`p-3 rounded-xl border transition-all flex items-center justify-between gap-3 cursor-pointer group select-none ${
-                                        isSelected
+                                    className={`p-3 rounded-xl border transition-all flex items-center justify-between gap-3 cursor-pointer group select-none ${isSelected
                                             ? 'border-blue-500/80 bg-blue-50/50 dark:bg-blue-950/20 shadow-2xs'
                                             : 'border-gray-200/80 dark:border-white/5 bg-white dark:bg-[#161b22] hover:bg-gray-50 dark:hover:bg-white/[0.02]'
-                                    }`}
+                                        }`}
                                 >
                                     <div className="flex items-center gap-3 min-w-0">
                                         {/* Themed Custom Checkbox */}
                                         <div
-                                            className={`w-4 h-4 rounded-md border transition-all flex items-center justify-center shrink-0 ${
-                                                isSelected
+                                            className={`w-4 h-4 rounded-md border transition-all flex items-center justify-center shrink-0 ${isSelected
                                                     ? 'bg-blue-600 border-blue-600 text-white dark:bg-blue-500 dark:border-blue-500 shadow-2xs'
                                                     : 'border-gray-300 dark:border-white/20 bg-white dark:bg-[#161b22] group-hover:border-blue-400 dark:group-hover:border-blue-400'
-                                            }`}
+                                                }`}
                                         >
                                             {isSelected && <Check size={11} className="stroke-[3.5]" />}
                                         </div>
@@ -1655,7 +1646,7 @@ const AdminPage = () => {
             if (res.success && res.users) {
                 const mappedUsers = res.users.map(u => ({
                     ...u,
-                    id: u.user_id || u.id,
+                    id: u.id || u.id,
                     name: u.user_name || u.name,
                     email: u.email || u.email_id,
                     user_type: (u.user_type || 'employee').toLowerCase() === 'admin' ? 'Admin' : 'Employee',
@@ -1949,7 +1940,7 @@ const AdminPage = () => {
                 minWidth: '250px',
                 renderCell: (val, row) => {
                     const isAdminUser = (row.user_type || '').toLowerCase() === 'admin';
-                    
+
                     let accessLabel = 'Standard Access';
                     if (isAdminUser) {
                         accessLabel = 'Admin Privileges';
@@ -1971,11 +1962,10 @@ const AdminPage = () => {
 
                     return (
                         <div className="flex items-center justify-between w-full gap-2 px-1 py-0.5">
-                            <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md text-[11px] font-bold whitespace-nowrap border shrink-0 ${
-                                isAdminUser
+                            <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md text-[11px] font-bold whitespace-nowrap border shrink-0 ${isAdminUser
                                     ? 'bg-purple-50 dark:bg-purple-950/40 text-purple-700 dark:text-purple-300 border-purple-200 dark:border-purple-800/50 shadow-2xs'
                                     : 'bg-blue-50 dark:bg-blue-950/40 text-blue-700 dark:text-blue-300 border-blue-200 dark:border-blue-800/50 shadow-2xs'
-                            }`}>
+                                }`}>
                                 <Shield size={12} className={isAdminUser ? 'text-purple-500' : 'text-blue-500'} />
                                 <span>{accessLabel}</span>
                             </span>
@@ -2082,11 +2072,10 @@ const AdminPage = () => {
                         <button
                             type="button"
                             onClick={() => setMainTab('employees')}
-                            className={`flex items-center gap-2 px-3 py-1.5 rounded-md text-xs font-bold transition-all cursor-pointer ${
-                                mainTab === 'employees'
+                            className={`flex items-center gap-2 px-3 py-1.5 rounded-md text-xs font-bold transition-all cursor-pointer ${mainTab === 'employees'
                                     ? 'bg-white dark:bg-[#161b22] text-blue-600 dark:text-blue-400 shadow-xs'
                                     : 'text-gray-600 dark:text-gray-400 hover:text-gray-900'
-                            }`}
+                                }`}
                         >
                             <span>Employees Management</span>
                             <span className="px-1.5 py-0.2 bg-blue-100 dark:bg-blue-900/40 text-blue-600 dark:text-blue-400 text-[10px] rounded-md font-extrabold">
@@ -2097,11 +2086,10 @@ const AdminPage = () => {
                         <button
                             type="button"
                             onClick={() => setMainTab('templates')}
-                            className={`flex items-center gap-2 px-3 py-1.5 rounded-md text-xs font-bold transition-all cursor-pointer ${
-                                mainTab === 'templates'
+                            className={`flex items-center gap-2 px-3 py-1.5 rounded-md text-xs font-bold transition-all cursor-pointer ${mainTab === 'templates'
                                     ? 'bg-white dark:bg-[#161b22] text-purple-600 dark:text-purple-400 shadow-xs'
                                     : 'text-gray-600 dark:text-gray-400 hover:text-gray-900'
-                            }`}
+                                }`}
                         >
                             <span>Permission Templates</span>
                             <span className="px-1.5 py-0.2 bg-purple-100 dark:bg-purple-900/40 text-purple-600 dark:text-purple-400 text-[10px] rounded-md font-extrabold">
@@ -2208,11 +2196,10 @@ const AdminPage = () => {
                                 <button
                                     type="button"
                                     onClick={() => setIsFilterDropdownOpen(!isFilterDropdownOpen)}
-                                    className={`flex items-center space-x-1.5 px-2.5 py-1.5 border rounded-lg text-xs font-bold transition-all cursor-pointer ${
-                                        activeFilterCount > 0
+                                    className={`flex items-center space-x-1.5 px-2.5 py-1.5 border rounded-lg text-xs font-bold transition-all cursor-pointer ${activeFilterCount > 0
                                             ? 'border-blue-500 bg-blue-500/10 text-blue-600 dark:text-blue-400'
                                             : 'border-gray-200 dark:border-white/10 bg-white dark:bg-[#161b22] text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-white/5'
-                                    }`}
+                                        }`}
                                 >
                                     <Filter size={13} />
                                     <span>Filter</span>
@@ -2252,11 +2239,10 @@ const AdminPage = () => {
                                                             key={type}
                                                             type="button"
                                                             onClick={() => toggleFilter('userTypes', type)}
-                                                            className={`px-2.5 py-1 rounded-md text-[11px] font-bold border transition-all cursor-pointer ${
-                                                                isChecked
+                                                            className={`px-2.5 py-1 rounded-md text-[11px] font-bold border transition-all cursor-pointer ${isChecked
                                                                     ? 'bg-blue-600 text-white border-blue-600 shadow-xs'
                                                                     : 'bg-gray-50 dark:bg-white/5 border-gray-200 dark:border-white/10 text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-white/10'
-                                                            }`}
+                                                                }`}
                                                         >
                                                             {type}
                                                         </button>
@@ -2277,11 +2263,10 @@ const AdminPage = () => {
                                                                 key={dept}
                                                                 type="button"
                                                                 onClick={() => toggleFilter('departments', dept)}
-                                                                className={`px-2.5 py-1 rounded-md text-[11px] font-bold border transition-all cursor-pointer ${
-                                                                    isChecked
+                                                                className={`px-2.5 py-1 rounded-md text-[11px] font-bold border transition-all cursor-pointer ${isChecked
                                                                         ? 'bg-blue-600 text-white border-blue-600 shadow-xs'
                                                                         : 'bg-gray-50 dark:bg-white/5 border-gray-200 dark:border-white/10 text-gray-600 dark:text-gray-400 hover:bg-gray-100'
-                                                                }`}
+                                                                    }`}
                                                             >
                                                                 {dept}
                                                             </button>

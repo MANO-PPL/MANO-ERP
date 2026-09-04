@@ -790,7 +790,7 @@ const Approvals = ({ setExtraBreadcrumbs, project, projectPermissions, isAdmin }
                 mappedEmps = usersRes.users.map((m, idx) => {
                     const initials = m.user_name ? m.user_name.split(' ').map(n => n[0]).join('').slice(0, 2).toUpperCase() : '??';
                     return {
-                        id: m.user_id,
+                        id: m.id,
                         name: m.user_name,
                         role: m.user_type,
                         initials,
@@ -826,13 +826,13 @@ const Approvals = ({ setExtraBreadcrumbs, project, projectPermissions, isAdmin }
 
                         const reporters = (t.document_roles || [])
                             .filter(r => r.role === 'reporter')
-                            .map(r => mappedEmps.find(e => e.id === r.user_id))
+                            .map(r => mappedEmps.find(e => e.id === r.id))
                             .filter(Boolean);
 
                         const approvalLevels = (t.approval_levels || []).map(level => {
                             const levelApprovers = (t.document_roles || [])
                                 .filter(r => r.role === 'approver' && r.level_id === level.level_id)
-                                .map(r => mappedEmps.find(e => e.id === r.user_id))
+                                .map(r => mappedEmps.find(e => e.id === r.id))
                                 .filter(Boolean);
 
                             return {
@@ -924,7 +924,7 @@ const Approvals = ({ setExtraBreadcrumbs, project, projectPermissions, isAdmin }
                 await Promise.all(
                     level.approvers.map(emp =>
                         workflowApi.assignRole(documentId, {
-                            user_id: emp.id,
+                            id: emp.id,
                             role: 'approver',
                             level_id: levelId
                         })
@@ -936,7 +936,7 @@ const Approvals = ({ setExtraBreadcrumbs, project, projectPermissions, isAdmin }
         await Promise.all(
             config.reporters.map(emp =>
                 workflowApi.assignRole(documentId, {
-                    user_id: emp.id,
+                    id: emp.id,
                     role: 'reporter'
                 })
             )
@@ -1009,62 +1009,62 @@ const Approvals = ({ setExtraBreadcrumbs, project, projectPermissions, isAdmin }
         );
     };
 
-// ─── Approvals Skeleton Loader ─────────────────────────────────────────────
-const ApprovalsSkeleton = ({ renderSubTabSwitcher }) => (
-    <div className="flex-1 flex flex-col h-full bg-white dark:bg-[#0d1117] overflow-hidden anim-fade-in Poppins text-left">
-        {renderSubTabSwitcher && renderSubTabSwitcher()}
+    // ─── Approvals Skeleton Loader ─────────────────────────────────────────────
+    const ApprovalsSkeleton = ({ renderSubTabSwitcher }) => (
+        <div className="flex-1 flex flex-col h-full bg-white dark:bg-[#0d1117] overflow-hidden anim-fade-in Poppins text-left">
+            {renderSubTabSwitcher && renderSubTabSwitcher()}
 
-        <div className="flex-1 flex overflow-hidden">
-            {/* Left Panel Skeleton */}
-            <div className="w-[270px] sm:w-[280px] border-r border-gray-200 dark:border-white/10 flex flex-col p-3 space-y-3 shrink-0">
-                <div className="h-3 bg-gray-200 dark:bg-white/10 rounded w-1/2 animate-pulse" />
-                <div className="h-8 bg-gray-100 dark:bg-white/5 rounded-md w-full animate-pulse" />
-                <div className="space-y-1.5 pt-1">
-                    {[1, 2, 3, 4, 5, 6].map(i => (
-                        <div key={i} className="flex items-center gap-2.5 p-2 rounded-md bg-gray-50 dark:bg-white/[0.02] border border-gray-100 dark:border-white/5 animate-pulse">
-                            <div className="w-7 h-7 rounded-md bg-gray-200 dark:bg-white/10 shrink-0" />
-                            <div className="space-y-1 flex-1">
-                                <div className="h-3 bg-gray-200 dark:bg-white/10 rounded w-3/4" />
-                                <div className="h-2 bg-gray-200 dark:bg-white/5 rounded w-1/2" />
+            <div className="flex-1 flex overflow-hidden">
+                {/* Left Panel Skeleton */}
+                <div className="w-[270px] sm:w-[280px] border-r border-gray-200 dark:border-white/10 flex flex-col p-3 space-y-3 shrink-0">
+                    <div className="h-3 bg-gray-200 dark:bg-white/10 rounded w-1/2 animate-pulse" />
+                    <div className="h-8 bg-gray-100 dark:bg-white/5 rounded-md w-full animate-pulse" />
+                    <div className="space-y-1.5 pt-1">
+                        {[1, 2, 3, 4, 5, 6].map(i => (
+                            <div key={i} className="flex items-center gap-2.5 p-2 rounded-md bg-gray-50 dark:bg-white/[0.02] border border-gray-100 dark:border-white/5 animate-pulse">
+                                <div className="w-7 h-7 rounded-md bg-gray-200 dark:bg-white/10 shrink-0" />
+                                <div className="space-y-1 flex-1">
+                                    <div className="h-3 bg-gray-200 dark:bg-white/10 rounded w-3/4" />
+                                    <div className="h-2 bg-gray-200 dark:bg-white/5 rounded w-1/2" />
+                                </div>
                             </div>
-                        </div>
-                    ))}
-                </div>
-            </div>
-
-            {/* Right Panel Skeleton */}
-            <div className="flex-1 p-4 sm:p-5 space-y-4 overflow-y-auto">
-                <div className="p-3.5 rounded-md border border-gray-200 dark:border-white/10 space-y-3 animate-pulse">
-                    <div className="h-3.5 bg-gray-200 dark:bg-white/10 rounded w-1/3" />
-                    <div className="grid grid-cols-3 gap-2">
-                        {[1, 2, 3].map(i => (
-                            <div key={i} className="h-12 bg-gray-100 dark:bg-white/5 rounded-md" />
                         ))}
                     </div>
                 </div>
 
-                <div className="space-y-3 pt-2">
-                    <div className="h-3 bg-gray-200 dark:bg-white/10 rounded w-1/4" />
-                    <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
-                        {[1, 2, 3, 4].map(i => (
-                            <div key={i} className="bg-white dark:bg-[#161b22] rounded-md border border-gray-200 dark:border-white/8 p-4 space-y-3 animate-pulse">
-                                <div className="flex items-center justify-between">
-                                    <div className="flex items-center gap-2">
-                                        <div className="w-7 h-7 rounded-md bg-gray-200 dark:bg-white/10 shrink-0" />
-                                        <div className="h-3.5 bg-gray-200 dark:bg-white/10 rounded w-28" />
+                {/* Right Panel Skeleton */}
+                <div className="flex-1 p-4 sm:p-5 space-y-4 overflow-y-auto">
+                    <div className="p-3.5 rounded-md border border-gray-200 dark:border-white/10 space-y-3 animate-pulse">
+                        <div className="h-3.5 bg-gray-200 dark:bg-white/10 rounded w-1/3" />
+                        <div className="grid grid-cols-3 gap-2">
+                            {[1, 2, 3].map(i => (
+                                <div key={i} className="h-12 bg-gray-100 dark:bg-white/5 rounded-md" />
+                            ))}
+                        </div>
+                    </div>
+
+                    <div className="space-y-3 pt-2">
+                        <div className="h-3 bg-gray-200 dark:bg-white/10 rounded w-1/4" />
+                        <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
+                            {[1, 2, 3, 4].map(i => (
+                                <div key={i} className="bg-white dark:bg-[#161b22] rounded-md border border-gray-200 dark:border-white/8 p-4 space-y-3 animate-pulse">
+                                    <div className="flex items-center justify-between">
+                                        <div className="flex items-center gap-2">
+                                            <div className="w-7 h-7 rounded-md bg-gray-200 dark:bg-white/10 shrink-0" />
+                                            <div className="h-3.5 bg-gray-200 dark:bg-white/10 rounded w-28" />
+                                        </div>
+                                        <div className="h-4 bg-gray-100 dark:bg-white/5 rounded w-14" />
                                     </div>
-                                    <div className="h-4 bg-gray-100 dark:bg-white/5 rounded w-14" />
+                                    <div className="h-10 bg-gray-50 dark:bg-[#0d1117] rounded-md border border-gray-100 dark:border-white/5" />
+                                    <div className="h-12 bg-gray-50 dark:bg-[#0d1117] rounded-md border border-gray-100 dark:border-white/5" />
                                 </div>
-                                <div className="h-10 bg-gray-50 dark:bg-[#0d1117] rounded-md border border-gray-100 dark:border-white/5" />
-                                <div className="h-12 bg-gray-50 dark:bg-[#0d1117] rounded-md border border-gray-100 dark:border-white/5" />
-                            </div>
-                        ))}
+                            ))}
+                        </div>
                     </div>
                 </div>
             </div>
         </div>
-    </div>
-);
+    );
 
     if (isAdmin && activeSubTab === 'access') {
         return (

@@ -101,12 +101,12 @@ const Dashboard = ({ project, setActiveTab, canWrite }) => {
             }
 
             try {
-                // Fetch staff
-                const staffRes = await generalDocsApi.getStaff(targetId);
-                const staffList = staffRes?.staff || (Array.isArray(staffRes) ? staffRes : []);
-                setStaffCount(staffList.length);
+                // Fetch project directory count
+                const dirRes = await generalDocsApi.getDirectory(targetId);
+                const dirList = dirRes?.directory || (Array.isArray(dirRes) ? dirRes : []);
+                setStaffCount(dirList.length);
             } catch (err) {
-                console.error("Failed to load dashboard staff data", err);
+                console.error("Failed to load dashboard directory data", err);
             }
 
             try {
@@ -305,7 +305,7 @@ const Dashboard = ({ project, setActiveTab, canWrite }) => {
                         </span>
                     </div>
                     <div className="flex items-center gap-3 text-[11px] font-semibold text-gray-500 dark:text-gray-400">
-                        <span>{staffCount} Staff Roles</span>
+                        <span>{staffCount} Directory Contacts</span>
                         <span>•</span>
                         <span>{partyCount} Parties</span>
                     </div>

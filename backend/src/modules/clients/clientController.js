@@ -20,7 +20,7 @@ export const listClients = catchAsync(async (req, res) => {
 export const getClient = catchAsync(async (req, res) => {
     const { id } = req.params;
     if (!id || isNaN(parseInt(id))) {
-         throw new AppError('Invalid Client ID', 400);
+        throw new AppError('Invalid Client ID', 400);
     }
 
     const client = await clientService.getClientById(req.user.org_id, id);
@@ -35,7 +35,7 @@ export const createClient = catchAsync(async (req, res) => {
 export const updateClient = catchAsync(async (req, res) => {
     const { id } = req.params;
     if (!id || isNaN(parseInt(id))) {
-         throw new AppError('Invalid Client ID', 400);
+        throw new AppError('Invalid Client ID', 400);
     }
 
     await clientService.updateClient(req.user.org_id, id, req.body);
@@ -45,7 +45,7 @@ export const updateClient = catchAsync(async (req, res) => {
 export const deleteClient = catchAsync(async (req, res) => {
     const { id } = req.params;
     if (!id || isNaN(parseInt(id))) {
-         throw new AppError('Invalid Client ID', 400);
+        throw new AppError('Invalid Client ID', 400);
     }
 
     await clientService.deleteClient(req.user.org_id, id);
@@ -132,7 +132,7 @@ export const addInteraction = catchAsync(async (req, res) => {
     const interactionData = {
         ...req.body,
         contact_id: id,
-        interacted_by: req.user?.user_id
+        interacted_by: req.user?.id
     };
 
     const newId = await clientService.createInteraction(req.user.org_id, interactionData);

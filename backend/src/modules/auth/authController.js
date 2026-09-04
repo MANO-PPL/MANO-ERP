@@ -114,7 +114,7 @@ export const logout = catchAsync(async (req, res, next) => {
 });
 
 export const getMe = catchAsync(async (req, res, next) => {
-    const user = await authService.getUserProfile(req.user.user_id || req.user.id);
+    const user = await authService.getUserProfile(req.user.id || req.user.user_id);
     res.status(200).json({
         success: true,
         user

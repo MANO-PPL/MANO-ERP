@@ -9,7 +9,7 @@ export async function getVendors(orgId, query = {}) {
     const offset = query.agentRead === true ? (query.agentOffset || 0) : (page - 1) * limit;
 
     const baseQuery = db('crm_contacts as c')
-        .leftJoin('crm_job_nature as jn', 'c.job_nature_id', 'jn.job_id')
+        .leftJoin('crm_job_nature as jn', 'c.job_nature_id', 'jn.id')
         .andWhere('c.org_id', orgId)
         .where(function () {
             this.whereNull('c.category')
@@ -124,7 +124,7 @@ export async function getVendorById(orgId, id, options = {}) {
     if (options.agentRead === true) return vendor;
 
     const interactions = await db('crm_interactions as i')
-        .leftJoin('iam_users as u', 'i.interacted_by', 'u.user_id')
+        .leftJoin('iam_users as u', 'i.interacted_by', 'u.id')
         .where({ 'i.contact_id': id, 'i.org_id': orgId })
         .select('i.*', 'u.user_name as interacted_by_name')
         .orderBy('i.interaction_date', 'desc');
@@ -182,7 +182,7 @@ export async function createVendor(orgId, data, options = {}) {
         org_id: orgId,
         name: data.name,
         sector_id: data.sector_id || null,
-        job_nature_id: data.job_nature_id || null,
+        job_nature_id: data.job_nature_id || data.job_id || null,
         category: resolveCategory(data.category, 'Contractor'),
         contact_person: data.contact_person || null,
         designation: data.designation || null,
@@ -200,7 +200,7 @@ export async function createVendor(orgId, data, options = {}) {
     };
 
     // Resolve job nature name to ID if provided as string
-    if ((data.job_nature || data.job_name) && !data.job_nature_id && !insertData.job_nature_id) {
+    if ((data.job_nature || data.job_name) && !insertData.job_nature_id) {
         insertData.job_nature_id = await findOrCreateJobNature(orgId, data.job_nature || data.job_name);
     }
 

@@ -88,11 +88,14 @@ export const syncProjectParties = catchAsync(async (req, res) => {
     if (isNaN(projectId)) throw new AppError('Invalid project_id', 400);
 
     const body = req.body || {};
+    const rawDeleted = body.deleted_ids || body.deleted_pp_ids || body.deleted || [];
+    const deletedList = Array.isArray(rawDeleted) ? rawDeleted : [];
+
     const result = await partyService.syncProjectParties(
         projectId,
         {
             parties: Array.isArray(body.parties) ? body.parties : [],
-            deleted_ids: Array.isArray(body.deleted_ids) ? body.deleted_ids : []
+            deleted_ids: deletedList
         },
         req.user.org_id
     );

@@ -486,6 +486,7 @@ export const ProjectPartiesList = ({ canWrite = true }) => {
 
         await generalDocsApi.syncParties(projectId, {
             parties: validRows,
+            deleted_ids: deleted,
             deleted_pp_ids: deleted
         });
 
@@ -532,6 +533,7 @@ export const ProjectPartiesList = ({ canWrite = true }) => {
         if (!idsToDelete || idsToDelete.length === 0) return;
         await generalDocsApi.syncParties(projectId, {
             parties: parties.filter((p) => !idsToDelete.includes(p.id)),
+            deleted_ids: idsToDelete,
             deleted_pp_ids: idsToDelete
         });
         await fetchParties();

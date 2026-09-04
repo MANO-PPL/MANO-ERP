@@ -20,18 +20,18 @@ export async function initializeQualitySchema() {
             table.string('status').notNullable().defaultTo('PENDING'); // PENDING, FIXED, APPROVED
 
             // Reporter
-            table.integer('reported_by').unsigned().notNullable().references('user_id').inTable('iam_users').onDelete('CASCADE');
+            table.integer('reported_by').unsigned().notNullable().references('id').inTable('iam_users').onDelete('CASCADE');
             table.timestamp('reported_at').defaultTo(db.fn.now());
 
             // Fixer (when status is FIXED or APPROVED)
-            table.integer('fixed_by').unsigned().nullable().references('user_id').inTable('iam_users').onDelete('SET NULL');
+            table.integer('fixed_by').unsigned().nullable().references('id').inTable('iam_users').onDelete('SET NULL');
             table.timestamp('fixed_at').nullable();
             table.string('after_photo_url', 512).nullable();
             table.text('after_photos').nullable();
             table.text('after_note').nullable();
 
             // Approver (when status is APPROVED)
-            table.integer('approved_by').unsigned().nullable().references('user_id').inTable('iam_users').onDelete('SET NULL');
+            table.integer('approved_by').unsigned().nullable().references('id').inTable('iam_users').onDelete('SET NULL');
             table.timestamp('approved_at').nullable();
 
             table.timestamps(true, true);
@@ -57,7 +57,7 @@ export async function initializeQualitySchema() {
             table.string('file_url', 512).notNullable();
             table.string('file_type').nullable();
             table.integer('file_size').unsigned().nullable();
-            table.integer('uploaded_by').unsigned().notNullable().references('user_id').inTable('iam_users').onDelete('CASCADE');
+            table.integer('uploaded_by').unsigned().notNullable().references('id').inTable('iam_users').onDelete('CASCADE');
             table.timestamp('uploaded_at').defaultTo(db.fn.now());
             table.timestamps(true, true);
         });
@@ -73,7 +73,7 @@ export async function initializeQualitySchema() {
             table.string('file_url', 512).notNullable();
             table.string('file_type').nullable();
             table.integer('file_size').unsigned().nullable();
-            table.integer('uploaded_by').unsigned().notNullable().references('user_id').inTable('iam_users').onDelete('CASCADE');
+            table.integer('uploaded_by').unsigned().notNullable().references('id').inTable('iam_users').onDelete('CASCADE');
             table.timestamp('uploaded_at').defaultTo(db.fn.now());
             table.timestamps(true, true);
         });
@@ -172,9 +172,9 @@ async function presignUrl(url) {
  */
 export async function getObservations(projectId) {
     const list = await db('proj_qaqc_observations as q')
-        .leftJoin('iam_users as reporter', 'q.reported_by', 'reporter.user_id')
-        .leftJoin('iam_users as fixer', 'q.fixed_by', 'fixer.user_id')
-        .leftJoin('iam_users as approver', 'q.approved_by', 'approver.user_id')
+        .leftJoin('iam_users as reporter', 'q.reported_by', 'reporter.id')
+        .leftJoin('iam_users as fixer', 'q.fixed_by', 'fixer.id')
+        .leftJoin('iam_users as approver', 'q.approved_by', 'approver.id')
         .where('q.project_id', projectId)
         .select([
             'q.*',
@@ -286,7 +286,7 @@ export async function createObservation(projectId, { location, note, files, labe
     const firstPhotoUrl = photoList[0]?.url || null;
     await db('proj_qaqc_observations')
         .where('id', insertedId)
-        .update({ 
+        .update({
             before_photo_url: firstPhotoUrl,
             before_photos: photoList.length ? JSON.stringify(photoList) : null
         });
@@ -478,7 +478,7 @@ export async function deleteObservation(projectId, obsId) {
  */
 export async function getMethodologies(projectId) {
     const list = await db('proj_quality_methodologies as m')
-        .leftJoin('iam_users as uploader', 'm.uploaded_by', 'uploader.user_id')
+        .leftJoin('iam_users as uploader', 'm.uploaded_by', 'uploader.id')
         .where('m.project_id', projectId)
         .select([
             'm.*',
@@ -578,7 +578,7 @@ export async function deleteMethodology(projectId, docId) {
  */
 export async function getChecklists(projectId) {
     const list = await db('proj_quality_checklists as c')
-        .leftJoin('iam_users as uploader', 'c.uploaded_by', 'uploader.user_id')
+        .leftJoin('iam_users as uploader', 'c.uploaded_by', 'uploader.id')
         .where('c.project_id', projectId)
         .select([
             'c.*',

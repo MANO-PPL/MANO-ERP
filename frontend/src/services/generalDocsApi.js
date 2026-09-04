@@ -25,6 +25,8 @@ export const generalDocsApi = {
         const response = await api.get(`/projects/${projectId}/directory`);
         return response.data;
     },
+    getStaff: async () => ({ staff: [] }),
+    
     addDirectoryItem: async (projectId, itemData) => {
         const response = await api.post(`/projects/${projectId}/directory`, itemData);
         return response.data;
@@ -35,24 +37,6 @@ export const generalDocsApi = {
     },
     deleteDirectoryItem: async (projectId, pdId) => {
         const response = await api.delete(`/projects/${projectId}/directory/${pdId}`);
-        return response.data;
-    },
-
-    // ---- STAFF ROLES ----
-    getStaff: async (projectId) => {
-        const response = await api.get(`/projects/${projectId}/staff`);
-        return response.data;
-    },
-    addStaff: async (projectId, itemData) => {
-        const response = await api.post(`/projects/${projectId}/staff`, itemData);
-        return response.data;
-    },
-    updateStaff: async (projectId, psrrId, itemData) => {
-        const response = await api.put(`/projects/${projectId}/staff/${psrrId}`, itemData);
-        return response.data;
-    },
-    deleteStaff: async (projectId, psrrId) => {
-        const response = await api.delete(`/projects/${projectId}/staff/${psrrId}`);
         return response.data;
     },
 
@@ -84,48 +68,25 @@ export const generalDocsApi = {
         return response.data;
     },
 
-    // ---- AGENDAS ----
-    getAgendas: async (projectId) => {
-        const response = await api.get(`/projects/${projectId}/agendas`);
+    // ---- MEETINGS (Unified Agenda & MoM) ----
+    getMeetings: async (projectId) => {
+        const response = await api.get(`/projects/${projectId}/meetings`);
         return response.data;
     },
-    getAgenda: async (projectId, agendaId) => {
-        const response = await api.get(`/projects/${projectId}/agendas/${agendaId}`);
+    getMeeting: async (projectId, meetingId) => {
+        const response = await api.get(`/projects/${projectId}/meetings/${meetingId}`);
         return response.data;
     },
-    createAgenda: async (projectId, data) => {
-        const response = await api.post(`/projects/${projectId}/agendas`, data);
+    createMeeting: async (projectId, data) => {
+        const response = await api.post(`/projects/${projectId}/meetings`, data);
         return response.data;
     },
-    updateAgenda: async (projectId, agendaId, data) => {
-        const response = await api.put(`/projects/${projectId}/agendas/${agendaId}`, data);
+    updateMeeting: async (projectId, meetingId, data) => {
+        const response = await api.put(`/projects/${projectId}/meetings/${meetingId}`, data);
         return response.data;
     },
-    deleteAgenda: async (projectId, agendaId) => {
-        const response = await api.delete(`/projects/${projectId}/agendas/${agendaId}`);
+    deleteMeeting: async (projectId, meetingId) => {
+        const response = await api.delete(`/projects/${projectId}/meetings/${meetingId}`);
         return response.data;
-    },
-
-    // ---- MINUTES OF MEETING ----
-    getMoms: async (projectId) => {
-        const response = await api.get(`/projects/${projectId}/moms`);
-        return response.data;
-    },
-    getMom: async (projectId, momId) => {
-        const response = await api.get(`/projects/${projectId}/moms/${momId}`);
-        return response.data;
-    },
-    createMom: async (projectId, data) => {
-        const response = await api.post(`/projects/${projectId}/moms`, data);
-        return response.data;
-    },
-    updateMom: async (projectId, momId, data) => {
-        const response = await api.put(`/projects/${projectId}/moms/${momId}`, data);
-        return response.data;
-    },
-    deleteMom: async (projectId, momId) => {
-        const response = await api.delete(`/projects/${projectId}/moms/${momId}`);
-        return response.data;
-    },
-
+    }
 };

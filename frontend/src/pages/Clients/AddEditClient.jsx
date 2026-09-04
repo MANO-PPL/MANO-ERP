@@ -145,7 +145,7 @@ const AddEditClient = ({ isOpen, onClose, onSave, initialData = null, availableS
                                         .filter(j => j.job_name.toLowerCase().includes(jobNatureSearch.toLowerCase()))
                                         .map(j => (
                                             <div
-                                                key={j.job_id}
+                                                key={j.id || j.job_name}
                                                 className="px-4 py-2 hover:bg-blue-50 dark:hover:bg-white/5 cursor-pointer text-sm text-gray-700 dark:text-gray-300 transition-colors"
                                                 onClick={() => {
                                                     setJobNatureSearch(j.job_name);
@@ -182,7 +182,7 @@ const AddEditClient = ({ isOpen, onClose, onSave, initialData = null, availableS
                                         .filter(s => s.sector_name.toLowerCase().includes(sectorSearch.toLowerCase()))
                                         .map(s => (
                                             <div
-                                                key={s.sector_id}
+                                                key={s.id}
                                                 className="px-4 py-2 hover:bg-blue-50 dark:hover:bg-white/5 cursor-pointer text-sm text-gray-700 dark:text-gray-300 transition-colors"
                                                 onClick={() => {
                                                     setSectorSearch(s.sector_name);

@@ -26,8 +26,8 @@ export const authenticateJWT = catchAsync(async (req, res, next) => {
         // Check based on token contents
         // User tokens (issued by LoginAPI.js) have user_type='employee'/'admin'/etc.
 
-        const targetUserId = decoded.user_id || decoded.id;
-        user = await db('iam_users').where({ user_id: targetUserId }).first();
+        const targetUserId = decoded.id || decoded.user_id;
+        user = await db('iam_users').where({ id: targetUserId }).first();
 
         if (!user) {
             return res.status(403).json({ message: "Forbidden: Invalid token user" });
@@ -36,9 +36,9 @@ export const authenticateJWT = catchAsync(async (req, res, next) => {
         // Standardize req.user
         req.user = {
             ...decoded,
-            id: user.user_id || user.id, // standardized ID accessor
-            user_id: user.user_id || user.id,
-            // Use the current database value so tokens issued before org_id was
+            id: user.id,
+            user_id: user.id, // compatibility alias
+            // Use the current database value so tokens issued before id was
             // added (or with a stale org_id) still work for org-scoped routes.
             org_id: user.org_id,
             user_type: user.user_type ? user.user_type.toLowerCase() : 'employee',
@@ -117,7 +117,8 @@ export const requireSystemPermission = (module) => {
 };
 
 export const requireProjectAssignment = async (req, res, next) => {
-    const { id: user_id, user_type, org_id } = req.user;
+    const userId = req.user.id;
+    const { user_type, org_id } = req.user;
     const projectId = req.params.projectId || req.params.id;
 
     if (!projectId) {
@@ -131,7 +132,7 @@ export const requireProjectAssignment = async (req, res, next) => {
 
     try {
         const projectUser = await db('proj_members')
-            .where({ project_id: projectId, user_id, org_id })
+            .where({ project_id: projectId, user_id: userId, org_id })
             .first();
 
         if (!projectUser) {
@@ -150,7 +151,8 @@ export const requireProjectAssignment = async (req, res, next) => {
 
 export const requireProjectPermission = (module) => {
     return async (req, res, next) => {
-        const { id: user_id, user_type, org_id } = req.user;
+        const userId = req.user.id;
+        const { user_type, org_id } = req.user;
         const projectId = req.params.projectId || req.params.id;
         const requiredLevel = req.method === 'GET' ? 'view' : 'edit';
 
@@ -165,7 +167,7 @@ export const requireProjectPermission = (module) => {
 
         try {
             const projectUser = await db('proj_members')
-                .where({ project_id: projectId, user_id, org_id })
+                .where({ project_id: projectId, user_id: userId, org_id })
                 .first();
 
             if (!projectUser) {
@@ -199,7 +201,6 @@ export const requireProjectPermission = (module) => {
             const generalDocsMapping = {
                 'directory': 'General Documents',
                 'parties': 'General Documents',
-                'staff': 'General Documents',
                 'summary': 'General Documents',
                 'agenda': 'General Documents',
                 'mom': 'General Documents',
@@ -212,7 +213,7 @@ export const requireProjectPermission = (module) => {
             // Dashboard access is always granted at the frontend level; backend tabs use this guard
             const normModule = String(module).toLowerCase().trim();
             const normMapped = String(mappedModule).toLowerCase().trim();
-            const userRole = projectPerms?.[module] 
+            const userRole = projectPerms?.[module]
                 ?? projectPerms?.[mappedModule]
                 ?? projectPerms?.[normModule]
                 ?? projectPerms?.[normMapped]

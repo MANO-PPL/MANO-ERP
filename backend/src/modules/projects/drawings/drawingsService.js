@@ -77,7 +77,7 @@ export async function createCategory(projectId, { name, icon_key }) {
     if (!name || !name.trim()) {
         throw new AppError('Category name is required', 400);
     }
-    
+
     // Get highest sort order
     const maxOrderRow = await db('proj_drawing_categories')
         .where('project_id', projectId)
@@ -165,11 +165,11 @@ export async function getDrawings(projectId, categoryId) {
         .as('latest');
 
     const drawingsList = await db('proj_drawings as d')
-        .join(subquery, function() {
+        .join(subquery, function () {
             this.on('d.drawing_group_id', '=', 'latest.drawing_group_id')
                 .andOn('d.revision_number', '=', 'latest.max_rev');
         })
-        .join('iam_users as u', 'd.uploaded_by', 'u.user_id')
+        .join('iam_users as u', 'd.uploaded_by', 'u.id')
         .select(
             'd.*',
             'u.user_name as uploader_name',
@@ -182,10 +182,10 @@ export async function getDrawings(projectId, categoryId) {
     const result = [];
     for (let i = 0; i < drawingsList.length; i++) {
         const drawing = drawingsList[i];
-        
+
         // Fetch uploader info and fields for all revisions in this group
         const revisions = await db('proj_drawings as d')
-            .join('iam_users as u', 'd.uploaded_by', 'u.user_id')
+            .join('iam_users as u', 'd.uploaded_by', 'u.id')
             .where('d.drawing_group_id', drawing.drawing_group_id)
             .select(
                 'd.id',
@@ -202,7 +202,7 @@ export async function getDrawings(projectId, categoryId) {
         // Presign URLs on the fly
         const latestDwgUrl = await presignUrl(drawing.dwg_url);
         const latestPdfUrl = await presignUrl(drawing.pdf_url);
-        
+
         const mappedRevisions = [];
         for (const r of revisions) {
             mappedRevisions.push({
@@ -295,7 +295,7 @@ export async function uploadDrawingRecord(projectId, { categoryId, title, descri
             uploaded_by: userId
         });
         rowId = insertedId;
-        
+
         // If this is a new drawing, its group ID equals its first revision row ID
         if (!drawingGroup) {
             drawingGroup = rowId;

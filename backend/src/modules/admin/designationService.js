@@ -21,7 +21,7 @@ export async function deleteDesignation(orgId, desgId) {
     const inUse = await db('iam_users').where({ org_id: orgId, desg_id: desgId }).first();
     if (inUse) throw new AppError('Cannot delete: This Designation is currently assigned to one or more users.', 400);
 
-    return await db('iam_designations').where({ org_id: orgId, desg_id: desgId }).delete();
+    return await db('iam_designations').where({ org_id: orgId, id: desgId }).delete();
 }
 
 export default {

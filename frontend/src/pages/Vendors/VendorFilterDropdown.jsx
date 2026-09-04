@@ -115,7 +115,7 @@ const VendorFilterDropdown = ({ activeFilters, onApply, categoryOptions = [], av
                                     const isSelected = (activeFilters.jobs || []).includes(j.job_name);
                                     return (
                                         <div
-                                            key={j.job_id || j.job_name}
+                                            key={j.id || j.job_name}
                                             onClick={() => toggleJob(j.job_name)}
                                             className={`px-2 py-1 rounded cursor-pointer transition text-xs font-medium ${isSelected
                                                 ? 'bg-blue-50 dark:bg-blue-900/30 font-bold text-blue-600 dark:text-blue-400'

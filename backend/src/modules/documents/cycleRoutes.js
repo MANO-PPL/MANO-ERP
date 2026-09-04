@@ -26,11 +26,6 @@ router.delete('/:cycle_id/directory/:pd_id', contentWriteController.deleteDirect
 router.post('/:cycle_id/vendors', contentWriteController.addVendor);
 router.delete('/:cycle_id/vendors/:pv_id', contentWriteController.deleteVendor);
 
-// Staff
-router.post('/:cycle_id/staff', contentWriteController.addStaff);
-router.put('/:cycle_id/staff/:psrr_id', contentWriteController.updateStaff);
-router.delete('/:cycle_id/staff/:psrr_id', contentWriteController.deleteStaff);
-
 // MoM
 router.put('/:cycle_id/mom', contentWriteController.updateMom);
 router.post('/:cycle_id/mom/participants', contentWriteController.addMomParticipant);

@@ -27,8 +27,7 @@ const ALLOWED_COLUMNS = {
     wf_document_lines: ['line_id', 'instance_id', 'cycle_id', 'version_id', 'line_type', 'sort_order', 'effective_date', 'remarks', 'metadata', 'created_at', 'updated_at'],
     pdoc_vendors: ['pv_id', 'project_id', 'instance_id', 'cycle_id', 'version_id', 'vendors_id', 'created_at', 'updated_at'],
     pdoc_directory: ['pd_id', 'project_id', 'instance_id', 'cycle_id', 'version_id', 'pv_id', 'contact_person', 'designation', 'responsibilities', 'mobile_no', 'email', 'address_line', 'created_at', 'updated_at'],
-    pdoc_staff_responsible: ['psrr_id', 'project_id', 'instance_id', 'cycle_id', 'version_id', 'name', 'designation', 'responsibilities', 'mobile', 'email', 'created_at', 'updated_at'],
-    pdoc_summary: ['id', 'project_id', 'instance_id', 'cycle_id', 'version_id', 'title', 'details', 'status', 'date', 'created_at', 'updated_at'],
+    proj_summary: ['id', 'project_id', 'instance_id', 'cycle_id', 'version_id', 'title', 'details', 'status', 'date', 'created_at', 'updated_at'],
     pdoc_meeting: ['meeting_id', 'project_id', 'instance_id', 'cycle_id', 'version_id', 'meeting_type', 'meeting_no', 'date', 'time', 'location', 'subject', 'content', 'created_at', 'updated_at'],
     pdoc_meeting_participants: ['id', 'meeting_id', 'pd_id', 'created_at', 'updated_at']
 };
@@ -139,6 +138,8 @@ export async function upsertEpisodicMeetingHeader(orgId, cycleId, userId, meetin
         content: content ? (typeof content === 'string' ? content : JSON.stringify(content)) : null
     };
 
+    if (!(await db.schema.hasTable('pdoc_meeting'))) return true;
+
     const existing = await db('pdoc_meeting')
         .where({ cycle_id: cycleId, meeting_type: meetingType })
         .whereNull('version_id')
@@ -178,12 +179,6 @@ export const vendors = {
     delete: (orgId, cycleId, userId, pvId) => deleteDraftRow(orgId, cycleId, userId, 'pdoc_vendors', 'pv_id', pvId)
 };
 
-export const staff = {
-    add: (orgId, cycleId, userId, data) => addDraftRow(orgId, cycleId, userId, 'pdoc_staff_responsible', data),
-    update: (orgId, cycleId, userId, psrrId, data) => updateDraftRow(orgId, cycleId, userId, 'pdoc_staff_responsible', 'psrr_id', psrrId, data),
-    delete: (orgId, cycleId, userId, psrrId) => deleteDraftRow(orgId, cycleId, userId, 'pdoc_staff_responsible', 'psrr_id', psrrId)
-};
-
 export const mom = {
     updateHeader: (orgId, cycleId, userId, data) => upsertEpisodicMeetingHeader(orgId, cycleId, userId, 'mom', data),
     addParticipant: async (orgId, cycleId, userId, pdId) => {
@@ -193,9 +188,9 @@ export const mom = {
             .where({ cycle_id: cycleId, meeting_type: 'mom' })
             .whereNull('version_id')
             .first();
-            
+
         if (!header) throw new AppError('MoM header must be created before adding participants', 400);
-        
+
         await db('pdoc_meeting_participants').insert({
             meeting_id: header.meeting_id,
             pd_id: pdId
@@ -204,16 +199,16 @@ export const mom = {
     },
     removeParticipant: async (orgId, cycleId, userId, pmpId) => {
         await verifyWriteAccess(orgId, cycleId, userId);
-        
+
         // Ensure participant belongs to a draft mom header
         const participant = await db('pdoc_meeting_participants').where({ id: pmpId }).first();
         if (!participant) throw new AppError('Participant not found', 404);
-        
+
         const header = await db('pdoc_meeting').where({ meeting_id: participant.meeting_id }).first();
         if (!header || header.version_id !== null || header.cycle_id != cycleId) {
             throw new AppError('Cannot delete participant from approved MoM', 403);
         }
-        
+
         await db('pdoc_meeting_participants').where({ id: pmpId }).del();
         return true;
     }
@@ -227,9 +222,9 @@ export const agenda = {
             .where({ cycle_id: cycleId, meeting_type: 'agenda' })
             .whereNull('version_id')
             .first();
-            
+
         if (!header) throw new AppError('Agenda header must be created before adding participants', 400);
-        
+
         await db('pdoc_meeting_participants').insert({
             meeting_id: header.meeting_id,
             pd_id: pdId
@@ -238,15 +233,15 @@ export const agenda = {
     },
     removeParticipant: async (orgId, cycleId, userId, papId) => {
         await verifyWriteAccess(orgId, cycleId, userId);
-        
+
         const participant = await db('pdoc_meeting_participants').where({ id: papId }).first();
         if (!participant) throw new AppError('Participant not found', 404);
-        
+
         const header = await db('pdoc_meeting').where({ meeting_id: participant.meeting_id }).first();
         if (!header || header.version_id !== null || header.cycle_id != cycleId) {
             throw new AppError('Cannot delete participant from approved Agenda', 403);
         }
-        
+
         await db('pdoc_meeting_participants').where({ id: papId }).del();
         return true;
     }
@@ -254,9 +249,9 @@ export const agenda = {
 
 
 export const summary = {
-    add: (orgId, cycleId, userId, data) => addDraftRow(orgId, cycleId, userId, 'pdoc_summary', data),
-    update: (orgId, cycleId, userId, id, data) => updateDraftRow(orgId, cycleId, userId, 'pdoc_summary', 'id', id, data),
-    delete: (orgId, cycleId, userId, id) => deleteDraftRow(orgId, cycleId, userId, 'pdoc_summary', 'id', id)
+    add: (orgId, cycleId, userId, data) => addDraftRow(orgId, cycleId, userId, 'proj_summary', data),
+    update: (orgId, cycleId, userId, id, data) => updateDraftRow(orgId, cycleId, userId, 'proj_summary', 'id', id, data),
+    delete: (orgId, cycleId, userId, id) => deleteDraftRow(orgId, cycleId, userId, 'proj_summary', 'id', id)
 };
 
 export const lines = {
@@ -296,7 +291,6 @@ export const attachments = {
 export default {
     directory,
     vendors,
-    staff,
     mom,
     agenda,
     summary,

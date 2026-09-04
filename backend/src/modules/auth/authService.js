@@ -22,7 +22,8 @@ function formatUserResponse(user) {
     }
 
     return {
-        id: user.user_id,
+        id: user.id,
+        user_id: user.id,
         user_code: user.user_code,
         user_name: user.user_name,
         email: user.email,
@@ -41,10 +42,10 @@ function formatUserResponse(user) {
  */
 export async function authenticateUser(userInput, password, req, rememberMe = false) {
     const user = await db('iam_users as users')
-        .leftJoin('iam_departments as departments', 'users.dept_id', 'departments.dept_id')
-        .leftJoin('iam_designations as designations', 'users.desg_id', 'designations.desg_id')
+        .leftJoin('iam_departments as departments', 'users.dept_id', 'departments.id')
+        .leftJoin('iam_designations as designations', 'users.desg_id', 'designations.id')
         .select(
-            'users.user_id',
+            'users.id',
             'users.user_code',
             'users.user_name',
             'users.user_password',
@@ -67,7 +68,8 @@ export async function authenticateUser(userInput, password, req, rememberMe = fa
     if (!isMatch) throw new AppError('Incorrect Password', 401);
 
     const payload = {
-        user_id: user.user_id,
+        id: user.id,
+        user_id: user.id,
         user_name: user.user_name,
         email: user.email,
         user_type: user.user_type,
@@ -81,15 +83,16 @@ export async function authenticateUser(userInput, password, req, rememberMe = fa
     const ipAddress = req.ip || req.connection.remoteAddress;
     const userAgent = req.get('User-Agent') || 'Unknown';
 
-    await TokenService.saveRefreshToken(user.user_id, refreshToken, ipAddress, userAgent, rememberMe);
+    await TokenService.saveRefreshToken(user.id, refreshToken, ipAddress, userAgent, rememberMe);
 
     EventBus.emitActivityLog({
-        user_id: user.user_id,
+        user_id: user.id,
+        id: user.id,
         org_id: user.org_id,
         event_type: 'LOGIN',
         event_source: getEventSource(req),
         object_type: 'USER',
-        object_id: user.user_id,
+        object_id: user.id,
         description: 'User logged in successfully',
         request_ip: ipAddress,
         user_agent: userAgent
@@ -107,10 +110,10 @@ export async function authenticateUser(userInput, password, req, rememberMe = fa
  */
 export async function getUserProfile(userId) {
     const user = await db('iam_users as users')
-        .leftJoin('iam_departments as departments', 'users.dept_id', 'departments.dept_id')
-        .leftJoin('iam_designations as designations', 'users.desg_id', 'designations.desg_id')
+        .leftJoin('iam_departments as departments', 'users.dept_id', 'departments.id')
+        .leftJoin('iam_designations as designations', 'users.desg_id', 'designations.id')
         .select(
-            'users.user_id',
+            'users.id',
             'users.user_code',
             'users.user_name',
             'users.email',
@@ -122,7 +125,7 @@ export async function getUserProfile(userId) {
             'departments.dept_name',
             'designations.desg_name'
         )
-        .where('users.user_id', userId)
+        .where('users.id', userId)
         .first();
 
     if (!user) throw new AppError('User not found', 404);
@@ -141,8 +144,8 @@ export async function getUserProfile(userId) {
     }
 
     return {
-        id: user.user_id,
-        user_id: user.user_id,
+        id: user.id,
+        user_id: user.id,
         user_code: user.user_code,
         user_name: user.user_name,
         email: user.email,
@@ -167,7 +170,8 @@ export async function refreshAccessToken(refreshToken, req) {
 
     const user = result.user;
     const payload = {
-        user_id: user.user_id,
+        id: user.id,
+        user_id: user.id,
         user_name: user.user_name,
         email: user.email,
         user_type: user.user_type,
@@ -187,14 +191,14 @@ export async function refreshAccessToken(refreshToken, req) {
         newRefreshToken = TokenService.generateRefreshToken();
         const ipAddress = req.ip || req.connection.remoteAddress;
         const userAgent = req.get('User-Agent') || 'Unknown';
-        await TokenService.saveRefreshToken(user.user_id, newRefreshToken, ipAddress, userAgent, isRememberMe);
+        await TokenService.saveRefreshToken(user.id, newRefreshToken, ipAddress, userAgent, isRememberMe);
         await TokenService.revokeRefreshToken(refreshToken, newRefreshToken);
     }
 
-    const userProfile = await getUserProfile(user.user_id);
-    return { 
-        accessToken: newAccessToken, 
-        refreshToken: newRefreshToken, 
+    const userProfile = await getUserProfile(user.id);
+    return {
+        accessToken: newAccessToken,
+        refreshToken: newRefreshToken,
         user: userProfile,
         rememberMe: isRememberMe
     };

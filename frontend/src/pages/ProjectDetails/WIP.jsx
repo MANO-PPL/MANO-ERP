@@ -1,8 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { useParams, useSearchParams } from 'react-router-dom';
-import { 
-    Users, User, Briefcase, CheckCircle, Clock, AlertCircle, Plus, ChevronRight, 
-    Search, Filter, X, Check, Calendar, Tag, Flag, AlignLeft, GripVertical, 
+import {
+    Users, User, Briefcase, CheckCircle, Clock, AlertCircle, Plus, ChevronRight,
+    Search, Filter, X, Check, Calendar, Tag, Flag, AlignLeft, GripVertical,
     Layers, AlertTriangle, UserPlus, SlidersHorizontal, Trash2
 } from 'lucide-react';
 import { projectApi } from '../../services/projectApi';
@@ -14,7 +14,7 @@ import PageSkeleton from '../../components/PageSkeleton';
 const WIP = ({ setExtraBreadcrumbs, projectPermissions, isAdmin, user }) => {
     const { id: projectId } = useParams();
     const canWrite = isAdmin || (projectPermissions && projectPermissions['WIP'] >= 2);
-    
+
     const [searchParams, setSearchParams] = useSearchParams();
     const [employees, setEmployees] = useState([]);
     const [categories, setCategories] = useState([]);
@@ -117,7 +117,7 @@ const WIP = ({ setExtraBreadcrumbs, projectPermissions, isAdmin, user }) => {
     // Drag and Drop Card State
     const [draggedCardId, setDraggedCardId] = useState(null);
 
-    const isSelf = user?.user_id === selectedEmployeeId;
+    const isSelf = user?.id === selectedEmployeeId;
     const canDragAndDrop = isUserAdmin || isSelf;
 
     const flattenTasks = (categoryData) => {
@@ -157,9 +157,9 @@ const WIP = ({ setExtraBreadcrumbs, projectPermissions, isAdmin, user }) => {
                 const mapped = res.members.map(m => {
                     const initials = m.user_name ? m.user_name.split(' ').map(n => n[0]).join('').toUpperCase().slice(0, 2) : 'U';
                     const colors = ['bg-blue-600', 'bg-purple-600', 'bg-green-600', 'bg-pink-600', 'bg-orange-600', 'bg-indigo-600', 'bg-teal-600'];
-                    const color = colors[m.user_id % colors.length];
+                    const color = colors[m.id % colors.length];
                     return {
-                        id: m.user_id,
+                        id: m.id,
                         name: m.user_name,
                         role: m.user_type || 'Employee',
                         initials,
@@ -169,7 +169,7 @@ const WIP = ({ setExtraBreadcrumbs, projectPermissions, isAdmin, user }) => {
                 setEmployees(mapped);
 
                 if (!isUserAdmin) {
-                    setSelectedEmployeeId(user?.user_id);
+                    setSelectedEmployeeId(user?.id);
                 } else {
                     const paramId = parseInt(searchParams.get('emp'));
                     if (paramId && mapped.some(e => e.id === paramId)) {
@@ -214,7 +214,7 @@ const WIP = ({ setExtraBreadcrumbs, projectPermissions, isAdmin, user }) => {
     }, [selectedEmployeeId, employees, setExtraBreadcrumbs]);
 
     const selectedEmployee = employees.find(e => e.id === selectedEmployeeId) || { name: 'Employee', initials: 'E', color: 'bg-blue-600', role: '' };
-    
+
     // Employee assigned tasks & unassigned tasks
     const rawEmployeeTasks = tasks.filter(t => (t.assigneeIds || []).includes(selectedEmployeeId));
     const unassignedTasks = tasks.filter(t => !t.assigneeIds || t.assigneeIds.length === 0);
@@ -391,7 +391,7 @@ const WIP = ({ setExtraBreadcrumbs, projectPermissions, isAdmin, user }) => {
             if (res.success && res.task) {
                 // Assign to current employee
                 await tasksApi.updateTaskAssignees(projectId, res.task.id, { assigneeIds: [selectedEmployeeId] });
-                
+
                 toast.success('Task created and assigned!');
                 setIsQuickCreateOpen(false);
                 setQuickTaskForm(prev => ({ ...prev, name: '' }));
@@ -417,11 +417,11 @@ const WIP = ({ setExtraBreadcrumbs, projectPermissions, isAdmin, user }) => {
 
     return (
         <div className="flex-1 flex flex-col md:flex-row bg-white dark:bg-[#0d1117] h-full overflow-hidden text-left font-sans">
-            
+
             {/* EMPLOYEE SIDEBAR (Admins/PMs) */}
             {isUserAdmin && (
                 <div className="w-full md:w-72 border-r border-gray-200 dark:border-gh-border flex flex-col bg-[#f9fafb] dark:bg-gh-bg shrink-0">
-                    
+
                     {/* Search Input */}
                     <div className="p-3 border-b border-gray-200 dark:border-gh-border bg-white dark:bg-[#0d1117]">
                         <div className="relative">
@@ -479,7 +479,7 @@ const WIP = ({ setExtraBreadcrumbs, projectPermissions, isAdmin, user }) => {
 
             {/* MAIN WORKSPACE PANEL */}
             <div className="flex-1 flex flex-col overflow-hidden bg-white dark:bg-[#0d1117] text-left">
-                
+
                 {/* Workspace Header & Actions */}
                 <div className="px-6 py-4 border-b border-gray-200 dark:border-gh-border bg-[#f9fafb] dark:bg-gh-bg flex flex-col sm:flex-row sm:items-center justify-between gap-4">
                     <div className="flex items-center space-x-3">
@@ -505,7 +505,7 @@ const WIP = ({ setExtraBreadcrumbs, projectPermissions, isAdmin, user }) => {
 
                     {/* Action Buttons */}
                     <div className="flex items-center space-x-2.5">
-                        
+
                         {/* Board Search */}
                         <div className="relative min-w-[180px]">
                             <Search size={13} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-400" />
@@ -532,7 +532,7 @@ const WIP = ({ setExtraBreadcrumbs, projectPermissions, isAdmin, user }) => {
                                 >
                                     <Plus size={14} className="mr-1" /> New Task
                                 </button>
-                                
+
                                 <button
                                     onClick={() => setIsAssigning(true)}
                                     className="bg-blue-600 hover:bg-blue-700 text-white px-3 py-1.5 rounded-lg text-xs font-semibold transition-all flex items-center shadow-xs active:scale-95 cursor-pointer"
@@ -681,7 +681,7 @@ const WIP = ({ setExtraBreadcrumbs, projectPermissions, isAdmin, user }) => {
 
                     <div className="absolute inset-y-0 right-0 max-w-full flex pl-10">
                         <div className="w-screen max-w-md bg-white dark:bg-[#161b22] shadow-2xl border-l border-gray-200 dark:border-gh-border flex flex-col text-left">
-                            
+
                             <div className="px-5 py-4 border-b border-gray-200 dark:border-gh-border flex items-center justify-between bg-gray-50 dark:bg-[#0d1117]">
                                 <div>
                                     <h2 className="text-sm font-bold text-gray-900 dark:text-white">Unassigned Task Pool</h2>
@@ -725,7 +725,7 @@ const WIP = ({ setExtraBreadcrumbs, projectPermissions, isAdmin, user }) => {
                 <div className="fixed inset-0 z-[150] overflow-hidden flex items-center justify-center p-4">
                     <div className="absolute inset-0 bg-black/40 backdrop-blur-xs" onClick={() => setIsQuickCreateOpen(false)}></div>
                     <div className="relative w-full max-w-md bg-white dark:bg-[#161b22] border border-gray-200 dark:border-gh-border rounded-xl shadow-2xl p-5 z-10 text-left">
-                        
+
                         <div className="flex items-center justify-between pb-3 border-b border-gray-200 dark:border-gh-border mb-4">
                             <h3 className="text-sm font-bold text-gray-900 dark:text-white">Create Task for {selectedEmployee.name}</h3>
                             <button onClick={() => setIsQuickCreateOpen(false)} className="text-gray-400 hover:text-gray-600 dark:hover:text-white">
@@ -832,7 +832,7 @@ const WIP = ({ setExtraBreadcrumbs, projectPermissions, isAdmin, user }) => {
 
                     <div className="absolute inset-y-0 right-0 max-w-full flex pl-10">
                         <div className="w-screen max-w-md bg-white dark:bg-[#161b22] shadow-2xl border-l border-gray-200 dark:border-gh-border flex flex-col text-left">
-                            
+
                             {/* Header */}
                             <div className="px-5 py-4 border-b border-gray-200 dark:border-gh-border flex items-center justify-between bg-gray-50 dark:bg-[#0d1117]">
                                 <div className="flex items-center space-x-2">

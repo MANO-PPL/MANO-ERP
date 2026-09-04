@@ -4,10 +4,16 @@ import { isAdmin } from '../../utils/userUtils.js';
 
 const CONTENT_TABLES = [
     { name: 'wf_document_lines', pk: 'line_id' },
+    { name: 'proj_directory', pk: 'pd_id' },
     { name: 'pdoc_directory', pk: 'pd_id' },
+    { name: 'proj_parties', pk: 'id' },
     { name: 'pdoc_vendors', pk: 'pv_id' },
-    { name: 'pdoc_staff_responsible', pk: 'psrr_id' },
-    { name: 'pdoc_summary', pk: 'id' },
+    { name: 'proj_summary', pk: 'id' },
+    {
+        name: 'proj_meetings',
+        pk: 'id',
+        children: [{ name: 'proj_meetings_participants', fk: 'meeting_id', pk: 'id' }]
+    },
     {
         name: 'pdoc_meeting',
         pk: 'meeting_id',
@@ -23,7 +29,7 @@ async function enrichVendorRows(rows) {
     if (vendorIds.length === 0) return [];
 
     const contacts = await db('crm_contacts as c')
-        .leftJoin('crm_job_nature as jn', 'c.job_nature_id', 'jn.job_id')
+        .leftJoin('crm_job_nature as jn', 'c.job_nature_id', 'jn.id')
         .whereIn('c.id', vendorIds)
         .where(function () {
             this.whereNull('c.category')
@@ -54,7 +60,7 @@ async function verifyAccess(orgId, instanceId, userId) {
     if (!instance) throw new AppError('Document instance not found', 404);
 
     // 1. Allow if user is an admin
-    const user = await db('iam_users').where({ user_id: userId }).first();
+    const user = await db('iam_users').where({ id: userId }).first();
     const isUserAdmin = isAdmin(user);
     if (isUserAdmin) {
         return instance;
@@ -106,7 +112,7 @@ export async function getApprovedContent(orgId, instanceId, userId, versionIdPar
 
     const versionMeta = await db('wf_document_versions as document_versions')
         .select('document_versions.*', 'users.user_name as final_approved_by_name')
-        .leftJoin('iam_users as users', 'document_versions.final_approved_by', 'users.user_id')
+        .leftJoin('iam_users as users', 'document_versions.final_approved_by', 'users.id')
         .where('document_versions.version_id', targetVersionId)
         .first();
 
@@ -115,6 +121,7 @@ export async function getApprovedContent(orgId, instanceId, userId, versionIdPar
     const contentData = {};
 
     for (const tableConf of CONTENT_TABLES) {
+        if (!(await db.schema.hasTable(tableConf.name))) continue;
         let rows = await db(tableConf.name).where({
             instance_id: instanceId,
             version_id: targetVersionId
@@ -159,6 +166,7 @@ export async function getDraftContent(orgId, instanceId, userId) {
     const contentData = {};
 
     for (const tableConf of CONTENT_TABLES) {
+        if (!(await db.schema.hasTable(tableConf.name))) continue;
         let rows = await db(tableConf.name)
             .where({ instance_id: instanceId, cycle_id: activeCycle.cycle_id })
             .whereNull('version_id');
@@ -205,7 +213,7 @@ export async function listVersions(orgId, instanceId, userId) {
             'document_versions.approved_at',
             'users.user_name as final_approved_by_name'
         )
-        .leftJoin('iam_users as users', 'document_versions.final_approved_by', 'users.user_id')
+        .leftJoin('iam_users as users', 'document_versions.final_approved_by', 'users.id')
         .where('document_versions.instance_id', instanceId)
         .orderBy('document_versions.version_number', 'desc');
 }

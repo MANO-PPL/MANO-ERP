@@ -17,7 +17,7 @@ export const listUsers = catchAsync(async (req, res) => {
 });
 
 export const getUser = catchAsync(async (req, res) => {
-    const user = await userService.getUserById(req.user.org_id, req.params.user_id);
+    const user = await userService.getUserById(req.user.org_id, req.params.id);
     res.json({ success: true, user });
 });
 
@@ -33,12 +33,12 @@ export const listDesignations = catchAsync(async (req, res) => {
 
 export const createDepartment = catchAsync(async (req, res) => {
     const newId = await departmentService.createDepartment(req.user.org_id, req.body.dept_name);
-    res.status(201).json({ success: true, message: 'Department created', dept_id: newId });
+    res.status(201).json({ success: true, message: 'Department created', id: newId });
 });
 
 export const createDesignation = catchAsync(async (req, res) => {
     const newId = await designationService.createDesignation(req.user.org_id, req.body.desg_name);
-    res.status(201).json({ success: true, message: 'Designation created', desg_id: newId });
+    res.status(201).json({ success: true, message: 'Designation created', id: newId });
 });
 
 // Sectors
@@ -49,7 +49,7 @@ export const listSectors = catchAsync(async (req, res) => {
 
 export const createSector = catchAsync(async (req, res) => {
     const newId = await sectorService.createSector(req.user.org_id, req.body.sector_name);
-    res.status(201).json({ success: true, message: 'Sector created', sector_id: newId });
+    res.status(201).json({ success: true, message: 'Sector created', id: newId });
 });
 
 // Job Natures
@@ -60,7 +60,7 @@ export const listJobNatures = catchAsync(async (req, res) => {
 
 export const createJobNature = catchAsync(async (req, res) => {
     const newId = await jobNatureService.createJobNature(req.user.org_id, req.body.job_name);
-    res.status(201).json({ success: true, message: 'Job Nature created', job_id: newId });
+    res.status(201).json({ success: true, message: 'Job Nature created', id: newId });
 });
 
 export const deleteSector = catchAsync(async (req, res) => {
@@ -102,12 +102,12 @@ export const createUser = catchAsync(async (req, res) => {
         await db('proj_members').insert(inserts);
     }
 
-    res.status(201).json({ success: true, message: 'User created', user_id: newUserId });
+    res.status(201).json({ success: true, message: 'User created', id: newUserId, user_id: newUserId });
 });
 
 export const updateUser = catchAsync(async (req, res) => {
-    const { user_id } = req.params;
-    if (!user_id || isNaN(parseInt(user_id))) {
+    const { id } = req.params;
+    if (!id || isNaN(parseInt(id))) {
         throw new AppError('Invalid User ID', 400);
     }
 
@@ -118,13 +118,13 @@ export const updateUser = catchAsync(async (req, res) => {
     if (req.file && req.file.buffer) {
         const fileBuffer = req.file.buffer;
         const ext = (req.file.originalname && req.file.originalname.split('.').pop()) || 'jpg';
-        const fileName = `profile_${user_id}_${Date.now()}.${ext}`;
+        const fileName = `profile_${id}_${Date.now()}.${ext}`;
         const contentType = req.file.mimetype || 'application/octet-stream';
-        const url = await S3Service.uploadFile(fileBuffer, fileName, `profiles/${user_id}`, contentType);
+        const url = await S3Service.uploadFile(fileBuffer, fileName, `profiles/${id}`, contentType);
         updatePayload.profile_image_url = url;
     }
 
-    await userService.updateUser(req.user.org_id, user_id, updatePayload);
+    await userService.updateUser(req.user.org_id, id, updatePayload);
 
     if (project_ids !== undefined && Array.isArray(project_ids)) {
         const permsObj = project_permissions ? (typeof project_permissions === 'string' ? JSON.parse(project_permissions) : project_permissions) : {};
@@ -132,7 +132,7 @@ export const updateUser = catchAsync(async (req, res) => {
 
         // Sync proj_members table
         const existing = await db('proj_members')
-            .where({ user_id: user_id, org_id: req.user.org_id })
+            .where({ user_id: id, org_id: req.user.org_id })
             .select('project_id');
         const existingIds = existing.map(e => e.project_id);
 
@@ -142,7 +142,7 @@ export const updateUser = catchAsync(async (req, res) => {
 
         if (toRemove.length > 0) {
             await db('proj_members')
-                .where({ user_id: user_id, org_id: req.user.org_id })
+                .where({ user_id: id, org_id: req.user.org_id })
                 .whereIn('project_id', toRemove)
                 .del();
         }
@@ -150,7 +150,7 @@ export const updateUser = catchAsync(async (req, res) => {
         if (toAdd.length > 0) {
             const inserts = toAdd.map(pid => ({
                 project_id: pid,
-                user_id: user_id,
+                user_id: id,
                 org_id: req.user.org_id,
                 project_permissions: permsJson
             }));
@@ -159,7 +159,7 @@ export const updateUser = catchAsync(async (req, res) => {
 
         if (toKeep.length > 0) {
             await db('proj_members')
-                .where({ user_id: user_id, org_id: req.user.org_id })
+                .where({ user_id: id, org_id: req.user.org_id })
                 .whereIn('project_id', toKeep)
                 .update({ project_permissions: permsJson });
         }
@@ -169,11 +169,11 @@ export const updateUser = catchAsync(async (req, res) => {
 });
 
 export const deleteUser = catchAsync(async (req, res) => {
-    const { user_id } = req.params;
-    if (!user_id || isNaN(parseInt(user_id))) throw new AppError('Invalid User ID', 400);
-    if (parseInt(user_id) === req.user.user_id) throw new AppError('You cannot delete your own account', 400);
+    const { id } = req.params;
+    if (!id || isNaN(parseInt(id))) throw new AppError('Invalid User ID', 400);
+    if (parseInt(id) === req.user.id) throw new AppError('You cannot delete your own account', 400);
 
-    await userService.forceDelete(req.user.org_id, user_id);
+    await userService.forceDelete(req.user.org_id, id);
 
     res.json({ success: true, message: 'User deleted successfully' });
 });

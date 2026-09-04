@@ -6,6 +6,9 @@ export const workflowApi = {
         const response = await api.get(`/v1/instances/project/${projectId}/template-status`, { params: { template_name: templateName, instance_id: instanceId } });
         return response.data;
     },
+    getWorkflowStatus: async (projectId, templateName, instanceId) => {
+        return workflowApi.getTemplateWorkflowStatus(projectId, templateName, instanceId);
+    },
 
     // List document templates (can optionally filter by project_id)
     getTemplates: async (projectId) => {
@@ -175,19 +178,6 @@ export const workflowApi = {
     },
     removeMomParticipantDraft: async (cycleId, pmpId) => {
         const response = await api.delete(`/v1/cycles/${cycleId}/mom/participants/${pmpId}`);
-        return response.data;
-    },
-    // Staff Roles Draft APIs
-    addStaffDraft: async (cycleId, data) => {
-        const response = await api.post(`/v1/cycles/${cycleId}/staff`, data);
-        return response.data;
-    },
-    updateStaffDraft: async (cycleId, psrrId, data) => {
-        const response = await api.put(`/v1/cycles/${cycleId}/staff/${psrrId}`, data);
-        return response.data;
-    },
-    deleteStaffDraft: async (cycleId, psrrId) => {
-        const response = await api.delete(`/v1/cycles/${cycleId}/staff/${psrrId}`);
         return response.data;
     },
     // Project Summary Draft APIs

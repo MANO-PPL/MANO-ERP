@@ -7,7 +7,7 @@ import path from 'path';
 import { isAdmin } from '../../../utils/userUtils.js';
 
 export const listProjects = catchAsync(async (req, res) => {
-    const projects = await projectService.getProjects(req.user.org_id, req.user.user_id, req.user.user_type);
+    const projects = await projectService.getProjects(req.user.org_id, req.user.id, req.user.user_type);
     res.json({ success: true, projects });
 });
 
@@ -16,7 +16,7 @@ export const getProject = catchAsync(async (req, res) => {
     if (!id || isNaN(parseInt(id))) throw new AppError('Invalid Project ID', 400);
 
     const isUserAdmin = isAdmin(req.user);
-    
+
     let projectPermissions = null;
     if (isUserAdmin) {
         projectPermissions = {
@@ -40,7 +40,7 @@ export const getProject = catchAsync(async (req, res) => {
         };
     } else {
         const member = await db('proj_members')
-            .where({ project_id: id, user_id: req.user.user_id, org_id: req.user.org_id })
+            .where({ project_id: id, user_id: req.user.id, org_id: req.user.org_id })
             .first();
         if (!member) {
             throw new AppError('Access denied. You are not assigned to this project.', 403);
@@ -55,7 +55,7 @@ export const getProject = catchAsync(async (req, res) => {
 export const createProject = catchAsync(async (req, res) => {
     const newId = await projectService.createProject(req.user.org_id, {
         ...req.body,
-        creator_id: req.user.user_id
+        creator_id: req.user.id
     });
     res.status(201).json({ success: true, message: 'Project created successfully', project_id: newId });
 });
@@ -108,22 +108,24 @@ export const getProjectMembers = catchAsync(async (req, res) => {
 });
 
 export const assignProjectMember = catchAsync(async (req, res) => {
-    const { id } = req.params; // project_id
-    if (!id || isNaN(parseInt(id))) throw new AppError('Invalid Project ID', 400);
+    const projectId = req.params.id;
+    if (!projectId || isNaN(parseInt(projectId))) throw new AppError('Invalid Project ID', 400);
 
-    const { user_id, permissions } = req.body;
-    if (!user_id || isNaN(parseInt(user_id))) throw new AppError('user_id is required', 400);
+    const userId = req.body.id || req.body.user_id;
+    const { permissions } = req.body;
+    if (!userId || isNaN(parseInt(userId))) throw new AppError('User ID is required', 400);
 
-    await projectService.assignUserToProject(req.user.org_id, id, user_id, permissions);
+    await projectService.assignUserToProject(req.user.org_id, projectId, userId, permissions);
     res.json({ success: true, message: 'User assigned to project successfully' });
 });
 
 export const removeProjectMember = catchAsync(async (req, res) => {
-    const { id, user_id } = req.params;
-    if (!id || isNaN(parseInt(id))) throw new AppError('Invalid Project ID', 400);
-    if (!user_id || isNaN(parseInt(user_id))) throw new AppError('Invalid User ID', 400);
+    const projectId = req.params.id;
+    const userId = req.params.user_id;
+    if (!projectId || isNaN(parseInt(projectId))) throw new AppError('Invalid Project ID', 400);
+    if (!userId || isNaN(parseInt(userId))) throw new AppError('Invalid User ID', 400);
 
-    await projectService.removeUserFromProject(req.user.org_id, id, user_id);
+    await projectService.removeUserFromProject(req.user.org_id, projectId, userId);
     res.json({ success: true, message: 'User removed from project' });
 });
 
