@@ -35,7 +35,7 @@ export async function getTemplates(orgId, { project_id } = {}) {
     const query = db('wf_documents').where('org_id', orgId);
 
     if (project_id) {
-        query.where(function() {
+        query.where(function () {
             this.where('project_id', project_id).orWhereNull('project_id');
         });
     }
@@ -58,7 +58,7 @@ export async function getTemplateById(orgId, document_id) {
 
     const roles = await db('wf_document_roles as document_roles')
         .select('document_roles.*', 'users.user_name', 'users.email')
-        .leftJoin('iam_users as users', 'document_roles.user_id', 'users.user_id')
+        .leftJoin('iam_users as users', 'document_roles.user_id', 'users.id')
         .where('document_roles.document_id', document_id);
 
     return {
@@ -153,18 +153,19 @@ export async function removeApprovalLevel(orgId, document_id, level_id) {
 /**
  * Assign a user to a role.
  */
-export async function assignDocumentRole(orgId, document_id, { user_id, role, level_id = null }) {
+export async function assignDocumentRole(orgId, document_id, { id, user_id, role, level_id = null }) {
+    const targetUserId = id || user_id;
     const document = await db('wf_documents').where({ document_id, org_id: orgId }).first();
     if (!document) {
         throw new AppError('Document template not found', 404);
     }
 
-    if (!user_id || !role) {
+    if (!targetUserId || !role) {
         throw new AppError('user_id and role are required', 400);
     }
 
     const user = await db('iam_users')
-        .where({ user_id, org_id: orgId })
+        .where({ id: targetUserId, org_id: orgId })
         .first();
     if (!user) {
         throw new AppError('User not found in this organisation', 404);
@@ -188,7 +189,7 @@ export async function assignDocumentRole(orgId, document_id, { user_id, role, le
         const existingLevelApprover = await db('wf_document_roles')
             .where({ document_id, role: 'approver', level_id })
             .first('user_id');
-        if (existingLevelApprover && String(existingLevelApprover.user_id) !== String(user_id)) {
+        if (existingLevelApprover && String(existingLevelApprover.user_id) !== String(targetUserId)) {
             throw new AppError('Each approval level can have only one approver', 400);
         }
     } else {
@@ -198,7 +199,7 @@ export async function assignDocumentRole(orgId, document_id, { user_id, role, le
     }
 
     const existingRoles = await db('wf_document_roles')
-        .where({ document_id, user_id })
+        .where({ document_id, user_id: targetUserId })
         .select('role', 'level_id');
 
     if (role === 'reporter') {
@@ -219,7 +220,7 @@ export async function assignDocumentRole(orgId, document_id, { user_id, role, le
 
     const [role_id] = await db('wf_document_roles').insert({
         document_id,
-        user_id,
+        user_id: targetUserId,
         role,
         level_id: level_id || null
     });

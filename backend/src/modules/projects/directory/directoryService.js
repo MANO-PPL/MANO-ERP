@@ -7,7 +7,7 @@ export async function fetchProjectDirectory(projectId) {
     const directory = await db('proj_directory as pd')
         .leftJoin('proj_parties as pp', 'pd.party_id', 'pp.id')
         .leftJoin('crm_contacts as c', 'pp.contact_id', 'c.id')
-        .leftJoin('crm_job_nature as jn', 'c.job_nature_id', 'jn.job_id')
+        .leftJoin('crm_job_nature as jn', 'c.job_nature_id', 'jn.id')
         .where('pd.project_id', projectId)
         .select([
             'pd.pd_id',

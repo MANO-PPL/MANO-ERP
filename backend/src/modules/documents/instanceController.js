@@ -7,9 +7,9 @@ export const getInstance = catchAsync(async (req, res) => {
     if (!instance_id || isNaN(parseInt(instance_id))) {
         throw new AppError('Invalid Instance ID', 400);
     }
-    
+
     const instanceDetail = await instanceService.getInstanceDetail(req.user.org_id, instance_id);
-    
+
     res.json({
         success: true,
         instance: instanceDetail
@@ -21,9 +21,9 @@ export const archiveInstance = catchAsync(async (req, res) => {
     if (!instance_id || isNaN(parseInt(instance_id))) {
         throw new AppError('Invalid Instance ID', 400);
     }
-    
+
     await instanceService.archiveInstance(req.user.org_id, instance_id);
-    
+
     res.json({
         success: true,
         message: 'Document instance archived successfully'
@@ -35,9 +35,9 @@ export const getInstanceLogs = catchAsync(async (req, res) => {
     if (!instance_id || isNaN(parseInt(instance_id))) {
         throw new AppError('Invalid Instance ID', 400);
     }
-    
+
     const logs = await instanceService.getInstanceLogs(req.user.org_id, instance_id);
-    
+
     res.json({
         success: true,
         logs
@@ -54,12 +54,12 @@ export const getTemplateWorkflowStatus = catchAsync(async (req, res) => {
         throw new AppError('template_name is required', 400);
     }
 
-    const userId = req.user?.user_id ?? req.user?.id;
+    const userId = req.user?.id ?? req.user?.user_id;
 
     const data = await instanceService.getTemplateWorkflowStatus(
-        req.user.org_id, 
-        projectId, 
-        template_name, 
+        req.user.org_id,
+        projectId,
+        template_name,
         instance_id ? parseInt(instance_id) : null,
         userId
     );

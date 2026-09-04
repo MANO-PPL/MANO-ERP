@@ -394,7 +394,7 @@ const ProjectOverviewDrawer = ({ open, onClose, project, navigate, canWrite, onE
 
                                             return (
                                                 <div
-                                                    key={m.user_id || idx}
+                                                    key={m.id || idx}
                                                     className="relative group/avatar cursor-pointer"
                                                     title={`${m.user_name || 'User'} (${m.user_type || 'Member'})`}
                                                 >
@@ -831,8 +831,8 @@ const Projects = () => {
                     <button
                         onClick={() => setIsFilterModalOpen(true)}
                         className={`flex items-center space-x-2 px-6 py-2 border rounded-lg text-sm font-medium transition-all ${activeFilterCount > 0
-                                ? 'border-blue-500 bg-blue-500/10 text-blue-600 dark:text-blue-400'
-                                : 'border-blue-500 bg-blue-600 text-white hover:bg-blue-700'
+                            ? 'border-blue-500 bg-blue-500/10 text-blue-600 dark:text-blue-400'
+                            : 'border-blue-500 bg-blue-600 text-white hover:bg-blue-700'
                             }`}
                     >
                         <span>Filter</span>

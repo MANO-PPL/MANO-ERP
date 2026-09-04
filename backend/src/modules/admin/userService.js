@@ -32,18 +32,19 @@ export function validateSystemPermissions(permissions) {
 // Retrieve all users for an organization
 export async function getUsersByOrg(orgId) {
     return await db('iam_users as u')
-        .leftJoin('iam_designations as d', 'u.desg_id', 'd.desg_id')
-        .leftJoin('iam_departments as dep', 'u.dept_id', 'dep.dept_id')
+        .leftJoin('iam_designations as d', 'u.desg_id', 'd.id')
+        .leftJoin('iam_departments as dep', 'u.dept_id', 'dep.id')
         .select(
-            'u.user_id',
+            'u.id',
+            'u.id as user_id',
             'u.user_name',
             'u.email',
             'u.phone_no',
             'u.user_type',
             'd.desg_name',
-            'd.desg_id',
+            'u.desg_id',
             'dep.dept_name',
-            'dep.dept_id',
+            'u.dept_id',
             'u.profile_image_url',
             'u.user_code',
             'u.system_permissions',
@@ -56,10 +57,11 @@ export async function getUsersByOrg(orgId) {
 // Retrieve single user by id within an org
 export async function getUserById(orgId, userId) {
     const user = await db('iam_users as u')
-        .leftJoin('iam_designations as d', 'u.desg_id', 'd.desg_id')
-        .leftJoin('iam_departments as dep', 'u.dept_id', 'dep.dept_id')
+        .leftJoin('iam_designations as d', 'u.desg_id', 'd.id')
+        .leftJoin('iam_departments as dep', 'u.dept_id', 'dep.id')
         .select(
-            'u.user_id',
+            'u.id',
+            'u.id as user_id',
             'u.user_name',
             'u.email',
             'u.phone_no',
@@ -75,7 +77,7 @@ export async function getUserById(orgId, userId) {
             'd.desg_name',
             'dep.dept_name'
         )
-        .where('u.user_id', userId)
+        .where('u.id', userId)
         .andWhere('u.org_id', orgId)
         .first();
 
@@ -128,7 +130,7 @@ export async function createUser(org_id, userData) {
 
     await db.transaction(async (trx) => {
         const org = await trx('org_organizations')
-            .where({ org_id: org_id })
+            .where({ id: org_id })
             .forUpdate()
             .first();
 
@@ -138,7 +140,7 @@ export async function createUser(org_id, userData) {
         const userCode = `${org.org_code}-${String(nextNumber).padStart(3, '0')}`;
 
         await trx('org_organizations')
-            .where({ org_id: org_id })
+            .where({ id: org_id })
             .update({ last_user_number: nextNumber });
 
         let resolvedDeptId = dept_id || null;
@@ -149,7 +151,7 @@ export async function createUser(org_id, userData) {
                 const [newDeptId] = await trx('iam_departments').insert({ dept_name: deptName, org_id: org_id });
                 resolvedDeptId = newDeptId;
             } else {
-                resolvedDeptId = dept.dept_id;
+                resolvedDeptId = dept.id;
             }
         }
 
@@ -188,7 +190,7 @@ export async function markForDelete(orgId, userId) {
 
 export async function forceDelete(orgId, userId) {
     const affected = await db('iam_users')
-        .where({ user_id: userId, org_id: orgId })
+        .where({ id: userId, org_id: orgId })
         .del();
     if (affected === 0) throw new AppError('User not found', 404);
     return true;
@@ -205,7 +207,7 @@ export async function updateUser(orgId, userId, updateData) {
     if (updateData.email) {
         const existing = await db('iam_users')
             .where({ email: updateData.email })
-            .andWhereNot({ user_id: userId })
+            .andWhereNot({ id: userId })
             .first();
         if (existing) throw new AppError('Email is already taken', 400);
     }
@@ -213,7 +215,7 @@ export async function updateUser(orgId, userId, updateData) {
     if (updateData.phone_no && updateData.phone_no.trim() !== '') {
         const existing = await db('iam_users')
             .where({ phone_no: updateData.phone_no.trim() })
-            .andWhereNot({ user_id: userId })
+            .andWhereNot({ id: userId })
             .first();
         if (existing) throw new AppError('Mobile number is already taken', 400);
     }
@@ -252,13 +254,13 @@ export async function updateUser(orgId, userId, updateData) {
             const [newDeptId] = await db('iam_departments').insert({ dept_name: deptName, org_id: orgId });
             updates.dept_id = newDeptId;
         } else {
-            updates.dept_id = dept.dept_id;
+            updates.dept_id = dept.id;
         }
     }
 
     if (Object.keys(updates).length > 0) {
         const affected = await db('iam_users')
-            .where('user_id', userId)
+            .where('id', userId)
             .andWhere('org_id', orgId)
             .update(updates);
 
@@ -287,7 +289,7 @@ export async function bulkValidateUsers(orgId, users) {
     });
 
     if (inputEmails.size > 0) {
-        const existingUsers = await db('iam_users').whereIn('email', Array.from(inputEmails)).select('email', 'user_id');
+        const existingUsers = await db('iam_users').whereIn('email', Array.from(inputEmails)).select('email', 'id');
         const existingEmailSet = new Set(existingUsers.map(u => u.email));
 
         let existingPhoneSet = new Set();
@@ -352,7 +354,7 @@ export async function bulkInsertUsers(orgId, users) {
                 const [newId] = await trx('iam_departments').insert({ dept_name: deptName, org_id: orgId });
                 deptMap[deptName.toLowerCase()] = newId;
             } else {
-                deptMap[deptName.toLowerCase()] = dept.dept_id;
+                deptMap[deptName.toLowerCase()] = dept.id;
             }
         }
         for (const desgName of uniqueDesgs) {
@@ -362,11 +364,11 @@ export async function bulkInsertUsers(orgId, users) {
                 const [newId] = await trx('iam_designations').insert({ desg_name: desgName, org_id: orgId });
                 desgMap[desgName.toLowerCase()] = newId;
             } else {
-                desgMap[desgName.toLowerCase()] = desg.desg_id;
+                desgMap[desgName.toLowerCase()] = desg.id;
             }
         }
 
-        const org = await trx('org_organizations').where({ org_id: orgId }).forUpdate().first();
+        const org = await trx('org_organizations').where({ id: orgId }).forUpdate().first();
         if (!org) throw new AppError('Organization not found', 404);
         let nextUserNumber = org.last_user_number;
 
@@ -413,7 +415,7 @@ export async function bulkInsertUsers(orgId, users) {
             }
         }
 
-        await trx('org_organizations').where({ org_id: orgId }).update({ last_user_number: nextUserNumber });
+        await trx('org_organizations').where({ id: orgId }).update({ last_user_number: nextUserNumber });
     });
 
     return results;

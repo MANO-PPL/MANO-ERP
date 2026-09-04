@@ -87,7 +87,7 @@ export async function getProjectParties(projectId, fields, orgId) {
 
     const parties = await db('proj_parties as pp')
         .join('crm_contacts as c', 'pp.contact_id', 'c.id')
-        .leftJoin('crm_job_nature as jn', 'c.job_nature_id', 'jn.job_id')
+        .leftJoin('crm_job_nature as jn', 'c.job_nature_id', 'jn.id')
         .where('pp.project_id', projectId)
         .select(selectedFields)
         .orderBy('c.name', 'asc');

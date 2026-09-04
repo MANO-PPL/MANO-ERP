@@ -17,7 +17,7 @@ export async function deleteDepartment(orgId, deptId) {
     const inUse = await db('iam_users').where({ org_id: orgId, dept_id: deptId }).first();
     if (inUse) throw new AppError('Cannot delete: This Department is currently assigned to one or more users.', 400);
 
-    return await db('iam_departments').where({ org_id: orgId, dept_id: deptId }).delete();
+    return await db('iam_departments').where({ org_id: orgId, id: deptId }).delete();
 }
 
 export default {

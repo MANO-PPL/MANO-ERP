@@ -28,7 +28,7 @@ export async function findOrCreateSector(orgId, sectorName, connection = db) {
         .where({ org_id: orgId })
         .first();
 
-    if (existing) return existing.sector_id;
+    if (existing) return existing.id;
 
     const [newId] = await connection('crm_sectors').insert({ sector_name: trimmed, org_id: orgId });
     return newId;
@@ -42,7 +42,7 @@ export async function createSector(orgId, sectorName) {
         .where({ org_id: orgId })
         .first();
 
-    if (existing) return existing.sector_id;
+    if (existing) return existing.id;
 
     const [newId] = await db('crm_sectors').insert({ sector_name: trimmed, org_id: orgId });
     return newId;
@@ -53,7 +53,7 @@ export async function deleteSector(orgId, sectorId) {
     const inUse = await db('crm_contacts').where({ sector_id: sectorId, org_id: orgId }).first();
     if (inUse) throw new AppError('Cannot delete: This Sector is currently assigned to one or more contacts.', 400);
 
-    return await db('crm_sectors').where({ sector_id: sectorId, org_id: orgId }).delete();
+    return await db('crm_sectors').where({ id: sectorId, org_id: orgId }).delete();
 }
 
 export default {

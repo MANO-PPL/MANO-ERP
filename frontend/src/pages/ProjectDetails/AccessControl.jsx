@@ -46,7 +46,7 @@ const DeleteTemplateModal = ({ open, onClose, onConfirm, template, isDeleting })
     if (!open || !template) return null;
     return (
         <AnimatePresence>
-            <div 
+            <div
                 className="fixed inset-0 bg-black/50 backdrop-blur-xs z-[9999] flex items-center justify-center p-4"
                 onClick={onClose}
             >
@@ -159,7 +159,7 @@ const ProjectTemplateEditorModal = ({ open, onClose, onSave, templateToEdit, isS
 
     return (
         <AnimatePresence>
-            <div 
+            <div
                 className="fixed inset-0 bg-black/50 backdrop-blur-xs z-[9999] flex items-center justify-center p-4"
                 onClick={onClose}
             >
@@ -339,7 +339,7 @@ const AccessControl = () => {
                 setMembers(mappedMembers);
 
                 if (selectedMember) {
-                    const updated = mappedMembers.find(x => x.user_id === selectedMember.user_id);
+                    const updated = mappedMembers.find(x => x.id === selectedMember.id);
                     if (updated) {
                         setSelectedMember(updated);
                         setLocalPermissions(updated.permissions);
@@ -410,7 +410,7 @@ const AccessControl = () => {
             }
 
             await projectApi.assignProjectMember(id, {
-                user_id: selectedMember.user_id,
+                id: selectedMember.id,
                 permissions: backendPerms
             });
             toast.success(`Successfully saved permissions for ${selectedMember.user_name}`);
@@ -465,7 +465,7 @@ const AccessControl = () => {
         setIsAdding(true);
         try {
             await projectApi.assignProjectMember(id, {
-                user_id: parseInt(selectedNewUser),
+                id: parseInt(selectedNewUser),
                 permissions: {}
             });
             toast.success('Member assigned to project');
@@ -484,7 +484,7 @@ const AccessControl = () => {
         try {
             await projectApi.removeProjectMember(id, userId);
             toast.success(`${name} removed from project`);
-            if (selectedMember && selectedMember.user_id === userId) {
+            if (selectedMember && selectedMember.id === userId) {
                 setSelectedMember(null);
             }
             await loadData();
@@ -494,54 +494,54 @@ const AccessControl = () => {
         }
     };
 
-// ─── Custom Shimmer Skeleton Rendering Component ─────────────────────────────
-const AccessControlSkeleton = () => (
-    <div className="flex-1 flex overflow-hidden bg-white dark:bg-[#0d1117] text-gray-900 dark:text-gray-100">
-        {/* Left Skeleton Panel */}
-        <div className="w-[270px] sm:w-[280px] border-r border-gray-200 dark:border-white/10 flex flex-col p-3 space-y-3 shrink-0">
-            <div className="h-3 bg-gray-200 dark:bg-white/10 rounded w-1/2 animate-pulse" />
-            <div className="h-8 bg-gray-100 dark:bg-white/5 rounded-md w-full animate-pulse" />
-            <div className="space-y-1.5 pt-1">
-                {[1, 2, 3, 4, 5].map(i => (
-                    <div key={i} className="flex items-center gap-2.5 p-2 rounded-md bg-gray-50 dark:bg-white/[0.02] border border-gray-100 dark:border-white/5 animate-pulse">
-                        <div className="w-7 h-7 rounded-md bg-gray-200 dark:bg-white/10 shrink-0" />
-                        <div className="space-y-1 flex-1">
-                            <div className="h-3 bg-gray-200 dark:bg-white/10 rounded w-3/4" />
-                            <div className="h-2 bg-gray-200 dark:bg-white/5 rounded w-1/2" />
+    // ─── Custom Shimmer Skeleton Rendering Component ─────────────────────────────
+    const AccessControlSkeleton = () => (
+        <div className="flex-1 flex overflow-hidden bg-white dark:bg-[#0d1117] text-gray-900 dark:text-gray-100">
+            {/* Left Skeleton Panel */}
+            <div className="w-[270px] sm:w-[280px] border-r border-gray-200 dark:border-white/10 flex flex-col p-3 space-y-3 shrink-0">
+                <div className="h-3 bg-gray-200 dark:bg-white/10 rounded w-1/2 animate-pulse" />
+                <div className="h-8 bg-gray-100 dark:bg-white/5 rounded-md w-full animate-pulse" />
+                <div className="space-y-1.5 pt-1">
+                    {[1, 2, 3, 4, 5].map(i => (
+                        <div key={i} className="flex items-center gap-2.5 p-2 rounded-md bg-gray-50 dark:bg-white/[0.02] border border-gray-100 dark:border-white/5 animate-pulse">
+                            <div className="w-7 h-7 rounded-md bg-gray-200 dark:bg-white/10 shrink-0" />
+                            <div className="space-y-1 flex-1">
+                                <div className="h-3 bg-gray-200 dark:bg-white/10 rounded w-3/4" />
+                                <div className="h-2 bg-gray-200 dark:bg-white/5 rounded w-1/2" />
+                            </div>
                         </div>
-                    </div>
-                ))}
-            </div>
-        </div>
-        {/* Right Skeleton Panel */}
-        <div className="flex-1 p-4 sm:p-5 space-y-4">
-            <div className="p-3.5 rounded-md border border-gray-200 dark:border-white/10 space-y-3 animate-pulse">
-                <div className="h-3.5 bg-gray-200 dark:bg-white/10 rounded w-1/3" />
-                <div className="grid grid-cols-3 gap-2">
-                    {[1, 2, 3].map(i => (
-                        <div key={i} className="h-14 bg-gray-100 dark:bg-white/5 rounded-md" />
                     ))}
                 </div>
             </div>
-            <div className="space-y-2 border border-gray-200 dark:border-white/10 rounded-md p-3 animate-pulse">
-                <div className="h-3.5 bg-gray-200 dark:bg-white/10 rounded w-1/4 mb-2" />
-                {[1, 2, 3, 4, 5, 6].map(i => (
-                    <div key={i} className="h-9 bg-gray-50 dark:bg-white/[0.02] rounded-md flex justify-between items-center px-3">
-                        <div className="h-3 bg-gray-200 dark:bg-white/10 rounded w-1/4" />
-                        <div className="flex gap-1.5">
-                            <div className="w-10 h-6 bg-gray-200 dark:bg-white/10 rounded" />
-                            <div className="w-10 h-6 bg-gray-200 dark:bg-white/10 rounded" />
-                            <div className="w-10 h-6 bg-gray-200 dark:bg-white/10 rounded" />
-                        </div>
+            {/* Right Skeleton Panel */}
+            <div className="flex-1 p-4 sm:p-5 space-y-4">
+                <div className="p-3.5 rounded-md border border-gray-200 dark:border-white/10 space-y-3 animate-pulse">
+                    <div className="h-3.5 bg-gray-200 dark:bg-white/10 rounded w-1/3" />
+                    <div className="grid grid-cols-3 gap-2">
+                        {[1, 2, 3].map(i => (
+                            <div key={i} className="h-14 bg-gray-100 dark:bg-white/5 rounded-md" />
+                        ))}
                     </div>
-                ))}
+                </div>
+                <div className="space-y-2 border border-gray-200 dark:border-white/10 rounded-md p-3 animate-pulse">
+                    <div className="h-3.5 bg-gray-200 dark:bg-white/10 rounded w-1/4 mb-2" />
+                    {[1, 2, 3, 4, 5, 6].map(i => (
+                        <div key={i} className="h-9 bg-gray-50 dark:bg-white/[0.02] rounded-md flex justify-between items-center px-3">
+                            <div className="h-3 bg-gray-200 dark:bg-white/10 rounded w-1/4" />
+                            <div className="flex gap-1.5">
+                                <div className="w-10 h-6 bg-gray-200 dark:bg-white/10 rounded" />
+                                <div className="w-10 h-6 bg-gray-200 dark:bg-white/10 rounded" />
+                                <div className="w-10 h-6 bg-gray-200 dark:bg-white/10 rounded" />
+                            </div>
+                        </div>
+                    ))}
+                </div>
             </div>
         </div>
-    </div>
-);
+    );
 
-    const memberUserIds = new Set(members.map(m => m.user_id));
-    const nonMembers = allUsers.filter(u => !memberUserIds.has(u.user_id || u.id));
+    const memberUserIds = new Set(members.map(m => m.id));
+    const nonMembers = allUsers.filter(u => !memberUserIds.has(u.id || u.id));
 
     if (isLoading) {
         return <AccessControlSkeleton />;
@@ -567,7 +567,7 @@ const AccessControlSkeleton = () => (
                         >
                             <option value="">Select a user...</option>
                             {nonMembers.map(u => (
-                                <option key={u.user_id || u.id} value={u.user_id || u.id}>
+                                <option key={u.id || u.id} value={u.id || u.id}>
                                     {u.user_name || u.name} ({u.email || u.email_id})
                                 </option>
                             ))}
@@ -592,12 +592,12 @@ const AccessControlSkeleton = () => (
                     ) : (
                         members.map((member, idx) => (
                             <motion.div
-                                key={member.user_id}
+                                key={member.id}
                                 initial={{ opacity: 0, x: -8 }}
                                 animate={{ opacity: 1, x: 0 }}
                                 transition={{ duration: 0.2, delay: idx * 0.03, ease: 'easeOut' }}
                                 onClick={() => handleSelectMember(member)}
-                                className={`flex items-center justify-between px-2.5 py-2 rounded-md cursor-pointer group transition-all ${selectedMember?.user_id === member.user_id
+                                className={`flex items-center justify-between px-2.5 py-2 rounded-md cursor-pointer group transition-all ${selectedMember?.id === member.id
                                     ? 'bg-blue-50 dark:bg-blue-900/20 border border-blue-200/50 dark:border-blue-500/30 shadow-xs'
                                     : 'hover:bg-gray-100 dark:hover:bg-white/[0.02] border border-transparent'
                                     }`}
@@ -607,7 +607,7 @@ const AccessControlSkeleton = () => (
                                         {member.user_name.split(' ').map(n => n[0]).join('').slice(0, 2)}
                                     </div>
                                     <div className="min-w-0">
-                                        <p className={`text-xs font-bold truncate ${selectedMember?.user_id === member.user_id ? 'text-blue-600 dark:text-blue-400' : 'text-gray-800 dark:text-gray-200'}`}>
+                                        <p className={`text-xs font-bold truncate ${selectedMember?.id === member.id ? 'text-blue-600 dark:text-blue-400' : 'text-gray-800 dark:text-gray-200'}`}>
                                             {member.user_name}
                                         </p>
                                         <p className="text-[10px] text-gray-400 dark:text-gray-500 truncate">
@@ -618,7 +618,7 @@ const AccessControlSkeleton = () => (
                                 <button
                                     onClick={(e) => {
                                         e.stopPropagation();
-                                        handleRemoveMember(member.user_id, member.user_name);
+                                        handleRemoveMember(member.id, member.user_name);
                                     }}
                                     className="p-1 text-gray-400 hover:text-red-500 rounded-md hover:bg-gray-100 dark:hover:bg-white/5 opacity-0 group-hover:opacity-100 transition-opacity shrink-0"
                                     title="Remove from project"
@@ -636,7 +636,7 @@ const AccessControlSkeleton = () => (
                 <AnimatePresence mode="wait">
                     {selectedMember ? (
                         <motion.div
-                            key={selectedMember.user_id}
+                            key={selectedMember.id}
                             initial={{ opacity: 0, y: 8, scale: 0.99 }}
                             animate={{ opacity: 1, y: 0, scale: 1 }}
                             exit={{ opacity: 0, y: -8, scale: 0.99 }}

@@ -1,8 +1,8 @@
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { useParams, useSearchParams } from 'react-router-dom';
-import { 
-    ChevronDown, ChevronRight, Filter, Search, Plus, Pencil, Trash2, X, Check, GripVertical, 
-    LayoutList, LayoutGrid, Clock, AlertCircle, CheckCircle2, UserPlus, Calendar, ArrowRight, 
+import {
+    ChevronDown, ChevronRight, Filter, Search, Plus, Pencil, Trash2, X, Check, GripVertical,
+    LayoutList, LayoutGrid, Clock, AlertCircle, CheckCircle2, UserPlus, Calendar, ArrowRight,
     Tag, SlidersHorizontal, Layers, Sparkles, AlertTriangle, User, MoreVertical,
     Copy, ClipboardPaste, Download, RotateCcw, ArrowDown, ArrowRight as ArrowRightIcon
 } from 'lucide-react';
@@ -56,7 +56,7 @@ const Tasks = ({ setExtraBreadcrumbs, projectPermissions, isAdmin }) => {
     const [projectMembers, setProjectMembers] = useState([]);
     const [loading, setLoading] = useState(true);
     const [expandedLists, setExpandedLists] = useState({});
-    
+
     const [addingTaskInList, setAddingTaskInList] = useState(null); // categoryName
     const [editingCategory, setEditingCategory] = useState(null); // { id, name }
     const [editingTaskName, setEditingTaskName] = useState(null); // { id, name }
@@ -75,14 +75,14 @@ const Tasks = ({ setExtraBreadcrumbs, projectPermissions, isAdmin }) => {
 
     const [hoveredRow, setHoveredRow] = useState(null); // { groupIdx, taskIdx }
     const [hoveredCategory, setHoveredCategory] = useState(null); // categoryId
-    
+
     // Drag and Drop State
     const [draggedItem, setDraggedItem] = useState(null); // { groupIdx, taskIdx }
     const [draggedBoardTaskId, setDraggedBoardTaskId] = useState(null);
 
     // ── Excel Grid State ───────────────────────────────────────────────────────
     const [selectionAnchor, setSelectionAnchor] = useState(null);  // { r: flatRowIndex, c: colIndex }
-    const [selectionFocus, setSelectionFocus]   = useState(null);
+    const [selectionFocus, setSelectionFocus] = useState(null);
     const [isMouseDown, setIsMouseDown] = useState(false);
     const [editingCell, setEditingCell] = useState(null);          // { flatRowIndex, colName }
     const [contextMenu, setContextMenu] = useState(null);          // { x, y, r, c }
@@ -213,7 +213,7 @@ const Tasks = ({ setExtraBreadcrumbs, projectPermissions, isAdmin }) => {
         }
         clipboardRef.current = { rows: lines, colStart: 0 };
         const tsvText = lines.map(r => r.join('\t')).join('\n');
-        navigator.clipboard.writeText(tsvText).catch(() => {});
+        navigator.clipboard.writeText(tsvText).catch(() => { });
         toast.info(`Copied ${lines.length} full row${lines.length > 1 ? 's' : ''} to clipboard`);
     }, [getSelectionBounds, flatGridRows]);
 
@@ -522,16 +522,16 @@ const Tasks = ({ setExtraBreadcrumbs, projectPermissions, isAdmin }) => {
             const totalRows = flatGridRows.length;
             const totalCols = TASK_GRID_COLS.length;
             let { r, c } = selectionFocus || selectionAnchor;
-            if (e.key === 'ArrowDown')  { e.preventDefault(); r = mod ? totalRows - 1 : Math.min(r + 1, totalRows - 1); }
-            if (e.key === 'ArrowUp')    { e.preventDefault(); r = mod ? 0 : Math.max(r - 1, 0); }
+            if (e.key === 'ArrowDown') { e.preventDefault(); r = mod ? totalRows - 1 : Math.min(r + 1, totalRows - 1); }
+            if (e.key === 'ArrowUp') { e.preventDefault(); r = mod ? 0 : Math.max(r - 1, 0); }
             if (e.key === 'ArrowRight') { e.preventDefault(); c = mod ? totalCols - 1 : Math.min(c + 1, totalCols - 1); }
-            if (e.key === 'ArrowLeft')  { e.preventDefault(); c = mod ? 0 : Math.max(c - 1, 0); }
-            if (e.key === 'Tab')        { e.preventDefault(); c = e.shiftKey ? Math.max(c - 1, 0) : Math.min(c + 1, totalCols - 1); }
-            if (e.key === 'Enter')      { e.preventDefault(); r = e.shiftKey ? Math.max(r - 1, 0) : Math.min(r + 1, totalRows - 1); }
-            if (e.key === 'Home')       { e.preventDefault(); c = 0; if (mod) r = 0; }
-            if (e.key === 'End')        { e.preventDefault(); c = totalCols - 1; if (mod) r = totalRows - 1; }
-            if (e.key === 'PageUp')     { e.preventDefault(); r = Math.max(0, r - 10); }
-            if (e.key === 'PageDown')   { e.preventDefault(); r = Math.min(totalRows - 1, r + 10); }
+            if (e.key === 'ArrowLeft') { e.preventDefault(); c = mod ? 0 : Math.max(c - 1, 0); }
+            if (e.key === 'Tab') { e.preventDefault(); c = e.shiftKey ? Math.max(c - 1, 0) : Math.min(c + 1, totalCols - 1); }
+            if (e.key === 'Enter') { e.preventDefault(); r = e.shiftKey ? Math.max(r - 1, 0) : Math.min(r + 1, totalRows - 1); }
+            if (e.key === 'Home') { e.preventDefault(); c = 0; if (mod) r = 0; }
+            if (e.key === 'End') { e.preventDefault(); c = totalCols - 1; if (mod) r = totalRows - 1; }
+            if (e.key === 'PageUp') { e.preventDefault(); r = Math.max(0, r - 10); }
+            if (e.key === 'PageDown') { e.preventDefault(); r = Math.min(totalRows - 1, r + 10); }
 
             // Space selection
             if (e.key === ' ' || e.key === 'Spacebar') {
@@ -551,7 +551,7 @@ const Tasks = ({ setExtraBreadcrumbs, projectPermissions, isAdmin }) => {
                 }
             }
 
-            if (['ArrowDown','ArrowUp','ArrowRight','ArrowLeft','Tab','Enter','Home','End','PageUp','PageDown'].includes(e.key)) {
+            if (['ArrowDown', 'ArrowUp', 'ArrowRight', 'ArrowLeft', 'Tab', 'Enter', 'Home', 'End', 'PageUp', 'PageDown'].includes(e.key)) {
                 if (e.shiftKey && e.key !== 'Tab' && e.key !== 'Enter') {
                     setSelectionFocus({ r, c });
                 } else {
@@ -728,8 +728,8 @@ const Tasks = ({ setExtraBreadcrumbs, projectPermissions, isAdmin }) => {
             }
         } catch (err) {
             console.error("Failed to load tasks:", err);
-            const msg = err.response?.status === 403 
-                ? "Access restricted: You do not have permission to view project tasks." 
+            const msg = err.response?.status === 403
+                ? "Access restricted: You do not have permission to view project tasks."
                 : (err.response?.data?.message || "Failed to load tasks");
             toast.error(msg);
         }
@@ -785,7 +785,7 @@ const Tasks = ({ setExtraBreadcrumbs, projectPermissions, isAdmin }) => {
 
         const previousTaskData = JSON.parse(JSON.stringify(taskData));
         const tempId = `temp-${Date.now()}`;
-        
+
         let calculatedDurationVal = null;
         if (newTask.startDate && newTask.dueDate) {
             const start = new Date(newTask.startDate);
@@ -972,7 +972,7 @@ const Tasks = ({ setExtraBreadcrumbs, projectPermissions, isAdmin }) => {
     // OPTIMISTIC TASK DELETE
     const handleDeleteTask = async (taskId) => {
         if (!window.confirm('Are you sure you want to delete this task?')) return;
-        
+
         const previousTaskData = JSON.parse(JSON.stringify(taskData));
 
         setTaskData(currentData => currentData.map(group => ({
@@ -1158,12 +1158,12 @@ const Tasks = ({ setExtraBreadcrumbs, projectPermissions, isAdmin }) => {
     };
 
     const renderTaskAssignees = (taskId, assigneeIds) => {
-        const assignedUsers = projectMembers.filter(m => (assigneeIds || []).includes(m.user_id));
+        const assignedUsers = projectMembers.filter(m => (assigneeIds || []).includes(m.id));
         const isOpen = assigneePopoverTaskId === taskId;
 
         return (
             <div className="relative inline-block" onClick={(e) => e.stopPropagation()}>
-                <div 
+                <div
                     className="flex items-center space-x-1 cursor-pointer group/assignee px-1 py-0.5 rounded hover:bg-gray-100 dark:hover:bg-white/5 transition-colors"
                     onClick={() => setAssigneePopoverTaskId(isOpen ? null : taskId)}
                     title="Click to assign members"
@@ -1175,8 +1175,8 @@ const Tasks = ({ setExtraBreadcrumbs, projectPermissions, isAdmin }) => {
                                     ? user.user_name.split(' ').map(n => n[0]).join('').toUpperCase().slice(0, 2)
                                     : 'U';
                                 return (
-                                    <div 
-                                        key={user.user_id}
+                                    <div
+                                        key={user.id}
                                         className="w-6 h-6 rounded-full bg-blue-600 border border-white dark:border-[#0d1117] flex items-center justify-center text-[9px] font-bold text-white shadow-xs"
                                         title={user.user_name}
                                     >
@@ -1200,7 +1200,7 @@ const Tasks = ({ setExtraBreadcrumbs, projectPermissions, isAdmin }) => {
 
                 {/* Assignee Popover Dropdown */}
                 {isOpen && (
-                    <div 
+                    <div
                         className="absolute top-full left-0 mt-1.5 w-60 bg-white dark:bg-[#161b22] border border-gray-200 dark:border-gray-700 rounded-lg shadow-2xl py-2 z-[130] anim-fade-in text-left divide-y divide-gray-100 dark:divide-gray-800"
                         onClick={(e) => e.stopPropagation()}
                     >
@@ -1215,15 +1215,15 @@ const Tasks = ({ setExtraBreadcrumbs, projectPermissions, isAdmin }) => {
                                 <div className="px-3 py-2 text-xs text-gray-400 italic">No members in project</div>
                             ) : (
                                 projectMembers.map(member => {
-                                    const isAssigned = (assigneeIds || []).includes(member.user_id);
+                                    const isAssigned = (assigneeIds || []).includes(member.id);
                                     const initials = member.user_name
                                         ? member.user_name.split(' ').map(n => n[0]).join('').toUpperCase().slice(0, 2)
                                         : 'U';
                                     return (
                                         <div
-                                            key={member.user_id}
+                                            key={member.id}
                                             className={`px-3 py-1.5 text-xs flex items-center justify-between cursor-pointer transition-colors ${isAssigned ? 'bg-blue-50/70 dark:bg-blue-900/20 text-blue-600 dark:text-blue-400 font-semibold' : 'text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-white/5'}`}
-                                            onClick={() => handleToggleAssignee(taskId, member.user_id)}
+                                            onClick={() => handleToggleAssignee(taskId, member.id)}
                                         >
                                             <div className="flex items-center space-x-2 truncate">
                                                 <div className="w-5 h-5 rounded-full bg-blue-500 flex items-center justify-center text-[8px] font-bold text-white shrink-0">
@@ -1268,7 +1268,7 @@ const Tasks = ({ setExtraBreadcrumbs, projectPermissions, isAdmin }) => {
                 const taskName = task.name?.toLowerCase() || '';
                 const taskCode = (task.task_code || task.id || '').toString().toLowerCase();
                 const catName = group.listName?.toLowerCase() || '';
-                const assignedMembers = projectMembers.filter(m => (task.assigneeIds || []).includes(m.user_id));
+                const assignedMembers = projectMembers.filter(m => (task.assigneeIds || []).includes(m.id));
                 const assigneeNames = assignedMembers.map(m => m.user_name?.toLowerCase() || '').join(' ');
                 matchesSearch = taskName.includes(query) || taskCode.includes(query) || catName.includes(query) || assigneeNames.includes(query);
             }
@@ -1292,13 +1292,13 @@ const Tasks = ({ setExtraBreadcrumbs, projectPermissions, isAdmin }) => {
 
     return (
         <div className="flex-1 flex flex-col overflow-hidden bg-white dark:bg-[#0d1117] transition-colors h-full text-left font-sans">
-            
+
             {/* STATS OVERVIEW BAR */}
             <div className="px-5 py-3 border-b border-gray-200 dark:border-gh-border bg-[#f9fafb] dark:bg-gh-bg">
                 <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
-                    
+
                     {/* Total Tasks Card */}
-                    <div 
+                    <div
                         onClick={() => { setQuickStatFilter('all'); setStatusFilter('All'); setPriorityFilter('All'); }}
                         className={`p-3 rounded-lg border transition-all cursor-pointer ${quickStatFilter === 'all' ? 'border-blue-500 bg-blue-50/50 dark:bg-blue-900/20 shadow-xs ring-1 ring-blue-500/20' : 'border-gray-200 dark:border-gh-border bg-white dark:bg-[#161b22] hover:border-gray-300 dark:hover:border-gray-700'}`}
                     >
@@ -1313,7 +1313,7 @@ const Tasks = ({ setExtraBreadcrumbs, projectPermissions, isAdmin }) => {
                     </div>
 
                     {/* Completed Tasks Card */}
-                    <div 
+                    <div
                         onClick={() => setQuickStatFilter(quickStatFilter === 'completed' ? 'all' : 'completed')}
                         className={`p-3 rounded-lg border transition-all cursor-pointer ${quickStatFilter === 'completed' ? 'border-green-500 bg-green-50/50 dark:bg-green-900/20 shadow-xs ring-1 ring-green-500/20' : 'border-gray-200 dark:border-gh-border bg-white dark:bg-[#161b22] hover:border-gray-300 dark:hover:border-gray-700'}`}
                     >
@@ -1333,7 +1333,7 @@ const Tasks = ({ setExtraBreadcrumbs, projectPermissions, isAdmin }) => {
                     </div>
 
                     {/* In Progress Card */}
-                    <div 
+                    <div
                         onClick={() => setQuickStatFilter(quickStatFilter === 'in_progress' ? 'all' : 'in_progress')}
                         className={`p-3 rounded-lg border transition-all cursor-pointer ${quickStatFilter === 'in_progress' ? 'border-blue-500 bg-blue-50/50 dark:bg-blue-900/20 shadow-xs ring-1 ring-blue-500/20' : 'border-gray-200 dark:border-gh-border bg-white dark:bg-[#161b22] hover:border-gray-300 dark:hover:border-gray-700'}`}
                     >
@@ -1348,7 +1348,7 @@ const Tasks = ({ setExtraBreadcrumbs, projectPermissions, isAdmin }) => {
                     </div>
 
                     {/* High Priority Card */}
-                    <div 
+                    <div
                         onClick={() => setQuickStatFilter(quickStatFilter === 'high_priority' ? 'all' : 'high_priority')}
                         className={`p-3 rounded-lg border transition-all cursor-pointer ${quickStatFilter === 'high_priority' ? 'border-red-500 bg-red-50/50 dark:bg-red-900/20 shadow-xs ring-1 ring-red-500/20' : 'border-gray-200 dark:border-gh-border bg-white dark:bg-[#161b22] hover:border-gray-300 dark:hover:border-gray-700'}`}
                     >
@@ -1363,7 +1363,7 @@ const Tasks = ({ setExtraBreadcrumbs, projectPermissions, isAdmin }) => {
                     </div>
 
                     {/* Overdue Card */}
-                    <div 
+                    <div
                         onClick={() => setQuickStatFilter(quickStatFilter === 'overdue' ? 'all' : 'overdue')}
                         className={`p-3 rounded-lg border transition-all cursor-pointer col-span-2 sm:col-span-1 ${quickStatFilter === 'overdue' ? 'border-amber-500 bg-amber-50/50 dark:bg-amber-900/20 shadow-xs ring-1 ring-amber-500/20' : 'border-gray-200 dark:border-gh-border bg-white dark:bg-[#161b22] hover:border-gray-300 dark:hover:border-gray-700'}`}
                     >
@@ -1382,10 +1382,10 @@ const Tasks = ({ setExtraBreadcrumbs, projectPermissions, isAdmin }) => {
 
             {/* CONTROL TOOLBAR */}
             <div className="flex flex-col sm:flex-row sm:items-center justify-between px-5 py-2.5 border-b border-gray-200 dark:border-gh-border bg-white dark:bg-[#0d1117] gap-3">
-                
+
                 {/* Left: View Switcher & Search */}
                 <div className="flex flex-wrap items-center gap-3">
-                    
+
                     {/* View Switcher Toggle */}
                     <div className="flex items-center bg-gray-100 dark:bg-[#161b22] p-0.5 rounded-lg border border-gray-200 dark:border-gh-border">
                         <button
@@ -1425,7 +1425,7 @@ const Tasks = ({ setExtraBreadcrumbs, projectPermissions, isAdmin }) => {
 
                 {/* Right: Filters & Action Buttons */}
                 <div className="flex flex-wrap items-center gap-3">
-                    
+
                     {/* Status Filter */}
                     <div className="relative">
                         <div
@@ -1538,597 +1538,597 @@ const Tasks = ({ setExtraBreadcrumbs, projectPermissions, isAdmin }) => {
                 className="flex-1 overflow-auto [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden"
             >
                 {viewMode === 'list' ? (
-                    
+
                     /* LIST / TABLE VIEW */
                     <>
-                    {/* Excel Context Menu */}
-                    {contextMenu && (
-                        <div
-                            className="fixed z-[200] w-56 bg-white dark:bg-[#161b22] border border-gray-200 dark:border-gray-700 rounded-xl shadow-2xl py-1.5 text-xs anim-fade-in"
-                            style={{ left: contextMenu.x, top: contextMenu.y }}
-                            onClick={e => e.stopPropagation()}
-                        >
-                            <div className="px-3 py-1.5 font-semibold text-[10px] uppercase tracking-wider text-gray-400 border-b border-gray-100 dark:border-gray-800 mb-1">Cell Actions</div>
-                            <button onClick={() => { handleExcelCopy(); setContextMenu(null); }} className="w-full text-left px-3 py-1.5 hover:bg-gray-50 dark:hover:bg-white/5 flex items-center space-x-2 text-gray-700 dark:text-gray-300">
-                                <Copy size={12} /><span>Copy Cells</span><span className="ml-auto text-gray-400 font-mono text-[10px]">Ctrl+C</span>
-                            </button>
-                            <button onClick={() => { handleCopyRows(); setContextMenu(null); }} className="w-full text-left px-3 py-1.5 hover:bg-blue-50 dark:hover:bg-blue-950/20 flex items-center space-x-2 text-blue-700 dark:text-blue-300">
-                                <Copy size={12} /><span>Copy Full Row(s)</span>
-                            </button>
-                            <button onClick={() => { handleExcelPaste(); setContextMenu(null); }} className="w-full text-left px-3 py-1.5 hover:bg-gray-50 dark:hover:bg-white/5 flex items-center space-x-2 text-gray-700 dark:text-gray-300">
-                                <ClipboardPaste size={12} /><span>Paste</span><span className="ml-auto text-gray-400 font-mono text-[10px]">Ctrl+V</span>
-                            </button>
-                            <button onClick={() => { handleFillDown(); setContextMenu(null); }} className="w-full text-left px-3 py-1.5 hover:bg-gray-50 dark:hover:bg-white/5 flex items-center space-x-2 text-gray-700 dark:text-gray-300">
-                                <ArrowDown size={12} /><span>Fill Down</span><span className="ml-auto text-gray-400 font-mono text-[10px]">Ctrl+D</span>
-                            </button>
-                            <div className="border-t border-gray-100 dark:border-gray-800 mt-1 pt-1"></div>
-                            <button onClick={() => { handleDeleteSelected(); setContextMenu(null); }} className="w-full text-left px-3 py-1.5 hover:bg-red-50 dark:hover:bg-red-950/20 flex items-center space-x-2 text-red-600 dark:text-red-400">
-                                <Trash2 size={12} /><span>Clear Cells</span><span className="ml-auto text-gray-400 font-mono text-[10px]">Del</span>
-                            </button>
-                            <button onClick={() => { handleExcelUndo(); setContextMenu(null); }} className="w-full text-left px-3 py-1.5 hover:bg-gray-50 dark:hover:bg-white/5 flex items-center space-x-2 text-gray-700 dark:text-gray-300">
-                                <RotateCcw size={12} /><span>Undo</span><span className="ml-auto text-gray-400 font-mono text-[10px]">Ctrl+Z</span>
-                            </button>
-                            <div className="border-t border-gray-100 dark:border-gray-800 mt-1 pt-1"></div>
-                            <button onClick={() => { handleCSVExport(); setContextMenu(null); }} className="w-full text-left px-3 py-1.5 hover:bg-emerald-50 dark:hover:bg-emerald-950/20 flex items-center space-x-2 text-emerald-700 dark:text-emerald-400">
-                                <Download size={12} /><span>Export CSV</span>
-                            </button>
-                        </div>
-                    )}
-
-                    {/* Excel Floating Bulk Actions Toolbar */}
-                    {selectedRowIds.size > 0 && (
-                        <div className="sticky bottom-4 left-0 right-0 z-[120] flex justify-center pointer-events-none">
-                            <div className="pointer-events-auto inline-flex items-center gap-3 bg-gray-900 dark:bg-gray-950 text-white px-5 py-3 rounded-2xl shadow-2xl border border-gray-700/60 backdrop-blur-sm">
-                                <span className="text-xs font-semibold text-gray-300">{selectedRowIds.size} row{selectedRowIds.size > 1 ? 's' : ''} selected</span>
-                                <div className="w-px h-4 bg-gray-700"></div>
-                                <button onClick={handleDeleteSelectedRows} className="flex items-center space-x-1.5 text-xs font-semibold text-red-400 hover:text-red-300 transition-colors">
-                                    <Trash2 size={13} /><span>Delete</span>
+                        {/* Excel Context Menu */}
+                        {contextMenu && (
+                            <div
+                                className="fixed z-[200] w-56 bg-white dark:bg-[#161b22] border border-gray-200 dark:border-gray-700 rounded-xl shadow-2xl py-1.5 text-xs anim-fade-in"
+                                style={{ left: contextMenu.x, top: contextMenu.y }}
+                                onClick={e => e.stopPropagation()}
+                            >
+                                <div className="px-3 py-1.5 font-semibold text-[10px] uppercase tracking-wider text-gray-400 border-b border-gray-100 dark:border-gray-800 mb-1">Cell Actions</div>
+                                <button onClick={() => { handleExcelCopy(); setContextMenu(null); }} className="w-full text-left px-3 py-1.5 hover:bg-gray-50 dark:hover:bg-white/5 flex items-center space-x-2 text-gray-700 dark:text-gray-300">
+                                    <Copy size={12} /><span>Copy Cells</span><span className="ml-auto text-gray-400 font-mono text-[10px]">Ctrl+C</span>
                                 </button>
-                                <button onClick={handleCopyRows} title="Copy full rows to clipboard" className="flex items-center space-x-1.5 text-xs font-semibold text-blue-400 hover:text-blue-300 transition-colors">
-                                    <Copy size={13} /><span>Copy Rows</span>
+                                <button onClick={() => { handleCopyRows(); setContextMenu(null); }} className="w-full text-left px-3 py-1.5 hover:bg-blue-50 dark:hover:bg-blue-950/20 flex items-center space-x-2 text-blue-700 dark:text-blue-300">
+                                    <Copy size={12} /><span>Copy Full Row(s)</span>
                                 </button>
-                                <button onClick={handleExcelPaste} title="Paste copied rows below selection" className="flex items-center space-x-1.5 text-xs font-semibold text-emerald-400 hover:text-emerald-300 transition-colors">
-                                    <ClipboardPaste size={13} /><span>Paste</span>
+                                <button onClick={() => { handleExcelPaste(); setContextMenu(null); }} className="w-full text-left px-3 py-1.5 hover:bg-gray-50 dark:hover:bg-white/5 flex items-center space-x-2 text-gray-700 dark:text-gray-300">
+                                    <ClipboardPaste size={12} /><span>Paste</span><span className="ml-auto text-gray-400 font-mono text-[10px]">Ctrl+V</span>
                                 </button>
-                                <button onClick={() => { setSelectedRowIds(new Set()); setSelectionAnchor(null); setSelectionFocus(null); }} className="flex items-center space-x-1 text-xs font-semibold text-gray-400 hover:text-white transition-colors">
-                                    <X size={13} /><span>Clear</span>
+                                <button onClick={() => { handleFillDown(); setContextMenu(null); }} className="w-full text-left px-3 py-1.5 hover:bg-gray-50 dark:hover:bg-white/5 flex items-center space-x-2 text-gray-700 dark:text-gray-300">
+                                    <ArrowDown size={12} /><span>Fill Down</span><span className="ml-auto text-gray-400 font-mono text-[10px]">Ctrl+D</span>
+                                </button>
+                                <div className="border-t border-gray-100 dark:border-gray-800 mt-1 pt-1"></div>
+                                <button onClick={() => { handleDeleteSelected(); setContextMenu(null); }} className="w-full text-left px-3 py-1.5 hover:bg-red-50 dark:hover:bg-red-950/20 flex items-center space-x-2 text-red-600 dark:text-red-400">
+                                    <Trash2 size={12} /><span>Clear Cells</span><span className="ml-auto text-gray-400 font-mono text-[10px]">Del</span>
+                                </button>
+                                <button onClick={() => { handleExcelUndo(); setContextMenu(null); }} className="w-full text-left px-3 py-1.5 hover:bg-gray-50 dark:hover:bg-white/5 flex items-center space-x-2 text-gray-700 dark:text-gray-300">
+                                    <RotateCcw size={12} /><span>Undo</span><span className="ml-auto text-gray-400 font-mono text-[10px]">Ctrl+Z</span>
+                                </button>
+                                <div className="border-t border-gray-100 dark:border-gray-800 mt-1 pt-1"></div>
+                                <button onClick={() => { handleCSVExport(); setContextMenu(null); }} className="w-full text-left px-3 py-1.5 hover:bg-emerald-50 dark:hover:bg-emerald-950/20 flex items-center space-x-2 text-emerald-700 dark:text-emerald-400">
+                                    <Download size={12} /><span>Export CSV</span>
                                 </button>
                             </div>
-                        </div>
-                    )}
+                        )}
 
-                    <table
-                        className="w-full text-left text-xs border-collapse bg-white dark:bg-[#0d1117]"
-                        style={{ tableLayout: 'auto' }}
-                        onMouseLeave={() => isMouseDown && setIsMouseDown(false)}
-                    >
-                        <thead className="bg-[#f9fafb] dark:bg-[#161b22] text-gray-500 dark:text-gray-400 sticky top-0 z-10 border-b-2 border-gray-200 dark:border-gh-border tracking-wide font-semibold select-none">
-                            <tr>
-                                {/* Row Number Header */}
-                                <th
-                                    className="px-2 py-2.5 w-8 text-center cursor-pointer hover:bg-blue-50 dark:hover:bg-blue-900/20 transition-colors border-r border-gray-200 dark:border-gray-700/60"
-                                    onClick={handleSelectAll}
-                                    title="Select All (click)"
-                                >
-                                    <div className="w-4 h-4 border border-gray-300 dark:border-gray-600 rounded-sm mx-auto bg-white dark:bg-transparent flex items-center justify-center">
-                                        {selectionAnchor && <div className="w-2 h-2 bg-blue-500 rounded-xs" />}
-                                    </div>
-                                </th>
-                                <th className="px-3 py-2.5 w-6 border-r border-gray-200 dark:border-gray-700/60"></th>
-                                <th
-                                    onDoubleClick={(e) => { e.stopPropagation(); handleColumnHeaderDoubleClick('task_code'); }}
-                                    style={customColWidths['task_code'] ? { width: customColWidths['task_code'], minWidth: customColWidths['task_code'] } : {}}
-                                    title="Task ID - Double-click to Auto-Fit"
-                                    className="px-4 py-2.5 uppercase text-[10px] tracking-wider border-r border-gray-200 dark:border-gray-700/60 cursor-pointer hover:bg-gray-100 dark:hover:bg-white/5 transition"
-                                >ID</th>
-                                <th
-                                    onDoubleClick={(e) => { e.stopPropagation(); handleColumnHeaderDoubleClick('name'); }}
-                                    style={customColWidths['name'] ? { width: customColWidths['name'], minWidth: customColWidths['name'] } : {}}
-                                    title="Task Name - Double-click to Auto-Fit"
-                                    className="px-4 py-2.5 uppercase text-[10px] tracking-wider min-w-[220px] border-r border-gray-200 dark:border-gray-700/60 cursor-pointer hover:bg-gray-100 dark:hover:bg-white/5 transition"
-                                >Task Name</th>
-                                <th
-                                    onDoubleClick={(e) => { e.stopPropagation(); handleColumnHeaderDoubleClick('assigneeIds'); }}
-                                    style={customColWidths['assigneeIds'] ? { width: customColWidths['assigneeIds'], minWidth: customColWidths['assigneeIds'] } : {}}
-                                    title="Assignee - Double-click to Auto-Fit"
-                                    className="px-4 py-2.5 uppercase text-[10px] tracking-wider min-w-[130px] border-r border-gray-200 dark:border-gray-700/60 cursor-pointer hover:bg-gray-100 dark:hover:bg-white/5 transition"
-                                >Assignee</th>
-                                <th
-                                    onDoubleClick={(e) => { e.stopPropagation(); handleColumnHeaderDoubleClick('status'); }}
-                                    style={customColWidths['status'] ? { width: customColWidths['status'], minWidth: customColWidths['status'] } : {}}
-                                    title="Status - Double-click to Auto-Fit"
-                                    className="px-4 py-2.5 uppercase text-[10px] tracking-wider border-r border-gray-200 dark:border-gray-700/60 cursor-pointer hover:bg-gray-100 dark:hover:bg-white/5 transition"
-                                >Status</th>
-                                <th
-                                    onDoubleClick={(e) => { e.stopPropagation(); handleColumnHeaderDoubleClick('priority'); }}
-                                    style={customColWidths['priority'] ? { width: customColWidths['priority'], minWidth: customColWidths['priority'] } : {}}
-                                    title="Priority - Double-click to Auto-Fit"
-                                    className="px-4 py-2.5 uppercase text-[10px] tracking-wider border-r border-gray-200 dark:border-gray-700/60 cursor-pointer hover:bg-gray-100 dark:hover:bg-white/5 transition"
-                                >Priority</th>
-                                <th
-                                    onDoubleClick={(e) => { e.stopPropagation(); handleColumnHeaderDoubleClick('startDate'); }}
-                                    style={customColWidths['startDate'] ? { width: customColWidths['startDate'], minWidth: customColWidths['startDate'] } : {}}
-                                    title="Start Date - Double-click to Auto-Fit"
-                                    className="px-4 py-2.5 uppercase text-[10px] tracking-wider min-w-[110px] border-r border-gray-200 dark:border-gray-700/60 cursor-pointer hover:bg-gray-100 dark:hover:bg-white/5 transition"
-                                >Start Date</th>
-                                <th
-                                    onDoubleClick={(e) => { e.stopPropagation(); handleColumnHeaderDoubleClick('dueDate'); }}
-                                    style={customColWidths['dueDate'] ? { width: customColWidths['dueDate'], minWidth: customColWidths['dueDate'] } : {}}
-                                    title="Due Date - Double-click to Auto-Fit"
-                                    className="px-4 py-2.5 uppercase text-[10px] tracking-wider min-w-[160px] border-r border-gray-200 dark:border-gray-700/60 cursor-pointer hover:bg-gray-100 dark:hover:bg-white/5 transition"
-                                >Due Date</th>
-                                <th
-                                    onDoubleClick={(e) => { e.stopPropagation(); handleColumnHeaderDoubleClick('duration'); }}
-                                    style={customColWidths['duration'] ? { width: customColWidths['duration'], minWidth: customColWidths['duration'] } : {}}
-                                    title="Duration - Double-click to Auto-Fit"
-                                    className="px-4 py-2.5 uppercase text-[10px] tracking-wider border-r border-gray-200 dark:border-gray-700/60 cursor-pointer hover:bg-gray-100 dark:hover:bg-white/5 transition"
-                                >Duration</th>
-                                <th className="px-4 py-2.5 uppercase text-[10px] tracking-wider text-center">Actions</th>
-                            </tr>
-                        </thead>
-                        <tbody className="divide-y divide-gray-200 dark:divide-gray-700/60">
-                            {(() => {
-                                // Build a flat row counter to properly assign Excel row indices
-                                let flatRowCounter = 0;
-                                return filteredTaskData.map((group, groupIdx) => {
-                                const totalGroupTasks = group.tasks.length;
-                                const completedGroupTasks = group.tasks.filter(t => t.status?.toLowerCase() === 'completed').length;
-                                const isExpanded = expandedLists[group.listName];
+                        {/* Excel Floating Bulk Actions Toolbar */}
+                        {selectedRowIds.size > 0 && (
+                            <div className="sticky bottom-4 left-0 right-0 z-[120] flex justify-center pointer-events-none">
+                                <div className="pointer-events-auto inline-flex items-center gap-3 bg-gray-900 dark:bg-gray-950 text-white px-5 py-3 rounded-2xl shadow-2xl border border-gray-700/60 backdrop-blur-sm">
+                                    <span className="text-xs font-semibold text-gray-300">{selectedRowIds.size} row{selectedRowIds.size > 1 ? 's' : ''} selected</span>
+                                    <div className="w-px h-4 bg-gray-700"></div>
+                                    <button onClick={handleDeleteSelectedRows} className="flex items-center space-x-1.5 text-xs font-semibold text-red-400 hover:text-red-300 transition-colors">
+                                        <Trash2 size={13} /><span>Delete</span>
+                                    </button>
+                                    <button onClick={handleCopyRows} title="Copy full rows to clipboard" className="flex items-center space-x-1.5 text-xs font-semibold text-blue-400 hover:text-blue-300 transition-colors">
+                                        <Copy size={13} /><span>Copy Rows</span>
+                                    </button>
+                                    <button onClick={handleExcelPaste} title="Paste copied rows below selection" className="flex items-center space-x-1.5 text-xs font-semibold text-emerald-400 hover:text-emerald-300 transition-colors">
+                                        <ClipboardPaste size={13} /><span>Paste</span>
+                                    </button>
+                                    <button onClick={() => { setSelectedRowIds(new Set()); setSelectionAnchor(null); setSelectionFocus(null); }} className="flex items-center space-x-1 text-xs font-semibold text-gray-400 hover:text-white transition-colors">
+                                        <X size={13} /><span>Clear</span>
+                                    </button>
+                                </div>
+                            </div>
+                        )}
 
-                                return (
-                                    <React.Fragment key={groupIdx}>
-                                        {/* Group Header Row - Section divider (not selectable in Excel grid) */}
-                                        <tr 
-                                            className={`border-b border-gray-200 dark:border-gh-border transition-colors ${isExpanded ? 'bg-gradient-to-r from-blue-50/40 to-transparent dark:from-[#161b22]/70' : 'bg-[#fcfcfc] dark:bg-[#161b22]/30'} group/cat`}
-                                            onMouseEnter={() => setHoveredCategory(group.id)}
-                                            onMouseLeave={() => setHoveredCategory(null)}
-                                        >
-                                            <td colSpan={12} className="py-2.5 px-4">
-                                                <div className="flex items-center justify-between">
-                                                    <div className="flex items-center space-x-3">
-                                                        <div 
-                                                            className="flex items-center space-x-2 cursor-pointer text-gray-700 dark:text-gray-300 hover:text-gray-900 dark:hover:text-white"
-                                                            onClick={() => toggleList(group.listName)}
-                                                        >
-                                                            {isExpanded ? (
-                                                                <ChevronDown size={15} className="text-blue-600 dark:text-blue-400" />
-                                                            ) : (
-                                                                <ChevronRight size={15} className="text-gray-400" />
-                                                            )}
-                                                        </div>
-                                                        
-                                                        {editingCategory && editingCategory.id === group.id ? (
-                                                            <input
-                                                                type="text"
-                                                                autoFocus
-                                                                className="bg-white dark:bg-[#161b22] border border-blue-500 rounded px-2 py-0.5 text-xs outline-none dark:text-white focus:ring-2 focus:ring-blue-500/20"
-                                                                value={editingCategory.name}
-                                                                onChange={(e) => setEditingCategory({ ...editingCategory, name: e.target.value })}
-                                                                onKeyDown={(e) => {
-                                                                    if (e.key === 'Enter') handleSaveCategoryName();
-                                                                    else if (e.key === 'Escape') setEditingCategory(null);
-                                                                }}
-                                                                onBlur={handleSaveCategoryName}
-                                                            />
-                                                        ) : (
+                        <table
+                            className="w-full text-left text-xs border-collapse bg-white dark:bg-[#0d1117]"
+                            style={{ tableLayout: 'auto' }}
+                            onMouseLeave={() => isMouseDown && setIsMouseDown(false)}
+                        >
+                            <thead className="bg-[#f9fafb] dark:bg-[#161b22] text-gray-500 dark:text-gray-400 sticky top-0 z-10 border-b-2 border-gray-200 dark:border-gh-border tracking-wide font-semibold select-none">
+                                <tr>
+                                    {/* Row Number Header */}
+                                    <th
+                                        className="px-2 py-2.5 w-8 text-center cursor-pointer hover:bg-blue-50 dark:hover:bg-blue-900/20 transition-colors border-r border-gray-200 dark:border-gray-700/60"
+                                        onClick={handleSelectAll}
+                                        title="Select All (click)"
+                                    >
+                                        <div className="w-4 h-4 border border-gray-300 dark:border-gray-600 rounded-sm mx-auto bg-white dark:bg-transparent flex items-center justify-center">
+                                            {selectionAnchor && <div className="w-2 h-2 bg-blue-500 rounded-xs" />}
+                                        </div>
+                                    </th>
+                                    <th className="px-3 py-2.5 w-6 border-r border-gray-200 dark:border-gray-700/60"></th>
+                                    <th
+                                        onDoubleClick={(e) => { e.stopPropagation(); handleColumnHeaderDoubleClick('task_code'); }}
+                                        style={customColWidths['task_code'] ? { width: customColWidths['task_code'], minWidth: customColWidths['task_code'] } : {}}
+                                        title="Task ID - Double-click to Auto-Fit"
+                                        className="px-4 py-2.5 uppercase text-[10px] tracking-wider border-r border-gray-200 dark:border-gray-700/60 cursor-pointer hover:bg-gray-100 dark:hover:bg-white/5 transition"
+                                    >ID</th>
+                                    <th
+                                        onDoubleClick={(e) => { e.stopPropagation(); handleColumnHeaderDoubleClick('name'); }}
+                                        style={customColWidths['name'] ? { width: customColWidths['name'], minWidth: customColWidths['name'] } : {}}
+                                        title="Task Name - Double-click to Auto-Fit"
+                                        className="px-4 py-2.5 uppercase text-[10px] tracking-wider min-w-[220px] border-r border-gray-200 dark:border-gray-700/60 cursor-pointer hover:bg-gray-100 dark:hover:bg-white/5 transition"
+                                    >Task Name</th>
+                                    <th
+                                        onDoubleClick={(e) => { e.stopPropagation(); handleColumnHeaderDoubleClick('assigneeIds'); }}
+                                        style={customColWidths['assigneeIds'] ? { width: customColWidths['assigneeIds'], minWidth: customColWidths['assigneeIds'] } : {}}
+                                        title="Assignee - Double-click to Auto-Fit"
+                                        className="px-4 py-2.5 uppercase text-[10px] tracking-wider min-w-[130px] border-r border-gray-200 dark:border-gray-700/60 cursor-pointer hover:bg-gray-100 dark:hover:bg-white/5 transition"
+                                    >Assignee</th>
+                                    <th
+                                        onDoubleClick={(e) => { e.stopPropagation(); handleColumnHeaderDoubleClick('status'); }}
+                                        style={customColWidths['status'] ? { width: customColWidths['status'], minWidth: customColWidths['status'] } : {}}
+                                        title="Status - Double-click to Auto-Fit"
+                                        className="px-4 py-2.5 uppercase text-[10px] tracking-wider border-r border-gray-200 dark:border-gray-700/60 cursor-pointer hover:bg-gray-100 dark:hover:bg-white/5 transition"
+                                    >Status</th>
+                                    <th
+                                        onDoubleClick={(e) => { e.stopPropagation(); handleColumnHeaderDoubleClick('priority'); }}
+                                        style={customColWidths['priority'] ? { width: customColWidths['priority'], minWidth: customColWidths['priority'] } : {}}
+                                        title="Priority - Double-click to Auto-Fit"
+                                        className="px-4 py-2.5 uppercase text-[10px] tracking-wider border-r border-gray-200 dark:border-gray-700/60 cursor-pointer hover:bg-gray-100 dark:hover:bg-white/5 transition"
+                                    >Priority</th>
+                                    <th
+                                        onDoubleClick={(e) => { e.stopPropagation(); handleColumnHeaderDoubleClick('startDate'); }}
+                                        style={customColWidths['startDate'] ? { width: customColWidths['startDate'], minWidth: customColWidths['startDate'] } : {}}
+                                        title="Start Date - Double-click to Auto-Fit"
+                                        className="px-4 py-2.5 uppercase text-[10px] tracking-wider min-w-[110px] border-r border-gray-200 dark:border-gray-700/60 cursor-pointer hover:bg-gray-100 dark:hover:bg-white/5 transition"
+                                    >Start Date</th>
+                                    <th
+                                        onDoubleClick={(e) => { e.stopPropagation(); handleColumnHeaderDoubleClick('dueDate'); }}
+                                        style={customColWidths['dueDate'] ? { width: customColWidths['dueDate'], minWidth: customColWidths['dueDate'] } : {}}
+                                        title="Due Date - Double-click to Auto-Fit"
+                                        className="px-4 py-2.5 uppercase text-[10px] tracking-wider min-w-[160px] border-r border-gray-200 dark:border-gray-700/60 cursor-pointer hover:bg-gray-100 dark:hover:bg-white/5 transition"
+                                    >Due Date</th>
+                                    <th
+                                        onDoubleClick={(e) => { e.stopPropagation(); handleColumnHeaderDoubleClick('duration'); }}
+                                        style={customColWidths['duration'] ? { width: customColWidths['duration'], minWidth: customColWidths['duration'] } : {}}
+                                        title="Duration - Double-click to Auto-Fit"
+                                        className="px-4 py-2.5 uppercase text-[10px] tracking-wider border-r border-gray-200 dark:border-gray-700/60 cursor-pointer hover:bg-gray-100 dark:hover:bg-white/5 transition"
+                                    >Duration</th>
+                                    <th className="px-4 py-2.5 uppercase text-[10px] tracking-wider text-center">Actions</th>
+                                </tr>
+                            </thead>
+                            <tbody className="divide-y divide-gray-200 dark:divide-gray-700/60">
+                                {(() => {
+                                    // Build a flat row counter to properly assign Excel row indices
+                                    let flatRowCounter = 0;
+                                    return filteredTaskData.map((group, groupIdx) => {
+                                        const totalGroupTasks = group.tasks.length;
+                                        const completedGroupTasks = group.tasks.filter(t => t.status?.toLowerCase() === 'completed').length;
+                                        const isExpanded = expandedLists[group.listName];
+
+                                        return (
+                                            <React.Fragment key={groupIdx}>
+                                                {/* Group Header Row - Section divider (not selectable in Excel grid) */}
+                                                <tr
+                                                    className={`border-b border-gray-200 dark:border-gh-border transition-colors ${isExpanded ? 'bg-gradient-to-r from-blue-50/40 to-transparent dark:from-[#161b22]/70' : 'bg-[#fcfcfc] dark:bg-[#161b22]/30'} group/cat`}
+                                                    onMouseEnter={() => setHoveredCategory(group.id)}
+                                                    onMouseLeave={() => setHoveredCategory(null)}
+                                                >
+                                                    <td colSpan={12} className="py-2.5 px-4">
+                                                        <div className="flex items-center justify-between">
                                                             <div className="flex items-center space-x-3">
-                                                                <span 
-                                                                    className={`font-semibold text-xs cursor-pointer ${isExpanded ? 'text-blue-600 dark:text-blue-400' : 'text-gray-900 dark:text-gray-100'}`}
+                                                                <div
+                                                                    className="flex items-center space-x-2 cursor-pointer text-gray-700 dark:text-gray-300 hover:text-gray-900 dark:hover:text-white"
                                                                     onClick={() => toggleList(group.listName)}
                                                                 >
-                                                                    {group.listName}
-                                                                </span>
-                                                                
-                                                                {/* Section progress pill */}
-                                                                <span className="text-[10px] font-medium text-gray-500 dark:text-gray-400 bg-gray-100 dark:bg-gray-800 px-2 py-0.5 rounded-full border border-gray-200 dark:border-gray-700">
-                                                                    {completedGroupTasks}/{totalGroupTasks} Completed
-                                                                </span>
+                                                                    {isExpanded ? (
+                                                                        <ChevronDown size={15} className="text-blue-600 dark:text-blue-400" />
+                                                                    ) : (
+                                                                        <ChevronRight size={15} className="text-gray-400" />
+                                                                    )}
+                                                                </div>
 
-                                                                {/* Section completion bar */}
-                                                                {totalGroupTasks > 0 && (
-                                                                    <div className="w-20 bg-gray-200 dark:bg-gray-800 rounded-full h-1 overflow-hidden">
-                                                                        <div
-                                                                            className="bg-green-500 h-1 rounded-full transition-all duration-500"
-                                                                            style={{ width: `${Math.round((completedGroupTasks / totalGroupTasks) * 100)}%` }}
-                                                                        />
+                                                                {editingCategory && editingCategory.id === group.id ? (
+                                                                    <input
+                                                                        type="text"
+                                                                        autoFocus
+                                                                        className="bg-white dark:bg-[#161b22] border border-blue-500 rounded px-2 py-0.5 text-xs outline-none dark:text-white focus:ring-2 focus:ring-blue-500/20"
+                                                                        value={editingCategory.name}
+                                                                        onChange={(e) => setEditingCategory({ ...editingCategory, name: e.target.value })}
+                                                                        onKeyDown={(e) => {
+                                                                            if (e.key === 'Enter') handleSaveCategoryName();
+                                                                            else if (e.key === 'Escape') setEditingCategory(null);
+                                                                        }}
+                                                                        onBlur={handleSaveCategoryName}
+                                                                    />
+                                                                ) : (
+                                                                    <div className="flex items-center space-x-3">
+                                                                        <span
+                                                                            className={`font-semibold text-xs cursor-pointer ${isExpanded ? 'text-blue-600 dark:text-blue-400' : 'text-gray-900 dark:text-gray-100'}`}
+                                                                            onClick={() => toggleList(group.listName)}
+                                                                        >
+                                                                            {group.listName}
+                                                                        </span>
+
+                                                                        {/* Section progress pill */}
+                                                                        <span className="text-[10px] font-medium text-gray-500 dark:text-gray-400 bg-gray-100 dark:bg-gray-800 px-2 py-0.5 rounded-full border border-gray-200 dark:border-gray-700">
+                                                                            {completedGroupTasks}/{totalGroupTasks} Completed
+                                                                        </span>
+
+                                                                        {/* Section completion bar */}
+                                                                        {totalGroupTasks > 0 && (
+                                                                            <div className="w-20 bg-gray-200 dark:bg-gray-800 rounded-full h-1 overflow-hidden">
+                                                                                <div
+                                                                                    className="bg-green-500 h-1 rounded-full transition-all duration-500"
+                                                                                    style={{ width: `${Math.round((completedGroupTasks / totalGroupTasks) * 100)}%` }}
+                                                                                />
+                                                                            </div>
+                                                                        )}
+
+                                                                        {canWrite && hoveredCategory === group.id && (
+                                                                            <div className="flex items-center space-x-1">
+                                                                                <button
+                                                                                    onClick={(e) => { e.stopPropagation(); setEditingCategory({ id: group.id, name: group.listName }); }}
+                                                                                    className="p-1 text-gray-400 hover:text-blue-500 rounded hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors"
+                                                                                    title="Rename Section"
+                                                                                >
+                                                                                    <Pencil size={12} />
+                                                                                </button>
+                                                                                <button
+                                                                                    onClick={(e) => { e.stopPropagation(); handleDeleteCategoryClick(group); }}
+                                                                                    className="p-1 text-gray-400 hover:text-red-500 rounded hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors"
+                                                                                    title="Delete Section"
+                                                                                >
+                                                                                    <Trash2 size={12} />
+                                                                                </button>
+                                                                            </div>
+                                                                        )}
                                                                     </div>
                                                                 )}
-
-                                                                {canWrite && hoveredCategory === group.id && (
-                                                                    <div className="flex items-center space-x-1">
-                                                                        <button 
-                                                                            onClick={(e) => { e.stopPropagation(); setEditingCategory({ id: group.id, name: group.listName }); }} 
-                                                                            className="p-1 text-gray-400 hover:text-blue-500 rounded hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors"
-                                                                            title="Rename Section"
-                                                                        >
-                                                                            <Pencil size={12} />
-                                                                        </button>
-                                                                        <button 
-                                                                            onClick={(e) => { e.stopPropagation(); handleDeleteCategoryClick(group); }} 
-                                                                            className="p-1 text-gray-400 hover:text-red-500 rounded hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors"
-                                                                            title="Delete Section"
-                                                                        >
-                                                                            <Trash2 size={12} />
-                                                                        </button>
-                                                                    </div>
-                                                                )}
                                                             </div>
-                                                        )}
-                                                    </div>
 
-                                                    {/* Right Add Task Inline */}
-                                                    {isExpanded && canWrite && (
-                                                        <button
-                                                            onClick={() => handleAddTaskClick(group.listName)}
-                                                            className="text-[11px] font-semibold text-blue-600 dark:text-blue-400 hover:text-blue-700 dark:hover:text-blue-300 flex items-center space-x-1 px-2 py-1 rounded hover:bg-blue-50 dark:hover:bg-blue-900/30 transition-all cursor-pointer"
-                                                        >
-                                                            <Plus size={13} />
-                                                            <span>Add Task</span>
-                                                        </button>
-                                                    )}
-                                                </div>
-                                            </td>
-                                        </tr>
-                                        
-                                        {/* Inline Add Task Inputs */}
-                                        {isExpanded && addingTaskInList === group.listName && (
-                                            <tr 
-                                                className="bg-blue-50/30 dark:bg-blue-950/20 border-b border-blue-200 dark:border-blue-900/40 anim-fade-in relative z-[60]"
-                                                onKeyDown={(e) => {
-                                                    if (e.key === 'Enter') {
-                                                        e.preventDefault();
-                                                        handleSaveTask(group.id);
-                                                    } else if (e.key === 'Escape') {
-                                                        setAddingTaskInList(null);
-                                                    }
-                                                }}
-                                            >
-                                                <td className="px-2 py-2.5 text-center text-gray-300 dark:text-gray-700 text-[10px] font-mono">—</td>
-                                                <td className="px-3 py-2.5 text-center">
-                                                    <GripVertical size={14} className="text-gray-400 dark:text-gray-600 mx-auto" />
-                                                </td>
-                                                <td className="px-4 py-2.5 text-gray-400 font-mono text-[11px]">NEW</td>
-                                                <td className="px-4 py-2.5">
-                                                    <input
-                                                        type="text"
-                                                        autoFocus
-                                                        placeholder="Task description..."
-                                                        className="w-full bg-white dark:bg-[#161b22] border border-blue-400 dark:border-blue-700 rounded-md px-2.5 py-1 text-xs focus:ring-2 focus:ring-blue-500 outline-none shadow-xs dark:text-white transition-all placeholder:text-gray-400"
-                                                        value={newTask.name}
-                                                        onChange={(e) => setNewTask({ ...newTask, name: e.target.value })}
-                                                    />
-                                                </td>
-                                                <td className="px-4 py-2.5 text-gray-400 italic text-[11px]">Unassigned</td>
-                                                <td className="px-4 py-2.5">
-                                                    <select
-                                                        value={newTask.status}
-                                                        onChange={(e) => setNewTask({ ...newTask, status: e.target.value })}
-                                                        className="bg-white dark:bg-[#161b22] border border-gray-200 dark:border-gh-border rounded-md px-2 py-1 text-xs capitalize text-gray-900 dark:text-white outline-none"
-                                                    >
-                                                        {statusOptions.map(opt => (
-                                                            <option key={opt.label} value={opt.label}>{opt.label}</option>
-                                                        ))}
-                                                    </select>
-                                                </td>
-                                                <td className="px-4 py-2.5">
-                                                    <select
-                                                        value={newTask.priority}
-                                                        onChange={(e) => setNewTask({ ...newTask, priority: e.target.value })}
-                                                        className="bg-white dark:bg-[#161b22] border border-gray-200 dark:border-gh-border rounded-md px-2 py-1 text-xs text-gray-900 dark:text-white outline-none"
-                                                    >
-                                                        {priorityOptions.map(opt => (
-                                                            <option key={opt.label} value={opt.label}>{opt.label}</option>
-                                                        ))}
-                                                    </select>
-                                                </td>
-                                                <td className="px-4 py-2.5">
-                                                    <div className="w-[135px]">
-                                                        <CustomDatePicker
-                                                            value={newTask.startDate}
-                                                            onChange={(e) => setNewTask({ ...newTask, startDate: e.target.value })}
-                                                        />
-                                                    </div>
-                                                </td>
-                                                <td className="px-4 py-2.5">
-                                                    <div className="w-[135px]">
-                                                        <CustomDatePicker
-                                                            value={newTask.dueDate}
-                                                            onChange={(e) => setNewTask({ ...newTask, dueDate: e.target.value })}
-                                                        />
-                                                    </div>
-                                                </td>
-                                                <td className="px-4 py-2.5 text-gray-500 font-medium">
-                                                    {getDurationText(newTask.startDate, newTask.dueDate)}
-                                                </td>
-                                                <td className="px-4 py-2.5 text-center">
-                                                    <div className="flex items-center justify-center space-x-1.5">
-                                                        <button
-                                                            onClick={() => handleSaveTask(group.id)}
-                                                            className="px-2.5 py-1 bg-blue-600 text-white rounded text-[11px] font-bold hover:bg-blue-700 transition-all cursor-pointer"
-                                                        >
-                                                            Save
-                                                        </button>
-                                                        <button
-                                                            onClick={() => setAddingTaskInList(null)}
-                                                            className="px-2 py-1 bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-300 rounded text-[11px] font-medium hover:bg-gray-200 dark:hover:bg-gray-700 transition-colors cursor-pointer"
-                                                        >
-                                                            Cancel
-                                                        </button>
-                                                    </div>
-                                                </td>
-                                            </tr>
-                                        )}
-
-                                        {/* Tasks in List (Excel rows) */}
-                                        {isExpanded && group.tasks.map((task, taskIdx) => {
-                                            // Get flat row index for this task in the Excel grid
-                                            const flatRowIndex = flatGridRows.findIndex(r => r.task.id === task.id);
-                                            const isDragged = draggedItem?.groupIdx === groupIdx && draggedItem?.taskIdx === taskIdx;
-                                            const overdue = isTaskOverdue(task);
-                                            const isRowSelected = selectedRowIds.has(task.id);
-
-                                            return (
-                                                <tr
-                                                    key={task.id || taskIdx}
-                                                    className={`transition-colors group/row border-b border-gray-100 dark:border-gh-border/30 select-none
-                                                        ${isDragged ? 'opacity-40' : ''}
-                                                        ${isRowSelected ? 'bg-blue-50 dark:bg-blue-900/20' : 'hover:bg-blue-50/20 dark:hover:bg-gh-hover/40'}
-                                                    `}
-                                                    onMouseEnter={() => setHoveredRow({ groupIdx, taskIdx })}
-                                                    onMouseLeave={() => setHoveredRow(null)}
-                                                >
-                                                    {/* Row number (click to select row) */}
-                                                    <td
-                                                        className={`px-2 py-2 text-center w-8 cursor-pointer select-none text-[10px] font-mono border-r border-gray-100 dark:border-gray-800 transition-colors
-                                                            ${isRowSelected ? 'bg-blue-100 dark:bg-blue-900/40 text-blue-700 dark:text-blue-300' : 'text-gray-300 dark:text-gray-700 hover:bg-blue-50 dark:hover:bg-blue-900/20 hover:text-blue-500'}
-                                                        `}
-                                                        onClick={(e) => handleRowNumberClick(e, flatRowIndex)}
-                                                        title="Click to select row, Ctrl+click for multi-select"
-                                                    >
-                                                        {flatRowIndex + 1}
-                                                    </td>
-
-                                                    {/* Drag handle */}
-                                                    <td 
-                                                        className="px-3 py-2 text-center w-8 cursor-grab active:cursor-grabbing border-r border-gray-200 dark:border-gray-700/40 select-none"
-                                                        draggable={canWrite && !editingCell}
-                                                        onDragStart={(e) => handleDragStart(e, groupIdx, taskIdx)}
-                                                        onDragOver={(e) => handleDragOver(e, groupIdx, taskIdx)}
-                                                        onDragEnd={handleDragEnd}
-                                                        onDrop={(e) => handleDrop(e, groupIdx, taskIdx)}
-                                                    >
-                                                        <GripVertical size={14} className="text-gray-300 dark:text-gray-600 group-hover/row:text-blue-500 transition-colors mx-auto" />
-                                                    </td>
-
-                                                    {/* Task Code (Excel col 0) */}
-                                                    <td
-                                                        className={`px-4 py-2 font-mono text-[11px] w-20 cursor-cell select-none transition-colors border-r border-gray-200 dark:border-gray-700/40
-                                                            ${isCellSelected(flatRowIndex, 0) ? 'bg-blue-100/70 dark:bg-blue-900/30 outline outline-1 outline-blue-400' : 'text-gray-500 dark:text-gray-400'}
-                                                            ${isAnchorCell(flatRowIndex, 0) ? 'outline outline-2 outline-blue-500' : ''}
-                                                        `}
-                                                        onMouseDown={(e) => handleCellMouseDown(e, flatRowIndex, 0)}
-                                                        onMouseOver={() => handleCellMouseOver(flatRowIndex, 0)}
-                                                        onDoubleClick={() => handleCellDoubleClick(flatRowIndex, 0, 'task_code')}
-                                                        onContextMenu={(e) => handleContextMenu(e, flatRowIndex, 0)}
-                                                    >
-                                                        {task.task_code || task.id}
-                                                    </td>
-
-                                                    {/* Task Name (Excel col 1) */}
-                                                    <td
-                                                        className={`px-4 py-2 max-w-[320px] cursor-cell select-none transition-colors border-r border-gray-200 dark:border-gray-700/40
-                                                            ${isCellSelected(flatRowIndex, 1) ? 'bg-blue-100/70 dark:bg-blue-900/30 outline outline-1 outline-blue-400' : ''}
-                                                            ${isAnchorCell(flatRowIndex, 1) ? 'outline outline-2 outline-blue-500' : ''}
-                                                        `}
-                                                        onMouseDown={(e) => handleCellMouseDown(e, flatRowIndex, 1)}
-                                                        onMouseOver={() => handleCellMouseOver(flatRowIndex, 1)}
-                                                        onDoubleClick={() => handleCellDoubleClick(flatRowIndex, 1, 'name')}
-                                                        onContextMenu={(e) => handleContextMenu(e, flatRowIndex, 1)}
-                                                    >
-                                                        {editingCell?.r === flatRowIndex && editingCell?.colName === 'name' ? (
-                                                            <input
-                                                                type="text"
-                                                                autoFocus
-                                                                className="bg-white dark:bg-[#0d1117] border border-blue-500 rounded px-2 py-0.5 text-xs outline-none w-full font-medium dark:text-white ring-2 ring-blue-500/30"
-                                                                defaultValue={task.name}
-                                                                onBlur={(e) => handleCellCommit(flatRowIndex, 'name', e.target.value)}
-                                                                onKeyDown={(e) => {
-                                                                    if (e.key === 'Enter') handleCellCommit(flatRowIndex, 'name', e.target.value);
-                                                                    else if (e.key === 'Escape') setEditingCell(null);
-                                                                }}
-                                                            />
-                                                        ) : (
-                                                            <span 
-                                                                className={`font-medium text-xs text-gray-900 dark:text-gray-200 cursor-pointer hover:text-blue-600 dark:hover:text-blue-400 truncate ${task.status?.toLowerCase() === 'completed' ? 'line-through opacity-60' : ''}`}
-                                                                onPointerDown={(e) => e.stopPropagation()}
-                                                                onClick={(e) => { e.stopPropagation(); setSelectedTaskForDrawer(task); }}
-                                                            >
-                                                                {task.name}
-                                                            </span>
-                                                        )}
-                                                    </td>
-
-                                                    {/* Assignees Column (not in Excel grid) */}
-                                                    <td className="px-4 py-2 border-r border-gray-200 dark:border-gray-700/40">
-                                                        {renderTaskAssignees(task.id, task.assigneeIds)}
-                                                    </td>
-
-                                                    {/* Status (Excel col 2) */}
-                                                    <td
-                                                        className={`px-4 py-2 relative cursor-cell select-none transition-colors border-r border-gray-200 dark:border-gray-700/40
-                                                            ${isCellSelected(flatRowIndex, 2) ? 'bg-blue-100/70 dark:bg-blue-900/30 outline outline-1 outline-blue-400' : ''}
-                                                            ${isAnchorCell(flatRowIndex, 2) ? 'outline outline-2 outline-blue-500' : ''}
-                                                        `}
-                                                        onMouseDown={(e) => handleCellMouseDown(e, flatRowIndex, 2)}
-                                                        onMouseOver={() => handleCellMouseOver(flatRowIndex, 2)}
-                                                        onDoubleClick={() => setActiveDropdown({ taskId: task.id, field: 'status' })}
-                                                        onContextMenu={(e) => handleContextMenu(e, flatRowIndex, 2)}
-                                                    >
-                                                        <div 
-                                                            className="cursor-pointer inline-block"
-                                                            onClick={(e) => {
-                                                                e.stopPropagation();
-                                                                setActiveDropdown(activeDropdown?.taskId === task.id && activeDropdown?.field === 'status' ? null : { taskId: task.id, field: 'status' });
-                                                            }}
-                                                        >
-                                                            <span className={`px-2.5 py-0.5 rounded-full text-[10px] font-bold inline-block capitalize ${getStatusColor(task.status)}`}>
-                                                                {task.status}
-                                                            </span>
-                                                        </div>
-
-                                                        {activeDropdown?.taskId === task.id && activeDropdown?.field === 'status' && (
-                                                            <div className="absolute top-full left-0 mt-1 w-36 bg-white dark:bg-[#161b22] border border-gray-200 dark:border-gray-700 rounded-lg shadow-2xl py-1 z-[100] anim-fade-in flex flex-col overflow-hidden divide-y divide-gray-100 dark:divide-gray-800" onClick={(e) => e.stopPropagation()}>
-                                                                {statusOptions.map(opt => (
-                                                                    <div
-                                                                        key={opt.label}
-                                                                        className="px-3 py-1.5 text-xs font-semibold capitalize text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-white/5 cursor-pointer flex items-center justify-between transition-colors"
-                                                                        onClick={() => handleOptionSelect(task.id, 'status', opt.label)}
-                                                                    >
-                                                                        <span>{opt.label}</span>
-                                                                        {task.status?.toLowerCase() === opt.label && <Check size={13} className="text-blue-500" />}
-                                                                    </div>
-                                                                ))}
-                                                            </div>
-                                                        )}
-                                                    </td>
-
-                                                    {/* Priority (Excel col 3) */}
-                                                    <td
-                                                        className={`px-4 py-2 relative cursor-cell select-none transition-colors border-r border-gray-200 dark:border-gray-700/40
-                                                            ${isCellSelected(flatRowIndex, 3) ? 'bg-blue-100/70 dark:bg-blue-900/30 outline outline-1 outline-blue-400' : ''}
-                                                            ${isAnchorCell(flatRowIndex, 3) ? 'outline outline-2 outline-blue-500' : ''}
-                                                        `}
-                                                        onMouseDown={(e) => handleCellMouseDown(e, flatRowIndex, 3)}
-                                                        onMouseOver={() => handleCellMouseOver(flatRowIndex, 3)}
-                                                        onDoubleClick={() => setActiveDropdown({ taskId: task.id, field: 'priority' })}
-                                                        onContextMenu={(e) => handleContextMenu(e, flatRowIndex, 3)}
-                                                    >
-                                                        <div 
-                                                            className="cursor-pointer inline-block"
-                                                            onClick={(e) => {
-                                                                e.stopPropagation();
-                                                                setActiveDropdown(activeDropdown?.taskId === task.id && activeDropdown?.field === 'priority' ? null : { taskId: task.id, field: 'priority' });
-                                                            }}
-                                                        >
-                                                            <span className={`px-2 py-0.5 rounded text-[10px] font-semibold ${getPriorityColor(task.priority)}`}>
-                                                                {task.priority}
-                                                            </span>
-                                                        </div>
-
-                                                        {activeDropdown?.taskId === task.id && activeDropdown?.field === 'priority' && (
-                                                            <div className="absolute top-full left-0 mt-1 w-32 bg-white dark:bg-[#161b22] border border-gray-200 dark:border-gray-700 rounded-lg shadow-2xl py-1 z-[100] anim-fade-in flex flex-col overflow-hidden divide-y divide-gray-100 dark:divide-gray-800" onClick={(e) => e.stopPropagation()}>
-                                                                {priorityOptions.map(opt => (
-                                                                    <div
-                                                                        key={opt.label}
-                                                                        className={`px-3 py-1.5 text-xs font-semibold ${opt.color} hover:bg-gray-50 dark:hover:bg-white/5 cursor-pointer flex items-center justify-between transition-colors`}
-                                                                        onClick={() => handleOptionSelect(task.id, 'priority', opt.label)}
-                                                                    >
-                                                                        <span>{opt.label}</span>
-                                                                        {task.priority === opt.label && <Check size={13} className="text-blue-500" />}
-                                                                    </div>
-                                                                ))}
-                                                            </div>
-                                                        )}
-                                                    </td>
-
-                                                    {/* Start Date (Excel col 4) */}
-                                                    <td
-                                                        className={`px-4 py-1 cursor-cell select-none transition-colors border-r border-gray-200 dark:border-gray-700/40
-                                                            ${isCellSelected(flatRowIndex, 4) ? 'bg-blue-100/70 dark:bg-blue-900/30 outline outline-1 outline-blue-400' : ''}
-                                                            ${isAnchorCell(flatRowIndex, 4) ? 'outline outline-2 outline-blue-500' : ''}
-                                                        `}
-                                                        onMouseDown={(e) => handleCellMouseDown(e, flatRowIndex, 4)}
-                                                        onMouseOver={() => handleCellMouseOver(flatRowIndex, 4)}
-                                                        onContextMenu={(e) => handleContextMenu(e, flatRowIndex, 4)}
-                                                    >
-                                                        <div className="w-[135px]" onClick={e => e.stopPropagation()} onMouseDown={e => e.stopPropagation()}>
-                                                            <CustomDatePicker
-                                                                value={task.startDate}
-                                                                onChange={(e) => handleSaveTaskField(task.id, 'startDate', e.target.value)}
-                                                            />
-                                                        </div>
-                                                    </td>
-
-                                                    {/* Due Date (Excel col 5) */}
-                                                    <td
-                                                        className={`px-4 py-1 cursor-cell select-none transition-colors border-r border-gray-200 dark:border-gray-700/40
-                                                            ${isCellSelected(flatRowIndex, 5) ? 'bg-blue-100/70 dark:bg-blue-900/30 outline outline-1 outline-blue-400' : ''}
-                                                            ${isAnchorCell(flatRowIndex, 5) ? 'outline outline-2 outline-blue-500' : ''}
-                                                        `}
-                                                        onMouseDown={(e) => handleCellMouseDown(e, flatRowIndex, 5)}
-                                                        onMouseOver={() => handleCellMouseOver(flatRowIndex, 5)}
-                                                        onDoubleClick={() => handleCellDoubleClick(flatRowIndex, 5, 'dueDate')}
-                                                        onContextMenu={(e) => handleContextMenu(e, flatRowIndex, 5)}
-                                                    >
-                                                        <div className="flex items-center space-x-1.5">
-                                                            <div className="w-[135px]" onClick={e => e.stopPropagation()} onMouseDown={e => e.stopPropagation()}>
-                                                                <CustomDatePicker
-                                                                    value={task.dueDate}
-                                                                    onChange={(e) => handleSaveTaskField(task.id, 'dueDate', e.target.value)}
-                                                                />
-                                                            </div>
-                                                            {overdue && (
-                                                                <span className="text-[9px] font-bold text-amber-600 dark:text-amber-400 bg-amber-100 dark:bg-amber-950/80 border border-amber-300 dark:border-amber-800 px-1.5 py-0.5 rounded-full flex items-center shrink-0">
-                                                                    Overdue
-                                                                </span>
-                                                            )}
-                                                        </div>
-                                                    </td>
-
-                                                    {/* Duration (Excel col 6 - read-only) */}
-                                                    <td
-                                                        className={`px-4 py-2 text-gray-500 font-medium text-[11px] cursor-default select-none border-r border-gray-200 dark:border-gray-700/40
-                                                            ${isCellSelected(flatRowIndex, 6) ? 'bg-blue-100/70 dark:bg-blue-900/30 outline outline-1 outline-blue-400' : ''}
-                                                        `}
-                                                        onMouseDown={(e) => handleCellMouseDown(e, flatRowIndex, 6)}
-                                                        onMouseOver={() => handleCellMouseOver(flatRowIndex, 6)}
-                                                        onContextMenu={(e) => handleContextMenu(e, flatRowIndex, 6)}
-                                                    >
-                                                        {task.duration}
-                                                    </td>
-
-                                                    {/* Actions */}
-                                                    <td className="px-4 py-2 text-center">
-                                                        <div className="flex items-center justify-center space-x-1 transition-opacity">
-                                                            <button
-                                                                onClick={() => setSelectedTaskForDrawer(task)}
-                                                                className="p-1 text-gray-400 hover:text-blue-500 hover:bg-blue-50 dark:hover:bg-blue-900/20 rounded transition-all cursor-pointer"
-                                                                title="View Task Details"
-                                                            >
-                                                                <SlidersHorizontal size={13} />
-                                                            </button>
-                                                            {canWrite && (
+                                                            {/* Right Add Task Inline */}
+                                                            {isExpanded && canWrite && (
                                                                 <button
-                                                                    onClick={() => handleDeleteTask(task.id)}
-                                                                    className="p-1 text-gray-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 rounded transition-all cursor-pointer"
-                                                                    title="Delete Task"
+                                                                    onClick={() => handleAddTaskClick(group.listName)}
+                                                                    className="text-[11px] font-semibold text-blue-600 dark:text-blue-400 hover:text-blue-700 dark:hover:text-blue-300 flex items-center space-x-1 px-2 py-1 rounded hover:bg-blue-50 dark:hover:bg-blue-900/30 transition-all cursor-pointer"
                                                                 >
-                                                                    <Trash2 size={13} />
+                                                                    <Plus size={13} />
+                                                                    <span>Add Task</span>
                                                                 </button>
                                                             )}
                                                         </div>
                                                     </td>
                                                 </tr>
-                                            );
-                                        })}
 
-                                        {/* Empty State within Group */}
-                                        {isExpanded && group.tasks.length === 0 && (
-                                            <tr className="bg-white dark:bg-[#0d1117]">
-                                                <td colSpan={12} className="py-6 text-center text-gray-400 dark:text-gray-500 text-xs italic">
-                                                    No tasks in this section. Click 'Add Task' above to add one.
-                                                </td>
-                                            </tr>
-                                        )}
-                                    </React.Fragment>
-                                );
-                            });
-                            })()}
-                        </tbody>
-                    </table>
+                                                {/* Inline Add Task Inputs */}
+                                                {isExpanded && addingTaskInList === group.listName && (
+                                                    <tr
+                                                        className="bg-blue-50/30 dark:bg-blue-950/20 border-b border-blue-200 dark:border-blue-900/40 anim-fade-in relative z-[60]"
+                                                        onKeyDown={(e) => {
+                                                            if (e.key === 'Enter') {
+                                                                e.preventDefault();
+                                                                handleSaveTask(group.id);
+                                                            } else if (e.key === 'Escape') {
+                                                                setAddingTaskInList(null);
+                                                            }
+                                                        }}
+                                                    >
+                                                        <td className="px-2 py-2.5 text-center text-gray-300 dark:text-gray-700 text-[10px] font-mono">—</td>
+                                                        <td className="px-3 py-2.5 text-center">
+                                                            <GripVertical size={14} className="text-gray-400 dark:text-gray-600 mx-auto" />
+                                                        </td>
+                                                        <td className="px-4 py-2.5 text-gray-400 font-mono text-[11px]">NEW</td>
+                                                        <td className="px-4 py-2.5">
+                                                            <input
+                                                                type="text"
+                                                                autoFocus
+                                                                placeholder="Task description..."
+                                                                className="w-full bg-white dark:bg-[#161b22] border border-blue-400 dark:border-blue-700 rounded-md px-2.5 py-1 text-xs focus:ring-2 focus:ring-blue-500 outline-none shadow-xs dark:text-white transition-all placeholder:text-gray-400"
+                                                                value={newTask.name}
+                                                                onChange={(e) => setNewTask({ ...newTask, name: e.target.value })}
+                                                            />
+                                                        </td>
+                                                        <td className="px-4 py-2.5 text-gray-400 italic text-[11px]">Unassigned</td>
+                                                        <td className="px-4 py-2.5">
+                                                            <select
+                                                                value={newTask.status}
+                                                                onChange={(e) => setNewTask({ ...newTask, status: e.target.value })}
+                                                                className="bg-white dark:bg-[#161b22] border border-gray-200 dark:border-gh-border rounded-md px-2 py-1 text-xs capitalize text-gray-900 dark:text-white outline-none"
+                                                            >
+                                                                {statusOptions.map(opt => (
+                                                                    <option key={opt.label} value={opt.label}>{opt.label}</option>
+                                                                ))}
+                                                            </select>
+                                                        </td>
+                                                        <td className="px-4 py-2.5">
+                                                            <select
+                                                                value={newTask.priority}
+                                                                onChange={(e) => setNewTask({ ...newTask, priority: e.target.value })}
+                                                                className="bg-white dark:bg-[#161b22] border border-gray-200 dark:border-gh-border rounded-md px-2 py-1 text-xs text-gray-900 dark:text-white outline-none"
+                                                            >
+                                                                {priorityOptions.map(opt => (
+                                                                    <option key={opt.label} value={opt.label}>{opt.label}</option>
+                                                                ))}
+                                                            </select>
+                                                        </td>
+                                                        <td className="px-4 py-2.5">
+                                                            <div className="w-[135px]">
+                                                                <CustomDatePicker
+                                                                    value={newTask.startDate}
+                                                                    onChange={(e) => setNewTask({ ...newTask, startDate: e.target.value })}
+                                                                />
+                                                            </div>
+                                                        </td>
+                                                        <td className="px-4 py-2.5">
+                                                            <div className="w-[135px]">
+                                                                <CustomDatePicker
+                                                                    value={newTask.dueDate}
+                                                                    onChange={(e) => setNewTask({ ...newTask, dueDate: e.target.value })}
+                                                                />
+                                                            </div>
+                                                        </td>
+                                                        <td className="px-4 py-2.5 text-gray-500 font-medium">
+                                                            {getDurationText(newTask.startDate, newTask.dueDate)}
+                                                        </td>
+                                                        <td className="px-4 py-2.5 text-center">
+                                                            <div className="flex items-center justify-center space-x-1.5">
+                                                                <button
+                                                                    onClick={() => handleSaveTask(group.id)}
+                                                                    className="px-2.5 py-1 bg-blue-600 text-white rounded text-[11px] font-bold hover:bg-blue-700 transition-all cursor-pointer"
+                                                                >
+                                                                    Save
+                                                                </button>
+                                                                <button
+                                                                    onClick={() => setAddingTaskInList(null)}
+                                                                    className="px-2 py-1 bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-300 rounded text-[11px] font-medium hover:bg-gray-200 dark:hover:bg-gray-700 transition-colors cursor-pointer"
+                                                                >
+                                                                    Cancel
+                                                                </button>
+                                                            </div>
+                                                        </td>
+                                                    </tr>
+                                                )}
+
+                                                {/* Tasks in List (Excel rows) */}
+                                                {isExpanded && group.tasks.map((task, taskIdx) => {
+                                                    // Get flat row index for this task in the Excel grid
+                                                    const flatRowIndex = flatGridRows.findIndex(r => r.task.id === task.id);
+                                                    const isDragged = draggedItem?.groupIdx === groupIdx && draggedItem?.taskIdx === taskIdx;
+                                                    const overdue = isTaskOverdue(task);
+                                                    const isRowSelected = selectedRowIds.has(task.id);
+
+                                                    return (
+                                                        <tr
+                                                            key={task.id || taskIdx}
+                                                            className={`transition-colors group/row border-b border-gray-100 dark:border-gh-border/30 select-none
+                                                        ${isDragged ? 'opacity-40' : ''}
+                                                        ${isRowSelected ? 'bg-blue-50 dark:bg-blue-900/20' : 'hover:bg-blue-50/20 dark:hover:bg-gh-hover/40'}
+                                                    `}
+                                                            onMouseEnter={() => setHoveredRow({ groupIdx, taskIdx })}
+                                                            onMouseLeave={() => setHoveredRow(null)}
+                                                        >
+                                                            {/* Row number (click to select row) */}
+                                                            <td
+                                                                className={`px-2 py-2 text-center w-8 cursor-pointer select-none text-[10px] font-mono border-r border-gray-100 dark:border-gray-800 transition-colors
+                                                            ${isRowSelected ? 'bg-blue-100 dark:bg-blue-900/40 text-blue-700 dark:text-blue-300' : 'text-gray-300 dark:text-gray-700 hover:bg-blue-50 dark:hover:bg-blue-900/20 hover:text-blue-500'}
+                                                        `}
+                                                                onClick={(e) => handleRowNumberClick(e, flatRowIndex)}
+                                                                title="Click to select row, Ctrl+click for multi-select"
+                                                            >
+                                                                {flatRowIndex + 1}
+                                                            </td>
+
+                                                            {/* Drag handle */}
+                                                            <td
+                                                                className="px-3 py-2 text-center w-8 cursor-grab active:cursor-grabbing border-r border-gray-200 dark:border-gray-700/40 select-none"
+                                                                draggable={canWrite && !editingCell}
+                                                                onDragStart={(e) => handleDragStart(e, groupIdx, taskIdx)}
+                                                                onDragOver={(e) => handleDragOver(e, groupIdx, taskIdx)}
+                                                                onDragEnd={handleDragEnd}
+                                                                onDrop={(e) => handleDrop(e, groupIdx, taskIdx)}
+                                                            >
+                                                                <GripVertical size={14} className="text-gray-300 dark:text-gray-600 group-hover/row:text-blue-500 transition-colors mx-auto" />
+                                                            </td>
+
+                                                            {/* Task Code (Excel col 0) */}
+                                                            <td
+                                                                className={`px-4 py-2 font-mono text-[11px] w-20 cursor-cell select-none transition-colors border-r border-gray-200 dark:border-gray-700/40
+                                                            ${isCellSelected(flatRowIndex, 0) ? 'bg-blue-100/70 dark:bg-blue-900/30 outline outline-1 outline-blue-400' : 'text-gray-500 dark:text-gray-400'}
+                                                            ${isAnchorCell(flatRowIndex, 0) ? 'outline outline-2 outline-blue-500' : ''}
+                                                        `}
+                                                                onMouseDown={(e) => handleCellMouseDown(e, flatRowIndex, 0)}
+                                                                onMouseOver={() => handleCellMouseOver(flatRowIndex, 0)}
+                                                                onDoubleClick={() => handleCellDoubleClick(flatRowIndex, 0, 'task_code')}
+                                                                onContextMenu={(e) => handleContextMenu(e, flatRowIndex, 0)}
+                                                            >
+                                                                {task.task_code || task.id}
+                                                            </td>
+
+                                                            {/* Task Name (Excel col 1) */}
+                                                            <td
+                                                                className={`px-4 py-2 max-w-[320px] cursor-cell select-none transition-colors border-r border-gray-200 dark:border-gray-700/40
+                                                            ${isCellSelected(flatRowIndex, 1) ? 'bg-blue-100/70 dark:bg-blue-900/30 outline outline-1 outline-blue-400' : ''}
+                                                            ${isAnchorCell(flatRowIndex, 1) ? 'outline outline-2 outline-blue-500' : ''}
+                                                        `}
+                                                                onMouseDown={(e) => handleCellMouseDown(e, flatRowIndex, 1)}
+                                                                onMouseOver={() => handleCellMouseOver(flatRowIndex, 1)}
+                                                                onDoubleClick={() => handleCellDoubleClick(flatRowIndex, 1, 'name')}
+                                                                onContextMenu={(e) => handleContextMenu(e, flatRowIndex, 1)}
+                                                            >
+                                                                {editingCell?.r === flatRowIndex && editingCell?.colName === 'name' ? (
+                                                                    <input
+                                                                        type="text"
+                                                                        autoFocus
+                                                                        className="bg-white dark:bg-[#0d1117] border border-blue-500 rounded px-2 py-0.5 text-xs outline-none w-full font-medium dark:text-white ring-2 ring-blue-500/30"
+                                                                        defaultValue={task.name}
+                                                                        onBlur={(e) => handleCellCommit(flatRowIndex, 'name', e.target.value)}
+                                                                        onKeyDown={(e) => {
+                                                                            if (e.key === 'Enter') handleCellCommit(flatRowIndex, 'name', e.target.value);
+                                                                            else if (e.key === 'Escape') setEditingCell(null);
+                                                                        }}
+                                                                    />
+                                                                ) : (
+                                                                    <span
+                                                                        className={`font-medium text-xs text-gray-900 dark:text-gray-200 cursor-pointer hover:text-blue-600 dark:hover:text-blue-400 truncate ${task.status?.toLowerCase() === 'completed' ? 'line-through opacity-60' : ''}`}
+                                                                        onPointerDown={(e) => e.stopPropagation()}
+                                                                        onClick={(e) => { e.stopPropagation(); setSelectedTaskForDrawer(task); }}
+                                                                    >
+                                                                        {task.name}
+                                                                    </span>
+                                                                )}
+                                                            </td>
+
+                                                            {/* Assignees Column (not in Excel grid) */}
+                                                            <td className="px-4 py-2 border-r border-gray-200 dark:border-gray-700/40">
+                                                                {renderTaskAssignees(task.id, task.assigneeIds)}
+                                                            </td>
+
+                                                            {/* Status (Excel col 2) */}
+                                                            <td
+                                                                className={`px-4 py-2 relative cursor-cell select-none transition-colors border-r border-gray-200 dark:border-gray-700/40
+                                                            ${isCellSelected(flatRowIndex, 2) ? 'bg-blue-100/70 dark:bg-blue-900/30 outline outline-1 outline-blue-400' : ''}
+                                                            ${isAnchorCell(flatRowIndex, 2) ? 'outline outline-2 outline-blue-500' : ''}
+                                                        `}
+                                                                onMouseDown={(e) => handleCellMouseDown(e, flatRowIndex, 2)}
+                                                                onMouseOver={() => handleCellMouseOver(flatRowIndex, 2)}
+                                                                onDoubleClick={() => setActiveDropdown({ taskId: task.id, field: 'status' })}
+                                                                onContextMenu={(e) => handleContextMenu(e, flatRowIndex, 2)}
+                                                            >
+                                                                <div
+                                                                    className="cursor-pointer inline-block"
+                                                                    onClick={(e) => {
+                                                                        e.stopPropagation();
+                                                                        setActiveDropdown(activeDropdown?.taskId === task.id && activeDropdown?.field === 'status' ? null : { taskId: task.id, field: 'status' });
+                                                                    }}
+                                                                >
+                                                                    <span className={`px-2.5 py-0.5 rounded-full text-[10px] font-bold inline-block capitalize ${getStatusColor(task.status)}`}>
+                                                                        {task.status}
+                                                                    </span>
+                                                                </div>
+
+                                                                {activeDropdown?.taskId === task.id && activeDropdown?.field === 'status' && (
+                                                                    <div className="absolute top-full left-0 mt-1 w-36 bg-white dark:bg-[#161b22] border border-gray-200 dark:border-gray-700 rounded-lg shadow-2xl py-1 z-[100] anim-fade-in flex flex-col overflow-hidden divide-y divide-gray-100 dark:divide-gray-800" onClick={(e) => e.stopPropagation()}>
+                                                                        {statusOptions.map(opt => (
+                                                                            <div
+                                                                                key={opt.label}
+                                                                                className="px-3 py-1.5 text-xs font-semibold capitalize text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-white/5 cursor-pointer flex items-center justify-between transition-colors"
+                                                                                onClick={() => handleOptionSelect(task.id, 'status', opt.label)}
+                                                                            >
+                                                                                <span>{opt.label}</span>
+                                                                                {task.status?.toLowerCase() === opt.label && <Check size={13} className="text-blue-500" />}
+                                                                            </div>
+                                                                        ))}
+                                                                    </div>
+                                                                )}
+                                                            </td>
+
+                                                            {/* Priority (Excel col 3) */}
+                                                            <td
+                                                                className={`px-4 py-2 relative cursor-cell select-none transition-colors border-r border-gray-200 dark:border-gray-700/40
+                                                            ${isCellSelected(flatRowIndex, 3) ? 'bg-blue-100/70 dark:bg-blue-900/30 outline outline-1 outline-blue-400' : ''}
+                                                            ${isAnchorCell(flatRowIndex, 3) ? 'outline outline-2 outline-blue-500' : ''}
+                                                        `}
+                                                                onMouseDown={(e) => handleCellMouseDown(e, flatRowIndex, 3)}
+                                                                onMouseOver={() => handleCellMouseOver(flatRowIndex, 3)}
+                                                                onDoubleClick={() => setActiveDropdown({ taskId: task.id, field: 'priority' })}
+                                                                onContextMenu={(e) => handleContextMenu(e, flatRowIndex, 3)}
+                                                            >
+                                                                <div
+                                                                    className="cursor-pointer inline-block"
+                                                                    onClick={(e) => {
+                                                                        e.stopPropagation();
+                                                                        setActiveDropdown(activeDropdown?.taskId === task.id && activeDropdown?.field === 'priority' ? null : { taskId: task.id, field: 'priority' });
+                                                                    }}
+                                                                >
+                                                                    <span className={`px-2 py-0.5 rounded text-[10px] font-semibold ${getPriorityColor(task.priority)}`}>
+                                                                        {task.priority}
+                                                                    </span>
+                                                                </div>
+
+                                                                {activeDropdown?.taskId === task.id && activeDropdown?.field === 'priority' && (
+                                                                    <div className="absolute top-full left-0 mt-1 w-32 bg-white dark:bg-[#161b22] border border-gray-200 dark:border-gray-700 rounded-lg shadow-2xl py-1 z-[100] anim-fade-in flex flex-col overflow-hidden divide-y divide-gray-100 dark:divide-gray-800" onClick={(e) => e.stopPropagation()}>
+                                                                        {priorityOptions.map(opt => (
+                                                                            <div
+                                                                                key={opt.label}
+                                                                                className={`px-3 py-1.5 text-xs font-semibold ${opt.color} hover:bg-gray-50 dark:hover:bg-white/5 cursor-pointer flex items-center justify-between transition-colors`}
+                                                                                onClick={() => handleOptionSelect(task.id, 'priority', opt.label)}
+                                                                            >
+                                                                                <span>{opt.label}</span>
+                                                                                {task.priority === opt.label && <Check size={13} className="text-blue-500" />}
+                                                                            </div>
+                                                                        ))}
+                                                                    </div>
+                                                                )}
+                                                            </td>
+
+                                                            {/* Start Date (Excel col 4) */}
+                                                            <td
+                                                                className={`px-4 py-1 cursor-cell select-none transition-colors border-r border-gray-200 dark:border-gray-700/40
+                                                            ${isCellSelected(flatRowIndex, 4) ? 'bg-blue-100/70 dark:bg-blue-900/30 outline outline-1 outline-blue-400' : ''}
+                                                            ${isAnchorCell(flatRowIndex, 4) ? 'outline outline-2 outline-blue-500' : ''}
+                                                        `}
+                                                                onMouseDown={(e) => handleCellMouseDown(e, flatRowIndex, 4)}
+                                                                onMouseOver={() => handleCellMouseOver(flatRowIndex, 4)}
+                                                                onContextMenu={(e) => handleContextMenu(e, flatRowIndex, 4)}
+                                                            >
+                                                                <div className="w-[135px]" onClick={e => e.stopPropagation()} onMouseDown={e => e.stopPropagation()}>
+                                                                    <CustomDatePicker
+                                                                        value={task.startDate}
+                                                                        onChange={(e) => handleSaveTaskField(task.id, 'startDate', e.target.value)}
+                                                                    />
+                                                                </div>
+                                                            </td>
+
+                                                            {/* Due Date (Excel col 5) */}
+                                                            <td
+                                                                className={`px-4 py-1 cursor-cell select-none transition-colors border-r border-gray-200 dark:border-gray-700/40
+                                                            ${isCellSelected(flatRowIndex, 5) ? 'bg-blue-100/70 dark:bg-blue-900/30 outline outline-1 outline-blue-400' : ''}
+                                                            ${isAnchorCell(flatRowIndex, 5) ? 'outline outline-2 outline-blue-500' : ''}
+                                                        `}
+                                                                onMouseDown={(e) => handleCellMouseDown(e, flatRowIndex, 5)}
+                                                                onMouseOver={() => handleCellMouseOver(flatRowIndex, 5)}
+                                                                onDoubleClick={() => handleCellDoubleClick(flatRowIndex, 5, 'dueDate')}
+                                                                onContextMenu={(e) => handleContextMenu(e, flatRowIndex, 5)}
+                                                            >
+                                                                <div className="flex items-center space-x-1.5">
+                                                                    <div className="w-[135px]" onClick={e => e.stopPropagation()} onMouseDown={e => e.stopPropagation()}>
+                                                                        <CustomDatePicker
+                                                                            value={task.dueDate}
+                                                                            onChange={(e) => handleSaveTaskField(task.id, 'dueDate', e.target.value)}
+                                                                        />
+                                                                    </div>
+                                                                    {overdue && (
+                                                                        <span className="text-[9px] font-bold text-amber-600 dark:text-amber-400 bg-amber-100 dark:bg-amber-950/80 border border-amber-300 dark:border-amber-800 px-1.5 py-0.5 rounded-full flex items-center shrink-0">
+                                                                            Overdue
+                                                                        </span>
+                                                                    )}
+                                                                </div>
+                                                            </td>
+
+                                                            {/* Duration (Excel col 6 - read-only) */}
+                                                            <td
+                                                                className={`px-4 py-2 text-gray-500 font-medium text-[11px] cursor-default select-none border-r border-gray-200 dark:border-gray-700/40
+                                                            ${isCellSelected(flatRowIndex, 6) ? 'bg-blue-100/70 dark:bg-blue-900/30 outline outline-1 outline-blue-400' : ''}
+                                                        `}
+                                                                onMouseDown={(e) => handleCellMouseDown(e, flatRowIndex, 6)}
+                                                                onMouseOver={() => handleCellMouseOver(flatRowIndex, 6)}
+                                                                onContextMenu={(e) => handleContextMenu(e, flatRowIndex, 6)}
+                                                            >
+                                                                {task.duration}
+                                                            </td>
+
+                                                            {/* Actions */}
+                                                            <td className="px-4 py-2 text-center">
+                                                                <div className="flex items-center justify-center space-x-1 transition-opacity">
+                                                                    <button
+                                                                        onClick={() => setSelectedTaskForDrawer(task)}
+                                                                        className="p-1 text-gray-400 hover:text-blue-500 hover:bg-blue-50 dark:hover:bg-blue-900/20 rounded transition-all cursor-pointer"
+                                                                        title="View Task Details"
+                                                                    >
+                                                                        <SlidersHorizontal size={13} />
+                                                                    </button>
+                                                                    {canWrite && (
+                                                                        <button
+                                                                            onClick={() => handleDeleteTask(task.id)}
+                                                                            className="p-1 text-gray-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 rounded transition-all cursor-pointer"
+                                                                            title="Delete Task"
+                                                                        >
+                                                                            <Trash2 size={13} />
+                                                                        </button>
+                                                                    )}
+                                                                </div>
+                                                            </td>
+                                                        </tr>
+                                                    );
+                                                })}
+
+                                                {/* Empty State within Group */}
+                                                {isExpanded && group.tasks.length === 0 && (
+                                                    <tr className="bg-white dark:bg-[#0d1117]">
+                                                        <td colSpan={12} className="py-6 text-center text-gray-400 dark:text-gray-500 text-xs italic">
+                                                            No tasks in this section. Click 'Add Task' above to add one.
+                                                        </td>
+                                                    </tr>
+                                                )}
+                                            </React.Fragment>
+                                        );
+                                    });
+                                })()}
+                            </tbody>
+                        </table>
                     </>
                 ) : (
-                    
+
                     /* KANBAN BOARD VIEW */
                     <div className="p-5 grid grid-cols-1 md:grid-cols-3 lg:grid-cols-5 gap-4 h-full items-start min-w-[1000px]">
                         {boardColumns.map(col => {
@@ -2216,14 +2216,14 @@ const Tasks = ({ setExtraBreadcrumbs, projectPermissions, isAdmin }) => {
             {selectedTaskForDrawer && (
                 <div className="fixed inset-0 z-[150] overflow-hidden">
                     {/* Backdrop */}
-                    <div 
+                    <div
                         className="absolute inset-0 bg-black/40 backdrop-blur-xs transition-opacity anim-fade-in"
                         onClick={() => setSelectedTaskForDrawer(null)}
                     ></div>
 
                     <div className="absolute inset-y-0 right-0 max-w-full flex pl-10">
                         <div className="w-screen max-w-md bg-white dark:bg-[#161b22] shadow-2xl border-l border-gray-200 dark:border-gh-border flex flex-col text-left">
-                            
+
                             {/* Drawer Header */}
                             <div className="px-5 py-4 border-b border-gray-200 dark:border-gh-border flex items-center justify-between bg-gray-50 dark:bg-[#0d1117]">
                                 <div className="flex items-center space-x-2">
@@ -2235,7 +2235,7 @@ const Tasks = ({ setExtraBreadcrumbs, projectPermissions, isAdmin }) => {
                                         {selectedTaskForDrawer.categoryName || 'Task Details'}
                                     </span>
                                 </div>
-                                <button 
+                                <button
                                     onClick={() => setSelectedTaskForDrawer(null)}
                                     className="p-1 rounded-md text-gray-400 hover:text-gray-600 dark:hover:text-white hover:bg-gray-200 dark:hover:bg-gray-800 transition-colors cursor-pointer"
                                 >
@@ -2245,7 +2245,7 @@ const Tasks = ({ setExtraBreadcrumbs, projectPermissions, isAdmin }) => {
 
                             {/* Drawer Body */}
                             <div className="flex-1 overflow-y-auto p-5 space-y-5 text-xs">
-                                
+
                                 {/* Task Name Input */}
                                 <div>
                                     <label className="block text-gray-500 dark:text-gray-400 font-semibold mb-1 uppercase text-[10px] tracking-wider">
@@ -2265,7 +2265,7 @@ const Tasks = ({ setExtraBreadcrumbs, projectPermissions, isAdmin }) => {
 
                                 {/* Status & Priority Grid */}
                                 <div className="grid grid-cols-2 gap-4">
-                                    
+
                                     {/* Status Selector */}
                                     <div>
                                         <label className="block text-gray-500 dark:text-gray-400 font-semibold mb-1 uppercase text-[10px] tracking-wider">
@@ -2317,11 +2317,11 @@ const Tasks = ({ setExtraBreadcrumbs, projectPermissions, isAdmin }) => {
                                             <p className="text-gray-400 italic">No members assigned to project</p>
                                         ) : (
                                             projectMembers.map(member => {
-                                                const isAssigned = (selectedTaskForDrawer.assigneeIds || []).includes(member.user_id);
+                                                const isAssigned = (selectedTaskForDrawer.assigneeIds || []).includes(member.id);
                                                 return (
-                                                    <div 
-                                                        key={member.user_id}
-                                                        onClick={() => handleToggleAssignee(selectedTaskForDrawer.id, member.user_id)}
+                                                    <div
+                                                        key={member.id}
+                                                        onClick={() => handleToggleAssignee(selectedTaskForDrawer.id, member.id)}
                                                         className={`flex items-center justify-between p-2 rounded-md cursor-pointer transition-colors ${isAssigned ? 'bg-blue-50 dark:bg-blue-900/30 border border-blue-200 dark:border-blue-800' : 'hover:bg-gray-100 dark:hover:bg-gray-800'}`}
                                                     >
                                                         <div className="flex items-center space-x-2">

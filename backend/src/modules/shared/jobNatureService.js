@@ -28,7 +28,7 @@ export async function findOrCreateJobNature(orgId, jobName, connection = db) {
         .where({ org_id: orgId })
         .first();
 
-    if (existing) return existing.job_id;
+    if (existing) return existing.id;
 
     const [newId] = await connection('crm_job_nature').insert({ job_name: trimmed, org_id: orgId });
     return newId;
@@ -42,7 +42,7 @@ export async function createJobNature(orgId, jobName) {
         .where({ org_id: orgId })
         .first();
 
-    if (existing) return existing.job_id;
+    if (existing) return existing.id;
 
     const [newId] = await db('crm_job_nature').insert({ job_name: trimmed, org_id: orgId });
     return newId;
@@ -53,7 +53,7 @@ export async function deleteJobNature(orgId, jobId) {
     const inUse = await db('crm_contacts').where({ job_nature_id: jobId, org_id: orgId }).first();
     if (inUse) throw new AppError('Cannot delete: This Job Nature is currently assigned to one or more contacts.', 400);
 
-    return await db('crm_job_nature').where({ job_id: jobId, org_id: orgId }).delete();
+    return await db('crm_job_nature').where({ id: jobId, org_id: orgId }).delete();
 }
 
 export default {
