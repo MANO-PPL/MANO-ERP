@@ -25,6 +25,7 @@ import { generalDocsApi } from '../../../../services/generalDocsApi';
 import { toast } from 'react-toastify';
 import jsPDF from 'jspdf';
 import html2canvas from 'html2canvas';
+import { STATUS_CONFIG } from './MeetingList';
 
 const MeetingDetail = ({ onBack, setExtraBreadcrumbs, meetingId: id, canWrite }) => {
     const { id: projectId } = useParams();
@@ -41,8 +42,11 @@ const MeetingDetail = ({ onBack, setExtraBreadcrumbs, meetingId: id, canWrite })
         meetingNo: '',
         venue: '',
         date: new Date().toISOString().split('T')[0],
-        time: '10:30 AM'
+        time: '10:30 AM',
+        status: 'scheduled'
     });
+
+    const currentStatusCfg = STATUS_CONFIG[details.status] || STATUS_CONFIG.scheduled;
 
     // Participants & Directory with Attendance status
     const [participants, setParticipants] = useState([]);
@@ -103,7 +107,8 @@ const MeetingDetail = ({ onBack, setExtraBreadcrumbs, meetingId: id, canWrite })
                 meetingNo: m.meeting_no || '',
                 venue: m.venue || '',
                 date: m.date ? m.date.split('T')[0] : '',
-                time: m.time || contentObj.time || ''
+                time: m.time || contentObj.time || '',
+                status: m.status || contentObj.status || 'scheduled'
             });
 
             if (m.participants && Array.isArray(m.participants)) {
@@ -280,6 +285,7 @@ const MeetingDetail = ({ onBack, setExtraBreadcrumbs, meetingId: id, canWrite })
                 venue: details.venue.trim(),
                 date: details.date,
                 time: details.time,
+                status: details.status || 'scheduled',
                 participants: participants.map(p => ({
                     pd_id: p.pd_id,
                     attended: p.attended
@@ -288,6 +294,7 @@ const MeetingDetail = ({ onBack, setExtraBreadcrumbs, meetingId: id, canWrite })
                 mom_points: filteredMom,
                 content: {
                     time: details.time,
+                    status: details.status || 'scheduled',
                     attendance: attendanceMap,
                     agenda_points: filteredAgenda,
                     mom_points: filteredMom
@@ -449,15 +456,10 @@ const MeetingDetail = ({ onBack, setExtraBreadcrumbs, meetingId: id, canWrite })
                         <ArrowLeft size={16} />
                     </button>
                     <div>
-                        <div className="flex items-center gap-2">
+                        <div className="flex items-center gap-2 flex-wrap">
                             <span className="text-xs font-extrabold text-gray-400 dark:text-gray-500 uppercase tracking-widest">
                                 {isNew ? 'New Meeting' : isEditing ? 'Edit Meeting' : 'Meeting Details'}
                             </span>
-                            {!isNew && details.meetingNo && (
-                                <span className="px-1.5 py-0.2 text-[10px] font-black rounded bg-blue-50 dark:bg-blue-900/40 text-blue-600 dark:text-blue-400 border border-blue-200 dark:border-blue-800">
-                                    #{details.meetingNo}
-                                </span>
-                            )}
                         </div>
                     </div>
                 </div>
@@ -539,13 +541,22 @@ const MeetingDetail = ({ onBack, setExtraBreadcrumbs, meetingId: id, canWrite })
                                     Project Meeting
                                 </h1>
                             </div>
-                            <div className="flex items-center gap-2">
+                            <div className="flex items-center gap-2.5">
                                 <div className="px-3.5 py-1.5 bg-blue-50 dark:bg-blue-900/30 border border-blue-200/80 dark:border-blue-800/60 rounded-xl text-center">
                                     <span className="block text-[9px] font-black uppercase text-blue-600 dark:text-blue-400 tracking-wider">
                                         Meeting No
                                     </span>
                                     <span className="text-base font-black text-blue-700 dark:text-blue-300">
                                         #{details.meetingNo || 'AUTO'}
+                                    </span>
+                                </div>
+                                <div className={`px-3.5 py-1.5 border rounded-xl text-center ${currentStatusCfg.badge}`}>
+                                    <span className="block text-[9px] font-black uppercase tracking-wider opacity-80">
+                                        Status
+                                    </span>
+                                    <span className="text-sm font-black flex items-center justify-center gap-1.5 mt-0.5">
+                                        <span className={`w-2 h-2 rounded-full ${currentStatusCfg.dot}`}></span>
+                                        {currentStatusCfg.label}
                                     </span>
                                 </div>
                             </div>
@@ -579,7 +590,7 @@ const MeetingDetail = ({ onBack, setExtraBreadcrumbs, meetingId: id, canWrite })
                         </div>
 
                         {/* Metadata Grid */}
-                        <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mt-5">
+                        <div className="grid grid-cols-2 md:grid-cols-5 gap-3 mt-5">
                             {/* Date */}
                             <div className="p-3 rounded-xl bg-gray-50 dark:bg-white/[0.02] border border-gray-200/60 dark:border-white/5">
                                 <span className="flex items-center gap-1 text-[10px] font-bold text-gray-400 uppercase tracking-wider">
@@ -618,6 +629,33 @@ const MeetingDetail = ({ onBack, setExtraBreadcrumbs, meetingId: id, canWrite })
                                     <p className="text-xs font-bold text-gray-800 dark:text-gray-200 mt-1">
                                         {details.time || '-'}
                                     </p>
+                                )}
+                            </div>
+
+                            {/* Status */}
+                            <div className="p-3 rounded-xl bg-gray-50 dark:bg-white/[0.02] border border-gray-200/60 dark:border-white/5">
+                                <span className="flex items-center gap-1 text-[10px] font-bold text-gray-400 uppercase tracking-wider">
+                                    <FileCheck2 size={11} className="text-blue-500" />
+                                    <span>Status</span>
+                                </span>
+                                {isEditing ? (
+                                    <select
+                                        value={details.status}
+                                        onChange={e => setDetails({ ...details, status: e.target.value })}
+                                        className="w-full mt-1 px-2 py-1 bg-white dark:bg-[#0d1117] border border-gray-200 dark:border-white/10 rounded text-xs font-bold text-gray-900 dark:text-white focus:outline-none capitalize cursor-pointer"
+                                    >
+                                        <option value="scheduled">Scheduled</option>
+                                        <option value="completed">Completed</option>
+                                        <option value="postponed">Postponed</option>
+                                        <option value="cancelled">Cancelled</option>
+                                    </select>
+                                ) : (
+                                    <div className="mt-1 flex items-center gap-1.5">
+                                        <span className={`w-2 h-2 rounded-full ${currentStatusCfg.dot}`}></span>
+                                        <span className="text-xs font-bold text-gray-800 dark:text-gray-200">
+                                            {currentStatusCfg.label}
+                                        </span>
+                                    </div>
                                 )}
                             </div>
 

@@ -18,11 +18,35 @@ import { generalDocsApi } from '../../../../services/generalDocsApi';
 import ConfirmModal from '../../../../components/ConfirmModal';
 import { toast } from 'react-toastify';
 
+export const STATUS_CONFIG = {
+    scheduled: {
+        label: 'Scheduled',
+        badge: 'bg-blue-50 text-blue-700 border-blue-200/80 dark:bg-blue-900/30 dark:text-blue-300 dark:border-blue-800/50',
+        dot: 'bg-blue-500'
+    },
+    completed: {
+        label: 'Completed',
+        badge: 'bg-emerald-50 text-emerald-700 border-emerald-200/80 dark:bg-emerald-900/30 dark:text-emerald-300 dark:border-emerald-800/50',
+        dot: 'bg-emerald-500'
+    },
+    postponed: {
+        label: 'Postponed',
+        badge: 'bg-amber-50 text-amber-700 border-amber-200/80 dark:bg-amber-900/30 dark:text-amber-300 dark:border-amber-800/50',
+        dot: 'bg-amber-500'
+    },
+    cancelled: {
+        label: 'Cancelled',
+        badge: 'bg-rose-50 text-rose-700 border-rose-200/80 dark:bg-rose-900/30 dark:text-rose-300 dark:border-rose-800/50',
+        dot: 'bg-rose-500'
+    }
+};
+
 const MeetingList = ({ onBack, setExtraBreadcrumbs, onSelect, canWrite }) => {
     const { id: projectId } = useParams();
     const [meetings, setMeetings] = useState([]);
     const [loading, setLoading] = useState(true);
     const [searchQuery, setSearchQuery] = useState('');
+    const [statusFilter, setStatusFilter] = useState('all');
 
     // Delete modal state
     const [deleteModal, setDeleteModal] = useState({
@@ -80,15 +104,30 @@ const MeetingList = ({ onBack, setExtraBreadcrumbs, onSelect, canWrite }) => {
         }
     };
 
+    const statusCounts = useMemo(() => {
+        const counts = { all: meetings.length, scheduled: 0, completed: 0, postponed: 0, cancelled: 0 };
+        meetings.forEach(m => {
+            const st = m.status || 'scheduled';
+            if (counts[st] !== undefined) counts[st]++;
+        });
+        return counts;
+    }, [meetings]);
+
     const filteredMeetings = useMemo(() => {
         return meetings.filter(m => {
+            const currentStatus = m.status || 'scheduled';
+            if (statusFilter !== 'all' && currentStatus !== statusFilter) {
+                return false;
+            }
+            const query = searchQuery.toLowerCase();
             return (
-                (m.subject || '').toLowerCase().includes(searchQuery.toLowerCase()) ||
-                (m.venue || '').toLowerCase().includes(searchQuery.toLowerCase()) ||
-                String(m.meeting_no || '').includes(searchQuery)
+                (m.subject || '').toLowerCase().includes(query) ||
+                (m.venue || '').toLowerCase().includes(query) ||
+                currentStatus.toLowerCase().includes(query) ||
+                String(m.meeting_no || '').includes(query)
             );
         });
-    }, [meetings, searchQuery]);
+    }, [meetings, searchQuery, statusFilter]);
 
     return (
         <div className="flex-1 flex flex-col bg-[#fafafa] dark:bg-[#0d1117] font-sans text-gray-900 dark:text-gray-200 transition-colors overflow-hidden">
@@ -126,24 +165,56 @@ const MeetingList = ({ onBack, setExtraBreadcrumbs, onSelect, canWrite }) => {
             </div>
 
             {/* Filter Toolbar */}
-            <div className="px-6 py-3 border-b border-gray-200/80 dark:border-white/5 bg-gray-50/50 dark:bg-[#161b22]/50 flex items-center justify-between gap-3">
-                {/* Search Bar */}
-                <div className="relative w-80">
-                    <Search
-                        size={14}
-                        className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none"
-                    />
-                    <input
-                        type="text"
-                        placeholder="Search meetings by subject, venue, #..."
-                        value={searchQuery}
-                        onChange={e => setSearchQuery(e.target.value)}
-                        className="w-full pl-8.5 pr-3 py-1.5 bg-white dark:bg-[#0d1117] border border-gray-200 dark:border-white/10 rounded-lg text-xs text-gray-900 dark:text-white placeholder-gray-400 focus:outline-none focus:ring-1 focus:ring-blue-500 font-medium"
-                    />
+            <div className="px-6 py-3 border-b border-gray-200/80 dark:border-white/5 bg-gray-50/50 dark:bg-[#161b22]/50 flex flex-wrap items-center justify-between gap-3">
+                <div className="flex items-center gap-3 flex-wrap">
+                    {/* Search Bar */}
+                    <div className="relative w-64 md:w-72">
+                        <Search
+                            size={14}
+                            className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none"
+                        />
+                        <input
+                            type="text"
+                            placeholder="Search meetings by subject, venue, #..."
+                            value={searchQuery}
+                            onChange={e => setSearchQuery(e.target.value)}
+                            className="w-full pl-8.5 pr-3 py-1.5 bg-white dark:bg-[#0d1117] border border-gray-200 dark:border-white/10 rounded-lg text-xs text-gray-900 dark:text-white placeholder-gray-400 focus:outline-none focus:ring-1 focus:ring-blue-500 font-medium"
+                        />
+                    </div>
+
+                    {/* Status Filter Tabs */}
+                    <div className="flex items-center bg-gray-200/60 dark:bg-white/5 p-0.5 rounded-lg text-xs">
+                        {[
+                            { key: 'all', label: 'All', count: statusCounts.all },
+                            { key: 'scheduled', label: 'Scheduled', count: statusCounts.scheduled },
+                            { key: 'completed', label: 'Completed', count: statusCounts.completed },
+                            { key: 'postponed', label: 'Postponed', count: statusCounts.postponed },
+                            { key: 'cancelled', label: 'Cancelled', count: statusCounts.cancelled }
+                        ].map(tab => (
+                            <button
+                                key={tab.key}
+                                onClick={() => setStatusFilter(tab.key)}
+                                className={`px-2.5 py-1 rounded-md font-bold text-[11px] transition-all cursor-pointer flex items-center gap-1.5 ${
+                                    statusFilter === tab.key
+                                        ? 'bg-white dark:bg-[#161b22] text-gray-900 dark:text-white shadow-xs'
+                                        : 'text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200'
+                                }`}
+                            >
+                                <span>{tab.label}</span>
+                                <span className={`text-[10px] px-1.5 py-0.2 rounded-full ${
+                                    statusFilter === tab.key
+                                        ? 'bg-gray-100 dark:bg-white/10 text-gray-800 dark:text-gray-200'
+                                        : 'bg-gray-200/70 dark:bg-white/5 text-gray-400'
+                                }`}>
+                                    {tab.count}
+                                </span>
+                            </button>
+                        ))}
+                    </div>
                 </div>
 
                 <div className="text-xs font-bold text-gray-400">
-                    Total Meetings: <span className="text-gray-700 dark:text-gray-200">{filteredMeetings.length}</span>
+                    Showing: <span className="text-gray-700 dark:text-gray-200">{filteredMeetings.length}</span>
                 </div>
             </div>
 
@@ -183,6 +254,7 @@ const MeetingList = ({ onBack, setExtraBreadcrumbs, onSelect, canWrite }) => {
                                 month: 'short',
                                 year: 'numeric'
                             }) : 'Date not set';
+                            const statusCfg = STATUS_CONFIG[meeting.status] || STATUS_CONFIG.scheduled;
 
                             return (
                                 <motion.div
@@ -201,9 +273,15 @@ const MeetingList = ({ onBack, setExtraBreadcrumbs, onSelect, canWrite }) => {
                                         </div>
 
                                         <div className="flex-1 min-w-0">
-                                            <h3 className="text-sm font-bold text-gray-900 dark:text-white truncate group-hover:text-blue-600 dark:group-hover:text-blue-400 transition-colors">
-                                                {meeting.subject || 'Untitled Meeting'}
-                                            </h3>
+                                            <div className="flex items-center gap-2.5 flex-wrap">
+                                                <h3 className="text-sm font-bold text-gray-900 dark:text-white truncate group-hover:text-blue-600 dark:group-hover:text-blue-400 transition-colors">
+                                                    {meeting.subject || 'Untitled Meeting'}
+                                                </h3>
+                                                <span className={`inline-flex items-center gap-1.5 px-2 py-0.5 rounded-md text-[10px] font-bold border uppercase tracking-wider ${statusCfg.badge}`}>
+                                                    <span className={`w-1.5 h-1.5 rounded-full ${statusCfg.dot}`}></span>
+                                                    {statusCfg.label}
+                                                </span>
+                                            </div>
 
                                             {/* Metadata chips */}
                                             <div className="flex items-center gap-4 mt-2 text-xs text-gray-500 dark:text-gray-400 flex-wrap">
