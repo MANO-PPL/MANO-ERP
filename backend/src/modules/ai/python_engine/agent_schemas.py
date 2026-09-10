@@ -40,6 +40,19 @@ class ContactArgs(StrictModel):
     contactId: Id
 
 
+class TransactionsSearchArgs(ListArgs):
+    projectId: Id | None = None
+
+
+class TasksSearchArgs(ListArgs):
+    projectId: Id | None = None
+
+
+class BillingSearchArgs(ListArgs):
+    projectId: Id | None = None
+    type: Literal["material", "contractor", "certified", "monthly"] | None = None
+
+
 class ResourceSearchArgs(ListArgs):
     type: Literal["material", "labour", "item"] | None = None
 
@@ -96,12 +109,118 @@ class RateArgs(StrictModel):
         return value
 
 
+class BulkImportArgs(StrictModel):
+    uploadId: Annotated[str, Field(pattern=r"^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$")]
+    mapping: dict[str, str] | None = None
+
+
+class AnalyticsArgs(StrictModel):
+    entity: Literal[
+        "vendors", "projects", "resources", "interactions", "materials", "suppliers", "vendor", "project",
+        "transactions", "billing", "approvals", "overview"
+    ]
+    dimension: Literal[
+        "category", "status", "sector", "type", "location", "month", "unit",
+        "site", "worker_type", "date_range"
+    ] | None = None
+    metric: Annotated[str, Field(min_length=1, max_length=40)] | None = None
+    visualization: Literal["bar", "donut", "metric", "table", "line"] | None = None
+    limit: Limit | None = None
+
+
+class ApprovalsListArgs(StrictModel):
+    projectId: Id | None = None
+    limit: Limit | None = None
+    offset: Offset | None = None
+
+
+class ApprovalDecideArgs(StrictModel):
+    itemType: Literal["qaqc_observation", "document_cycle", "milestone_task", "all"]
+    itemId: Id
+    action: Literal["approve", "reject"]
+    comments: Annotated[str, Field(min_length=1, max_length=500)] | None = None
+
+
+class ApprovalBatchDecideArgs(StrictModel):
+    itemType: Literal["qaqc_observation", "document_cycle", "milestone_task", "all"] | None = None
+    action: Literal["approve", "reject"]
+    comments: Annotated[str, Field(min_length=1, max_length=500)] | None = None
+
+
+class ReportExportArgs(StrictModel):
+    entity: Literal["vendors", "projects", "clients", "resources", "materials", "approvals", "transactions", "billing"]
+    query: Annotated[str, Field(min_length=1, max_length=120)] | None = None
+    limit: Annotated[int, Field(ge=1, le=500)] | None = None
+
+
+class CostSimulationArgs(StrictModel):
+    resourceId: Id | None = None
+    resourceName: Annotated[str, Field(min_length=1, max_length=120)] | None = None
+    rateDelta: Annotated[str, Field(pattern=r"^[+-]?(0|[1-9]\d{0,8})(\.\d{1,2})?$")] | None = None
+    percentageDelta: Annotated[int, Field(ge=-100, le=500)] | None = None
+    newRate: Annotated[str, Field(pattern=r"^(0|[1-9]\d{0,8})(\.\d{1,2})?$")] | None = None
+    projectId: Id | None = None
+
+
+class DprArgs(StrictModel):
+    projectId: Id | None = None
+    date: Annotated[str, Field(pattern=r"^\d{4}-\d{2}-\d{2}$")] | None = None
+    dprId: Id | None = None
+    limit: Limit | None = None
+
+    @field_validator("date")
+    @classmethod
+    def valid_date(cls, value):
+        if value is not None:
+            date.fromisoformat(value)
+        return value
+
+
+class WprArgs(StrictModel):
+    projectId: Id | None = None
+    date: Annotated[str, Field(pattern=r"^\d{4}-\d{2}-\d{2}$")] | None = None
+    startDate: Annotated[str, Field(pattern=r"^\d{4}-\d{2}-\d{2}$")] | None = None
+    endDate: Annotated[str, Field(pattern=r"^\d{4}-\d{2}-\d{2}$")] | None = None
+    weekNumber: Id | None = None
+
+    @field_validator("date", "startDate", "endDate")
+    @classmethod
+    def valid_date(cls, value):
+        if value is not None:
+            date.fromisoformat(value)
+        return value
+
+
+class MprArgs(StrictModel):
+    projectId: Id | None = None
+    date: Annotated[str, Field(pattern=r"^\d{4}-\d{2}-\d{2}$")] | None = None
+    month: Id | None = None
+    year: Id | None = None
+
+    @field_validator("date")
+    @classmethod
+    def valid_date(cls, value):
+        if value is not None:
+            date.fromisoformat(value)
+        return value
+
+
 ARG_MODELS = {
-    "projects.search": ListArgs, "projects.get": ProjectArgs, "clients.search": ListArgs, "clients.get": ContactArgs,
+    "projects.search": ListArgs, "projects.get": ProjectArgs, "projects.getExecutiveBriefing": ProjectArgs, "clients.search": ListArgs, "clients.get": ContactArgs,
     "vendors.search": ListArgs, "vendors.get": ContactArgs, "resources.search": ResourceSearchArgs,
     "resources.get": ResourceArgs, "resources.getRate": ResourceArgs, "resources.getRateHistory": RateHistoryArgs,
-    "resources.getComposition": ResourceArgs, "projectParties.list": PartiesArgs, "interactions.search": InteractionsArgs,
-    "vendors.create": SupplierArgs, "resources.createRateVersion": RateArgs,
+    "resources.getComposition": ResourceArgs, "resources.simulateCostImpact": CostSimulationArgs,
+    "projectParties.list": PartiesArgs, "interactions.search": InteractionsArgs,
+    "transactions.search": TransactionsSearchArgs,
+    "tasks.search": TasksSearchArgs,
+    "billing.search": BillingSearchArgs,
+    "analytics.query": AnalyticsArgs,
+    "reports.exportExcel": ReportExportArgs,
+    "reports.getDPR": DprArgs,
+    "reports.getWPR": WprArgs,
+    "reports.getMPR": MprArgs,
+    "approvals.listPending": ApprovalsListArgs, "approvals.decide": ApprovalDecideArgs, "approvals.batchDecide": ApprovalBatchDecideArgs,
+    "vendors.create": SupplierArgs, "vendors.bulkImport": BulkImportArgs, "resources.createRateVersion": RateArgs,
 }
 ToolName = Literal[tuple(ARG_MODELS)]
 
@@ -141,6 +260,11 @@ class Context(StrictModel):
     projectName: Annotated[str, Field(min_length=1, max_length=200)] | None = None
     selectedEntityType: Short | None = None
     selectedEntityId: Short | None = None
+    selectedEntityName: Annotated[str, Field(min_length=1, max_length=200)] | None = None
+    activeTab: Short | None = None
+    viewSummary: Annotated[str, Field(min_length=1, max_length=500)] | None = None
+    recentRoutes: Annotated[list[Annotated[str, Field(min_length=1, max_length=512)]], Field(max_length=5)] | None = None
+    attachment: dict[str, Any] | None = None
 
 
 class Knowledge(StrictModel):
@@ -169,7 +293,7 @@ class ModelRequest(StrictModel):
     generation: Annotated[str, Field(pattern=r"^[0-9a-f]{64}$")]
     knowledge: Annotated[list[Knowledge], Field(min_length=1, max_length=10)]
     results: Annotated[list[ReadResult], Field(max_length=4)]
-    allowedTools: Annotated[list[ToolName], Field(max_length=15)]
+    allowedTools: Annotated[list[ToolName], Field(max_length=50)]
 
 
 class Diagnostics(StrictModel):

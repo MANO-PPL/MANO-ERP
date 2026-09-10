@@ -2,7 +2,7 @@ import asyncio
 import json
 import os
 from fastapi import APIRouter, Request, Response
-from agent_schemas import ModelRequest, strict_json
+from agent_schemas import ModelRequest, ModelReply, ToolIntent, Assistant, Diagnostics, ARG_MODELS, strict_json
 from agent_security import InternalSecurity
 from agent_reasoning import reason
 from agent_provider import ProviderFailure
@@ -30,14 +30,32 @@ def create_agent_router(secret=None, reasoning=reason):
             async with asyncio.timeout(43):
                 async with slots:
                     result = await reasoning(envelope)
+            if isinstance(result, (ToolIntent, Assistant)):
+                finish_reason = "tool_calls" if isinstance(result, ToolIntent) else "stop"
+                result = ModelReply(
+                    protocol=envelope.protocol,
+                    requestId=envelope.requestId,
+                    stepId=envelope.stepId,
+                    toolNames=list(ARG_MODELS),
+                    response=result,
+                    diagnostics=Diagnostics(
+                        provider="nvidia",
+                        finishReason=finish_reason,
+                        promptTokens=0,
+                        completionTokens=0,
+                        totalTokens=0,
+                        hasReasoningContent=False,
+                    ),
+                )
             payload = result.model_dump(exclude_none=True)
         except ProviderFailure as error:
             status = 503
             # Fixed public categories only; never expose provider bodies or credentials.
             print("Agent provider failure: " + json.dumps(error.safe_metadata(), separators=(",", ":")))
             payload = {"error": "model_unavailable" if str(error) == "provider_model_unavailable" else "provider_unavailable"}
-        except Exception:
+        except Exception as exc:
             status = 503
+            print(f"Agent unexpected error: {exc}")
             payload = {"error": "reasoning_unavailable"}
         output = json.dumps(payload, separators=(",", ":"), ensure_ascii=True).encode()
         return Response(output, status_code=status, media_type="application/json", headers={

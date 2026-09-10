@@ -3,7 +3,10 @@ import asyncio
 import os
 import re
 import httpx
+from dotenv import load_dotenv
 from agent_schemas import ARG_MODELS, Diagnostics, ResponseModel, ToolIntent, strict_json
+
+load_dotenv(os.path.abspath(os.path.join(os.path.dirname(__file__), "../../../../.env")))
 
 HOST = "https://integrate.api.nvidia.com"
 MODEL = "openai/gpt-oss-20b"
@@ -13,7 +16,7 @@ NVIDIA_READ_MODEL = MODEL
 GROQ_HOST = "https://api.groq.com/openai/v1"
 # The active Groq key exposes Qwen 3.8, which supports local tool calls and
 # JSON Schema mode without GPT-OSS reasoning-only responses.
-GROQ_MODEL = "qwen/qwen3.8-27b"
+GROQ_MODEL = os.getenv("GROQ_AGENT_MODEL", "qwen/qwen3.8-27b")
 
 
 def native_name(operation):
@@ -38,7 +41,8 @@ def native_tool_definitions(operations):
 class ProviderFailure(Exception):
     """A sanitized failure category plus log-safe provider transport metadata."""
     def __init__(self, category, *, provider=None, http_status=None, attempt=None,
-                 model=None, response_content_length=None, provider_error_category=None):
+                 model=None, response_content_length=None, provider_error_category=None,
+                 profile=None):
         super().__init__(category)
         self.category = category
         self.provider = provider
@@ -47,10 +51,11 @@ class ProviderFailure(Exception):
         self.model = model
         self.response_content_length = response_content_length
         self.provider_error_category = provider_error_category
+        self.profile = profile
 
     def safe_metadata(self):
         metadata = {"category": self.category}
-        for key in ("provider", "http_status", "attempt", "model", "response_content_length",
+        for key in ("provider", "profile", "http_status", "attempt", "model", "response_content_length",
                     "provider_error_category"):
             value = getattr(self, key)
             if value is not None:
@@ -150,12 +155,17 @@ def normalize(payload, provider="nvidia", *, model=None, attempt=None, response_
 
 
 async def complete(messages, client=None, api_key=None, provider="nvidia", reasoning_effort="medium", model=None,
-                   max_tokens=4096, native_operations=None, response_schema=None):
+                   max_tokens=4096, native_operations=None, response_schema=None, profile=None):
     if provider not in {"nvidia", "groq"}:
-        raise ProviderFailure("provider_unconfigured")
+        raise ProviderFailure("provider_unconfigured", profile=profile)
     key = api_key if api_key is not None else os.getenv("GROQ_API_KEY" if provider == "groq" else "NVIDIA_API_KEY")
     if not key:
-        raise ProviderFailure("provider_unconfigured")
+        if provider == "nvidia" and os.getenv("GROQ_API_KEY"):
+            provider = "groq"
+            key = os.getenv("GROQ_API_KEY")
+            model = GROQ_MODEL
+        else:
+            raise ProviderFailure("provider_unconfigured", profile=profile)
     host = GROQ_HOST if provider == "groq" else HOST + "/v1"
     model = model or (GROQ_MODEL if provider == "groq" else MODEL)
     owned = client is None
@@ -173,6 +183,8 @@ async def complete(messages, client=None, api_key=None, provider="nvidia", reaso
                 # tasks. Disable optional chain-of-thought generation so the
                 # provider emits the requested tool call or JSON answer directly.
                 payload["reasoning_effort"] = "none"
+            elif provider == "groq" and reasoning_effort:
+                payload["reasoning_effort"] = reasoning_effort
             if not native_operations and response_schema:
                 payload["response_format"] = {"type": "json_schema", "json_schema": {
                     "name": "mano_agent_assistant", "strict": True, "schema": response_schema,
@@ -188,12 +200,24 @@ async def complete(messages, client=None, api_key=None, provider="nvidia", reaso
                     response = await bounded_request(client, "POST", host + "/chat/completions", headers={"Authorization": "Bearer " + key}, json=payload)
                 except (httpx.TimeoutException, httpx.NetworkError):
                     if attempt == 1:
-                        raise ProviderFailure("provider_transport_failure") from None
+                        raise ProviderFailure("provider_transport_failure", provider=provider, model=model, profile=profile) from None
                     await asyncio.sleep(0.25)
                     continue
-                if response.status_code == 429 or 500 <= response.status_code <= 599:
+                if response.status_code in (413, 429) or 500 <= response.status_code <= 599:
                     if attempt == 0:
-                        await asyncio.sleep(0.25)
+                        retry_after = 1.0
+                        try:
+                            reset_header = response.headers.get("x-ratelimit-reset-tokens") or response.headers.get("retry-after")
+                            if reset_header:
+                                if reset_header.endswith("ms"):
+                                    retry_after = float(reset_header[:-2]) / 1000.0
+                                elif reset_header.endswith("s"):
+                                    retry_after = float(reset_header[:-1])
+                                else:
+                                    retry_after = float(reset_header)
+                        except Exception:
+                            pass
+                        await asyncio.sleep(min(max(retry_after, 0.5), 2.5))
                         continue
                 break
             polls = 0
@@ -204,44 +228,71 @@ async def complete(messages, client=None, api_key=None, provider="nvidia", reaso
                 observed_id = pending.get("requestId") if isinstance(pending, dict) else None
                 observed_id = observed_id or response.headers.get("nvcf-reqid")
                 if request_id and observed_id and request_id != observed_id:
-                    raise ProviderFailure("changed_poll_identity")
+                    raise ProviderFailure("changed_poll_identity", provider=provider, profile=profile)
                 request_id = request_id or observed_id
                 if not request_id or not re.fullmatch(r"[A-Za-z0-9_-]{1,100}", request_id) or polls >= 20:
-                    raise ProviderFailure("invalid_or_expired_poll")
+                    raise ProviderFailure("invalid_or_expired_poll", provider=provider, profile=profile)
                 polls += 1
                 await asyncio.sleep(1)
                 response = await bounded_request(client, "GET", HOST + "/v1/status/" + request_id, headers={"Authorization": "Bearer " + key})
             if response.status_code == 410:
-                raise ProviderFailure("provider_model_unavailable", provider=provider,
+                raise ProviderFailure("provider_model_unavailable", provider=provider, profile=profile,
                                       http_status=response.status_code, attempt=attempt + 1,
                                       model=model, response_content_length=len(response.content),
                                       provider_error_category=safe_error_category(response.content))
             if response.status_code != 200:
-                raise ProviderFailure("provider_http_failure", provider=provider,
+                raise ProviderFailure("provider_http_failure", provider=provider, profile=profile,
                                       http_status=response.status_code, attempt=attempt + 1,
                                       model=model, response_content_length=len(response.content),
                                       provider_error_category=safe_error_category(response.content))
             if len(response.content) > 131072:
-                raise ProviderFailure("provider_output_limit")
+                raise ProviderFailure("provider_output_limit", provider=provider, profile=profile)
             return normalize(strict_json(response.content), provider, model=model,
                              attempt=attempt + 1, response_content_length=len(response.content),
                              native_operations=native_operations)
     except ProviderFailure:
         raise
     except Exception:
-        raise ProviderFailure("provider_transport_failure") from None
+        raise ProviderFailure("provider_transport_failure", provider=provider, model=model, profile=profile) from None
     finally:
         if owned:
             await client.aclose()
 
 
-async def complete_groq(messages, client=None, api_key=None, native_operations=None, response_schema=None):
+async def complete_with_profile(profile, messages, client=None, api_key=None, native_operations=None, response_schema=None):
+    """Complete a model turn using the capability and constraint rules of a ModelProfile."""
+    provider = profile.provider
+    model = profile.model
+    eff_native = native_operations if (profile.native_tools and native_operations) else None
+    eff_schema = response_schema if (profile.strict_json_schema and response_schema) else None
+    tokens = 384 if eff_native else profile.max_output_tokens
+    effort = profile.reasoning_effort if profile.supports_reasoning else None
+    try:
+        return await complete(
+            messages,
+            client=client,
+            api_key=api_key,
+            provider=provider,
+            model=model,
+            reasoning_effort=effort,
+            max_tokens=tokens,
+            native_operations=eff_native,
+            response_schema=eff_schema,
+            profile=profile.name,
+        )
+    except ProviderFailure as exc:
+        if exc.profile is None:
+            exc.profile = profile.name
+        raise
+
+
+async def complete_groq(messages, client=None, api_key=None, native_operations=None, response_schema=None, max_tokens=512):
     # Keep the free-tier reservation below the request's token-per-minute budget.
-    # The model's strict JSON answer is concise; long-form answers are not required for tool planning.
-    return await complete(messages, client=client, api_key=api_key, provider="groq", max_tokens=512,
+    return await complete(messages, client=client, api_key=api_key, provider="groq", max_tokens=max_tokens,
                           native_operations=native_operations, response_schema=response_schema)
 
 
 async def complete_nvidia_read(messages, client=None, api_key=None):
     return await complete(messages, client=client, api_key=api_key, provider="nvidia",
                           reasoning_effort="low", model=NVIDIA_READ_MODEL)
+
