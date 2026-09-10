@@ -12,7 +12,7 @@ export function createPythonClient({ secret, fetchImpl = fetch, now = Date.now, 
     return async function reason(request, { deadline = now() + timeoutMs } = {}) {
         if (!secret || secret.length < 32) fail('backend_unavailable', 'python_not_ready');
         const body = JSON.stringify(request);
-        if (Buffer.byteLength(body) > 98304) fail('request_rejected', 'model_input_limit');
+        if (Buffer.byteLength(body) > 196608) fail('request_rejected', 'model_input_limit');
         const nonce = randomUUID(); const timestamp = String(Math.floor(now() / 1000));
         const mac = signature(secret, `POST\n${INTERNAL_PATH}\n${timestamp}\n${nonce}\n${sha256(body)}`);
         let response; let bytes;

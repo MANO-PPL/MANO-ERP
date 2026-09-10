@@ -1,3 +1,4 @@
+import '../../config/config.js';
 import { randomBytes } from 'node:crypto';
 import { initializeAgentSchema } from './agentSchema.js';
 import { createAgentStore } from './agentStore.js';
@@ -9,10 +10,25 @@ import { createPythonClient } from './agentPythonClient.js';
 import { createSafeOkfProvider } from './safeOkfProvider.js';
 import { fail } from './agentValidation.js';
 
-export const agentInternalSecret = randomBytes(32).toString('hex');
+import { createApprovalService } from './approvalService.js';
+import { createExportService } from './agentExportService.js';
+import { RUNTIME_WRITE_ENABLEMENT } from './agentTools.js';
+
+export const agentInternalSecret = process.env.MANO_AGENT_INTERNAL_SECRET || randomBytes(32).toString('hex');
 let service;
 let cleanup;
-export function getAgentService() { if (!service) fail('backend_unavailable', 'agent_not_ready'); return service; }
+let initPromise = null;
+
+export async function getAgentService() {
+    if (service) return service;
+    if (!initPromise) {
+        initPromise = initializeAgentRuntime().catch(err => {
+            initPromise = null;
+            fail('backend_unavailable', 'agent_not_ready');
+        });
+    }
+    return initPromise;
+}
 export async function initializeAgentRuntime() {
     const [{ db }, projects, clients, vendors, resources, parties] = await Promise.all([
         import('../../config/database.js'), import('../projects/core/projectService.js'), import('../clients/clientService.js'),
@@ -21,8 +37,12 @@ export async function initializeAgentRuntime() {
     await initializeAgentSchema(db);
     const store = createAgentStore(db); const authorize = createPolicy(db); const okf = createSafeOkfProvider();
     await okf.acquire();
+    const approvalService = createApprovalService({ db });
+    const exportService = createExportService({ db, approvalService });
     service = createAgentService({ store, authorize, okf, reason: createPythonClient({ secret: agentInternalSecret }),
-        read: createReadService({ db, projects, clients, vendors, resources, parties, authorize }), writes: createWriteService({ db, vendors, resources }) });
+        read: createReadService({ db, projects, clients, vendors, resources, parties, approvalService, exportService, costSimulationService: null, authorize }),
+        writes: createWriteService({ db, vendors, resources, approvalService }),
+        writeEnablement: RUNTIME_WRITE_ENABLEMENT });
     cleanup = setInterval(() => store.cleanup().catch(() => { /* No request data or database diagnostics are logged. */ }), 60000);
     cleanup.unref();
     return service;

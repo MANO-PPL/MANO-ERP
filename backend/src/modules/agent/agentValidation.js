@@ -41,17 +41,52 @@ export function stable(value) {
 }
 export const sha256 = bytes => createHash('sha256').update(bytes).digest('hex');
 export const fingerprint = value => sha256(stable(value));
+export function uuid(value) {
+    if (typeof value !== 'string' || !/^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value)) {
+        fail('validation_error', 'invalid_uuid');
+    }
+    return value;
+}
 export function validateRequest(value) {
-    object(value, ['conversationId', 'message', 'context']);
+    object(value, ['conversationId', 'message', 'context', 'attachment']);
     identity(value.conversationId); text(value.message);
-    const c = object(value.context, ['route', 'module', 'organizationId', 'projectId', 'projectName', 'selectedEntityType', 'selectedEntityId']);
+    const c = object(value.context, ['route', 'module', 'organizationId', 'projectId', 'projectName', 'selectedEntityType', 'selectedEntityId', 'selectedEntityName', 'activeTab', 'viewSummary', 'recentRoutes']);
     text(c.route, 512); text(c.module, 80);
     const context = { route: c.route, module: c.module };
     if (c.projectId !== undefined) context.projectId = text(c.projectId, 80);
     if (c.projectName !== undefined) context.projectName = text(c.projectName, 200);
     for (const key of ['selectedEntityType', 'selectedEntityId']) if (c[key] !== undefined) context[key] = text(c[key], 80);
+    if (c.selectedEntityName !== undefined) context.selectedEntityName = text(c.selectedEntityName, 200);
+    if (c.activeTab !== undefined) context.activeTab = text(c.activeTab, 80);
+    if (c.viewSummary !== undefined) context.viewSummary = text(c.viewSummary, 500);
+    if (c.recentRoutes !== undefined) {
+        if (!Array.isArray(c.recentRoutes) || c.recentRoutes.length > 5) fail('validation_error', 'invalid_recent_routes');
+        context.recentRoutes = c.recentRoutes.map(r => text(r, 512));
+    }
+
+    let attachment = null;
+    if (value.attachment !== undefined && value.attachment !== null) {
+        object(value.attachment, ['uploadId', 'filename', 'sheetName', 'totalRows', 'headers', 'preview']);
+        uuid(value.attachment.uploadId);
+        text(value.attachment.filename, 255);
+        if (value.attachment.sheetName !== undefined) text(value.attachment.sheetName, 100);
+        integer(value.attachment.totalRows, 1, 100000);
+        if (!Array.isArray(value.attachment.headers) || value.attachment.headers.length > 200) {
+            fail('validation_error', 'invalid_attachment_headers');
+        }
+        for (const h of value.attachment.headers) text(h, 120);
+        attachment = {
+            uploadId: value.attachment.uploadId,
+            filename: value.attachment.filename,
+            sheetName: value.attachment.sheetName || 'Sheet1',
+            totalRows: value.attachment.totalRows,
+            headers: value.attachment.headers,
+            preview: Array.isArray(value.attachment.preview) ? value.attachment.preview.slice(0, 5) : []
+        };
+    }
+
     // organizationId is intentionally not forwarded, persisted, or used for authorization.
-    return { conversationId: value.conversationId, message: value.message, context };
+    return { conversationId: value.conversationId, message: value.message, context, ...(attachment ? { attachment } : {}) };
 }
 export function validateDecision(value) {
     object(value, ['confirmationId', 'decision']); identity(value.confirmationId);
