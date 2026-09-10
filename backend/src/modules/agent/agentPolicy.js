@@ -18,10 +18,22 @@ export function createPolicy(db) {
             if (lock) q.forUpdate();
             return q.first();
         };
-        const user = await one('iam_users', { user_id: actor.userId, org_id: actor.orgId });
+        let user;
+        try {
+            user = await one('iam_users', { id: actor.userId, org_id: actor.orgId });
+        } catch {
+            user = null;
+        }
+        if (!user) {
+            try {
+                user = await one('iam_users', { user_id: actor.userId, org_id: actor.orgId });
+            } catch {
+                user = null;
+            }
+        }
         if (!user) fail('authorization_denied');
         user.user_type = String(user.user_type || 'employee').toLowerCase();
-        const edit = tool.risk === 'WRITE';
+        const edit = tool.risk.includes('WRITE');
         const scope = { orgId: actor.orgId, userId: actor.userId, projectId: null, userType: user.user_type };
         let projectId = args.projectId;
         if (args.resourceId !== undefined) {
@@ -56,6 +68,28 @@ export function createPolicy(db) {
                 if (tool.module !== 'projects' && user.user_type !== 'client'
                     && !hasLevel(p[module] ?? p[module.toLowerCase()] ?? p[tool.module], edit)) fail('authorization_denied');
             }
+        } else if (tool.module === 'analytics') {
+            const ent = String(args.entity || 'vendors').toLowerCase();
+            // Canonical aliases — mirrors ENTITY_ALIASES in agentAnalyticsService
+            const canonical = { vendor: 'vendors', supplier: 'vendors', suppliers: 'vendors', contractor: 'vendors',
+                project: 'projects', resource: 'resources', material: 'resources', materials: 'resources',
+                interaction: 'interactions', crm: 'interactions',
+                transaction: 'transactions', ledger: 'transactions',
+                bill: 'billing', bills: 'billing', invoice: 'billing', invoices: 'billing', billing: 'billing',
+                approval: 'approvals', wf: 'approvals', workflow: 'approvals', overview: 'overview' };
+            const resolved = canonical[ent] ?? ent;
+            // Map entity to permission module — overview and transactions share vendor-level access
+            const MODULE_MAP = {
+                vendors: 'vendors', interactions: 'vendors',
+                resources: 'materials', materials: 'materials',
+                projects: 'projects',
+                transactions: 'vendors',
+                billing: 'vendors',
+                approvals: 'projects',
+                overview: 'vendors',
+            };
+            const targetMod = MODULE_MAP[resolved] ?? 'vendors';
+            if (targetMod !== 'projects') system(user, targetMod, edit);
         } else if (tool.module !== 'projects' && !scope.contact) system(user, tool.module, edit);
         return scope;
     };

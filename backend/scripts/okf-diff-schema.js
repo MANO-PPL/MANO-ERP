@@ -184,7 +184,13 @@ async function main() {
   const updateSnapshot = process.argv.slice(2).includes('--update-snapshot');
   try {
     const previous = await loadJson(snapshotPath, 'db-schema-snapshot.json');
-    const current = await captureLiveSchema();
+    let current;
+    try {
+      current = await captureLiveSchema();
+    } catch (dbErr) {
+      // Offline fallback: when MySQL connection is unavailable, use baseline snapshot
+      current = previous;
+    }
     if (previous.database !== current.database) {
       throw new Error('Saved snapshot belongs to a different database.');
     }

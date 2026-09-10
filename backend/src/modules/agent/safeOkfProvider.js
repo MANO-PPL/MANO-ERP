@@ -60,14 +60,21 @@ export function createSafeOkfProvider({ root = fileURLToPath(new URL('../../../.
         const script = 'backend/scripts/okf-validate-bundle.js';
         const mapPath = 'backend/knowledge/.okf-system/source-map.json';
         const metadataPath = 'backend/knowledge/.okf-system/okf-metadata.json';
-        const inputs = { [script]: await safeBytes(realRoot, script), [mapPath]: await safeBytes(realRoot, mapPath) };
-        if (sha256(inputs[script]) !== TRUSTED_STAGE9_SHA) fail('backend_unavailable', 'untrusted_stage9');
+        const rawScript = await safeBytes(realRoot, script);
+        const normalizedScript = Buffer.from(rawScript.toString('utf8').replace(/\r\n/g, '\n'), 'utf8');
+        const scriptBytes = sha256(rawScript) === TRUSTED_STAGE9_SHA ? rawScript : normalizedScript;
+        if (sha256(scriptBytes) !== TRUSTED_STAGE9_SHA) fail('backend_unavailable', 'untrusted_stage9');
+        const inputs = { [script]: scriptBytes, [mapPath]: await safeBytes(realRoot, mapPath) };
         const sources = mappedDependencies(JSON.parse(inputs[mapPath].toString('utf8')));
         const paths = [metadataPath, ...CANONICAL.map(p => `backend/knowledge/${p}`), ...sources];
         for (const p of paths) inputs[p] = await safeBytes(realRoot, p);
         const manifest = Object.fromEntries(Object.entries(inputs).map(([p, b]) => [p, sha256(b)]));
-        // Reject a live generation that changed during capture. Subsequent consumption uses buffers, not live paths.
-        for (const [p, digest] of Object.entries(manifest)) if (sha256(await safeBytes(realRoot, p)) !== digest) fail('backend_unavailable', 'okf_capture_changed');
+        for (const [p, digest] of Object.entries(manifest)) {
+            const currentBytes = await safeBytes(realRoot, p);
+            const currentNorm = (p === script && sha256(currentBytes) !== digest)
+                ? Buffer.from(currentBytes.toString('utf8').replace(/\r\n/g, '\n'), 'utf8') : currentBytes;
+            if (sha256(currentNorm) !== digest) fail('backend_unavailable', 'okf_capture_changed');
+        }
         const generation = fingerprint(manifest);
         if (cached?.generation === generation) return cached;
         const temporary = await fs.mkdtemp(path.join(os.tmpdir(), 'mano-agent-okf-'));

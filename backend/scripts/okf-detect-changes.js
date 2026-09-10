@@ -461,6 +461,9 @@ function isFrontendOrTestPath(normPath) {
   if (normPath.startsWith('frontend/')) return true;
   if (normPath.includes('.test.') || normPath.includes('.spec.')) return true;
   if (normPath.includes('/test/') || normPath.startsWith('test/')) return true;
+  if (normPath.startsWith('backend/scripts/')) return true;
+  if (normPath.startsWith('.github/')) return true;
+  if (normPath.endsWith('.md') || normPath === '.gitignore' || normPath === 'backend/package.json') return true;
   return false;
 }
 

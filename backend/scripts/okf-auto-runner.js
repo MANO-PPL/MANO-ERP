@@ -87,7 +87,17 @@ function makeRealDependencies(repoRoot = REPO_ROOT) {
     },
     runStage10: options => runStage10(options),
     validateBootstrap: options => runStage10({ validateOnly: true, verbose: Boolean(options?.verbose) }),
-    persistCanonical: null
+    persistCanonical: async ({ files }) => {
+      if (!Array.isArray(files) || !files.length) return true;
+      try {
+        const gitPaths = files.map(f => path.join('backend/knowledge', f).replace(/\\/g, '/'));
+        realGit(repoRoot, ['add', ...gitPaths]);
+        realGit(repoRoot, ['commit', '-m', `chore(okf): automated operational knowledge reconciliation [skip ci]\n\nUpdated ${files.length} OKF file(s):\n${files.map(f => '- ' + f).join('\n')}`]);
+        return true;
+      } catch (err) {
+        return false;
+      }
+    }
   };
 }
 

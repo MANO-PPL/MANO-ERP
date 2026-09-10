@@ -416,7 +416,7 @@ async function groqAttempt(client, userPrompt) {
   const timer = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
   try {
     return await client.chat.completions.create({
-      model: MODEL,
+      model: process.env.GROQ_MODEL || MODEL,
       messages: [{ role: 'system', content: SYSTEM_PROMPT }, { role: 'user', content: userPrompt }],
       reasoning_effort: 'high',
       include_reasoning: false,
