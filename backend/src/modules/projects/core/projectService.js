@@ -2,6 +2,8 @@ import { db } from '../../../config/database.js';
 import AppError from '../../../utils/AppError.js';
 import s3Service from '../../shared/s3Service.js';
 import { isAdmin } from '../../../utils/userUtils.js';
+import { getProjectExecutiveBriefing } from './projectExecutiveService.js';
+export { getProjectExecutiveBriefing };
 
 export function getS3KeyFromUrl(url) {
     if (!url) return null;
@@ -191,9 +193,31 @@ export async function getProjects(orgId, userId, userType, options = {}) {
 export async function getProjectById(orgId, projectId, options = {}) {
     if (options.agentRead === true) {
         const project = await db('proj_projects').where({ id: projectId, org_id: orgId })
-            .first('id', 'name', 'project_code', 'location', 'status');
+            .first('id', 'name', 'project_code', 'location', 'status', 'metadata', 'start_date', 'end_date');
         if (!project) throw new AppError('Project not found', 404);
-        return project;
+        let meta = {};
+        if (project.metadata) {
+            try {
+                meta = typeof project.metadata === 'string' ? JSON.parse(project.metadata) : project.metadata;
+            } catch {
+                meta = {};
+            }
+        }
+        const rawPhases = Array.isArray(meta.phases) ? meta.phases : [];
+        const phases = rawPhases.map((p, idx) => ({
+            id: p.id || idx + 1,
+            name: p.name || `Phase ${idx + 1}`,
+            progress: Number(p.progress || 0),
+            weight: Number(p.weight || 0),
+            startDate: p.startDate || null,
+            endDate: p.endDate || null,
+            status: Number(p.progress || 0) >= 100 ? 'Completed' : (Number(p.progress || 0) > 0 ? 'In Progress' : 'Not Started')
+        }));
+        return {
+            ...project,
+            phases,
+            completion: meta.completion
+        };
     }
     const project = await db('proj_projects as p')
         .where({ 'p.id': projectId, 'p.org_id': orgId })
@@ -321,6 +345,7 @@ export default {
     createProject,
     getProjects,
     getProjectById,
+    getProjectExecutiveBriefing,
     updateProject,
     assignUserToProject,
     removeUserFromProject,

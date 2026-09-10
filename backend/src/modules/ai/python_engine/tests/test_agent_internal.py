@@ -6,7 +6,7 @@ import httpx
 from fastapi import FastAPI
 from agent_routes import create_agent_router
 from agent_security import InternalSecurity, signature
-from agent_schemas import ARG_MODELS, ModelReply, Assistant
+from agent_schemas import ARG_MODELS, ModelReply, Assistant, ToolIntent
 from test_agent_reasoning import request, metrics
 
 
@@ -48,3 +48,36 @@ class Internal(unittest.IsolatedAsyncioTestCase):
         security = InternalSecurity("x" * 64, clock=lambda: 1800000000)
         with self.assertRaises(ValueError):
             security.verify('/internal/agent/v1/reason', {"x-agent-time": "1000000000"}, b'{}')
+
+    async def test_tool_intent_wrapped_in_model_reply(self):
+        secret = "fixture-secret-" * 4
+
+        async def reasoning(value):
+            return ToolIntent(
+                kind="tool",
+                tool="resources.simulateCostImpact",
+                version=1,
+                arguments={"resourceName": "cement", "rateDelta": "+240.00"}
+            )
+
+        app = FastAPI()
+        app.include_router(create_agent_router(secret, reasoning))
+        body = request().model_dump_json(exclude_none=True).encode()
+        timestamp = str(int(time.time()))
+        nonce = "fixture-nonce-tool"
+        path = "/internal/agent/v1/reason"
+        headers = {
+            "X-Agent-Time": timestamp,
+            "X-Agent-Nonce": nonce,
+            "X-Agent-Signature": signature(secret, f"POST\n{path}\n{timestamp}\n{nonce}\n{hashlib.sha256(body).hexdigest()}")
+        }
+        async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url="http://internal") as client:
+            response = await client.post(path, content=body, headers=headers)
+            self.assertEqual(response.status_code, 200)
+            data = response.json()
+            self.assertEqual(data["protocol"], "mano-agent-v1")
+            self.assertEqual(data["response"]["kind"], "tool")
+            self.assertEqual(data["response"]["tool"], "resources.simulateCostImpact")
+            self.assertEqual(data["diagnostics"]["finishReason"], "tool_calls")
+            self.assertEqual(data["diagnostics"]["provider"], "nvidia")
+            self.assertEqual(data["diagnostics"]["totalTokens"], 0)
