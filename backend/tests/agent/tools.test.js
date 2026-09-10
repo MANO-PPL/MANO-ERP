@@ -25,6 +25,37 @@ test('S04 composition traverses bounded authorized reads, never a write service'
     assert.equal(result.length, 2); assert.equal(authorized, 2);
 });
 
+test('tasks.search tool executes bounded query and returns clean task records', async () => {
+    const mockTasks = [
+        { id: 1, name: 'Foundation Pouring', task_code: 'T-1', description: 'Pour concrete foundation', status: 'IN_PROGRESS', priority: 'HIGH', start_date: new Date('2026-03-01'), due_date: new Date('2026-03-10'), duration: 10, project_id: 4, project_name: 'Metro Line', project_code: 'PRJ-004', category_name: 'Civil Works' },
+        { id: 2, name: 'Electrical Conduit', task_code: 'T-2', description: 'Install conduits', status: 'TODO', priority: 'MEDIUM', start_date: new Date('2026-03-11'), due_date: new Date('2026-03-15'), duration: 5, project_id: 4, project_name: 'Metro Line', project_code: 'PRJ-004', category_name: 'Electrical' }
+    ];
+    let whereClauses = [];
+    const q = {
+        join() { return q; },
+        leftJoin() { return q; },
+        where(col, val) {
+            if (typeof col === 'string') whereClauses.push({ col, val });
+            return q;
+        },
+        whereILike() { return q; },
+        select() { return q; },
+        orderBy() { return q; },
+        limit() { return q; },
+        offset() { return Promise.resolve(mockTasks); }
+    };
+    const read = createReadService({ db: () => q });
+    const data = await read(actor, TOOLS['tasks.search'], { projectId: 4, limit: 10 }, { orgId: 2 });
+    assert.equal(data.length, 2);
+    assert.equal(data[0].name, 'Foundation Pouring');
+    assert.equal(data[0].code, 'T-1');
+    assert.equal(data[0].status, 'IN_PROGRESS');
+    assert.equal(data[0].priority, 'HIGH');
+    assert.equal(data[0].category, 'Civil Works');
+    assert.equal(data[0].due_date, '2026-03-10');
+    assert.equal(data[0].duration, '10 days');
+});
+
 export async function actualRateFunctions() {
     const source = await fs.readFile(new URL('../../src/modules/inventory/resourceService.js', import.meta.url), 'utf8');
     const extract = name => {
@@ -77,7 +108,272 @@ test('S55 actual rate helper locks parent before active-row lookup, including em
     await add(2, 1, { rate: '12', unit_code: 'kg', effective_from: '2026-02-01' }, { transaction: f.trx, agentExistingOnly: true });
     assert.deepEqual(f.trace.slice(0, 3), ['lock:res_resources', 'lock:res_resources', 'lock:res_rates']);
 });
-test('registry is exactly 13 reads and 2 disabled live writes', () => {
-    assert.equal(Object.values(TOOLS).filter(t => t.risk === 'READ').length, 13); assert.equal(Object.values(TOOLS).filter(t => t.risk === 'WRITE').length, 2);
-    assert.deepEqual(Object.values(LIVE_WRITE_ENABLEMENT), [false, false]);
+test('reports.getDPR tool returns structured progress report data with manpower and progress items', async () => {
+    const actor = { userId: 1, orgId: 2, credentialHash: 'a'.repeat(64) };
+    const mockDprTxn = [{
+        id: 2,
+        org_id: 2,
+        project_id: 4,
+        txn_type: 'DAILY_PROGRESS',
+        txn_date: '2026-08-13T00:00:00.000Z',
+        status: 'CONFIRMED',
+        remarks: JSON.stringify({
+            weather: 'sunny',
+            siteCondition: 'dry',
+            timeSlots: [{ from: '08:00', to: '17:00' }],
+            distribution: 'CLIENT',
+            preparedBy: 'MANO CPL',
+            remarksList: ['Good progress made on slab casting']
+        }),
+        created_at: '2026-08-13T12:00:00.000Z',
+        updated_at: '2026-08-13T12:00:00.000Z',
+        project_name: 'Metro Line Extension Project',
+        project_code: 'METRO-X'
+    }];
+    const mockLines = [
+        {
+            id: 3,
+            transaction_id: 2,
+            party_id: 4,
+            signed_qty: '23',
+            notes: JSON.stringify({
+                section: 'LABOUR',
+                agencyName: 'Abhishek Enterprises',
+                counts: { agency: 'Abhishek Enterprises', mason: 5, carp: 8, super: 2, labou: 8 }
+            })
+        },
+        {
+            id: 6,
+            transaction_id: 2,
+            party_id: 3,
+            signed_qty: '21',
+            notes: JSON.stringify({
+                section: 'TODAY_PROGRESS',
+                itemName: 'cement',
+                description: 'used in 1st floor',
+                unit: 'kg'
+            })
+        }
+    ];
+
+    const fakeDb = (tableName) => {
+        if (tableName === 'txn_transaction_lines') {
+            return {
+                whereIn: () => Promise.resolve(mockLines)
+            };
+        }
+        const q = {
+            leftJoin() { return q; },
+            where() { return q; },
+            select() { return q; },
+            orderBy() { return q; },
+            limit() { return Promise.resolve(mockDprTxn); }
+        };
+        return q;
+    };
+
+    const read = createReadService({ db: fakeDb });
+    const data = await read(actor, TOOLS['reports.getDPR'], { projectId: 4, date: '2026-08-13' }, { orgId: 2 });
+    assert.equal(data.length, 1);
+    assert.equal(data[0].kind, 'dpr_report');
+    assert.equal(data[0].date, '2026-08-13');
+    assert.equal(data[0].project_name, 'Metro Line Extension Project');
+    assert.equal(data[0].total_manpower, 23);
+    assert.equal(data[0].today_progress.length, 1);
+    assert.equal(data[0].today_progress[0].item, 'cement');
+    assert.equal(data[0].today_progress[0].quantity, 21);
+});
+
+test('reports.getWPR returns complete weekly progress report with dynamic bounds and contractor trade breakdown', async () => {
+    const mockDprTxn = [
+        {
+            id: 2,
+            org_id: 2,
+            project_id: 4,
+            txn_type: 'DAILY_PROGRESS',
+            txn_date: '2026-08-13',
+            status: 'CONFIRMED',
+            remarks: JSON.stringify({ weather: 'sunny', siteCondition: 'dry', remarksList: ['good progress'] }),
+            project_name: 'Metro Line Extension Project',
+            project_code: 'METRO-X'
+        }
+    ];
+
+    const mockLines = [
+        {
+            transaction_id: 2,
+            signed_qty: 23,
+            notes: JSON.stringify({
+                section: 'LABOUR',
+                agencyName: 'Abhishek Enterprises',
+                counts: { supervisors: 2, masons: 5, labourers: 16 }
+            })
+        },
+        {
+            transaction_id: 2,
+            signed_qty: 65,
+            notes: JSON.stringify({
+                section: 'TODAY_PROGRESS',
+                itemName: 'cement',
+                description: 'used in 1st floor and terrace',
+                unit: 'kg'
+            })
+        },
+        {
+            transaction_id: 2,
+            signed_qty: 40,
+            notes: JSON.stringify({
+                section: 'TOMORROW_PLAN',
+                itemName: 'cement',
+                description: 'planned for column casting',
+                unit: 'kg'
+            })
+        },
+        {
+            transaction_id: 2,
+            notes: JSON.stringify({
+                section: 'EVENT',
+                content: 'Safety briefing conducted'
+            })
+        }
+    ];
+
+    const fakeDb = (tableName) => {
+        if (tableName === 'txn_transaction_lines') {
+            return {
+                whereIn: () => Promise.resolve(mockLines)
+            };
+        }
+        if (tableName === 'proj_projects') {
+            return {
+                where: () => ({ first: () => Promise.resolve({ id: 4, name: 'Metro Line Extension Project', project_code: 'METRO-X' }) })
+            };
+        }
+        const q = {
+            leftJoin() { return q; },
+            where() { return q; },
+            select() { return q; },
+            orderBy() { return q; },
+            limit() { return Promise.resolve(mockDprTxn); },
+            first() { return Promise.resolve(mockDprTxn[0]); }
+        };
+        return q;
+    };
+
+    const read = createReadService({ db: fakeDb });
+    const data = await read(actor, TOOLS['reports.getWPR'], { projectId: 4, date: '2026-08-13' }, { orgId: 2 });
+    assert.equal(data.length, 1);
+    assert.equal(data[0].kind, 'wpr_report');
+    assert.equal(data[0].week_number, 33);
+    assert.equal(data[0].date_range, '2026-08-10 to 2026-08-16');
+    assert.equal(data[0].total_manpower_deployed, 23);
+    assert.equal(data[0].trades_breakdown.masons, 5);
+    assert.equal(data[0].trades_breakdown.labourers, 16);
+    assert.equal(data[0].contractors_breakdown.length, 1);
+    assert.equal(data[0].contractors_breakdown[0].agency, 'Abhishek Enterprises');
+    assert.equal(data[0].contractors_breakdown[0].trades.masons, 5);
+    assert.equal(data[0].progress_items_executed.length, 1);
+    assert.equal(data[0].progress_items_executed[0].item, 'cement');
+    assert.equal(data[0].progress_items_executed[0].total_executed, 65);
+    assert.deepEqual(data[0].progress_items_executed[0].descriptions, ['used in 1st floor and terrace']);
+    assert.equal(data[0].strategic_outlook_next_week.length, 1);
+    assert.equal(data[0].key_events[0], 'Safety briefing conducted');
+});
+
+test('reports.getMPR returns complete monthly progress report with dynamic calendar bounds, item descriptions, and trade details', async () => {
+    const mockDprTxn = [
+        {
+            id: 2,
+            org_id: 2,
+            project_id: 4,
+            txn_type: 'DAILY_PROGRESS',
+            txn_date: '2026-08-13',
+            status: 'CONFIRMED',
+            remarks: JSON.stringify({ weather: 'sunny', siteCondition: 'dry', remarksList: ['good progress'] }),
+            project_name: 'Metro Line Extension Project',
+            project_code: 'METRO-X'
+        }
+    ];
+
+    const mockLines = [
+        {
+            transaction_id: 2,
+            signed_qty: 23,
+            notes: JSON.stringify({
+                section: 'LABOUR',
+                agencyName: 'Abhishek Enterprises',
+                counts: { supervisors: 2, masons: 5, labourers: 16 }
+            })
+        },
+        {
+            transaction_id: 2,
+            signed_qty: 65,
+            notes: JSON.stringify({
+                section: 'TODAY_PROGRESS',
+                itemName: 'cement',
+                description: 'foundation work',
+                unit: 'kg'
+            })
+        },
+        {
+            transaction_id: 2,
+            signed_qty: 40,
+            notes: JSON.stringify({
+                section: 'TOMORROW_PLAN',
+                itemName: 'cement',
+                description: 'planned for column casting',
+                unit: 'kg'
+            })
+        }
+    ];
+
+    const fakeDb = (tableName) => {
+        if (tableName === 'txn_transaction_lines') {
+            return {
+                whereIn: () => Promise.resolve(mockLines)
+            };
+        }
+        if (tableName === 'proj_projects') {
+            return {
+                where: () => ({ first: () => Promise.resolve({ id: 4, name: 'Metro Line Extension Project', project_code: 'METRO-X' }) })
+            };
+        }
+        const q = {
+            leftJoin() { return q; },
+            where() { return q; },
+            select() { return q; },
+            orderBy() { return Promise.resolve(mockDprTxn); },
+            first() { return Promise.resolve(mockDprTxn[0]); },
+            then(resolve, reject) { return Promise.resolve(mockDprTxn).then(resolve, reject); }
+        };
+        return q;
+    };
+
+    const read = createReadService({ db: fakeDb });
+    const data = await read(actor, TOOLS['reports.getMPR'], { projectId: 4, month: 8, year: 2026 }, { orgId: 2 });
+    assert.equal(data.length, 1);
+    assert.equal(data[0].kind, 'mpr_report');
+    assert.equal(data[0].month_label, 'August 2026');
+    assert.equal(data[0].date_range, '2026-08-01 to 2026-08-31');
+    assert.equal(data[0].total_dprs, 1);
+    assert.equal(data[0].total_manpower_deployed, 23);
+    assert.equal(data[0].contractors_breakdown[0].agency, 'Abhishek Enterprises');
+    assert.equal(data[0].contractors_breakdown[0].trades.masons, 5);
+    assert.equal(data[0].cumulative_items_executed[0].item, 'cement');
+    assert.deepEqual(data[0].cumulative_items_executed[0].descriptions, ['foundation work']);
+    assert.equal(data[0].strategic_outlook_next_month.length, 1);
+    assert.equal(data[0].weekly_progression.length, 4);
+    assert.equal(data[0].weekly_progression[1].dpr_count, 1);
+});
+
+test('registry tool definitions and disabled baseline live writes', () => {
+    assert.equal(Object.values(TOOLS).filter(t => t.risk === 'READ').length, 24);
+    assert.equal(TOOLS['transactions.search']?.risk, 'READ');
+    assert.equal(TOOLS['billing.search']?.risk, 'READ');
+    assert.equal(TOOLS['tasks.search']?.risk, 'READ');
+    assert.equal(TOOLS['reports.getDPR']?.risk, 'READ');
+    assert.equal(TOOLS['reports.getWPR']?.risk, 'READ');
+    assert.equal(TOOLS['reports.getMPR']?.risk, 'READ');
+    assert.equal(Object.values(TOOLS).filter(t => t.risk === 'WRITE').length, 4);
+    assert.deepEqual(Object.values(LIVE_WRITE_ENABLEMENT), [false, false, false, false]);
 });

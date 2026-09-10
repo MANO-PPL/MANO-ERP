@@ -2,6 +2,7 @@ import { randomUUID } from 'node:crypto';
 import { AgentError, fail, fingerprint, identity, requestKey, safeError, validateRequest, validateDecision } from './agentValidation.js';
 import { CONTRACT_VERSION, TOOLS, LIVE_WRITE_ENABLEMENT, validateIntent, validateModelResponse } from './agentTools.js';
 import { actionFor, provenance, resultCard } from './agentEvents.js';
+import knowledgeGraphService from '../knowledge/knowledgeGraphService.js';
 
 const scopeRecord = scope => ({ orgId: scope.orgId, userId: scope.userId, projectId: scope.projectId || null,
     resourceId: scope.resource?.id ? Number(scope.resource.id) : null, contactId: scope.contact?.id ? Number(scope.contact.id) : null });
@@ -60,7 +61,34 @@ export function createAgentService({ store, authorize, read, writes, reason, okf
             await session.append('conversation_completed');
         });
     }
-    async function run(actor, body, request, knowledge) {
+    /**
+     * Stream a single persisted event to the live HTTP response immediately.
+     * onStreamEvent is optional — only present on fresh (non-replay) requests.
+     */
+    function emitLive(onStreamEvent, event) {
+        if (typeof onStreamEvent === 'function' && event) onStreamEvent(event);
+    }
+
+    /**
+     * Emit text_delta chunks letter-by-letter with small delays so the frontend
+     * receives genuine streaming rather than one large payload.
+     * Python returns the full text at once, so we split it here.
+     * CHUNK_SIZE characters are emitted per tick, TICK_MS apart.
+     */
+    async function streamTextDeltas(onStreamEvent, persistedDeltaEvent, fullText) {
+        const CHUNK_SIZE = 3;  // characters per tick
+        const TICK_MS = 8;     // ms between ticks — ~375 chars/s, feels natural
+        const sleep = ms => new Promise(resolve => setTimeout(resolve, ms));
+
+        for (let i = 0; i < fullText.length; i += CHUNK_SIZE) {
+            const chunk = fullText.slice(i, i + CHUNK_SIZE);
+            // Re-use the persisted event envelope but with only the current chunk as delta
+            emitLive(onStreamEvent, { ...persistedDeltaEvent, delta: chunk });
+            if (i + CHUNK_SIZE < fullText.length) await sleep(TICK_MS);
+        }
+    }
+
+    async function run(actor, body, request, knowledge, onStreamEvent) {
         const results = []; const messageId = randomUUID();
         try {
             const history = await historyFor(actor, body.conversationId);
@@ -70,68 +98,104 @@ export function createAgentService({ store, authorize, read, writes, reason, okf
                 authority.set(fingerprint(reference), reference);
                 if (authority.size > 256) fail('request_rejected', 'authorization_reference_limit');
             };
+
+            // Emit message_started immediately so the UI shows the thinking indicator
+            let startedEvent;
             await store.transaction(request.request_id, actor, async session => {
                 current(session, request);
-                await session.updateRequest({ context_json: { ...body.context, authorizationRefs: [...authority.values()] } });
-                await session.append('message_started', { messageId, role: 'assistant' });
+                await session.updateRequest({ context_json: { ...body.context, ...(body.attachment ? { attachment: body.attachment } : {}), authorizationRefs: [...authority.values()] } });
+                startedEvent = await session.append('message_started', { messageId, role: 'assistant' });
             });
+            emitLive(onStreamEvent, startedEvent);
+
             for (let step = 1; step <= 4; step++) {
                 if (now() >= Number(request.lease_ms)) fail('backend_unavailable', 'request_deadline');
                 const stepId = `${request.request_id}_${step}`;
                 const response = validateModelResponse(await reason({ protocol: CONTRACT_VERSION, requestId: request.request_id, stepId,
-                    message: body.message, history: history.messages, context: body.context, generation: knowledge.generation, knowledge: knowledge.markdown,
+                    message: body.message, history: history.messages, context: { ...body.context, ...(body.attachment ? { attachment: body.attachment } : {}) }, generation: knowledge.generation, knowledge: knowledge.markdown,
                     results, allowedTools: Object.values(TOOLS).filter(t => t.risk === 'READ' || writeEnablement[t.name] === true).map(t => t.name) }, { deadline: Number(request.lease_ms) }));
+
                 if (response.kind === 'assistant') {
                     const references = new Set([...knowledge.markdown.map(k => k.file), ...results.map(r => r.stepId)]);
                     if (response.sources.some(s => !references.has(s))) fail('protocol_error', 'unverified_provenance');
+                    const isInformational = results.length === 0 && !body.attachment && (
+                        /^(hello|hi|hey|good\s|help|who\s|what\s|how\s|explain|overview|describe|tell\s|walk\s|guide)/i.test(body.message.trim())
+                        || /\b(overview|explain|guide|help|what is|how do|workflow|module|features|about)\b/i.test(body.message.trim())
+                    );
+                    const text = (results.length > 0 || body.attachment || isInformational) ? response.text : `No ERP changes were made.\n${response.text}`;
+
+                    // Persist text_delta + text_completed + conversation_completed atomically
+                    let deltaEvent, completedEvent, doneEvent;
                     await store.transaction(request.request_id, actor, async session => {
                         current(session, request);
-                        const text = `No ERP changes were made.\n${response.text}`;
-                        await session.append('text_delta', { messageId, delta: text });
-                        await session.append('text_completed', { messageId, text, provenance: response.sources.map(label => ({ label, timestamp: new Date(now()).toISOString() })) });
-                        await session.updateRequest({ status: 'COMPLETE' }); await session.append('conversation_completed');
+                        deltaEvent = await session.append('text_delta', { messageId, delta: text });
+                        completedEvent = await session.append('text_completed', {
+                            messageId,
+                            text,
+                            provenance: response.sources.map(label => ({ label, timestamp: new Date(now()).toISOString() }))
+                        });
+                        await session.updateRequest({ status: 'COMPLETE' });
+                        doneEvent = await session.append('conversation_completed');
                     });
-                    remember(actor, body, request, `No ERP changes were made.\n${response.text}`);
+
+                    // Stream text character-by-character THEN flush completed/done
+                    await streamTextDeltas(onStreamEvent, deltaEvent, text);
+                    emitLive(onStreamEvent, completedEvent);
+                    emitLive(onStreamEvent, doneEvent);
+
+                    remember(actor, body, request, text);
                     return;
                 }
+
                 const { tool, args } = validateIntent(response);
-                if (tool.risk === 'WRITE' && writeEnablement[tool.name] !== true) fail('request_rejected', 'write_integration_gate_closed');
+                if (tool.risk.includes('WRITE') && writeEnablement[tool.name] !== true) fail('request_rejected', 'write_integration_gate_closed');
                 const scope = await authorize(actor, tool, args);
                 recordAuthorization(tool, args);
                 const execution = { execution_id: randomUUID(), request_id: request.request_id, step_index: step, tool: tool.name, tool_version: tool.version,
                     risk: tool.risk, authorization_decision: 'ALLOW', scope_json: scopeRecord(scope), args_json: args,
                     preconditions_json: null, operation_fingerprint: '', confirmation_id: null, confirmation_expires_ms: null,
-                    credential_hash: tool.risk === 'WRITE' ? actor.credentialHash : null, status: 'SUCCEEDED', result_json: null,
+                    credential_hash: tool.risk.includes('WRITE') ? actor.credentialHash : null, status: 'RUNNING', result_json: null,
                     error_category: null, created_ms: now(), completed_ms: null };
-                if (tool.risk === 'WRITE') {
+
+                if (tool.risk.includes('WRITE')) {
                     execution.preconditions_json = await writes.preconditions(tool, args, scope);
                     execution.confirmation_id = randomUUID(); execution.confirmation_expires_ms = Math.min(now() + 300000, Number(request.expires_ms));
                     execution.status = 'PENDING_CONFIRMATION'; execution.operation_fingerprint = operationDigest(request, execution);
+                    let proposedEvent, confirmEvent;
                     await store.transaction(request.request_id, actor, async session => {
                         current(session, request);
                         if (await session.executionAt(step)) fail('request_rejected', 'duplicate_tool_step');
                         await session.insertExecution(execution);
-                        const action = actionFor(tool, args);
-                        await session.append('tool_proposed', { actionId: execution.execution_id, action }, execution.execution_id);
-                        await session.append('confirmation_required', { confirmation: { ...action, confirmationId: execution.confirmation_id,
+                        const action = actionFor(tool, args, execution.preconditions_json);
+                        proposedEvent = await session.append('tool_proposed', { actionId: execution.execution_id, action }, execution.execution_id);
+                        confirmEvent = await session.append('confirmation_required', { confirmation: { ...action, confirmationId: execution.confirmation_id,
                             expiresAt: new Date(execution.confirmation_expires_ms).toISOString() } }, execution.execution_id);
                         await session.updateRequest({ status: 'AWAITING_CONFIRMATION', step_index: step });
-                        await session.updateRequest({ context_json: { ...body.context, authorizationRefs: [...authority.values()] } });
+                        await session.updateRequest({ context_json: { ...body.context, ...(body.attachment ? { attachment: body.attachment } : {}), authorizationRefs: [...authority.values()] } });
                     });
+                    emitLive(onStreamEvent, proposedEvent);
+                    emitLive(onStreamEvent, confirmEvent);
                     remember(actor, body, request, 'A confirmation was requested. No ERP write has been reported.');
                     return;
                 }
+
                 const data = await read(actor, tool, args, scope, { recordAuthorization, deadline: Number(request.lease_ms) });
                 execution.result_json = data; execution.completed_ms = now(); execution.operation_fingerprint = operationDigest(request, execution);
+
+                let proposedEvent, toolStartedEvent, toolCompletedEvent;
                 await store.transaction(request.request_id, actor, async session => {
                     current(session, request);
                     if (await session.executionAt(step)) fail('request_rejected', 'duplicate_tool_step');
                     await session.insertExecution(execution);
-                    await session.append('tool_proposed', { actionId: execution.execution_id, action: actionFor(tool, args) }, execution.execution_id);
-                    await session.append('tool_started', { actionId: execution.execution_id }, execution.execution_id);
-                    await session.append('tool_completed', { actionId: execution.execution_id, result: resultCard(tool, data), provenance: provenance(tool, scope, now()) }, execution.execution_id);
-                    await session.updateRequest({ step_index: step, context_json: { ...body.context, authorizationRefs: [...authority.values()] } });
+                    proposedEvent = await session.append('tool_proposed', { actionId: execution.execution_id, action: actionFor(tool, args) }, execution.execution_id);
+                    toolStartedEvent = await session.append('tool_started', { actionId: execution.execution_id }, execution.execution_id);
+                    toolCompletedEvent = await session.append('tool_completed', { actionId: execution.execution_id, result: resultCard(tool, data, body.message, body.context), provenance: provenance(tool, scope, now()) }, execution.execution_id);
+                    await session.updateRequest({ step_index: step, context_json: { ...body.context, ...(body.attachment ? { attachment: body.attachment } : {}), authorizationRefs: [...authority.values()] } });
                 });
+                emitLive(onStreamEvent, proposedEvent);
+                emitLive(onStreamEvent, toolStartedEvent);
+                emitLive(onStreamEvent, toolCompletedEvent);
+
                 results.push({ stepId, tool: tool.name, data });
             }
             fail('request_rejected', 'tool_loop_limit');
@@ -139,15 +203,20 @@ export function createAgentService({ store, authorize, read, writes, reason, okf
     }
 
     return {
-        async submit(actor, input, key) {
+        async submit(actor, input, key, onStreamEvent) {
             const body = validateRequest(input); requestKey(key);
             const knowledge = await okf.acquire();
             const { request, fresh } = await store.begin(actor, body, key, knowledge.generation);
             if (fresh) {
-                const work = run(actor, body, request, knowledge);
+                // Pass the live streaming callback so events flow to the HTTP response in real-time.
+                const work = run(actor, body, request, knowledge, onStreamEvent);
                 inflight.set(request.request_id, work);
                 try { await work; } finally { inflight.delete(request.request_id); }
-            } else if (inflight.has(request.request_id)) await inflight.get(request.request_id);
+            } else if (inflight.has(request.request_id)) {
+                // Idempotent retry while still running — wait for it to finish, then batch-replay
+                await inflight.get(request.request_id);
+            }
+            // Always return the full event list so the controller can also use it for replay fallback.
             return { requestId: request.request_id, events: await authorizedEvents(actor, request.request_id) };
         },
         async replay(actor, requestId, after = 0) {
@@ -177,7 +246,7 @@ export function createAgentService({ store, authorize, read, writes, reason, okf
                     if (Number(execution.confirmation_expires_ms) <= now()) fail('confirmation_expired');
                     if (generation !== session.request.generation) fail('request_rejected', 'knowledge_generation_changed');
                     const { tool, args } = validateIntent({ kind: 'tool', tool: execution.tool, version: execution.tool_version, arguments: execution.args_json });
-                    if (tool.risk !== 'WRITE' || writeEnablement[tool.name] !== true) fail('request_rejected', 'write_integration_gate_closed');
+                    if (!tool.risk.includes('WRITE') || writeEnablement[tool.name] !== true) fail('request_rejected', 'write_integration_gate_closed');
                     if (execution.operation_fingerprint !== operationDigest(session.request, execution)) fail('request_rejected', 'operation_integrity');
                     const scope = await authorize(actor, tool, args, session.trx, true);
                     if (fingerprint(scopeRecord(scope)) !== fingerprint(execution.scope_json)) fail('authorization_denied', 'scope_changed');
@@ -187,8 +256,15 @@ export function createAgentService({ store, authorize, read, writes, reason, okf
                     await session.updateExecution(execution.execution_id, { status: 'SUCCEEDED', result_json: result, completed_ms: now() });
                     await session.append('confirmation_resolved', { ...decision }, execution.execution_id);
                     await session.append('tool_started', { actionId: execution.execution_id }, execution.execution_id);
+                    const outcomeText = tool.name === 'vendors.bulkImport'
+                        ? `Successfully imported ${result.count} vendors into your organization.`
+                        : tool.name === 'approvals.batchDecide'
+                            ? `Successfully processed ${result.processedCount ?? 0} pending items.`
+                            : tool.name === 'approvals.decide'
+                                ? `Successfully recorded decision '${result.action}' for ${result.itemType} #${result.id}.`
+                                : `Committed record ${result.id}.`;
                     await session.append('tool_completed', { actionId: execution.execution_id,
-                        result: { kind: 'execution', title: tool.name, outcome: 'success', text: `Committed record ${result.id}.` },
+                        result: { kind: 'execution', title: tool.name === 'vendors.bulkImport' ? 'Bulk Vendor Import' : tool.name === 'approvals.batchDecide' ? 'Batch Approval Decision' : tool.name === 'approvals.decide' ? 'Approval Decision' : tool.name, outcome: 'success', text: outcomeText },
                         provenance: provenance(tool, scope, now()) }, execution.execution_id);
                     await session.updateRequest({ status: 'COMPLETE' }); await session.append('conversation_completed');
                 });
