@@ -4,7 +4,7 @@ import { isAdmin } from '../../utils/userUtils.js';
 
 const CONTENT_TABLES = [
     { name: 'wf_document_lines', pk: 'line_id' },
-    { name: 'proj_directory', pk: 'pd_id' },
+    { name: 'proj_directory', pk: 'id' },
     { name: 'pdoc_directory', pk: 'pd_id' },
     { name: 'proj_parties', pk: 'id' },
     { name: 'pdoc_vendors', pk: 'pv_id' },

@@ -10,7 +10,7 @@ export async function fetchProjectDirectory(projectId) {
         .leftJoin('crm_job_nature as jn', 'c.job_nature_id', 'jn.id')
         .where('pd.project_id', projectId)
         .select([
-            'pd.pd_id',
+            'pd.id',
             'pd.project_id',
             'pd.party_id as party_id',
             'pd.party_id as pv_id',
@@ -36,7 +36,7 @@ export async function fetchDirectoryCount(projectId = null) {
     if (projectId) {
         query.where('project_id', projectId);
     }
-    const result = await query.count('pd_id as cnt').first();
+    const result = await query.count('id as cnt').first();
     return result ? parseInt(result.cnt, 10) : 0;
 }
 
@@ -51,7 +51,7 @@ export async function insertDirectoryItem(data) {
         if (v) party_id = v.id;
     }
 
-    const [pd_id] = await db('proj_directory').insert({
+    const [id] = await db('proj_directory').insert({
         project_id: data.project_id,
         party_id: party_id,
         contact_person: data.contact_person,
@@ -62,7 +62,7 @@ export async function insertDirectoryItem(data) {
         address_line: data.address_line || null
     });
 
-    return { pd_id };
+    return { id };
 }
 
 export async function updateDirectoryItem(projectId, id, data = {}) {
@@ -86,7 +86,7 @@ export async function updateDirectoryItem(projectId, id, data = {}) {
     if (data.address_line !== undefined) updateData.address_line = data.address_line;
 
     const affected = await db('proj_directory')
-        .where({ pd_id: id, project_id: projectId })
+        .where({ id, project_id: projectId })
         .update(updateData);
 
     if (affected === 0) throw new AppError('Directory item not found', 404);
@@ -95,7 +95,7 @@ export async function updateDirectoryItem(projectId, id, data = {}) {
 
 export async function deleteDirectoryItem(projectId, id) {
     const affectedRows = await db('proj_directory')
-        .where({ pd_id: id, project_id: projectId })
+        .where({ id, project_id: projectId })
         .del();
 
     if (affectedRows === 0) throw new AppError('Directory item not found', 404);

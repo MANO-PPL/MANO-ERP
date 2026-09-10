@@ -532,7 +532,7 @@ const ProjectDirectory = ({ onBack, setExtraBreadcrumbs, canWrite }) => {
                         const data = await generalDocsApi.getDirectory(projectId);
                         if (data && data.directory) {
                             const mappedContacts = data.directory.map(c => ({
-                                id: c.pd_id,
+                                id: c.id,
                                 party_id: c.party_id || c.pv_id,
                                 pv_id: c.party_id || c.pv_id,
                                 name: c.company_name,
@@ -555,7 +555,7 @@ const ProjectDirectory = ({ onBack, setExtraBreadcrumbs, canWrite }) => {
                         const partyKey = c.party_id || c.pv_id;
                         const matchedParty = (list || []).find(party => (party.id === partyKey) || (party.pv_id === partyKey));
                         return {
-                            id: c.pd_id,
+                            id: c.id,
                             party_id: partyKey,
                             pv_id: partyKey,
                             name: matchedParty?.name || c.company_name || '-',
@@ -580,7 +580,7 @@ const ProjectDirectory = ({ onBack, setExtraBreadcrumbs, canWrite }) => {
             const data = await generalDocsApi.getDirectory(projectId);
             if (data && data.directory) {
                 const mappedContacts = data.directory.map(c => ({
-                    id: c.pd_id,
+                    id: c.id,
                     party_id: c.party_id || c.pv_id,
                     pv_id: c.party_id || c.pv_id,
                     name: c.company_name,

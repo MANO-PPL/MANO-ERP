@@ -73,6 +73,7 @@ export async function fetchProjectMeetings(projectId) {
             'pm.subject',
             'pm.venue',
             'pm.date',
+            'pm.status',
             'pm.content',
             'pm.created_at',
             'pm.updated_at'
@@ -107,6 +108,7 @@ export async function fetchProjectMeetings(projectId) {
             subject: m.subject,
             venue: m.venue,
             date: m.date,
+            status: m.status || 'scheduled',
             time: contentObj.time || '',
             content: contentObj,
             agenda_points: contentObj.agenda_points || [],
@@ -142,6 +144,7 @@ export async function fetchMeetingById(projectId, meetingId) {
             'pm.meeting_no',
             'pm.venue',
             'pm.date',
+            'pm.status',
             'pm.content',
             'pm.created_at',
             'pm.updated_at'
@@ -151,13 +154,14 @@ export async function fetchMeetingById(projectId, meetingId) {
     if (!meeting) throw new AppError('Meeting not found', 404);
 
     const participants = await db('proj_meetings_participants as pmp')
-        .join('proj_directory as pd', 'pmp.pd_id', 'pd.pd_id')
+        .join('proj_directory as pd', 'pmp.pd_id', 'pd.id')
         .leftJoin('proj_parties as pp', 'pd.party_id', 'pp.id')
         .leftJoin('crm_contacts as c', 'pp.contact_id', 'c.id')
         .where('pmp.meeting_id', meetingId)
         .select([
             'pmp.id as participant_entry_id',
-            'pd.pd_id',
+            'pmp.pd_id',
+            'pd.id',
             'pd.contact_person',
             'pd.designation',
             'pd.responsibilities',
@@ -179,6 +183,7 @@ export async function fetchMeetingById(projectId, meetingId) {
 
     return {
         ...meeting,
+        status: meeting.status || 'scheduled',
         time: contentObj.time || '',
         content: contentObj,
         agenda_points: contentObj.agenda_points || [],
@@ -190,6 +195,8 @@ export async function fetchMeetingById(projectId, meetingId) {
 /* -------------------------------------------------------
    CREATE MEETING
 -------------------------------------------------------- */
+const VALID_MEETING_STATUSES = ['scheduled', 'postponed', 'cancelled', 'completed'];
+
 export async function createMeeting(projectId, data) {
     if (!projectId) throw new AppError('projectId is required', 400);
     if (!data.subject) throw new AppError('Meeting subject is required', 400);
@@ -207,6 +214,9 @@ export async function createMeeting(projectId, data) {
             meetingNo = (lastMeeting?.maxNo || 0) + 1;
         }
 
+        // Validate status enum
+        const meetingStatus = VALID_MEETING_STATUSES.includes(data.status) ? data.status : 'scheduled';
+
         // Prepare agenda_points and mom_points
         const agendaPoints = (Array.isArray(data.agenda_points) ? data.agenda_points : (data.content?.agenda_points || (Array.isArray(data.points) ? data.points : [])))
             .map((p, i) => ({ sl_no: i + 1, point: typeof p === 'string' ? p : (p.point || p.topic || p.description || '') }));
@@ -216,7 +226,7 @@ export async function createMeeting(projectId, data) {
 
         let finalContent = {
             time: data.time || data.content?.time || '',
-            status: data.content?.status || 'agenda_created',
+            status: meetingStatus,
             agenda_points: agendaPoints,
             mom_points: momPoints,
             attendance: data.content?.attendance || {}
@@ -241,6 +251,7 @@ export async function createMeeting(projectId, data) {
             subject: data.subject,
             venue: data.venue || '',
             date: data.date || new Date().toISOString().split('T')[0],
+            status: meetingStatus,
             content: JSON.stringify(finalContent)
         });
 
@@ -277,13 +288,17 @@ export async function updateMeeting(projectId, meetingId, data) {
         if (data.venue !== undefined) updateFields.venue = data.venue;
         if (data.date !== undefined) updateFields.date = data.date;
 
+        if (data.status !== undefined && VALID_MEETING_STATUSES.includes(data.status)) {
+            updateFields.status = data.status;
+        }
+
         if (data.meeting_no !== undefined) {
             const parsedNo = parseInt(data.meeting_no, 10);
             if (!isNaN(parsedNo)) updateFields.meeting_no = parsedNo;
         }
 
         // Package content
-        if (data.content !== undefined || data.points !== undefined || data.agenda_points !== undefined || data.mom_points !== undefined || data.time !== undefined) {
+        if (data.content !== undefined || data.points !== undefined || data.agenda_points !== undefined || data.mom_points !== undefined || data.time !== undefined || data.status !== undefined) {
             const currentMeeting = await trx('proj_meetings').where({ id: meetingId, project_id: projectId }).first();
             const currentContent = currentMeeting ? normalizeMeetingContent(currentMeeting.content) : {};
 
@@ -303,7 +318,7 @@ export async function updateMeeting(projectId, meetingId, data) {
 
             let finalContent = {
                 time: data.time !== undefined ? data.time : (data.content?.time || currentContent.time || ''),
-                status: data.content?.status || currentContent.status || '',
+                status: updateFields.status || data.content?.status || currentMeeting?.status || currentContent.status || 'scheduled',
                 agenda_points: agendaPoints,
                 mom_points: momPoints,
                 attendance: currentContent.attendance || {}
