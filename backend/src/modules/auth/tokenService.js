@@ -27,7 +27,8 @@ export async function saveRefreshToken(userId, token, ipAddress, userAgent, reme
         expires_at: expiresAt,
         ip_address: ipAddress,
         user_agent: userAgent,
-        remember_me: rememberMe ? 1 : 0
+        remember_me: rememberMe ? 1 : 0,
+        created_at: new Date()
     });
 }
 
@@ -47,14 +48,15 @@ export async function verifyRefreshToken(token) {
     }
 
     if (Boolean(refreshTokenRecord.revoked)) {
-        // Check for Grace Period (Reuse within 60 seconds of replacement)
+        // Check for Grace Period (Reuse within 5 minutes of replacement)
         if (refreshTokenRecord.replaced_by_token) {
             const replacementToken = await db('iam_refresh_tokens')
                 .where({ token: refreshTokenRecord.replaced_by_token })
                 .first();
 
             if (replacementToken) {
-                const timeDiff = new Date() - new Date(replacementToken.created_at);
+                const createdAt = replacementToken.created_at ? new Date(replacementToken.created_at) : new Date();
+                const timeDiff = Math.abs(Date.now() - (isNaN(createdAt.getTime()) ? Date.now() : createdAt.getTime()));
                 const GRACE_PERIOD_MS = 300 * 1000; // 5 Minutes (Increased for stability)
 
                 if (timeDiff < GRACE_PERIOD_MS) {
@@ -68,12 +70,13 @@ export async function verifyRefreshToken(token) {
                     };
                 }
             }
+
+            console.warn(`Token expired or already rotated for user ${refreshTokenRecord.user_id}`);
+            return null;
         }
 
-        // Token revoked and outside grace period - Potential Reuse Attack!
-        console.warn(`Token Reuse Detected! Revoking all tokens for user ${refreshTokenRecord.user_id}`);
-        await revokeAllTokensForUser(refreshTokenRecord.user_id);
-        return { error: 'Reuse Detected' };
+        // Token was revoked without a replacement (e.g. from logout or previous revocation)
+        return null;
     }
 
     if (new Date() > new Date(refreshTokenRecord.expires_at)) {

@@ -6,14 +6,19 @@
 export function normalizeUserType(user_type) {
     if (!user_type) return 'employee';
     const norm = user_type.toString().trim().toLowerCase();
-    if (norm === 'admin') return 'admin';
+    if (['admin', 'superadmin', 'super_admin', 'owner'].includes(norm)) return 'admin';
     if (norm === 'client') return 'client';
     return 'employee';
 }
 
 export function isAdmin(userOrType) {
-    const type = typeof userOrType === 'object' ? userOrType?.user_type : userOrType;
-    return normalizeUserType(type) === 'admin';
+    if (!userOrType) return false;
+    if (typeof userOrType === 'object') {
+        if (Boolean(userOrType.is_super_admin) || Boolean(userOrType.isAdmin)) return true;
+        const type = userOrType.user_type;
+        return normalizeUserType(type) === 'admin';
+    }
+    return normalizeUserType(userOrType) === 'admin';
 }
 
 export function isClient(userOrType) {

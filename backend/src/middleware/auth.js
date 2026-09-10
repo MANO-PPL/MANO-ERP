@@ -6,31 +6,47 @@ import catchAsync from '../utils/catchAsync.js';
 import { isAdmin, isClient } from '../utils/userUtils.js';
 
 export const authenticateJWT = catchAsync(async (req, res, next) => {
-    let token = req.cookies?.accessToken;
     const authHeader = req.headers['authorization'];
+    const rawBearer = authHeader && authHeader.startsWith("Bearer ") ? authHeader.slice(7).trim() : null;
+    const bearerToken = (rawBearer && rawBearer !== 'null' && rawBearer !== 'undefined' && rawBearer !== '') ? rawBearer : null;
+    const rawCookie = req.cookies?.accessToken ? String(req.cookies.accessToken).trim() : null;
+    const cookieToken = (rawCookie && rawCookie !== 'null' && rawCookie !== 'undefined' && rawCookie !== '') ? rawCookie : null;
 
-    if (!token && authHeader && authHeader.startsWith("Bearer ")) {
-        token = authHeader.split(" ")[1];
+    const candidateTokens = [bearerToken, cookieToken].filter(Boolean);
+
+    if (candidateTokens.length === 0) {
+        return res.status(401).json({ success: false, message: "Unauthorized: No token provided" });
     }
 
-    if (!token) {
-        // If we want to return JSON 401 directly like LoginAPI did:
-        return res.status(401).json({ message: "Unauthorized: No token provided" });
+    let decoded = null;
+    let lastError = null;
+    for (const token of candidateTokens) {
+        try {
+            decoded = jwt.verify(token, process.env.JWT_SECRET);
+            if (decoded) break;
+        } catch (err) {
+            lastError = err;
+        }
+    }
+
+    if (!decoded) {
+        if (lastError?.name === 'TokenExpiredError') {
+            return res.status(401).json({ success: false, message: "Unauthorized: Token expired", expired: true });
+        }
+        if (lastError?.name === 'JsonWebTokenError' || lastError?.name === 'NotBeforeError') {
+            return res.status(401).json({ success: false, message: `Unauthorized: ${lastError.message}` });
+        }
+        // Routine token rejection - log as concise warning without dumping a stack trace
+        console.warn(`[AUTH] Token rejected: ${lastError?.message || 'Invalid token'}`);
+        return res.status(401).json({ success: false, message: "Unauthorized: Invalid or expired token" });
     }
 
     try {
-        const decoded = jwt.verify(token, process.env.JWT_SECRET);
-
-        let user;
-
-        // Check based on token contents
-        // User tokens (issued by LoginAPI.js) have user_type='employee'/'admin'/etc.
-
         const targetUserId = decoded.id || decoded.user_id;
-        user = await db('iam_users').where({ id: targetUserId }).first();
+        const user = await db('iam_users').where({ id: targetUserId }).first();
 
         if (!user) {
-            return res.status(403).json({ message: "Forbidden: Invalid token user" });
+            return res.status(401).json({ success: false, message: "Unauthorized: User account not found" });
         }
 
         // Standardize req.user
@@ -46,13 +62,9 @@ export const authenticateJWT = catchAsync(async (req, res, next) => {
         };
 
         next();
-
     } catch (err) {
-        if (err.name === 'TokenExpiredError') {
-            return res.status(403).json({ message: "Forbidden: Token expired" });
-        }
-        console.error("Auth Middleware Error:", err);
-        return res.status(403).json({ message: "Forbidden: Invalid or expired token" });
+        console.error("Auth Middleware User Lookup Error:", err);
+        return res.status(500).json({ success: false, message: "Internal server error during user lookup" });
     }
 });
 
@@ -236,6 +248,9 @@ export const requireProjectPermission = (module) => {
 
 export const restrictTo = (...roles) => {
     return (req, res, next) => {
+        if (isAdmin(req.user)) {
+            return next();
+        }
         const userRole = req.user?.user_type?.toLowerCase();
         const allowedRoles = roles.map(r => r.toLowerCase());
 
