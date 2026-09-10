@@ -11,6 +11,7 @@ export async function fetchProjectDirectory(projectId) {
         .where('pd.project_id', projectId)
         .select([
             'pd.id',
+            'pd.id as pd_id',
             'pd.project_id',
             'pd.party_id as party_id',
             'pd.party_id as pv_id',
@@ -62,7 +63,7 @@ export async function insertDirectoryItem(data) {
         address_line: data.address_line || null
     });
 
-    return { id };
+    return { id, pd_id: id };
 }
 
 export async function updateDirectoryItem(projectId, id, data = {}) {

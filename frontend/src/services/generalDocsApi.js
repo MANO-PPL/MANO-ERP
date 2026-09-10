@@ -73,6 +73,10 @@ export const generalDocsApi = {
         const response = await api.get(`/projects/${projectId}/meetings`);
         return response.data;
     },
+    getMoms: async (projectId) => {
+        const response = await api.get(`/projects/${projectId}/meetings`);
+        return response.data;
+    },
     getMeeting: async (projectId, meetingId) => {
         const response = await api.get(`/projects/${projectId}/meetings/${meetingId}`);
         return response.data;

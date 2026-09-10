@@ -63,6 +63,7 @@ export async function getProjectOrgChart(projectId) {
         .where('pd.project_id', projectId)
         .select([
             'pd.id',
+            'pd.id as pd_id',
             'pd.party_id as pv_id',
             'pd.party_id as party_id',
             'pp.contact_id as contact_id',

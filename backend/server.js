@@ -22,6 +22,9 @@ import { initializeProjectSchema } from './src/modules/projects/core/projectServ
 import { initializeResourceSchema } from './src/modules/inventory/resourceService.js';
 import { initializeProjectPartiesSchema } from './src/modules/projects/parties/partyService.js';
 import { agentInternalSecret, initializeAgentRuntime } from './src/modules/agent/agentRuntime.js';
+import { knowledgeGraphService } from './src/modules/knowledge/knowledgeGraphService.js';
+import { setSocketIo, attachDatabaseListener } from './src/modules/knowledge/kgDatabaseListener.js';
+import db from './src/config/database.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -38,6 +41,9 @@ const io = new SocketIO(server, {
         credentials: true
     }
 }); 
+
+setSocketIo(io);
+attachDatabaseListener(db);
 
 io.on('connection', (socket) => {
     console.log('Socket connected:', socket.id);
@@ -59,8 +65,18 @@ server.listen(PORT, '0.0.0.0', async () => {
         console.error('Schema initialization warning/error:', schemaErr.message || schemaErr);
     }
 
-    try { await initializeAgentRuntime(); }
-    catch { console.error('ERP agent unavailable: initialization/safety verification failed.'); }
+    try {
+        await initializeAgentRuntime();
+        console.log('ERP agent runtime initialized successfully.');
+    } catch (err) {
+        console.error('ERP agent unavailable: initialization/safety verification failed:', err);
+    }
+
+    try {
+        await knowledgeGraphService.initialize(db);
+    } catch (kgErr) {
+        console.warn('Knowledge Graph initialization warning:', kgErr.message || kgErr);
+    }
 
     // Auto-start Python AI Microservice if virtual environment is set up
     try {
@@ -102,4 +118,4 @@ server.listen(PORT, '0.0.0.0', async () => {
     }
 });
 
-// Nodemon restart trigger comment
+// Nodemon restart trigger: 1788938200000

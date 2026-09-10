@@ -162,6 +162,7 @@ export async function fetchMeetingById(projectId, meetingId) {
             'pmp.id as participant_entry_id',
             'pmp.pd_id',
             'pd.id',
+            'pd.id as pd_id',
             'pd.contact_person',
             'pd.designation',
             'pd.responsibilities',
