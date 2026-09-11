@@ -1,12 +1,21 @@
 
-import React from 'react';
-import { Outlet } from 'react-router-dom';
+import React, { useEffect } from 'react';
+import { Outlet, useLocation } from 'react-router-dom';
 import Sidebar from './Sidebar';
 import TopBar from './TopBar';
 import AgentShell from '../Agent/AgentShell';
 import { connectedTransport } from '../../services/agentTransport';
+import { recordNavigationRoute } from '../Agent/agentContext';
 
 const MainLayout = () => {
+    const location = useLocation();
+
+    useEffect(() => {
+        try {
+            recordNavigationRoute(location.pathname + location.search, window.sessionStorage);
+        } catch { /* storage safe */ }
+    }, [location.pathname, location.search]);
+
     return (
         <div className="flex w-full h-screen bg-gray-50 dark:bg-gh-bg text-gray-900 dark:text-gh-text font-sans transition-colors overflow-hidden">
             <Sidebar />

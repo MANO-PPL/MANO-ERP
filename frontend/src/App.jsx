@@ -4,6 +4,8 @@ import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-d
 import MainLayout from './components/layout/MainLayout';
 import PageSkeleton from './components/PageSkeleton';
 import LoadingScreen from './components/LoadingScreen';
+import ErrorBoundary from './components/ErrorBoundary';
+import { lazyWithRetry } from './utils/lazyWithRetry';
 import { AuthProvider, useAuth } from './context/AuthContext';
 import { ToastProvider } from './context/ToastContext';
 import { customToast } from './utils/toast';
@@ -19,24 +21,24 @@ if (reactToastify) {
   reactToastify.info = (msg, opts) => customToast.info(msg, typeof opts === 'string' ? opts : 'Info');
 }
 
-// ─── Lazy-loaded pages ────────────────────────────────────────────────────
-const Dashboard = lazy(() => import('./pages/Dashboard'));
-const Projects = lazy(() => import('./pages/Projects'));
-const CreateProject = lazy(() => import('./pages/Projects/CreateProject'));
-const ProjectDetails = lazy(() => import('./pages/ProjectDetails/ProjectDetails'));
-const VendorsList = lazy(() => import('./pages/Vendors/VendorsList'));
-const ResourcesList = lazy(() => import('./pages/Resources/ResourceList'));
-const ResourceRate = lazy(() => import('./pages/Resources/ResourceRate'));
-const UnitsList = lazy(() => import('./pages/Units/UnitsPage'));
-const VendorBulkUpload = lazy(() => import('./pages/Vendors/VendorBulkUpload'));
-const ResourceBulkUpload = lazy(() => import('./pages/Resources/ResourceBulkUpload'));
-const ClientsList = lazy(() => import('./pages/Clients/ClientsList'));
-const ClientBulkUpload = lazy(() => import('./pages/Clients/ClientBulkUpload'));
-const CollaborationPage = lazy(() => import('./pages/Collaboration/CollaborationPage'));
-const AdminPage = lazy(() => import('./pages/Admin/AdminPage'));
-const Login = lazy(() => import('./pages/Auth/Login'));
-const DrawingTest = lazy(() => import('./pages/DrawingTest/DrawingTest'));
-const SpreadsheetPage = lazy(() => import('./pages/Spreadsheets/SpreadsheetPage'));
+// ─── Lazy-loaded pages with resilient chunk retries ─────────────────────────
+const Dashboard = lazyWithRetry(() => import('./pages/Dashboard'), 'dashboard');
+const Projects = lazyWithRetry(() => import('./pages/Projects'), 'projects');
+const CreateProject = lazyWithRetry(() => import('./pages/Projects/CreateProject'), 'create_project');
+const ProjectDetails = lazyWithRetry(() => import('./pages/ProjectDetails/ProjectDetails'), 'project_details');
+const VendorsList = lazyWithRetry(() => import('./pages/Vendors/VendorsList'), 'vendors');
+const ResourcesList = lazyWithRetry(() => import('./pages/Resources/ResourceList'), 'resources');
+const ResourceRate = lazyWithRetry(() => import('./pages/Resources/ResourceRate'), 'resource_rate');
+const UnitsList = lazyWithRetry(() => import('./pages/Units/UnitsPage'), 'units');
+const VendorBulkUpload = lazyWithRetry(() => import('./pages/Vendors/VendorBulkUpload'), 'vendor_upload');
+const ResourceBulkUpload = lazyWithRetry(() => import('./pages/Resources/ResourceBulkUpload'), 'resource_upload');
+const ClientsList = lazyWithRetry(() => import('./pages/Clients/ClientsList'), 'clients');
+const ClientBulkUpload = lazyWithRetry(() => import('./pages/Clients/ClientBulkUpload'), 'client_upload');
+const CollaborationPage = lazyWithRetry(() => import('./pages/Collaboration/CollaborationPage'), 'collaboration');
+const AdminPage = lazyWithRetry(() => import('./pages/Admin/AdminPage'), 'admin');
+const Login = lazyWithRetry(() => import('./pages/Auth/Login'), 'login');
+const DrawingTest = lazyWithRetry(() => import('./pages/DrawingTest/DrawingTest'), 'drawing_test');
+const SpreadsheetPage = lazyWithRetry(() => import('./pages/Spreadsheets/SpreadsheetPage'), 'spreadsheets');
 
 import './index.css';
 
@@ -69,9 +71,10 @@ function App() {
   }, []);
 
   return (
-    <AuthProvider>
-      <ToastProvider>
-        <Router>
+    <ErrorBoundary>
+      <AuthProvider>
+        <ToastProvider>
+          <Router>
         <Routes>
           <Route path="/login" element={
             <Suspense fallback={<PageSkeleton variant="grid" />}>
@@ -201,6 +204,7 @@ function App() {
       <ToastContainer position="bottom-center" autoClose={3000} limit={2} hideProgressBar={true} newestOnTop={true} closeOnClick={true} />
       </ToastProvider>
     </AuthProvider>
+    </ErrorBoundary>
   );
 }
 
