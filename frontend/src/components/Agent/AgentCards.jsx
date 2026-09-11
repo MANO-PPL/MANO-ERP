@@ -1,9 +1,18 @@
 import React, { useEffect, useState } from 'react';
-import { AlertTriangle, CheckCircle2, CircleHelp, Info, ShieldAlert } from 'lucide-react';
+import { useNavigate } from 'react-router-dom';
+import { AlertTriangle, CheckCircle2, CircleHelp, Info, ShieldAlert, ArrowUpRight } from 'lucide-react';
 import { isExpired } from './agentModel.js';
+import { AgentChartCard, AgentMultiChartCard } from './AgentCharts.jsx';
+import { AgentExecutiveCard } from './AgentExecutiveCard.jsx';
+import { AgentApprovalCard } from './AgentApprovalCard.jsx';
+import { AgentExportCard } from './AgentExportCard.jsx';
+export { AgentChartCard, AgentMultiChartCard } from './AgentCharts.jsx';
+export { AgentExecutiveCard } from './AgentExecutiveCard.jsx';
+export { AgentApprovalCard } from './AgentApprovalCard.jsx';
+export { AgentExportCard } from './AgentExportCard.jsx';
 
-const cardClass = 'rounded-lg border border-gray-200 bg-white p-3 text-sm dark:border-gh-border dark:bg-gh-subtle';
-const buttonClass = 'rounded-md border border-gray-300 px-3 py-2 text-xs font-semibold hover:bg-gray-100 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-500 disabled:cursor-not-allowed disabled:opacity-50 dark:border-gh-border dark:hover:bg-gh-hover';
+const cardClass = 'rounded-xl border border-gray-200/90 bg-white p-3 text-xs shadow-2xs dark:border-gh-border dark:bg-gh-subtle';
+const buttonClass = 'rounded-lg border border-gray-300/90 px-3 py-1.5 text-xs font-semibold hover:bg-gray-100 transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-500 disabled:cursor-not-allowed disabled:opacity-50 dark:border-gh-border dark:hover:bg-gh-hover';
 
 export function AgentProvenance({ provenance }) {
     const entries = Array.isArray(provenance) ? provenance.filter(entry => entry && typeof entry.label === 'string') : [];
@@ -75,15 +84,33 @@ export function AgentConfirmationCard({ message, pending, busy, onDecision, prev
                 : message.decision === 'cancel' ? 'Proposal cancelled.' : 'Confirmation recorded. Execution is not yet confirmed.'}</p>
                 : <div className="mt-3 flex flex-wrap justify-end gap-2">
                     <button type="button" className={buttonClass} disabled={inactive} onClick={() => onDecision(confirmation.confirmationId, 'cancel')}>{preview ? 'Cancel preview' : 'Cancel'}</button>
-                    <button type="button" className={`${buttonClass} ${confirmation.riskLevel === 'DESTRUCTIVE' ? 'border-red-400 text-red-700 dark:text-red-300' : 'text-blue-700 dark:text-blue-300'}`}
-                        disabled={inactive || expired} onClick={() => onDecision(confirmation.confirmationId, 'confirm')}>{busy ? 'Sending decision…' : preview ? 'Confirm preview' : 'Confirm'}</button>
+                    <button type="button" className={`${buttonClass} ${confirmation.riskLevel === 'DESTRUCTIVE' ? 'border-red-400 text-red-700 dark:text-red-300' : confirmation.riskLevel === 'BULK_WRITE' ? 'bg-blue-600 text-white hover:bg-blue-700 border-blue-600 shadow-sm' : 'text-blue-700 dark:text-blue-300'}`}
+                        disabled={inactive || expired} onClick={() => onDecision(confirmation.confirmationId, 'confirm')}>
+                        {busy ? 'Sending decision…' : preview ? 'Confirm preview' : confirmation.riskLevel === 'BULK_WRITE' ? `Confirm Import (${confirmation.affectedRecords ?? ''} vendors)` : 'Confirm'}
+                    </button>
                 </div>}
         </div>
     </AgentActionCard>;
 }
 
-export function AgentResultCard({ result, preview = false }) {
+export function AgentResultCard({ result, preview = false, onPrompt }) {
+    const navigate = useNavigate();
     preview = preview || result.simulation === true;
+    if (result.kind === 'chart') {
+        return <AgentChartCard chart={result} preview={preview} />;
+    }
+    if (result.kind === 'multi_chart') {
+        return <AgentMultiChartCard multiChart={result} preview={preview} />;
+    }
+    if (result.kind === 'briefing') {
+        return <AgentExecutiveCard briefing={result} preview={preview} onPrompt={onPrompt} />;
+    }
+    if (result.kind === 'approval_queue') {
+        return <AgentApprovalCard queue={result} onPrompt={onPrompt} preview={preview} />;
+    }
+    if (result.kind === 'excel_export') {
+        return <AgentExportCard exportData={result} preview={preview} />;
+    }
     const execution = result.kind === 'execution';
     const success = execution && result.outcome === 'success';
     const Icon = execution && success && !preview ? CheckCircle2 : result.kind === 'warning' || execution ? AlertTriangle : Info;
@@ -94,7 +121,27 @@ export function AgentResultCard({ result, preview = false }) {
         {(result.kind === 'warning' || execution) && <p className="mt-2 break-words text-xs leading-relaxed">{result.text}</p>}
         {result.kind === 'list' && <>
             {result.count !== undefined && <p className="mt-1 text-xs text-gray-500 dark:text-gh-muted">{result.count} results</p>}
-            <ul className="mt-2 divide-y divide-gray-100 dark:divide-gh-border">{result.items.map((item, index) => <li key={index} className="break-words py-2 text-xs"><span className="font-medium">{item.label}</span>{item.detail && <p className="mt-1 text-gray-500 dark:text-gh-muted">{item.detail}</p>}</li>)}</ul>
+            <ul className="mt-2 divide-y divide-gray-100 dark:divide-gh-border">
+                {result.items.map((item, index) => (
+                    <li key={index} className="flex items-start justify-between gap-2 py-2 text-xs">
+                        <div className="min-w-0 flex-1">
+                            <span className="font-medium text-gray-800 dark:text-gray-200">{item.label}</span>
+                            {item.detail && <p className="mt-1 text-gray-500 dark:text-gh-muted break-words text-[11px]">{item.detail}</p>}
+                        </div>
+                        {item.route && (
+                            <button
+                                type="button"
+                                onClick={() => !preview && item.route && navigate(item.route)}
+                                className="group inline-flex items-center gap-1 shrink-0 rounded-md border border-gray-200 bg-white px-2 py-1 text-[11px] font-semibold text-gray-600 shadow-2xs hover:border-blue-400 hover:bg-blue-50/70 hover:text-blue-600 transition-all dark:border-gh-border dark:bg-gh-subtle dark:text-gray-300 dark:hover:border-blue-700 dark:hover:bg-blue-950/40 dark:hover:text-blue-400"
+                                title={`Teleport to ${item.label}`}
+                            >
+                                <span>Teleport</span>
+                                <ArrowUpRight size={12} className="text-gray-400 group-hover:text-blue-500 transition-colors" />
+                            </button>
+                        )}
+                    </li>
+                ))}
+            </ul>
         </>}
         {result.kind === 'table' && <div className="mt-2 overflow-x-auto rounded focus-visible:outline focus-visible:outline-blue-500" tabIndex={0} role="region" aria-label={`${result.title} table`}>
             <table className="w-full text-left text-xs"><thead><tr>{result.columns.map((column, index) => <th key={index} scope="col" className="border-b border-gray-200 p-2 dark:border-gh-border">{column}</th>)}</tr></thead>
