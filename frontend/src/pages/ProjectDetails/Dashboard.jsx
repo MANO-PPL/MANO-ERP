@@ -123,9 +123,11 @@ const Dashboard = ({ project, setActiveTab, canWrite }) => {
             }
 
             try {
-                // Fetch MOMs
-                const momsRes = await generalDocsApi.getMoms(targetId);
-                const momsList = momsRes?.moms || (Array.isArray(momsRes) ? momsRes : []);
+                // Fetch MOMs / Meetings
+                const momsRes = typeof generalDocsApi.getMoms === 'function'
+                    ? await generalDocsApi.getMoms(targetId)
+                    : await generalDocsApi.getMeetings(targetId);
+                const momsList = momsRes?.meetings || momsRes?.moms || (Array.isArray(momsRes) ? momsRes : []);
                 setRecentMoms(momsList.slice(0, 4));
             } catch (err) {
                 console.error("Failed to load dashboard MOMs data", err);

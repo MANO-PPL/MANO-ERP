@@ -149,12 +149,8 @@ uploads/
 /backend/knowledge/.okf-system/validated-proposals/
 /backend/knowledge/.okf-system/human-review-required.json
 
-# Explicit OKF stage diagnostics from test/catch-up runs.
-/stage2-catchup.json
-/stage2-changes.json
-/stage2-smoke.json
-/stage3-diff.json
-/stage3-smoke.json
-/stage4-analysis.json
-/stage4-catchup.json
-/stage4-smoke.json
+# Explicit OKF stage diagnostics and temporary pipeline runs
+stage*.json
+/stage*.json
+mano-okf-*
+mano-ci-fixture-*
