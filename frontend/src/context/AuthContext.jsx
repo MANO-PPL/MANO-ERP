@@ -12,8 +12,10 @@ export const AuthProvider = ({ children }) => {
         try {
             sessionStorage.clear();
             const theme = localStorage.getItem('theme');
+            const token = localStorage.getItem('mano_access_token');
             localStorage.clear();
             if (theme) localStorage.setItem('theme', theme);
+            if (token) localStorage.setItem('mano_access_token', token);
         } catch (e) {
             console.warn('Failed to clear client caches:', e);
         }
@@ -21,10 +23,10 @@ export const AuthProvider = ({ children }) => {
 
     const refreshUser = async () => {
         const hasUserTypeCookie = document.cookie.split(';').some((item) => item.trim().startsWith('userType='));
-        if (!hasUserTypeCookie) {
+        const hasStoredToken = Boolean(localStorage.getItem('mano_access_token'));
+        if (!hasUserTypeCookie && !hasStoredToken) {
             setUser(null);
             setAccessToken(null);
-            clearClientCaches();
             setLoading(false);
             return;
         }
@@ -37,7 +39,6 @@ export const AuthProvider = ({ children }) => {
                 // Clear state if failed
                 setUser(null);
                 setAccessToken(null);
-                clearClientCaches();
             }
         } catch (err) {
             console.error('Failed to retrieve user profile:', err);
@@ -45,7 +46,6 @@ export const AuthProvider = ({ children }) => {
             if (err.response?.status === 401 || err.response?.status === 403) {
                 setUser(null);
                 setAccessToken(null);
-                clearClientCaches();
             }
         } finally {
             setLoading(false);
@@ -57,7 +57,6 @@ export const AuthProvider = ({ children }) => {
     }, []);
 
     const login = (token, userData) => {
-        clearClientCaches();
         setAccessToken(token);
         setUser(userData);
     };
@@ -70,14 +69,15 @@ export const AuthProvider = ({ children }) => {
         } finally {
             setUser(null);
             setAccessToken(null);
-            clearClientCaches();
+            localStorage.removeItem('mano_access_token');
+            sessionStorage.clear();
             sessionStorage.setItem('logged_out', 'true');
             window.location.href = '/login';
         }
     };
 
     const userType = (user?.user_type || '').toLowerCase();
-    const isAdmin = userType === 'admin' || userType === 'superadmin' || Boolean(user?.is_super_admin) || Boolean(user?.isAdmin);
+    const isAdmin = userType === 'admin' || userType === 'superadmin' || userType === 'super_admin' || userType === 'owner' || Boolean(user?.is_super_admin) || Boolean(user?.isAdmin);
     const isClient = userType === 'client';
     const isEmployee = userType === 'employee';
 

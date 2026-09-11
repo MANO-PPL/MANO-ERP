@@ -11,7 +11,17 @@ const api = axios.create({
 });
 
 // Request Interceptor
-let accessToken = null;
+let accessToken = (() => {
+    try {
+        const stored = localStorage.getItem('mano_access_token');
+        if (stored && stored !== 'null' && stored !== 'undefined' && stored.trim()) {
+            return stored.trim();
+        }
+        return null;
+    } catch {
+        return null;
+    }
+})();
 let isRefreshing = false;
 let failedQueue = [];
 
@@ -28,7 +38,43 @@ const processQueue = (error, token = null) => {
 };
 
 export const setAccessToken = (token) => {
-    accessToken = token;
+    const cleanToken = (token && token !== 'null' && token !== 'undefined' && String(token).trim()) ? String(token).trim() : null;
+    accessToken = cleanToken;
+    try {
+        if (cleanToken) {
+            localStorage.setItem('mano_access_token', cleanToken);
+        } else {
+            localStorage.removeItem('mano_access_token');
+        }
+    } catch (e) {
+        console.warn('Unable to persist access token to localStorage', e);
+    }
+};
+
+export const getAccessToken = () => accessToken;
+
+export const refreshAccessToken = async () => {
+    if (isRefreshing) {
+        return new Promise((resolve) => {
+            failedQueue.push({ resolve: (token) => resolve(token), reject: () => resolve(null) });
+        });
+    }
+    isRefreshing = true;
+    try {
+        const res = await api.post('/auth/refresh');
+        if (res.status === 200 && res.data?.accessToken) {
+            const newAccessToken = res.data.accessToken;
+            setAccessToken(newAccessToken);
+            processQueue(null, newAccessToken);
+            return newAccessToken;
+        }
+    } catch (err) {
+        processQueue(err, null);
+        return null;
+    } finally {
+        isRefreshing = false;
+    }
+    return null;
 };
 
 api.interceptors.request.use(

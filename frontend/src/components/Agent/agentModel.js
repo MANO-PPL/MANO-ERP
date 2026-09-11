@@ -50,9 +50,23 @@ export const RISKS = ['READ', 'WRITE', 'DESTRUCTIVE', 'BULK_WRITE'];
 // Read planning and raw tool results are retained in the conversation state for
 // correlation, but are implementation detail rather than user-facing chat.
 // Write proposals remain visible because they require an explicit confirmation.
-export const isUserVisibleConversationMessage = message => !(message?.kind === 'action'
-    && message.action?.riskLevel === 'READ') && !(message?.kind === 'result'
-    && message.actionRiskLevel === 'READ');
+export const isUserVisibleConversationMessage = (message, debugMode = false) => {
+    if (debugMode === true) return true;
+    if (
+        message?.result?.kind === 'powerbi_dashboard' ||
+        (message?.result?.kind === 'list' && message?.result?.showVisualization && ((message?.result?.matrixRows && message?.result?.matrixRows.length > 0) || (message?.result?.kpis && message?.result?.kpis.length > 0))) ||
+        message?.result?.kind === 'chart' ||
+        message?.result?.kind === 'multi_chart' ||
+        message?.result?.kind === 'briefing' ||
+        message?.result?.kind === 'teleport' ||
+        message?.result?.kind === 'approval_queue' ||
+        message?.result?.kind === 'excel_export' ||
+        message?.result?.kind === 'cost_simulation' ||
+        message?.result?.kind === 'knowledge_trace'
+    ) return true;
+    return !(message?.kind === 'action' && message.action?.riskLevel === 'READ')
+        && !(message?.kind === 'result' && (message.actionRiskLevel === 'READ' || (message?.result?.kind === 'list' && !message?.result?.showVisualization)));
+};
 
 export const ERROR_COPY = {
     backend_unavailable: 'The ERP agent backend is not connected yet.',
@@ -82,7 +96,17 @@ export function isAction(action, confirmation = false) {
 }
 
 export function isResult(result) {
-    if (!result || !isText(result.title)) return false;
+    if (!result || typeof result !== 'object') return false;
+    if (result.kind === 'powerbi_dashboard') return isText(result.title) && (Array.isArray(result.kpis) || Array.isArray(result.matrixRows));
+    if (result.kind === 'chart') return isText(result.title) && Array.isArray(result.data);
+    if (result.kind === 'multi_chart') return isText(result.title) && Array.isArray(result.charts);
+    if (result.kind === 'briefing') return isText(result.title) || isText(result.projectName);
+    if (result.kind === 'teleport') return isText(result.title) && typeof result.route === 'string';
+    if (result.kind === 'approval_queue') return true;
+    if (result.kind === 'excel_export') return isText(result.title);
+    if (result.kind === 'cost_simulation') return isText(result.title);
+    if (result.kind === 'knowledge_trace') return isText(result.title);
+    if (!isText(result.title)) return false;
     if (result.kind === 'summary') return fieldsValid(result.fields);
     if (result.kind === 'warning') return isText(result.text);
     if (result.kind === 'list') return Array.isArray(result.items) && result.items.every(item => item && isText(item.label)
@@ -97,21 +121,29 @@ export function isResult(result) {
 
 export function isAgentEvent(event) {
     if (!event || !['eventId', 'conversationId', 'requestId'].every(key => isText(event[key]))) return false;
+    const aid = event.actionId || event.toolId; // simulation uses toolId, backend uses actionId
     switch (event.type) {
         case 'message_started': return isText(event.messageId) && ['assistant', 'status'].includes(event.role);
         case 'text_delta': return isText(event.messageId) && typeof event.delta === 'string';
         case 'text_completed': return isText(event.messageId) && typeof event.text === 'string'
             && (event.result === undefined || (isResult(event.result) && event.result.kind !== 'execution'));
-        case 'tool_proposed': return isText(event.actionId) && isAction(event.action);
+        case 'tool_proposed': return isText(aid) && (isAction(event.action) || (isText(event.name) && !!event.input));
         case 'confirmation_required': return isAction(event.confirmation, true);
         case 'confirmation_resolved': return isText(event.confirmationId) && ['confirm', 'cancel'].includes(event.decision);
-        case 'tool_started': return isText(event.actionId);
-        case 'tool_completed': return isText(event.actionId) && isResult(event.result);
+        case 'tool_started': return isText(aid);
+        case 'tool_completed': return isText(aid) && (isResult(event.result) || typeof event.output === 'object');
+        case 'result_ready': return isText(event.resultId) && !!event.result; // simulation result card
         case 'tool_failed':
         case 'agent_error': return !!event.error && Object.hasOwn(ERROR_COPY, event.error.code);
         case 'conversation_completed': return true;
         default: return false;
     }
+}
+
+// Simulation events: same as preview but also allows tool events and result_ready
+export function isSimulationEvent(event) {
+    return ['message_started','text_delta','text_completed','tool_proposed','tool_started',
+        'tool_completed','result_ready','agent_error','conversation_completed'].includes(event.type);
 }
 
 // An exact allowlist prevents an unconnected adapter from displaying ERP cards.

@@ -1,6 +1,7 @@
 import { isAgentEvent } from '../components/Agent/agentModel.js';
+import { getAccessToken, refreshAccessToken } from './api.js';
 
-export function createConnectedTransport({ fetchImpl = (...args) => fetch(...args), randomKey = () => crypto.randomUUID() } = {}) {
+export function createConnectedTransport({ fetchImpl = (...args) => fetch(...args), randomKey = () => crypto.randomUUID(), refreshAuth = refreshAccessToken } = {}) {
     const logicalKeys = new WeakMap();
     const receipts = new Map();
     const emitError = (options, code, retrySafe = false) => options.onEvent({ type: 'agent_error', eventId: randomKey(),
@@ -9,10 +10,21 @@ export function createConnectedTransport({ fetchImpl = (...args) => fetch(...arg
         if (options.signal?.aborted) return;
         let confirmationObserved = false;
         try {
-            const response = await fetchImpl(url, { method, credentials: 'include', redirect: 'error', signal: options.signal,
-                headers: { 'Content-Type': 'application/json', 'X-Agent-Client': 'mano-agent-v1', 'X-Agent-Request-Id': options.requestId,
-                    'X-Agent-Conversation-Id': options.conversationId, ...(key ? { 'X-Agent-Client-Request-Key': key } : {}) },
-                ...(method === 'POST' ? { body: JSON.stringify(body) } : {}) });
+            let response;
+            for (let attempt = 0; attempt < 2; attempt++) {
+                const token = typeof getAccessToken === 'function' ? getAccessToken() : null;
+                response = await fetchImpl(url, { method, credentials: 'include', redirect: 'error', signal: options.signal,
+                    headers: { 'Content-Type': 'application/json', 'X-Agent-Client': 'mano-agent-v1', 'X-Agent-Request-Id': options.requestId,
+                        'X-Agent-Conversation-Id': options.conversationId, ...(key ? { 'X-Agent-Client-Request-Key': key } : {}),
+                        ...(token ? { 'Authorization': `Bearer ${token}` } : {}) },
+                    ...(method === 'POST' ? { body: JSON.stringify(body) } : {}) });
+                if (response.ok) break;
+                if (attempt === 0 && [401, 403].includes(response.status) && typeof refreshAuth === 'function') {
+                    const refreshed = await refreshAuth().catch(() => null);
+                    if (refreshed) continue;
+                }
+                break;
+            }
             if (!response.ok) { emitError(options, [401, 403].includes(response.status) ? 'authorization_denied' : 'backend_unavailable'); return; }
             if (!response.headers.get('content-type')?.includes('application/x-ndjson') || !response.body) throw new Error('protocol');
             const decoder = new TextDecoder(); const reader = response.body.getReader();
@@ -55,6 +67,25 @@ export function createConnectedTransport({ fetchImpl = (...args) => fetch(...arg
             // Object identity distinguishes a stored UI Retry from a genuinely new submission, even with identical text.
             if (!logicalKeys.has(request)) logicalKeys.set(request, randomKey());
             return exchange('/api/agent/requests', request, options, logicalKeys.get(request));
+        },
+        async uploadFile(file) {
+            const token = typeof getAccessToken === 'function' ? getAccessToken() : null;
+            const formData = new FormData();
+            formData.append('file', file);
+            const response = await fetchImpl('/api/agent/upload', {
+                method: 'POST',
+                credentials: 'include',
+                headers: {
+                    'X-Agent-Client': 'mano-agent-v1',
+                    ...(token ? { 'Authorization': `Bearer ${token}` } : {})
+                },
+                body: formData
+            });
+            if (!response.ok) {
+                const err = await response.json().catch(() => ({}));
+                throw new Error(err.error?.code || 'upload_failed');
+            }
+            return await response.json();
         },
         decide(decision, options) { return exchange('/api/agent/decisions', decision, options); },
         replay(options) {
