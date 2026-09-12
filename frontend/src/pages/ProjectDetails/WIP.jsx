@@ -25,6 +25,11 @@ const WIP = ({ setExtraBreadcrumbs, projectPermissions, isAdmin, user }) => {
     const [isAssigning, setIsAssigning] = useState(false);
     const [selectedTaskForDetails, setSelectedTaskForDetails] = useState(null);
     const [isQuickCreateOpen, setIsQuickCreateOpen] = useState(false);
+    const [selectedEmployeeId, setSelectedEmployeeId] = useState(() => {
+        const empParam = searchParams.get('emp');
+        if (empParam) return parseInt(empParam, 10);
+        return user?.id || user?.user_id || null;
+    });
 
     // Quick Task Creation State
     const [quickTaskForm, setQuickTaskForm] = useState({
@@ -117,7 +122,8 @@ const WIP = ({ setExtraBreadcrumbs, projectPermissions, isAdmin, user }) => {
     // Drag and Drop Card State
     const [draggedCardId, setDraggedCardId] = useState(null);
 
-    const isSelf = user?.id === selectedEmployeeId;
+    const currentUserId = user?.id || user?.user_id;
+    const isSelf = Boolean(currentUserId && selectedEmployeeId && String(currentUserId) === String(selectedEmployeeId));
     const canDragAndDrop = isUserAdmin || isSelf;
 
     const flattenTasks = (categoryData) => {
@@ -169,13 +175,13 @@ const WIP = ({ setExtraBreadcrumbs, projectPermissions, isAdmin, user }) => {
                 setEmployees(mapped);
 
                 if (!isUserAdmin) {
-                    setSelectedEmployeeId(user?.id);
+                    setSelectedEmployeeId(currentUserId);
                 } else {
-                    const paramId = parseInt(searchParams.get('emp'));
+                    const paramId = parseInt(searchParams.get('emp'), 10);
                     if (paramId && mapped.some(e => e.id === paramId)) {
                         setSelectedEmployeeId(paramId);
                     } else if (mapped.length > 0) {
-                        setSelectedEmployeeId(mapped[0].id);
+                        setSelectedEmployeeId(prev => (prev && mapped.some(e => e.id === prev)) ? prev : mapped[0].id);
                     }
                 }
             }

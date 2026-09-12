@@ -21,7 +21,7 @@ if (reactToastify) {
   reactToastify.info = (msg, opts) => customToast.info(msg, typeof opts === 'string' ? opts : 'Info');
 }
 
-// ─── Lazy-loaded pages with resilient chunk retries ─────────────────────────
+// ─── Lazy-loaded pages with resilient chunk retries & navigation structure ──
 const Dashboard = lazyWithRetry(() => import('./pages/Dashboard'), 'dashboard');
 const Projects = lazyWithRetry(() => import('./pages/Projects'), 'projects');
 const CreateProject = lazyWithRetry(() => import('./pages/Projects/CreateProject'), 'create_project');

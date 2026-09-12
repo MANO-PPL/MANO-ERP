@@ -9,6 +9,10 @@ import { tasksApi } from '../../services/tasksApi';
 import { projectApi } from '../../services/projectApi';
 import { generalDocsApi } from '../../services/generalDocsApi';
 
+/**
+ * Project Details Dashboard component.
+ * Displays project KPI metrics, team member cards, and task/WIP progress summaries.
+ */
 const Dashboard = ({ project, setActiveTab, canWrite }) => {
     const [loading, setLoading] = useState(true);
     const [taskStats, setTaskStats] = useState({

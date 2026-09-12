@@ -9,6 +9,10 @@ import { previewTransport } from './agentTransport.js';
 
 const makeId = () => crypto.randomUUID();
 
+/**
+ * Persistent Agent Shell container providing drawer toggles, entity context propagation,
+ * and dispatch bridge across project and system views.
+ */
 export default function AgentShell({ transport = previewTransport }) {
     const location = useLocation();
     const [entityMeta, setEntityMeta] = useState(null);

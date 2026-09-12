@@ -7,6 +7,9 @@ import AgentShell from '../Agent/AgentShell';
 import { connectedTransport } from '../../services/agentTransport';
 import { recordNavigationRoute } from '../Agent/agentContext';
 
+/**
+ * Primary layout shell containing Sidebar, TopBar, agent container, and main content routing outlet.
+ */
 const MainLayout = () => {
     const location = useLocation();
 
