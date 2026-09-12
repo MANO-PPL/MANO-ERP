@@ -22,6 +22,7 @@ import { ChevronDown, ChevronLeft, ChevronRight, Check } from 'lucide-react';
 /**
  * ExcelGrid - Unified Enterprise Spreadsheet Grid Component
  * Supports dynamic formulas, inline multi-cell editing, real-time imports, and responsive drawers.
+ * Coordinates z-index stacking layers between ExcelToolbar (z-40) and ExcelTable (z-0 container).
  */
 const PageSizeDropdown = ({ pageSize, setPageSize, totalCount }) => {
     const [isOpen, setIsOpen] = useState(false);

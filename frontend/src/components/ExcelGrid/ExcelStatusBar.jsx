@@ -2,6 +2,10 @@ import React, { useMemo } from 'react';
 import { calculateSelectionMetrics } from './excelUtils';
 import { Calculator } from 'lucide-react';
 
+/**
+ * ExcelStatusBar component calculating and displaying live selection aggregates
+ * such as Count, Sum, and Average across highlighted ranges.
+ */
 export const ExcelStatusBar = ({
     sortedGridData = [],
     columns = [],

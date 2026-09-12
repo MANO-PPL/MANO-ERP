@@ -73,7 +73,7 @@ export const ExcelToolbar = ({
     }, []);
 
     return (
-        <div className="px-3 py-1.5 flex flex-wrap items-center justify-between border-b border-gray-200 dark:border-white/5 shrink-0 gap-3 bg-white dark:bg-[#0d1117] transition-colors select-none">
+        <div className="relative z-40 px-3 py-1.5 flex flex-wrap items-center justify-between border-b border-gray-200 dark:border-white/5 shrink-0 gap-3 bg-white dark:bg-[#0d1117] transition-colors select-none">
             {/* Left Section: Save Changes Button & Sync Status */}
             <div className="flex items-center gap-2">
                 <button

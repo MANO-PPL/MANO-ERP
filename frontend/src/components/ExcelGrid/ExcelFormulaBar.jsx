@@ -8,6 +8,10 @@ import {
 import { getA1Notation } from './excelUtils';
 import { ExcelFormulaAssistantModal } from '../common/ExcelFormulas';
 
+/**
+ * ExcelFormulaBar component providing active cell address display, formula editing,
+ * syntax assistance modal triggers, and equation commitment.
+ */
 export const ExcelFormulaBar = ({
     selectionFocus,
     columns = [],

@@ -10,6 +10,10 @@ import {
     transformCase
 } from './excelUtils';
 
+/**
+ * Core spreadsheet hook managing grid state, cell selections, undo/redo history,
+ * clipboard actions, formula evaluations, and batch modifications.
+ */
 export const useExcelGrid = ({
     data = [],
     columns = [],

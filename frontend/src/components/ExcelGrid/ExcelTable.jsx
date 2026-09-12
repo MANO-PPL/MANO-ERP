@@ -141,7 +141,7 @@ export const ExcelTable = ({
         <div
             data-excel-grid="true"
             tabIndex={0}
-            className="flex-1 min-h-0 relative overflow-auto scrollbar-thin table-scrollbar theme-scrollbar bg-white dark:bg-[#0d1117] outline-none"
+            className="flex-1 min-h-0 relative z-0 overflow-auto scrollbar-thin table-scrollbar theme-scrollbar bg-white dark:bg-[#0d1117] outline-none"
         >
             <table className="w-full border-collapse text-left table-fixed">
                 {/* ─── STICKY HEADER ─── */}
