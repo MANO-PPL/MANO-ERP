@@ -1,5 +1,8 @@
 import api from './api';
 
+/**
+ * REST API client service for Vendor directory management, creation, updates, and batch deletions.
+ */
 export const vendorApi = {
     // ─── List Vendors ────────────────────────────────────────────────────────
     getVendors: async (params = {}) => {

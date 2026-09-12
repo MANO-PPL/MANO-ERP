@@ -1,5 +1,9 @@
 import React, { useState, useEffect } from 'react';
 
+/**
+ * Modal form for creating and editing vendor profiles across active trade categories
+ * (Consultant, Contractor, Supplier, Manufacturer, Other).
+ */
 const AddEditVendor = ({ isOpen, onClose, onSave, initialData = null, availableJobNatures = [] }) => {
     const [formData, setFormData] = useState({
         name: '',

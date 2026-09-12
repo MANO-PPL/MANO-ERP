@@ -1,5 +1,8 @@
 import api from './api';
 
+/**
+ * REST API client service for Client directory management, creation, updates, and batch deletions.
+ */
 export const clientApi = {
     // ─── List Clients ────────────────────────────────────────────────────────
     getClients: async (params = {}) => {

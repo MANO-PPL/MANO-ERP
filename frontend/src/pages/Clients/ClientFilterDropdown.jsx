@@ -1,6 +1,10 @@
 import React, { useState, useRef, useEffect, useMemo } from 'react';
 import { Filter, ChevronDown, Search, X, Check } from 'lucide-react';
 
+/**
+ * Popover filter component for Clients directory with dual multi-selection
+ * for business sectors and job natures with left-anchored placement.
+ */
 const ClientFilterDropdown = ({
     activeFilters = { sectors: [], jobs: [] },
     onApply,

@@ -1,6 +1,10 @@
 import React, { useState, useRef, useEffect, useMemo } from 'react';
 import { Filter, ChevronDown, Search, X, Check } from 'lucide-react';
 
+/**
+ * Popover filter component for Vendors list supporting multi-select category checkboxes
+ * and searchable job nature tags with left-anchored positioning.
+ */
 const VendorFilterDropdown = ({
     activeFilters = { categories: [], jobs: [] },
     onApply,
