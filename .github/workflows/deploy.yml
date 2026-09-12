@@ -5,6 +5,10 @@ on:
     branches:
       - main
 
+concurrency:
+  group: deploy-mano-erp
+  cancel-in-progress: false
+
 jobs:
   build-assets:
     name: Build Frontend (CI)
@@ -38,9 +42,9 @@ jobs:
           path: frontend/dist
 
   deploy-to-ec2:
-    name: Deploy via Self-Hosted Runner
+    name: Deploy via Central Self-Hosted Runner
     needs: build-assets
-    runs-on: self-hosted
+    runs-on: [self-hosted, ec2-prod]
     if: github.ref == 'refs/heads/main'
 
     steps:
@@ -56,46 +60,47 @@ jobs:
       - name: Sync Production Codebase
         run: |
           echo "📥 Updating production repository codebase..."
-          cd /home/ubuntu/MANO-ERP || exit
-          git fetch origin main
-          git reset --hard origin/main
+          cd /var/www/MANO-ERP || exit
+          sudo git fetch origin main
+          sudo git reset --hard origin/main
 
       - name: Deploy Backend & Restart PM2
         run: |
           echo "⚙ Setting up Backend in production directory..."
-          cd /home/ubuntu/MANO-ERP/backend
-          npm install --production --no-audit --no-fund
+          cd /var/www/MANO-ERP/backend
+          sudo npm install --production --no-audit --no-fund
           
-          # Update Python virtual environment packages if requirements.txt changed
-          cd src/modules/ai/python_engine
-          if [ -d "venv" ]; then
-            source venv/bin/activate
-            pip install -r requirements.txt
+          # Update Python virtual environment packages if requirements.txt exists
+          if [ -d "src/modules/ai/python_engine/venv" ]; then
+            echo "🐍 Updating Python dependencies..."
+            source src/modules/ai/python_engine/venv/bin/activate
+            pip install -r src/modules/ai/python_engine/requirements.txt
             deactivate
           fi
           
-          # Restart existing backend process using PM2
-          cd /home/ubuntu/MANO-ERP/backend
+          # Restart backend process using PM2
           echo "🔄 Reloading backend with PM2..."
-          pm2 reload "MANO-ERP-BACKEND" --update-env
-
-          # Keep the 72-hour OKF runner alive under the existing PM2 manager.
-          # The host must have PM2 startup/resurrection configured separately.
-          if pm2 describe "mano-erp-okf-auto-runner" >/dev/null 2>&1; then
-            pm2 reload "mano-erp-okf-auto-runner" --update-env
+          if sudo pm2 describe "MANO-ERP" > /dev/null 2>&1; then
+            sudo pm2 reload "MANO-ERP" --update-env
+          elif pm2 describe "MANO-ERP" > /dev/null 2>&1; then
+            pm2 reload "MANO-ERP" --update-env
           else
-            pm2 start ecosystem.config.cjs --only mano-erp-okf-auto-runner --update-env
+            echo "🚀 Starting new backend process under PM2..."
+            sudo pm2 start server.js --name "MANO-ERP" --update-env
           fi
-          pm2 describe "mano-erp-okf-auto-runner" >/dev/null 2>&1
-          pm2 save
-
 
       - name: Deploy Frontend to Nginx Target
         run: |
-          echo "📁 Copying pre-built assets to Nginx target..."
-          mkdir -p /home/ubuntu/MANO-ERP/frontend/dist
-          cp -r $GITHUB_WORKSPACE/frontend/dist/* /home/ubuntu/MANO-ERP/frontend/dist/
-          
-          # Fix Nginx permissions
-          chmod +x /home/ubuntu
-          chmod -R 755 /home/ubuntu/MANO-ERP/frontend/dist
+          echo "📁 Copying pre-built assets to production dist..."
+          sudo mkdir -p /var/www/MANO-ERP/frontend/dist
+          sudo cp -r $GITHUB_WORKSPACE/frontend/dist/* /var/www/MANO-ERP/frontend/dist/
+
+          # Validate and reload Nginx
+          if sudo nginx -t; then
+            sudo systemctl reload nginx
+            echo "✅ Nginx reloaded successfully."
+          else
+            echo "❌ Nginx config test failed."
+            exit 1
+          fi
+          echo "🎉 Deployment successfully completed!"
