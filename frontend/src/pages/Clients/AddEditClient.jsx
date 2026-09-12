@@ -1,5 +1,8 @@
 import React, { useState, useEffect } from 'react';
 
+/**
+ * Modal form for adding or updating client organization records, sectors, and job nature classifications.
+ */
 const AddEditClient = ({ isOpen, onClose, onSave, initialData = null, availableSectors = [], availableJobNatures = [] }) => {
     const [formData, setFormData] = useState({
         name: '',

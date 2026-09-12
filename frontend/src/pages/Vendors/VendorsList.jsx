@@ -20,7 +20,6 @@ const CATEGORY_OPTIONS = [
     'Contractor',
     'Supplier',
     'Manufacturer',
-    'Service Provider',
     'Other'
 ];
 
@@ -99,16 +98,24 @@ export const VendorsList = () => {
 
     // Filtered data by category / job filters
     const filteredVendors = useMemo(() => {
-        const hasCategories = activeFilters.categories.length > 0;
-        const hasJobs = activeFilters.jobs.length > 0;
+        const categories = activeFilters?.categories || [];
+        const jobs = activeFilters?.jobs || [];
+        const hasCategories = categories.length > 0;
+        const hasJobs = jobs.length > 0;
         if (!hasCategories && !hasJobs) return vendors;
 
-        const catSet = new Set(activeFilters.categories);
-        const jobSet = new Set(activeFilters.jobs);
+        const catSet = new Set(categories.map((c) => String(c).trim().toLowerCase()));
+        const jobSet = new Set(jobs.map((j) => String(j).trim().toLowerCase()));
 
         return vendors.filter((v) => {
-            if (hasCategories && !catSet.has(v.category)) return false;
-            if (hasJobs && !jobSet.has(v.job_name)) return false;
+            if (hasCategories) {
+                const cat = v.category ? String(v.category).trim().toLowerCase() : '';
+                if (!catSet.has(cat)) return false;
+            }
+            if (hasJobs) {
+                const job = v.job_name ? String(v.job_name).trim().toLowerCase() : '';
+                if (!jobSet.has(job)) return false;
+            }
             return true;
         });
     }, [vendors, activeFilters]);
@@ -345,8 +352,11 @@ export const VendorsList = () => {
                     <VendorFilterDropdown
                         activeFilters={activeFilters}
                         setActiveFilters={setActiveFilters}
+                        onApply={setActiveFilters}
                         categoryOptions={CATEGORY_OPTIONS}
                         allJobNatures={allJobNatures}
+                        availableJobNatures={allJobNatures}
+                        vendors={vendors}
                         filterCategorySearch={filterCategorySearch}
                         setFilterCategorySearch={setFilterCategorySearch}
                         filterJobSearch={filterJobSearch}

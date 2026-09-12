@@ -31,6 +31,10 @@ const COLUMN_ALIASES = {
     remarks: ['remarks', 'notes', 'comments', 'description', 'remark', 'note']
 };
 
+/**
+ * ClientsList page component managing client directory records, multi-category filters,
+ * and batch spreadsheet updates through ExcelGrid.
+ */
 export const ClientsList = () => {
     const { hasPermission } = useAuth();
     const canWrite = hasPermission('clients', 2);
