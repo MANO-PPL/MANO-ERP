@@ -9,8 +9,10 @@ import { AgentExportCard } from './AgentExportCard.jsx';
 export { AgentChartCard, AgentMultiChartCard } from './AgentCharts.jsx';
 export { AgentExecutiveCard } from './AgentExecutiveCard.jsx';
 export { AgentApprovalCard } from './AgentApprovalCard.jsx';
-export { AgentExportCard } from './AgentExportCard.jsx';
-
+/**
+ * Visual card dispatcher for interactive agent responses including action cards,
+ * metric charts, executive summaries, and approvals.
+ */
 const cardClass = 'rounded-xl border border-gray-200/90 bg-white p-3 text-xs shadow-2xs dark:border-gh-border dark:bg-gh-subtle';
 const buttonClass = 'rounded-lg border border-gray-300/90 px-3 py-1.5 text-xs font-semibold hover:bg-gray-100 transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-500 disabled:cursor-not-allowed disabled:opacity-50 dark:border-gh-border dark:hover:bg-gh-hover';
 

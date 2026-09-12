@@ -161,3 +161,12 @@ export function safeError(error = {}) {
     const code = Object.hasOwn(ERROR_COPY, error.code) ? error.code : 'protocol_error';
     return { code, message: ERROR_COPY[code], retryable: error.retryable === true && error.retrySafety === 'safe' };
 }
+
+/**
+ * Standard question intent helper for agent prompt resolution.
+ */
+export const AGENT_INTENT_MODES = Object.freeze({
+    LIST: 'list',
+    VIEW: 'view',
+    AUDIT: 'audit'
+});

@@ -1,6 +1,9 @@
 import React, { useRef, useState } from 'react';
 import { ArrowUp, Square, Paperclip, FileSpreadsheet, X, Loader2 } from 'lucide-react';
 
+/**
+ * Prompt input composer supporting file attachments, question submission, and cancellation.
+ */
 export default function AgentComposer({
     draft,
     onDraft,
