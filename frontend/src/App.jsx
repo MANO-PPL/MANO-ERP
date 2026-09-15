@@ -10,6 +10,9 @@ import { AuthProvider, useAuth } from './context/AuthContext';
 import { ToastProvider } from './context/ToastContext';
 import { customToast } from './utils/toast';
 import { toast as reactToastify, ToastContainer } from 'react-toastify';
+import MobilePilotLayout from './mobile/routing/MobilePilotLayout';
+import ResponsiveRoute from './mobile/routing/ResponsiveRoute';
+import { loadMobileProjects } from './mobile/hooks/useMobileProjects';
 import 'react-toastify/dist/ReactToastify.css';
 
 // Intercept react-toastify calls platform-wide to use MANO-ERP custom Toast
@@ -39,6 +42,23 @@ const AdminPage = lazyWithRetry(() => import('./pages/Admin/AdminPage'), 'admin'
 const Login = lazyWithRetry(() => import('./pages/Auth/Login'), 'login');
 const DrawingTest = lazyWithRetry(() => import('./pages/DrawingTest/DrawingTest'), 'drawing_test');
 const SpreadsheetPage = lazyWithRetry(() => import('./pages/Spreadsheets/SpreadsheetPage'), 'spreadsheets');
+// ─── Lazy-loaded pages ────────────────────────────────────────────────────
+const MobileMainLayout = lazy(() => import('./mobile/layout/MobileMainLayout'));
+const MobileLogin = lazy(() => import('./mobile/pages/Auth/MobileLogin'));
+const MobileDashboard = lazy(() => import('./mobile/pages/MobileDashboard'));
+const MobileProjects = lazy(() => import('./mobile/pages/Projects/MobileProjects'));
+const MobileProjectForm = lazy(() => import('./mobile/pages/Projects/MobileProjectForm'));
+const MobileProjectShell = lazy(() => import('./mobile/pages/ProjectDetails/MobileProjectShell'));
+const MobileVendors = lazy(() => import('./mobile/pages/Vendors/MobileVendors'));
+const MobileVendorBulkUpload = lazy(() => import('./mobile/pages/Vendors/MobileVendorBulkUpload'));
+const MobileClients = lazy(() => import('./mobile/pages/Clients/MobileClients'));
+const MobileClientBulkUpload = lazy(() => import('./mobile/pages/Clients/MobileClientBulkUpload'));
+const MobileResources = lazy(() => import('./mobile/pages/Resources/MobileResources'));
+const MobileResourceBulkUpload = lazy(() => import('./mobile/pages/Resources/MobileResourceBulkUpload'));
+const MobileCadViewer = lazy(() => import('./mobile/pages/ProjectDetails/CAD/MobileCadViewer'));
+const MobileCollaboration = lazy(() => import('./mobile/pages/Collaboration/MobileCollaboration'));
+const MobileAdmin = lazy(() => import('./mobile/pages/Admin/MobileAdmin'));
+const MobileGlobalSpreadsheets = lazy(() => import('./mobile/pages/Spreadsheets/MobileGlobalSpreadsheets'));
 
 import './index.css';
 
@@ -75,133 +95,143 @@ function App() {
       <AuthProvider>
         <ToastProvider>
           <Router>
-        <Routes>
-          <Route path="/login" element={
-            <Suspense fallback={<PageSkeleton variant="grid" />}>
-              <Login />
-            </Suspense>
-          } />
-          <Route path="/" element={
-            <ProtectedRoute>
-              <MainLayout />
-            </ProtectedRoute>
-          }>
-            <Route index element={
+          <Routes>
+            <Route path="/login" element={
               <Suspense fallback={<PageSkeleton variant="grid" />}>
-                <Dashboard />
+                <ResponsiveRoute mobile={<MobileLogin />} desktop={<Login />} />
               </Suspense>
             } />
-            <Route path="projects" element={
-              <ProtectedRoute pageId="projects">
-                <Suspense fallback={<PageSkeleton variant="grid" />}>
-                  <Projects />
-                </Suspense>
-              </ProtectedRoute>
-            } />
-            <Route path="projects/create" element={
-              <ProtectedRoute pageId="projects" requiredLevel={2}>
-                <Suspense fallback={<PageSkeleton variant="form" />}>
-                  <CreateProject />
-                </Suspense>
-              </ProtectedRoute>
-            } />
-            <Route path="projects/new" element={
-              <ProtectedRoute pageId="projects" requiredLevel={2}>
-                <Suspense fallback={<PageSkeleton variant="form" />}>
-                  <CreateProject />
-                </Suspense>
-              </ProtectedRoute>
-            } />
-            <Route path="projects/:id" element={
+            <Route path="/" element={
               <ProtectedRoute>
+                <MobilePilotLayout
+                  mobile={
+                    <Suspense fallback={<LoadingScreen message="Loading mobile workspace..." />}>
+                      <MobileMainLayout loadProjects={loadMobileProjects} />
+                    </Suspense>
+                  }
+                  desktop={<MainLayout />}
+                />
+              </ProtectedRoute>
+            }>
+              <Route index element={
                 <Suspense fallback={<PageSkeleton variant="grid" />}>
-                  <ProjectDetails />
+                  <ResponsiveRoute mobile={<MobileDashboard />} desktop={<Dashboard />} />
                 </Suspense>
-              </ProtectedRoute>
-            } />
-            <Route path="vendors" element={
-              <ProtectedRoute pageId="vendors">
-                <Suspense fallback={<PageSkeleton variant="table" />}>
-                  <VendorsList />
-                </Suspense>
-              </ProtectedRoute>
-            } />
-            <Route path="vendors/bulk-upload" element={
-              <ProtectedRoute pageId="vendors">
-                <Suspense fallback={<PageSkeleton variant="table" />}>
-                  <VendorBulkUpload />
-                </Suspense>
-              </ProtectedRoute>
-            } />
-            <Route path="resources" element={
-              <ProtectedRoute pageId="resources">
-                <Suspense fallback={<PageSkeleton variant="table" />}>
-                  <ResourcesList />
-                </Suspense>
-              </ProtectedRoute>
-            } />
-            <Route path="resources/bulk-upload" element={
-              <ProtectedRoute pageId="resources">
-                <Suspense fallback={<PageSkeleton variant="table" />}>
-                  <ResourceBulkUpload />
-                </Suspense>
-              </ProtectedRoute>
-            } />
-            <Route path="resource-rate" element={<Navigate to="/resources?tab=rates" replace />} />
-            <Route path="units" element={<Navigate to="/resources" replace />} />
-            <Route path="spreadsheets" element={
-              <ProtectedRoute pageId="spreadsheets">
-                <Suspense fallback={<PageSkeleton variant="table" />}>
-                  <SpreadsheetPage />
-                </Suspense>
-              </ProtectedRoute>
-            } />
-            <Route path="collaboration" element={
-              <ProtectedRoute pageId="collaboration">
-                <Suspense fallback={<PageSkeleton variant="table" />}>
-                  <CollaborationPage />
-                </Suspense>
-              </ProtectedRoute>
-            } />
-            <Route path="admin" element={
-              <ProtectedRoute pageId="admin">
-                <Suspense fallback={<PageSkeleton variant="table" />}>
-                  <AdminPage />
-                </Suspense>
-              </ProtectedRoute>
-            } />
-            <Route path="clients" element={
-              <ProtectedRoute pageId="clients">
-                <Suspense fallback={<PageSkeleton variant="table" />}>
-                  <ClientsList />
-                </Suspense>
-              </ProtectedRoute>
-            } />
-            <Route path="clients/bulk-upload" element={
-              <ProtectedRoute pageId="clients">
-                <Suspense fallback={<PageSkeleton variant="table" />}>
-                  <ClientBulkUpload />
-                </Suspense>
-              </ProtectedRoute>
-            } />
-            <Route path="drawing-test" element={
+              } />
+              <Route path="projects" element={
+                <ProtectedRoute pageId="projects">
+                  <Suspense fallback={<PageSkeleton variant="grid" />}>
+                    <ResponsiveRoute
+                      mobile={<MobileProjects loadProjects={loadMobileProjects} />}
+                      desktop={<Projects />}
+                    />
+                  </Suspense>
+                </ProtectedRoute>
+              } />
+              <Route path="projects/create" element={
+                <ProtectedRoute pageId="projects" requiredLevel={2}>
+                  <Suspense fallback={<PageSkeleton variant="form" />}>
+                    <ResponsiveRoute mobile={<MobileProjectForm />} desktop={<CreateProject />} />
+                  </Suspense>
+                </ProtectedRoute>
+              } />
+              <Route path="projects/new" element={
+                <ProtectedRoute pageId="projects" requiredLevel={2}>
+                  <Suspense fallback={<PageSkeleton variant="form" />}>
+                    <ResponsiveRoute mobile={<MobileProjectForm />} desktop={<CreateProject />} />
+                  </Suspense>
+                </ProtectedRoute>
+              } />
+              <Route path="projects/:id" element={
+                <ProtectedRoute>
+                  <Suspense fallback={<PageSkeleton variant="grid" />}>
+                    <ResponsiveRoute mobile={<MobileProjectShell />} desktop={<ProjectDetails />} />
+                  </Suspense>
+                </ProtectedRoute>
+              } />
+              <Route path="vendors" element={
+                <ProtectedRoute pageId="vendors">
+                  <Suspense fallback={<PageSkeleton variant="table" />}>
+                    <ResponsiveRoute mobile={<MobileVendors />} desktop={<VendorsList />} />
+                  </Suspense>
+                </ProtectedRoute>
+              } />
+              <Route path="vendors/bulk-upload" element={
+                <ProtectedRoute pageId="vendors">
+                  <Suspense fallback={<PageSkeleton variant="table" />}>
+                    <ResponsiveRoute mobile={<MobileVendorBulkUpload />} desktop={<VendorBulkUpload />} />
+                  </Suspense>
+                </ProtectedRoute>
+              } />
+              <Route path="resources" element={
+                <ProtectedRoute pageId="resources">
+                  <Suspense fallback={<PageSkeleton variant="table" />}>
+                    <ResponsiveRoute mobile={<MobileResources />} desktop={<ResourcesList />} />
+                  </Suspense>
+                </ProtectedRoute>
+              } />
+              <Route path="resources/bulk-upload" element={
+                <ProtectedRoute pageId="resources">
+                  <Suspense fallback={<PageSkeleton variant="table" />}>
+                    <ResponsiveRoute mobile={<MobileResourceBulkUpload />} desktop={<ResourceBulkUpload />} />
+                  </Suspense>
+                </ProtectedRoute>
+              } />
+              <Route path="resource-rate" element={<Navigate to="/resources?tab=rates" replace />} />
+              <Route path="units" element={<Navigate to="/resources" replace />} />
+              <Route path="spreadsheets" element={
+                <ProtectedRoute pageId="spreadsheets">
+                  <Suspense fallback={<PageSkeleton variant="table" />}>
+                    <ResponsiveRoute mobile={<MobileGlobalSpreadsheets />} desktop={<SpreadsheetPage />} />
+                  </Suspense>
+                </ProtectedRoute>
+              } />
+              <Route path="collaboration" element={
+                <ProtectedRoute pageId="collaboration">
+                  <Suspense fallback={<PageSkeleton variant="table" />}>
+                    <ResponsiveRoute mobile={<MobileCollaboration />} desktop={<CollaborationPage />} />
+                  </Suspense>
+                </ProtectedRoute>
+              } />
+              <Route path="admin" element={
+                <ProtectedRoute pageId="admin">
+                  <Suspense fallback={<PageSkeleton variant="table" />}>
+                    <ResponsiveRoute mobile={<MobileAdmin />} desktop={<AdminPage />} />
+                  </Suspense>
+                </ProtectedRoute>
+              } />
+              <Route path="clients" element={
+                <ProtectedRoute pageId="clients">
+                  <Suspense fallback={<PageSkeleton variant="table" />}>
+                    <ResponsiveRoute mobile={<MobileClients />} desktop={<ClientsList />} />
+                  </Suspense>
+                </ProtectedRoute>
+              } />
+              <Route path="clients/bulk-upload" element={
+                <ProtectedRoute pageId="clients">
+                  <Suspense fallback={<PageSkeleton variant="table" />}>
+                    <ResponsiveRoute mobile={<MobileClientBulkUpload />} desktop={<ClientBulkUpload />} />
+                  </Suspense>
+                </ProtectedRoute>
+              } />
+              <Route path="drawing-test" element={
+                <ProtectedRoute>
+                  <Suspense fallback={<PageSkeleton variant="table" />}>
+                    <DrawingTest />
+                  </Suspense>
+                </ProtectedRoute>
+              } />
+            </Route>
+            <Route path="/drawing-viewer" element={
               <ProtectedRoute>
                 <Suspense fallback={<PageSkeleton variant="table" />}>
-                  <DrawingTest />
+                  <ResponsiveRoute mobile={<MobileCadViewer />} desktop={<DrawingTest />} />
                 </Suspense>
               </ProtectedRoute>
             } />
-          </Route>
-          <Route path="/drawing-viewer" element={
-            <ProtectedRoute>
-              <Suspense fallback={<PageSkeleton variant="table" />}>
-                <DrawingTest />
-              </Suspense>
-            </ProtectedRoute>
-          } />
-        </Routes>
-      </Router>
-      <ToastContainer position="bottom-center" autoClose={3000} limit={2} hideProgressBar={true} newestOnTop={true} closeOnClick={true} />
+          </Routes>
+        </Router>
+        <ToastContainer position="bottom-center" autoClose={3000} limit={2} hideProgressBar={true} newestOnTop={true} closeOnClick={true} />
       </ToastProvider>
     </AuthProvider>
     </ErrorBoundary>

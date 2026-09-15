@@ -1,0 +1,7 @@
+import { parseProjectMetadata } from '../../Projects/projectModel.js';
+import { taskStats } from '../Tasks/mobileTaskModel.js';
+
+export const STATIC_FINANCIAL_SUMMARY = Object.freeze({ contractValue: '$ 4,850,000', invoicedAmount: '$ 2,120,000', spentToDate: '$ 1,780,000', budgetMargin: '16.2%', utilizationPct: 43.7 });
+export const STATIC_DRAWING_DISCIPLINES = Object.freeze([{ name: 'Architectural', total: 24, approved: 20 }, { name: 'Structural', total: 18, approved: 15 }, { name: 'MEP Services', total: 14, approved: 10 }, { name: 'Civil & Infrastructure', total: 10, approved: 8 }]);
+export const STATIC_PHASES = Object.freeze([{ name: 'Concept & Planning', progress: 100, status: 'Completed' }, { name: 'Architectural & Structural Design', progress: 85, status: 'In Progress' }, { name: 'Procurement & Vendor Onboarding', progress: 60, status: 'In Progress' }, { name: 'Site Execution & Civil Works', progress: 40, status: 'In Progress' }, { name: 'Quality, Testing & Handover', progress: 10, status: 'Pending' }]);
+export function projectDashboardSummary(project, categories = []) { const metadata = parseProjectMetadata(project?.metadata); return { metadata, phases: Array.isArray(metadata.phases) ? metadata.phases : STATIC_PHASES, completion: metadata.completion ?? 45, issues: metadata.issues || 'None', owner: project?.employer || metadata.employer || 'System / Owner', taskStats: taskStats(categories) }; }
