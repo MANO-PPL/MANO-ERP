@@ -1118,6 +1118,9 @@ export const useExcelGrid = ({
     // 15. Keydown Event Dispatcher (FortuneSheet / Excel Shortcut Engine)
     const handleCellKeyDown = useCallback(
         (e, rowIndex, colKey) => {
+            if (e._excelHandled) return;
+            e._excelHandled = true;
+
             const colIndex = columns.findIndex((c) => c.key === colKey);
             const totalRows = sortedGridData.length;
             const totalCols = columns.length;

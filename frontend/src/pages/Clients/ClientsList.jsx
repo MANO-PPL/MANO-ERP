@@ -121,11 +121,35 @@ export const ClientsList = () => {
         [clients, allJobNatures, allSectors]
     );
 
+    // Aggregate comprehensive list of Nature of Job and Sector options
+    const jobOptions = useMemo(() => {
+        const set = new Set();
+        (allJobNatures || []).forEach((j) => {
+            const name = typeof j === 'object' ? j?.job_name || j?.name : String(j || '');
+            if (name && name.trim()) set.add(name.trim());
+        });
+        (clients || []).forEach((c) => {
+            const name = c?.job_name || c?.job_nature;
+            if (name && String(name).trim()) set.add(String(name).trim());
+        });
+        return Array.from(set).sort((a, b) => a.localeCompare(b));
+    }, [allJobNatures, clients]);
+
+    const sectorOptions = useMemo(() => {
+        const set = new Set();
+        (allSectors || []).forEach((s) => {
+            const name = typeof s === 'object' ? s?.sector_name || s?.name : String(s || '');
+            if (name && name.trim()) set.add(name.trim());
+        });
+        (clients || []).forEach((c) => {
+            const name = c?.sector_name;
+            if (name && String(name).trim()) set.add(String(name).trim());
+        });
+        return Array.from(set).sort((a, b) => a.localeCompare(b));
+    }, [allSectors, clients]);
+
     // Column Definitions for ExcelGrid
     const columns = useMemo(() => {
-        const jobOptions = allJobNatures.map((j) => j.job_name || j.name || j);
-        const sectorOptions = allSectors.map((s) => s.sector_name || s.name || s);
-
         return [
             {
                 key: 'name',
@@ -203,7 +227,7 @@ export const ClientsList = () => {
                 aliases: COLUMN_ALIASES.remarks
             }
         ];
-    }, [allJobNatures, allSectors]);
+    }, [jobOptions, sectorOptions]);
 
     // Batch Save Handler connecting to clientApi
     const handleSaveGridBatch = async (payload) => {

@@ -378,10 +378,22 @@ export const ProjectPartiesList = ({ canWrite = true }) => {
         });
     }, [availableContacts, crmCategoryFilter, crmSearchQuery]);
 
+    // Aggregate comprehensive list of Nature of Job options
+    const jobOptions = useMemo(() => {
+        const set = new Set();
+        (allJobNatures || []).forEach((j) => {
+            const name = typeof j === 'object' ? j?.job_name || j?.name : String(j || '');
+            if (name && name.trim()) set.add(name.trim());
+        });
+        (parties || []).forEach((p) => {
+            const name = p?.job_name || p?.job_nature;
+            if (name && String(name).trim()) set.add(String(name).trim());
+        });
+        return Array.from(set).sort((a, b) => a.localeCompare(b));
+    }, [allJobNatures, parties]);
+
     // Column Definitions for ExcelGrid
     const columns = useMemo(() => {
-        const jobOptions = allJobNatures.map((j) => j.job_name || j.name || j);
-
         return [
             {
                 key: 'name',
@@ -407,12 +419,14 @@ export const ProjectPartiesList = ({ canWrite = true }) => {
                 label: 'Category',
                 type: 'select',
                 options: CATEGORY_OPTIONS,
-                defaultValue: 'Contractor',
+                defaultValue: '',
                 width: '140px',
                 minWidth: '140px',
                 aliases: COLUMN_ALIASES.category,
                 renderCell: (val) => {
-                    if (!val) return null;
+                    if (!val) {
+                        return <span className="text-gray-400 font-normal italic text-[11px]">Select category...</span>;
+                    }
                     const badgeStyle =
                         CATEGORY_BADGE_STYLES[val] ||
                         'bg-gray-100 text-gray-700 border-gray-200 dark:bg-white/5 dark:text-gray-400 dark:border-white/10';
@@ -477,7 +491,7 @@ export const ProjectPartiesList = ({ canWrite = true }) => {
                 aliases: COLUMN_ALIASES.remarks
             }
         ];
-    }, [allJobNatures, availableContacts]);
+    }, [jobOptions, availableContacts]);
 
     // Batch Save Handler connecting to syncParties API
     const handleSaveGridBatch = async (payload) => {
