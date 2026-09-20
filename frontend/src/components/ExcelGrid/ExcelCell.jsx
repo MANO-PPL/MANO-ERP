@@ -42,7 +42,12 @@ export const ExcelCell = ({
         rowIndex >= selectionBounds.minRow && rowIndex <= selectionBounds.maxRow &&
         colIndex >= selectionBounds.minCol && colIndex <= selectionBounds.maxCol;
 
-    const isEditing = editingCell?.rowIndex === rowIndex && editingCell?.colKey === column.key;
+    const rowId = row?.id || row?._id || (column.primaryKey ? row[column.primaryKey] : null);
+    const isEditing = Boolean(
+        editingCell &&
+        (editingCell.rowId && rowId ? editingCell.rowId === rowId : editingCell.rowIndex === rowIndex) &&
+        editingCell.colKey === column.key
+    );
     const isFillHandleCell = selectionBounds &&
         rowIndex === selectionBounds.maxRow &&
         colIndex === selectionBounds.maxCol;
@@ -63,17 +68,25 @@ export const ExcelCell = ({
     };
 
     useEffect(() => {
-        if (isEditing && inputRef.current) {
-            inputRef.current.focus();
-            if (column.type === 'select') {
-                try {
-                    inputRef.current.showPicker?.();
-                } catch {
-                    // Ignore if showPicker is unsupported or not permitted
+        if (isEditing) {
+            const timer = setTimeout(() => {
+                if (inputRef.current) {
+                    inputRef.current.focus({ preventScroll: false });
+                    try {
+                        inputRef.current.scrollIntoView?.({ block: 'nearest', inline: 'nearest' });
+                    } catch {}
+                    if (column.type === 'select') {
+                        try {
+                            inputRef.current.showPicker?.();
+                        } catch {
+                            // Ignore if showPicker is unsupported or not permitted
+                        }
+                    } else if (inputRef.current.select && column.type !== 'checkbox') {
+                        inputRef.current.select();
+                    }
                 }
-            } else if (inputRef.current.select && column.type !== 'checkbox') {
-                inputRef.current.select();
-            }
+            }, 25);
+            return () => clearTimeout(timer);
         }
     }, [isEditing, column.type]);
 
@@ -130,9 +143,18 @@ export const ExcelCell = ({
             }
         }
 
-        const cellBody = column.renderCell && typeof column.renderCell === 'function'
-            ? column.renderCell(value, row, column, (newVal) => onChangeValue && onChangeValue(rowIndex, column.key, newVal, true), rowIndex)
-            : (contentNode || (column.type === 'select' || column.type === 'searchable-select' ? <span className="text-gray-400 font-normal italic text-[11px]">Select...</span> : ''));
+        if (column.renderCell && typeof column.renderCell === 'function') {
+            return column.renderCell(
+                value,
+                row,
+                column,
+                (newVal) => onChangeValue && onChangeValue(rowIndex, column.key, newVal, true),
+                rowIndex,
+                () => onStartEditing && onStartEditing(rowIndex, column.key)
+            );
+        }
+
+        const cellBody = contentNode || (column.type === 'select' || column.type === 'searchable-select' ? <span className="text-gray-400 font-normal italic text-[11px]">Select...</span> : '');
 
         if (column.type === 'select' || column.type === 'searchable-select') {
             return (
@@ -270,7 +292,9 @@ export const ExcelCell = ({
 
                 if (column.type === 'searchable-select' && onOpenDropdownPortal) {
                     onOpenDropdownPortal(rowIndex, column.key);
-                } else if (column.type === 'select' && canWrite && !column.readOnly && !e.shiftKey && !e.ctrlKey && !e.metaKey) {
+                } else if (column.type === 'select' && !column.renderCell && canWrite && !column.readOnly && !e.shiftKey && !e.ctrlKey && !e.metaKey) {
+                    onStartEditing(rowIndex, column.key);
+                } else if (column.key === 'name' && (!value || String(value).trim() === '') && canWrite && !column.readOnly && !e.shiftKey && !e.ctrlKey && !e.metaKey) {
                     onStartEditing(rowIndex, column.key);
                 }
             }}
@@ -280,7 +304,7 @@ export const ExcelCell = ({
                 }
             }}
             onDoubleClick={(e) => {
-                if (canWrite && !column.readOnly) {
+                if (canWrite && !column.readOnly && (!column.renderCell || column.renderEditor)) {
                     if (column.type === 'searchable-select' && onOpenDropdownPortal) {
                         onOpenDropdownPortal(rowIndex, column.key);
                     } else {
