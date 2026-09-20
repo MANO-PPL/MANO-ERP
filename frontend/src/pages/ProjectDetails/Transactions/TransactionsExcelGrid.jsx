@@ -437,11 +437,13 @@ export const TransactionsExcelGrid = ({
     };
 
     // Add Rows Handler
-    const handleAddRows = (count = 1) => {
-        setRows(prev => [
-            ...prev,
-            ...Array.from({ length: count }, (_, idx) => CREATE_BLANK_ROW(prev.length + idx + 1))
-        ]);
+    const handleAddRows = (count = 1, position = 'top') => {
+        const newRows = Array.from({ length: count }, (_, idx) => CREATE_BLANK_ROW(Date.now() + idx));
+        if (position === 'bottom') {
+            setRows(prev => [...prev, ...newRows]);
+        } else {
+            setRows(prev => [...newRows, ...prev]);
+        }
     };
 
     // Batch Save Handler for ExcelGrid

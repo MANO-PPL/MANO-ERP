@@ -10,8 +10,9 @@ export const parseTSV = (tsvText) => {
     const cleanText = tsvText.replace(/\r\n$/, '').replace(/\n$/, '').replace(/\r$/, '');
     if (!cleanText) return [];
 
-    const isTabDelimited = cleanText.includes('\t');
-    const delimiter = isTabDelimited ? '\t' : (cleanText.includes(',') && !cleanText.includes('\n') ? ',' : '\t');
+    // Spreadsheet clipboard data uses tab (\t) for column separation.
+    // Commas within a cell (e.g. addresses, numbers with commas, lists) must NEVER split the cell.
+    const delimiter = '\t';
 
     const rows = [];
     let currentRow = [];
@@ -30,16 +31,16 @@ export const parseTSV = (tsvText) => {
                 insideQuotes = !insideQuotes;
             }
         } else if (!insideQuotes && char === delimiter) {
-            currentRow.push(currentCell.trim());
+            currentRow.push(currentCell);
             currentCell = '';
         } else if (!insideQuotes && (char === '\n' || (char === '\r' && nextChar === '\n'))) {
             if (char === '\r') i++;
-            currentRow.push(currentCell.trim());
+            currentRow.push(currentCell);
             rows.push(currentRow);
             currentRow = [];
             currentCell = '';
         } else if (!insideQuotes && char === '\r') {
-            currentRow.push(currentCell.trim());
+            currentRow.push(currentCell);
             rows.push(currentRow);
             currentRow = [];
             currentCell = '';
@@ -47,7 +48,7 @@ export const parseTSV = (tsvText) => {
             currentCell += char;
         }
     }
-    currentRow.push(currentCell.trim());
+    currentRow.push(currentCell);
     rows.push(currentRow);
 
     return rows.filter(r => r.length > 0 && r.some(c => c !== ''));

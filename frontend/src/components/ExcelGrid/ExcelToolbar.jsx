@@ -51,6 +51,7 @@ export const ExcelToolbar = ({
     onOpenAddColumn,
     canWrite = true,
     customActions = null,
+    extraTools = null,
     bulkActions = null,
     extraFilters = null
 }) => {
@@ -372,6 +373,9 @@ export const ExcelToolbar = ({
                         </div>
                     )}
                 </div>
+
+                {/* Extra Tools (e.g. Audit Trail) next to Excel Tools */}
+                {extraTools}
             </div>
         </div>
     );
