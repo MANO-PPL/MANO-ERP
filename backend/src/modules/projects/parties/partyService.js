@@ -98,6 +98,43 @@ export async function getProjectParties(projectId, fields, orgId, options = {}) 
         .select(selectedFields)
         .orderBy('c.name', 'asc');
 
+    const partyIds = parties.map(p => p.id);
+    if (partyIds.length > 0) {
+        const dirEntries = await db('proj_directory')
+            .where('project_id', projectId)
+            .whereIn('party_id', partyIds)
+            .select([
+                'id',
+                'id as pd_id',
+                'party_id',
+                'contact_person',
+                'designation',
+                'responsibilities',
+                'mobile_no',
+                'email',
+                'address_line',
+                'created_at',
+                'updated_at'
+            ])
+            .orderBy('created_at', 'asc');
+
+        const dirMap = {};
+        for (const d of dirEntries) {
+            if (!dirMap[d.party_id]) dirMap[d.party_id] = [];
+            dirMap[d.party_id].push(d);
+        }
+
+        for (const p of parties) {
+            p.persons = dirMap[p.id] || [];
+            p.person_count = (dirMap[p.id] || []).length;
+        }
+    } else {
+        for (const p of parties) {
+            p.persons = [];
+            p.person_count = 0;
+        }
+    }
+
     return { parties, count: parties.length };
 }
 
@@ -137,12 +174,20 @@ export async function removePartiesFromProject(projectId, ppIds) {
     const existingIds = existing.map(e => e.id);
     const notFound = ppIds.filter(id => !existingIds.includes(id) && !existing.some(e => e.contact_id === id));
 
-    const deletedCount = await db('proj_parties')
-        .where('project_id', projectId)
-        .whereIn('id', existingIds)
-        .del();
+    return await db.transaction(async (trx) => {
+        // Safe cascade: delete any proj_directory records referencing these parties first
+        await trx('proj_directory')
+            .where('project_id', projectId)
+            .whereIn('party_id', existingIds)
+            .del();
 
-    return { deletedCount, deletedPvIds: existingIds, notFoundPvIds: notFound };
+        const deletedCount = await trx('proj_parties')
+            .where('project_id', projectId)
+            .whereIn('id', existingIds)
+            .del();
+
+        return { deletedCount, deletedPvIds: existingIds, notFoundPvIds: notFound };
+    });
 }
 
 /* -------------------------------------------------------
@@ -158,13 +203,24 @@ export async function syncProjectParties(projectId, { parties = [], deleted_ids 
         if (Array.isArray(deleted_ids) && deleted_ids.length > 0) {
             const numericIds = deleted_ids.map(Number).filter(n => !isNaN(n));
             if (numericIds.length > 0) {
-                await trx('proj_parties')
+                const partiesToDelete = await trx('proj_parties')
                     .where('project_id', projectId)
                     .where(function () {
                         this.whereIn('id', numericIds)
                             .orWhereIn('contact_id', numericIds);
                     })
-                    .del();
+                    .select('id');
+                const partyPks = partiesToDelete.map(p => p.id);
+                if (partyPks.length > 0) {
+                    await trx('proj_directory')
+                        .where('project_id', projectId)
+                        .whereIn('party_id', partyPks)
+                        .del();
+                    await trx('proj_parties')
+                        .where('project_id', projectId)
+                        .whereIn('id', partyPks)
+                        .del();
+                }
             }
         }
 

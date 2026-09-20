@@ -39,6 +39,14 @@ export const generalDocsApi = {
         const response = await api.delete(`/projects/${projectId}/directory/${pdId}`);
         return response.data;
     },
+    syncDirectory: async (projectId, payload) => {
+        const response = await api.put(`/projects/${projectId}/directory/sync`, payload);
+        return response.data;
+    },
+    addBulkPersonnel: async (projectId, payload) => {
+        const response = await api.post(`/projects/${projectId}/directory/bulk-personnel`, payload);
+        return response.data;
+    },
 
     // ---- PROJECT PARTIES ----
     getParties: async (projectId) => {

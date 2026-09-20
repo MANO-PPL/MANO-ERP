@@ -6,7 +6,7 @@ export async function getProjectSummaries(projectId) {
 
     const summaries = await db('proj_summary')
         .where({ project_id: projectId })
-        .orderBy('date', 'desc');
+        .orderBy('date', 'asc');
 
     return summaries;
 }
