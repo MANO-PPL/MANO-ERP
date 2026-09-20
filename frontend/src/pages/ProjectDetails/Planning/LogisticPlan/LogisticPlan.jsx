@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import {
     Download, Filter, Truck, Package, Clock, CheckCircle2,
     AlertTriangle, ChevronDown, TrendingUp, MapPin, Box,
-    Plus, Edit2, Trash2, Sparkles, Users
+    Plus, Edit2, Trash2, Sparkles, Users, BarChart3, Coins, Zap
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { DeliveryPanel, EquipmentPanel, LogisticAIPanel } from './DetailPanel';
@@ -203,8 +203,9 @@ const LogisticPlan = ({ setExtraBreadcrumbs, onBack }) => {
                     <div className="flex bg-gray-100 dark:bg-white/5 rounded-lg p-0.5">
                         {['deliveries', 'equipment'].map(t => (
                             <button key={t} onClick={() => { setTab(t); closePanel(); }}
-                                className={`px-3 py-1.5 text-xs font-semibold rounded-md transition-all ${tab === t ? 'bg-white dark:bg-[#161b22] text-gray-900 dark:text-white shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}>
-                                {t === 'deliveries' ? '📦 Deliveries' : '🏗️ Equipment'}
+                                className={`px-3 py-1.5 text-xs font-semibold rounded-md transition-all flex items-center gap-1.5 ${tab === t ? 'bg-white dark:bg-[#161b22] text-gray-900 dark:text-white shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}>
+                                {t === 'deliveries' ? <Package size={13} /> : <Truck size={13} />}
+                                <span>{t === 'deliveries' ? 'Deliveries' : 'Equipment'}</span>
                             </button>
                         ))}
                     </div>
@@ -311,13 +312,15 @@ const LogisticPlan = ({ setExtraBreadcrumbs, onBack }) => {
                                 <div className="bg-white dark:bg-[#161b22] rounded-2xl border border-gray-100 dark:border-white/5 p-5 space-y-4">
                                     <h3 className="text-sm font-bold text-gray-800 dark:text-white">Equipment Snapshot</h3>
                                     {[
-                                        { label: 'Active Equipment', value: activeEquip, total: equipment.length, color: '#22c55e', icon: '🏗️' },
-                                        { label: 'Avg Utilization', value: `${avgUtilization}%`, color: avgUtilization >= 70 ? '#22c55e' : '#f59e0b', icon: '📊' },
-                                        { label: 'Total Equipment Cost', value: fmtCurrency(totalEquipCost), color: '#8b5cf6', icon: '💰' },
-                                        { label: 'Highest Utilization', value: `${equipment.length > 0 ? [...equipment].sort((a, b) => b.utilization - a.utilization)[0]?.name : '—'}`, color: '#3b82f6', icon: '⚡' },
+                                        { label: 'Active Equipment', value: activeEquip, total: equipment.length, color: '#22c55e', icon: Truck },
+                                        { label: 'Avg Utilization', value: `${avgUtilization}%`, color: avgUtilization >= 70 ? '#22c55e' : '#f59e0b', icon: BarChart3 },
+                                        { label: 'Total Equipment Cost', value: fmtCurrency(totalEquipCost), color: '#8b5cf6', icon: Coins },
+                                        { label: 'Highest Utilization', value: `${equipment.length > 0 ? [...equipment].sort((a, b) => b.utilization - a.utilization)[0]?.name : '—'}`, color: '#3b82f6', icon: Zap },
                                     ].map((s, i) => (
                                         <div key={i} className="flex items-center gap-3 bg-gray-50 dark:bg-[#0d1117] rounded-xl p-3 border border-gray-100 dark:border-white/5">
-                                            <span className="text-lg">{s.icon}</span>
+                                            <div className="w-8 h-8 rounded-lg flex items-center justify-center bg-white dark:bg-white/5 border border-gray-100 dark:border-white/10 shrink-0">
+                                                <s.icon size={16} style={{ color: s.color }} />
+                                            </div>
                                             <div className="flex-1 min-w-0">
                                                 <p className="text-[9px] text-gray-400 uppercase tracking-wider font-bold">{s.label}</p>
                                                 <p className="text-sm font-bold text-gray-800 dark:text-white truncate">{typeof s.value === 'number' ? `${s.value}/${s.total}` : s.value}</p>
