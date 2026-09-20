@@ -3,7 +3,8 @@ import {
     Building2,
     Plus,
     SlidersHorizontal,
-    CopyCheck
+    CopyCheck,
+    ChevronDown
 } from 'lucide-react';
 import api from '../../services/api';
 import vendorApi from '../../services/vendorApi';
@@ -185,6 +186,7 @@ export const VendorsList = () => {
                 label: 'Nature of Job',
                 type: 'select',
                 options: jobOptions,
+                placeholder: '-- Select Trade --',
                 width: '180px',
                 minWidth: '170px',
                 aliases: COLUMN_ALIASES.job_name

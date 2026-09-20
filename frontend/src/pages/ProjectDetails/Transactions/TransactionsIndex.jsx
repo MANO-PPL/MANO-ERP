@@ -1,7 +1,8 @@
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import {
     RefreshCw,
-    Plus
+    Plus,
+    AlertCircle
 } from 'lucide-react';
 import { ledgerApi } from '../../../services/ledgerApi';
 import { projectApi } from '../../../services/projectApi';
@@ -134,8 +135,9 @@ export const TransactionsIndex = ({ project, canWrite, isAdmin }) => {
         <div className="flex-1 min-h-0 flex flex-col h-full overflow-hidden bg-white dark:bg-[#0d1117] text-gray-900 dark:text-gray-100">
             {/* Project party count warning */}
             {projectParties.length === 0 && (
-                <div className="mx-3 mt-2 px-3.5 py-2 bg-amber-50 dark:bg-amber-950/40 border border-amber-200 dark:border-amber-800 rounded-lg text-xs text-amber-800 dark:text-amber-300 font-medium shrink-0">
-                    ⚠️ No active parties found for this project. Add parties in <strong>Project Settings → Parties</strong> to enable transactions.
+                <div className="mx-3 mt-2 px-3.5 py-2 bg-amber-50 dark:bg-amber-950/40 border border-amber-200 dark:border-amber-800 rounded-lg text-xs text-amber-800 dark:text-amber-300 font-medium shrink-0 flex items-center gap-2">
+                    <AlertCircle size={14} className="text-amber-600 dark:text-amber-400 shrink-0" />
+                    <span>No active parties found for this project. Add parties in <strong>Project Settings → Parties</strong> to enable transactions.</span>
                 </div>
             )}
 
