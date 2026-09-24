@@ -12,6 +12,8 @@ export const MOBILE_PILOT_PATHS = Object.freeze([
     '/spreadsheets',
     '/collaboration',
     '/admin',
+    '/drawing-test',
+    '/drawing-viewer',
 ]);
 
 export function normalizePilotPath(pathname) {

@@ -12,7 +12,7 @@ import { projectDashboardSummary, STATIC_DRAWING_DISCIPLINES, STATIC_FINANCIAL_S
 export default function MobileProjectDashboard({ project, permissions, visibleModules = [], isAdmin, onSelectModule, services = {} }) {
     const taskService = services.tasks || tasksApi; const memberService = services.projects || projectApi; const docs = services.docs || generalDocsApi;
     const taskRead = isAdmin || getProjectPermissionLevel(permissions, 'Tasks') >= 1; const docsRead = isAdmin || getProjectPermissionLevel(permissions, 'General Documents') >= 1;
-    const [state, setState] = useState({ loading: true, categories: [], members: [], directory: [], parties: [], errors: {} });
+    const [state, setState] = useState({ loading: true, categories: [], members: [], directory: [], parties: [], meetings: [], errors: {} });
     const requestRef = useRef(null); const generationRef = useRef(0);
     useEffect(() => {
         const sameRequest = requestRef.current
@@ -24,12 +24,32 @@ export default function MobileProjectDashboard({ project, permissions, visibleMo
             && requestRef.current.docsRead === docsRead;
         if (sameRequest) return;
         const generation = ++generationRef.current; const requestedProjectId = project.id;
-        setState({ loading: true, categories: [], members: [], directory: [], parties: [], errors: {} });
-        const jobs = [taskRead ? taskService.getTasks(requestedProjectId) : Promise.resolve(null), memberService.getProjectMembers(requestedProjectId), docsRead ? docs.getDirectory(requestedProjectId) : Promise.resolve(null), docsRead ? docs.getParties(requestedProjectId) : Promise.resolve(null)];
+        setState({ loading: true, categories: [], members: [], directory: [], parties: [], meetings: [], errors: {} });
+        const fetchMeetings = () => {
+            if (typeof docs.getMeetings === 'function') return docs.getMeetings(requestedProjectId);
+            if (typeof docs.getMoms === 'function') return docs.getMoms(requestedProjectId);
+            return Promise.resolve(null);
+        };
+        const jobs = [
+            taskRead ? taskService.getTasks(requestedProjectId) : Promise.resolve(null),
+            memberService.getProjectMembers(requestedProjectId),
+            docsRead ? docs.getDirectory(requestedProjectId) : Promise.resolve(null),
+            docsRead ? docs.getParties(requestedProjectId) : Promise.resolve(null),
+            docsRead ? fetchMeetings() : Promise.resolve(null)
+        ];
         const request = Promise.allSettled(jobs).then((results) => {
             if (generation !== generationRef.current || String(requestedProjectId) !== String(project.id)) return;
-            const errors = {}; ['tasks', 'members', 'directory', 'parties'].forEach((key, index) => { if (results[index].status === 'rejected') errors[key] = results[index].reason; });
-            setState({ loading: false, categories: results[0].value?.categories || [], members: results[1].value?.members || [], directory: results[2].value?.directory || [], parties: results[3].value?.parties || [], errors });
+            const errors = {}; ['tasks', 'members', 'directory', 'parties', 'meetings'].forEach((key, index) => { if (results[index].status === 'rejected') errors[key] = results[index].reason; });
+            const meetingsData = results[4]?.value?.meetings || results[4]?.value?.moms || (Array.isArray(results[4]?.value) ? results[4]?.value : []);
+            setState({
+                loading: false,
+                categories: results[0].value?.categories || [],
+                members: results[1].value?.members || [],
+                directory: results[2].value?.directory || [],
+                parties: results[3].value?.parties || [],
+                meetings: Array.isArray(meetingsData) ? meetingsData : [],
+                errors
+            });
         }).finally(() => { if (requestRef.current?.promise === request) requestRef.current = null; });
         requestRef.current = { projectId: requestedProjectId, taskService, memberService, docs, taskRead, docsRead, promise: request };
     }, [docs, docsRead, memberService, project.id, taskRead, taskService]);
@@ -45,7 +65,35 @@ export default function MobileProjectDashboard({ project, permissions, visibleMo
         <MobileCard><h3 className="text-sm font-black">Financial & budget summary</h3><p className="mt-1 text-[11px] text-gray-500">Static dashboard summary from the current ERP presentation.</p><div className="mt-3 grid grid-cols-2 gap-3 text-xs">{Object.entries(STATIC_FINANCIAL_SUMMARY).slice(0, 4).map(([key, value]) => <div key={key} className="rounded-xl bg-gray-50 p-3 dark:bg-gh-hover"><span className="block text-gray-500">{key.replace(/([A-Z])/g, ' $1')}</span><b className="mt-1 block">{value}</b></div>)}</div></MobileCard>
         <MobileCard><h3 className="text-sm font-black">Drawings & technical documents</h3><p className="mt-1 text-[11px] text-gray-500">Static discipline summary from the current ERP presentation.</p><div className="mt-3 space-y-2">{STATIC_DRAWING_DISCIPLINES.map((item) => <div key={item.name} className="flex justify-between text-xs"><span>{item.name}</span><b>{item.approved}/{item.total} approved</b></div>)}</div></MobileCard>
         <MobileCard><h3 className="text-sm font-black">Assigned team</h3>{state.members.length ? <div className="mt-3 space-y-2">{state.members.slice(0, 5).map((member) => <div key={member.user_id ?? member.id} className="rounded-xl bg-gray-50 p-3 text-sm dark:bg-gh-hover"><b>{member.user_name || member.name || 'Project member'}</b><span className="ml-2 text-xs text-gray-500">{member.user_type || 'Employee'}</span></div>)}</div> : <MobileEmptyState icon={Users} title="No assigned team" />}</MobileCard>
-        <MobileCard><h3 className="text-sm font-black">Recent meetings</h3><p className="mt-2 text-xs leading-5 text-gray-500 dark:text-gh-muted">Recent meeting minutes are unavailable here because the current frontend service has no equivalent method. No meeting data has been fabricated.</p></MobileCard>
+        <MobileCard>
+            <div className="flex items-center justify-between">
+                <h3 className="text-sm font-black">Recent meetings (MoM)</h3>
+                {docsRead && (
+                    <button onClick={() => navigate('General Documents')} className="min-h-11 text-xs font-bold text-blue-600 dark:text-blue-400">
+                        View MoMs
+                    </button>
+                )}
+            </div>
+            {state.meetings.length ? (
+                <div className="mt-3 space-y-2">
+                    {state.meetings.slice(0, 4).map((meeting, idx) => (
+                        <div key={meeting.id || idx} className="rounded-xl bg-gray-50 p-3 text-xs dark:bg-gh-hover">
+                            <div className="flex justify-between font-bold">
+                                <span className="truncate">{meeting.title || `Meeting #${meeting.id}`}</span>
+                                <span className="ml-2 shrink-0 font-mono text-[10px] text-gray-400">
+                                    {meeting.meeting_date ? new Date(meeting.meeting_date).toLocaleDateString() : 'Recent'}
+                                </span>
+                            </div>
+                            <p className="mt-1 truncate text-gray-500 dark:text-gh-muted">
+                                {meeting.location || meeting.attendees || 'Site Progress Review'}
+                            </p>
+                        </div>
+                    ))}
+                </div>
+            ) : (
+                <p className="mt-2 text-xs text-gray-400">No meeting minutes recorded yet</p>
+            )}
+        </MobileCard>
         <div className="grid grid-cols-2 gap-2">{[['Tasks', Layers], ['WIP', Activity], ['Phases', FileText], ['Settings', Users]].filter(([name]) => visibleModules.some((module) => module.key === name)).map(([name, Icon]) => <button key={name} onClick={() => navigate(name)} className="min-h-12 rounded-xl border border-gray-200 bg-white px-3 text-left text-sm font-bold dark:border-gh-border dark:bg-gh-subtle"><Icon size={16} className="mr-2 inline text-blue-600" />{name}</button>)}</div>
     </div>;
 }

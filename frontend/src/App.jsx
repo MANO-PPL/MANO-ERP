@@ -217,7 +217,7 @@ function App() {
               <Route path="drawing-test" element={
                 <ProtectedRoute>
                   <Suspense fallback={<PageSkeleton variant="table" />}>
-                    <DrawingTest />
+                    <ResponsiveRoute mobile={<MobileCadViewer />} desktop={<DrawingTest />} />
                   </Suspense>
                 </ProtectedRoute>
               } />
