@@ -618,8 +618,8 @@ Remarks       : ${formData.remarks || '-'}
                                     </select>
                                 </div>
                                 {resource?.base_unit_code && (
-                                    <p className="text-[10px] text-amber-600 dark:text-amber-400 font-medium pl-[112px] flex items-center gap-1">
-                                        <span>⚠️</span>
+                                    <p className="text-[10px] text-amber-600 dark:text-amber-400 font-medium pl-[112px] flex items-center gap-1.5">
+                                        <AlertCircle size={12} className="shrink-0 text-amber-500" />
                                         <span>Category locked to <strong>{unitTypeLabel[UNIT_REGISTRY[resource.base_unit_code]?.type] || UNIT_REGISTRY[resource.base_unit_code]?.type}</strong>. Unit changes must stay within the same category to protect historical rates & recipes.</span>
                                     </p>
                                 )}

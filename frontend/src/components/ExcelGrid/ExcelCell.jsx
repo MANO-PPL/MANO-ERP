@@ -42,7 +42,12 @@ export const ExcelCell = ({
         rowIndex >= selectionBounds.minRow && rowIndex <= selectionBounds.maxRow &&
         colIndex >= selectionBounds.minCol && colIndex <= selectionBounds.maxCol;
 
-    const isEditing = editingCell?.rowIndex === rowIndex && editingCell?.colKey === column.key;
+    const rowId = row?.id || row?._id || (column.primaryKey ? row[column.primaryKey] : null);
+    const isEditing = Boolean(
+        editingCell &&
+        (editingCell.rowId && rowId ? editingCell.rowId === rowId : editingCell.rowIndex === rowIndex) &&
+        editingCell.colKey === column.key
+    );
     const isFillHandleCell = selectionBounds &&
         rowIndex === selectionBounds.maxRow &&
         colIndex === selectionBounds.maxCol;
@@ -63,11 +68,25 @@ export const ExcelCell = ({
     };
 
     useEffect(() => {
-        if (isEditing && inputRef.current) {
-            inputRef.current.focus();
-            if (inputRef.current.select && column.type !== 'select' && column.type !== 'checkbox') {
-                inputRef.current.select();
-            }
+        if (isEditing) {
+            const timer = setTimeout(() => {
+                if (inputRef.current) {
+                    inputRef.current.focus({ preventScroll: false });
+                    try {
+                        inputRef.current.scrollIntoView?.({ block: 'nearest', inline: 'nearest' });
+                    } catch {}
+                    if (column.type === 'select') {
+                        try {
+                            inputRef.current.showPicker?.();
+                        } catch {
+                            // Ignore if showPicker is unsupported or not permitted
+                        }
+                    } else if (inputRef.current.select && column.type !== 'checkbox') {
+                        inputRef.current.select();
+                    }
+                }
+            }, 25);
+            return () => clearTimeout(timer);
         }
     }, [isEditing, column.type]);
 
@@ -84,10 +103,6 @@ export const ExcelCell = ({
         : { width: '160px', minWidth: '150px' };
 
     const renderCellContent = () => {
-        if (column.renderCell && typeof column.renderCell === 'function') {
-            return column.renderCell(value, row, column, (newVal) => onChangeValue && onChangeValue(rowIndex, column.key, newVal, true), rowIndex);
-        }
-
         if (column.type === 'checkbox') {
             return (
                 <div className="flex items-center justify-center w-full h-full">
@@ -128,9 +143,49 @@ export const ExcelCell = ({
             }
         }
 
+        if (column.renderCell && typeof column.renderCell === 'function') {
+            return column.renderCell(
+                value,
+                row,
+                column,
+                (newVal) => onChangeValue && onChangeValue(rowIndex, column.key, newVal, true),
+                rowIndex,
+                () => onStartEditing && onStartEditing(rowIndex, column.key)
+            );
+        }
+
+        const cellBody = contentNode || (column.type === 'select' || column.type === 'searchable-select' ? <span className="text-gray-400 font-normal italic text-[11px]">Select...</span> : '');
+
+        if (column.type === 'select' || column.type === 'searchable-select') {
+            return (
+                <div className="flex items-center justify-between w-full gap-1.5 min-w-0">
+                    <div className="truncate flex-1 min-w-0 text-xs font-semibold text-gray-800 dark:text-gray-200">
+                        {cellBody}
+                    </div>
+                    {canWrite && !column.readOnly && (
+                        <button
+                            type="button"
+                            onClick={(e) => {
+                                e.stopPropagation();
+                                if (column.type === 'searchable-select' && onOpenDropdownPortal) {
+                                    onOpenDropdownPortal(rowIndex, column.key);
+                                } else {
+                                    onStartEditing(rowIndex, column.key);
+                                }
+                            }}
+                            className="p-0.5 rounded text-gray-400 hover:text-blue-600 dark:hover:text-blue-400 hover:bg-gray-100 dark:hover:bg-white/10 shrink-0 transition-colors cursor-pointer"
+                            title="Open dropdown"
+                        >
+                            <ChevronDown className="w-3.5 h-3.5" />
+                        </button>
+                    )}
+                </div>
+            );
+        }
+
         return (
             <div className={`truncate w-full text-xs font-semibold text-gray-800 dark:text-gray-200 ${column.align === 'right' ? 'text-right font-mono' : column.align === 'center' ? 'text-center' : 'text-left'}`}>
-                {contentNode}
+                {cellBody}
             </div>
         );
     };
@@ -140,22 +195,29 @@ export const ExcelCell = ({
             return column.renderEditor(localValue, row, column, updateLocalValue, handleBlur, rowIndex, onChangeValue);
         }
 
-        if (column.renderCell && typeof column.renderCell === 'function') {
-            return column.renderCell(localValue, row, column, (newVal) => onChangeValue && onChangeValue(rowIndex, column.key, newVal, true), rowIndex);
-        }
-
         if (column.type === 'select') {
+            const opts = column.options || [];
+            const hasCurrentVal = !localValue || opts.some(opt => (typeof opt === 'object' ? opt.value : opt) === localValue);
             return (
                 <select
                     ref={inputRef}
                     value={localValue}
-                    onChange={(e) => updateLocalValue(e.target.value)}
+                    onChange={(e) => {
+                        const newVal = e.target.value;
+                        updateLocalValue(newVal);
+                        onChangeValue(rowIndex, column.key, newVal, true);
+                    }}
                     onBlur={() => handleBlur()}
                     onKeyDown={(e) => onKeyDown(e, rowIndex, column.key)}
                     className="w-full h-full px-2 py-0.5 bg-white dark:bg-[#161b22] text-gray-900 dark:text-white border border-blue-500 rounded text-xs outline-none focus:ring-1 focus:ring-blue-500 cursor-pointer"
                 >
                     <option value="">-- Select --</option>
-                    {(column.options || []).map((opt) => {
+                    {!hasCurrentVal && (
+                        <option value={localValue} className="text-gray-900 dark:text-white dark:bg-[#161b22]">
+                            {localValue}
+                        </option>
+                    )}
+                    {opts.map((opt) => {
                         const optVal = typeof opt === 'object' ? opt.value : opt;
                         const optLabel = typeof opt === 'object' ? opt.label : opt;
                         return (
@@ -230,6 +292,10 @@ export const ExcelCell = ({
 
                 if (column.type === 'searchable-select' && onOpenDropdownPortal) {
                     onOpenDropdownPortal(rowIndex, column.key);
+                } else if (column.type === 'select' && !column.renderCell && canWrite && !column.readOnly && !e.shiftKey && !e.ctrlKey && !e.metaKey) {
+                    onStartEditing(rowIndex, column.key);
+                } else if (column.key === 'name' && (!value || String(value).trim() === '') && canWrite && !column.readOnly && !e.shiftKey && !e.ctrlKey && !e.metaKey) {
+                    onStartEditing(rowIndex, column.key);
                 }
             }}
             onMouseEnter={() => {
@@ -238,7 +304,7 @@ export const ExcelCell = ({
                 }
             }}
             onDoubleClick={(e) => {
-                if (canWrite && !column.readOnly && !column.renderCell) {
+                if (canWrite && !column.readOnly && (!column.renderCell || column.renderEditor)) {
                     if (column.type === 'searchable-select' && onOpenDropdownPortal) {
                         onOpenDropdownPortal(rowIndex, column.key);
                     } else {

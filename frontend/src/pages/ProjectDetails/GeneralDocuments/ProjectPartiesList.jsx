@@ -13,6 +13,7 @@ import {
     Building2,
     Users,
     ChevronRight,
+    ChevronDown,
     CheckSquare,
     Square
 } from 'lucide-react';
@@ -28,22 +29,16 @@ const CATEGORY_OPTIONS = [
     'Client',
     'PMC',
     'Contractor',
-    'Supplier',
     'Consultant',
-    'Manufacturer',
-    'Service Provider',
-    'Other'
+    'Supplier'
 ];
 
 const CATEGORY_BADGE_STYLES = {
     Client: 'bg-emerald-50 text-emerald-700 dark:bg-emerald-950/30 dark:text-emerald-400 border-emerald-200/80 dark:border-emerald-500/20',
     PMC: 'bg-violet-50 text-violet-700 dark:bg-violet-950/30 dark:text-violet-400 border-violet-200/80 dark:border-violet-500/20',
     Contractor: 'bg-amber-50 text-amber-700 dark:bg-amber-950/30 dark:text-amber-400 border-amber-200/80 dark:border-amber-500/20',
-    Supplier: 'bg-blue-50 text-blue-700 dark:bg-blue-950/30 dark:text-blue-400 border-blue-200/80 dark:border-blue-500/20',
     Consultant: 'bg-cyan-50 text-cyan-700 dark:bg-cyan-950/30 dark:text-cyan-400 border-cyan-200/80 dark:border-cyan-500/20',
-    Manufacturer: 'bg-indigo-50 text-indigo-700 dark:bg-indigo-950/30 dark:text-indigo-400 border-indigo-200/80 dark:border-indigo-500/20',
-    'Service Provider': 'bg-fuchsia-50 text-fuchsia-700 dark:bg-fuchsia-950/30 dark:text-fuchsia-400 border-fuchsia-200/80 dark:border-fuchsia-500/20',
-    Other: 'bg-gray-50 text-gray-700 dark:bg-white/5 dark:text-gray-400 border-gray-200/80 dark:border-white/10'
+    Supplier: 'bg-blue-50 text-blue-700 dark:bg-blue-950/30 dark:text-blue-400 border-blue-200/80 dark:border-blue-500/20'
 };
 
 const COLUMN_ALIASES = {
@@ -378,10 +373,22 @@ export const ProjectPartiesList = ({ canWrite = true }) => {
         });
     }, [availableContacts, crmCategoryFilter, crmSearchQuery]);
 
+    // Aggregate comprehensive list of Nature of Job options
+    const jobOptions = useMemo(() => {
+        const set = new Set();
+        (allJobNatures || []).forEach((j) => {
+            const name = typeof j === 'object' ? j?.job_name || j?.name : String(j || '');
+            if (name && name.trim()) set.add(name.trim());
+        });
+        (parties || []).forEach((p) => {
+            const name = p?.job_name || p?.job_nature;
+            if (name && String(name).trim()) set.add(String(name).trim());
+        });
+        return Array.from(set).sort((a, b) => a.localeCompare(b));
+    }, [allJobNatures, parties]);
+
     // Column Definitions for ExcelGrid
     const columns = useMemo(() => {
-        const jobOptions = allJobNatures.map((j) => j.job_name || j.name || j);
-
         return [
             {
                 key: 'name',
@@ -407,12 +414,14 @@ export const ProjectPartiesList = ({ canWrite = true }) => {
                 label: 'Category',
                 type: 'select',
                 options: CATEGORY_OPTIONS,
-                defaultValue: 'Contractor',
+                defaultValue: '',
                 width: '140px',
                 minWidth: '140px',
                 aliases: COLUMN_ALIASES.category,
                 renderCell: (val) => {
-                    if (!val) return null;
+                    if (!val) {
+                        return <span className="text-gray-400 font-normal italic text-[11px]">Select category...</span>;
+                    }
                     const badgeStyle =
                         CATEGORY_BADGE_STYLES[val] ||
                         'bg-gray-100 text-gray-700 border-gray-200 dark:bg-white/5 dark:text-gray-400 dark:border-white/10';
@@ -430,6 +439,7 @@ export const ProjectPartiesList = ({ canWrite = true }) => {
                 label: 'Nature of Job',
                 type: 'select',
                 options: jobOptions,
+                placeholder: '-- Select Trade --',
                 width: '180px',
                 minWidth: '170px',
                 aliases: COLUMN_ALIASES.job_name
@@ -477,7 +487,7 @@ export const ProjectPartiesList = ({ canWrite = true }) => {
                 aliases: COLUMN_ALIASES.remarks
             }
         ];
-    }, [allJobNatures, availableContacts]);
+    }, [jobOptions, availableContacts]);
 
     // Batch Save Handler connecting to syncParties API
     const handleSaveGridBatch = async (payload) => {

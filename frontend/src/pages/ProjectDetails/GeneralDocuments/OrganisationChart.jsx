@@ -5,6 +5,7 @@ import { useParams } from 'react-router-dom';
 import { generalDocsApi } from '../../../services/generalDocsApi';
 import WorkflowPanel from '../../../components/WorkflowPanel';
 import { workflowApi } from '../../../services/workflowApi';
+import CustomSelect from '../../../components/CustomSelect';
 import { toast } from 'react-toastify';
 
 // --- Default Hierarchy Data ---
@@ -702,7 +703,7 @@ const OrganisationChart = ({ onBack, setExtraBreadcrumbs, canWrite }) => {
                 </div>
 
                 {/* Main Interactive Stage */}
-                <div ref={containerRef} className="flex-1 overflow-auto relative no-scrollbar bg-[radial-gradient(#e5e7eb_1px,transparent_1px)] dark:bg-[radial-gradient(#1e293b_1px,transparent_1px)] [background-size:32px_32px]">
+                <div ref={containerRef} className="flex-1 overflow-auto relative no-scrollbar bg-slate-50 dark:bg-black">
                     {loadingChart ? (
                         <div className="flex flex-col items-center justify-center h-full space-y-6">
                             <div className="relative w-16 h-16 flex items-center justify-center">
@@ -884,16 +885,20 @@ const OrganisationChart = ({ onBack, setExtraBreadcrumbs, canWrite }) => {
                             <div className="space-y-6 flex-1 overflow-y-auto pr-2 custom-scrollbar">
                                 <div className="space-y-2">
                                     <label className="text-[10px] text-gray-600 dark:text-white/50 font-normal tracking-widest pl-1">Target Entity Type</label>
-                                    <select
-                                        className="w-full bg-gray-50 dark:bg-[#161b22] border border-gray-200 dark:border-white/10 rounded-xl py-3.5 px-4 text-sm text-gray-900 dark:text-white/90 font-light outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500/50 appearance-none shadow-inner"
-                                        value={editForm.type}
-                                        onChange={(e) => setEditForm({ ...editForm, type: e.target.value })}
-                                    >
-                                        <option value="project">Project / Location</option>
-                                        <option value="company">Contractor / Firm</option>
-                                        <option value="department">Internal Dept</option>
-                                        <option value="staff">Staff Member / Personnel</option>
-                                    </select>
+                                    <CustomSelect
+                                        value={editForm.type || 'project'}
+                                        options={[
+                                            { label: 'Project / Location', value: 'project' },
+                                            { label: 'Contractor / Firm', value: 'company' },
+                                            { label: 'Internal Dept', value: 'department' },
+                                            { label: 'Staff Member / Personnel', value: 'staff' }
+                                        ]}
+                                        onChange={(e) => {
+                                            const val = typeof e === 'object' && e?.target ? e.target.value : e;
+                                            setEditForm({ ...editForm, type: val });
+                                        }}
+                                        buttonClassName="w-full bg-gray-50 dark:bg-[#161b22] border border-gray-200 dark:border-white/10 rounded-xl py-3 px-4 text-sm text-gray-900 dark:text-white/90 font-light outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500/50 flex items-center justify-between"
+                                    />
                                 </div>
 
                                 <div className="space-y-2">

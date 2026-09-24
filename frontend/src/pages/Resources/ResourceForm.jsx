@@ -329,7 +329,7 @@ const ResourceForm = ({ resource, onClose, onSave }) => {
                                         required
                                         hint={
                                             isEditing && resource?.base_unit_code
-                                                ? `⚠️ Category locked to ${unitTypeLabel[UNIT_REGISTRY[resource.base_unit_code]?.type] || UNIT_REGISTRY[resource.base_unit_code]?.type}. Unit changes must stay within the same category to protect rates.`
+                                                ? `Category locked to ${unitTypeLabel[UNIT_REGISTRY[resource.base_unit_code]?.type] || UNIT_REGISTRY[resource.base_unit_code]?.type}. Unit changes must stay within the same category to protect rates.`
                                                 : baseUnitInfo ? `Category: ${baseUnitInfo.type}` : ''
                                         }
                                     >

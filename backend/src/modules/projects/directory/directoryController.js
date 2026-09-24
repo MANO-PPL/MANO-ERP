@@ -57,9 +57,50 @@ export const deleteDirectoryItem = catchAsync(async (req, res) => {
     res.json({ success: true, message: 'Directory item deleted', affectedRows: result.affectedRows });
 });
 
+/* -------------------------------------------------------
+   SYNC — PUT /:project_id/directory/sync or POST /:project_id/directory/sync
+-------------------------------------------------------- */
+export const syncDirectory = catchAsync(async (req, res) => {
+    const projectId = parseInt(req.params.id, 10);
+    if (isNaN(projectId)) throw new AppError('Invalid project_id', 400);
+
+    const body = req.body || {};
+    const rawDeleted = body.deleted_ids || body.deleted || [];
+    const items = Array.isArray(body.items) ? body.items : (Array.isArray(body.rows) ? body.rows : []);
+
+    const result = await directoryService.syncProjectDirectory(
+        projectId,
+        {
+            items,
+            deleted_ids: Array.isArray(rawDeleted) ? rawDeleted : []
+        },
+        req.user?.org_id
+    );
+
+    res.json(result);
+});
+
+/* -------------------------------------------------------
+   BULK PERSONNEL — POST /:project_id/directory/bulk-personnel
+-------------------------------------------------------- */
+export const addBulkPersonnel = catchAsync(async (req, res) => {
+    const projectId = parseInt(req.params.id, 10);
+    if (isNaN(projectId)) throw new AppError('Invalid project_id', 400);
+
+    const result = await directoryService.bulkAddPersonnelToParty(
+        projectId,
+        req.body,
+        req.user?.org_id
+    );
+
+    res.status(201).json(result);
+});
+
 export default {
     listDirectory,
     addDirectoryItem,
     updateDirectoryItem,
     deleteDirectoryItem,
+    syncDirectory,
+    addBulkPersonnel,
 };

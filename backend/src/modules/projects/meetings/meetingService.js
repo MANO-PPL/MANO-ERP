@@ -39,7 +39,10 @@ function normalizeMeetingContent(rawContent, fallbackTime = '') {
             const rawMom = Array.isArray(parsed.mom_points)
                 ? parsed.mom_points.map((p, i) => ({
                     sl_no: p.sl_no || i + 1,
-                    point: p.point || p.topic || p.description || ''
+                    point: p.point || p.topic || p.description || p.decision || '',
+                    ...(p.agenda_ref ? { agenda_ref: p.agenda_ref } : {}),
+                    ...(p.action_by ? { action_by: p.action_by } : {}),
+                    ...(p.target_date ? { target_date: p.target_date } : {})
                 }))
                 : [];
 
@@ -223,7 +226,13 @@ export async function createMeeting(projectId, data) {
             .map((p, i) => ({ sl_no: i + 1, point: typeof p === 'string' ? p : (p.point || p.topic || p.description || '') }));
 
         const momPoints = (Array.isArray(data.mom_points) ? data.mom_points : (data.content?.mom_points || []))
-            .map((p, i) => ({ sl_no: i + 1, point: typeof p === 'string' ? p : (p.point || p.topic || p.description || '') }));
+            .map((p, i) => ({
+                sl_no: i + 1,
+                point: typeof p === 'string' ? p : (p.point || p.topic || p.description || p.decision || ''),
+                ...(typeof p === 'object' && p.agenda_ref ? { agenda_ref: p.agenda_ref } : {}),
+                ...(typeof p === 'object' && p.action_by ? { action_by: p.action_by } : {}),
+                ...(typeof p === 'object' && p.target_date ? { target_date: p.target_date } : {})
+            }));
 
         let finalContent = {
             time: data.time || data.content?.time || '',
@@ -315,7 +324,13 @@ export async function updateMeeting(projectId, meetingId, data) {
                 .map((p, i) => ({ sl_no: i + 1, point: typeof p === 'string' ? p : (p.point || p.topic || p.description || '') }));
 
             const momPoints = (Array.isArray(rawMom) ? rawMom : [])
-                .map((p, i) => ({ sl_no: i + 1, point: typeof p === 'string' ? p : (p.point || p.topic || p.description || '') }));
+                .map((p, i) => ({
+                    sl_no: i + 1,
+                    point: typeof p === 'string' ? p : (p.point || p.topic || p.description || p.decision || ''),
+                    ...(typeof p === 'object' && p.agenda_ref ? { agenda_ref: p.agenda_ref } : {}),
+                    ...(typeof p === 'object' && p.action_by ? { action_by: p.action_by } : {}),
+                    ...(typeof p === 'object' && p.target_date ? { target_date: p.target_date } : {})
+                }));
 
             let finalContent = {
                 time: data.time !== undefined ? data.time : (data.content?.time || currentContent.time || ''),

@@ -143,8 +143,8 @@ const CreateProject = () => {
 
             const res = await projectApi.createProject(payload);
 
-            if (res.success && res.project) {
-                const createdId = res.project.id || res.project.project_id;
+            if (res.success || res.project_id || res.project) {
+                const createdId = res.project_id || res.project?.id || res.project?.project_id || res.id;
 
                 // If logo was attached, upload it
                 if (logoFile && createdId) {

@@ -11,33 +11,58 @@ const CustomSelect = ({
     placeholder = 'Select option', 
     className = '', 
     buttonClassName = '',
-    direction = 'down', 
-    alwaysOpenDownward = true,
+    direction = 'auto', 
     disabled = false
 }) => {
     const [isOpen, setIsOpen] = useState(false);
     const [searchQuery, setSearchQuery] = useState('');
     const [activeIndex, setActiveIndex] = useState(0);
-    const [menuCoords, setMenuCoords] = useState({ top: 0, left: 0, width: 0, openUpward: false, maxHeight: 240 });
+    const [menuCoords, setMenuCoords] = useState({ buttonTop: 0, buttonBottom: 0, left: 0, width: 0, openUpward: false, maxHeight: 240 });
     const buttonRef = useRef(null);
     const menuRef = useRef(null);
     const listRef = useRef(null);
     const searchInputRef = useRef(null);
 
     const updateCoords = () => {
-        if (buttonRef.current) {
-            const rect = buttonRef.current.getBoundingClientRect();
-            const spaceBelow = window.innerHeight - rect.bottom;
-            const openUpward = (!alwaysOpenDownward && direction !== 'down') && (spaceBelow < 180 && rect.top > 180);
-            
-            setMenuCoords({
-                top: openUpward ? rect.top : rect.bottom + 4,
-                left: rect.left,
-                width: rect.width,
-                openUpward,
-                maxHeight: openUpward ? Math.min(240, rect.top - 10) : Math.min(260, Math.max(140, spaceBelow - 10))
-            });
+        if (!buttonRef.current) return;
+        const rect = buttonRef.current.getBoundingClientRect();
+        const spaceBelow = window.innerHeight - rect.bottom;
+        const spaceAbove = rect.top;
+
+        // Auto-detect direction based on available vertical space
+        let openUpward = false;
+        if (direction === 'up') {
+            openUpward = true;
+        } else if (direction === 'down') {
+            openUpward = spaceBelow < 150 && spaceAbove > spaceBelow;
+        } else {
+            // 'auto' mode: open upward if space below is too small and space above has more room
+            openUpward = spaceBelow < 220 && spaceAbove > spaceBelow;
         }
+
+        const dropdownWidth = Math.max(rect.width, 180);
+        let left = rect.left;
+
+        // Keep inside horizontal viewport with padding
+        if (left + dropdownWidth > window.innerWidth - 12) {
+            left = Math.max(12, window.innerWidth - dropdownWidth - 12);
+        }
+        if (left < 12) {
+            left = 12;
+        }
+
+        // Available vertical space in chosen direction
+        const availableHeight = openUpward ? spaceAbove - 16 : spaceBelow - 16;
+        const maxHeight = Math.max(90, Math.min(260, availableHeight));
+
+        setMenuCoords({
+            buttonTop: rect.top,
+            buttonBottom: rect.bottom,
+            left,
+            width: dropdownWidth,
+            openUpward,
+            maxHeight
+        });
     };
 
     const toggleOpen = (e) => {
@@ -53,6 +78,8 @@ const CustomSelect = ({
 
     useEffect(() => {
         if (!isOpen) return;
+
+        updateCoords();
 
         const handleOutsideClick = (event) => {
             if (
@@ -144,7 +171,7 @@ const CustomSelect = ({
     };
 
     return (
-        <div className={`relative ${className}`}>
+        <div className={`relative w-full ${className}`}>
             {label && <label className="block text-[11px] font-bold text-gray-500 dark:text-gray-400 uppercase tracking-wider mb-1.5">{label}</label>}
             
             <button
@@ -167,11 +194,11 @@ const CustomSelect = ({
                     ref={menuRef}
                     style={{
                         position: 'fixed',
-                        top: menuCoords.openUpward ? 'auto' : `${menuCoords.top}px`,
-                        bottom: menuCoords.openUpward ? `${window.innerHeight - menuCoords.top + 4}px` : 'auto',
+                        top: menuCoords.openUpward ? 'auto' : `${menuCoords.buttonBottom + 4}px`,
+                        bottom: menuCoords.openUpward ? `${window.innerHeight - menuCoords.buttonTop + 4}px` : 'auto',
                         left: `${menuCoords.left}px`,
-                        width: `${Math.max(menuCoords.width, 180)}px`,
-                        maxHeight: `${menuCoords.maxHeight || 260}px`,
+                        width: `${menuCoords.width}px`,
+                        maxHeight: `${menuCoords.maxHeight}px`,
                         zIndex: 999999
                     }}
                     className="bg-white dark:bg-[#161b22] border border-gray-200 dark:border-white/10 rounded-xl shadow-2xl overflow-hidden flex flex-col animate-in fade-in-50 duration-150 py-1"

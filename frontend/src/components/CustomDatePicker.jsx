@@ -10,7 +10,9 @@ const CustomDatePicker = ({
     onChange: externalOnChange,
     className = '',
     buttonClassName = '',
-    disabled = false
+    disabled = false,
+    displayValue,
+    placeholder = 'Select Date'
 }) => {
     const [isOpen, setIsOpen] = useState(false);
     const [currentMonth, setCurrentMonth] = useState(new Date());
@@ -42,6 +44,26 @@ const CustomDatePicker = ({
         }
     };
 
+    const parseDate = (val) => {
+        if (!val) return null;
+        let dateToParse = val;
+        if (typeof val === 'object' && val.target && typeof val.target.value === 'string') {
+            dateToParse = val.target.value;
+        }
+        if (typeof dateToParse === 'string') {
+            const cleanStr = dateToParse.split('T')[0];
+            if (/^\d{4}-\d{2}-\d{2}$/.test(cleanStr)) {
+                const [y, m, dayVal] = cleanStr.split('-').map(Number);
+                const d = new Date(y, m - 1, dayVal);
+                return isNaN(d.getTime()) ? null : d;
+            }
+        }
+        const d = new Date(dateToParse);
+        return isNaN(d.getTime()) ? null : d;
+    };
+
+    const selectedDate = parseDate(value);
+
     // Close on click outside
     useEffect(() => {
         if (!isOpen) return;
@@ -67,21 +89,12 @@ const CustomDatePicker = ({
         if (disabled) return;
         if (!isOpen) {
             updateCoords();
+            if (selectedDate) {
+                setCurrentMonth(selectedDate);
+            }
         }
         setIsOpen(!isOpen);
     };
-
-    const parseDate = (val) => {
-        if (!val) return null;
-        let dateToParse = val;
-        if (typeof val === 'object' && val.target && typeof val.target.value === 'string') {
-            dateToParse = val.target.value;
-        }
-        const d = new Date(dateToParse);
-        return isNaN(d.getTime()) ? null : d;
-    };
-
-    const selectedDate = parseDate(value);
 
     const nextMonth = () => setCurrentMonth(addMonths(currentMonth, 1));
     const prevMonth = () => setCurrentMonth(subMonths(currentMonth, 1));
@@ -173,8 +186,8 @@ const CustomDatePicker = ({
                 className={buttonClassName || `w-full bg-white dark:bg-[#161b22] border rounded-lg px-2.5 py-1.5 flex items-center justify-between gap-2 transition-all shadow-xs dark:shadow-none ${disabled ? 'opacity-60 cursor-not-allowed' : 'cursor-pointer'}
                 ${isOpen ? 'border-blue-500 ring-2 ring-blue-500/10 shadow-lg shadow-blue-500/5' : 'border-gray-200 dark:border-white/10 hover:border-blue-500/30 dark:hover:border-white/20'}`}
             >
-                <span className={`text-xs font-medium tracking-tight whitespace-nowrap truncate ${selectedDate ? 'text-gray-900 dark:text-white font-semibold' : 'text-gray-400 dark:text-[#7A8AAB]'}`}>
-                    {selectedDate ? formatOrdinalDate(selectedDate) : 'Select Date'}
+                <span className={`text-xs font-medium tracking-tight whitespace-nowrap truncate ${selectedDate || displayValue ? 'text-gray-900 dark:text-white font-semibold' : 'text-gray-400 dark:text-[#7A8AAB]'}`}>
+                    {displayValue || (selectedDate ? formatOrdinalDate(selectedDate) : placeholder)}
                 </span>
                 <CalendarIcon size={13} className={`shrink-0 ${isOpen ? 'text-blue-500' : 'text-gray-400 dark:text-[#7A8AAB]'}`} />
             </div>

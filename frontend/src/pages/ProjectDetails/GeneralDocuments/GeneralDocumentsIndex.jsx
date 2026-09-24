@@ -1,7 +1,8 @@
 import React, { useState } from 'react';
-import { FileText, FileSpreadsheet, FileImage, Calendar, ChevronRight } from 'lucide-react';
+import { FileText, FileSpreadsheet, FileImage, Calendar, ChevronRight, Users } from 'lucide-react';
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { motion } from 'framer-motion';
+import ProjectDirectoryOrgChart from './ProjectDirectoryOrgChart';
 import ProjectPartiesList from './ProjectPartiesList';
 import ProjectDirectory from './ProjectDirectory';
 import ProjectSummary from './ProjectSummary';
@@ -32,17 +33,18 @@ const GeneralDocumentsIndex = ({ setExtraBreadcrumbs, canWrite }) => {
         }
     }, [currentView, setExtraBreadcrumbs]);
 
-    if (currentView === 'party-list') {
-        return <ProjectPartiesList onBack={handleBack} setExtraBreadcrumbs={setExtraBreadcrumbs} canWrite={canWrite} />;
-    }
-    if (currentView === 'directory') {
-        return <ProjectDirectory onBack={handleBack} setExtraBreadcrumbs={setExtraBreadcrumbs} canWrite={canWrite} />;
+    if (currentView === 'directory' || currentView === 'party-list' || currentView === 'org-chart') {
+        return (
+            <ProjectDirectoryOrgChart
+                initialTab={currentView === 'org-chart' ? 'chart' : 'directory'}
+                onBack={handleBack}
+                setExtraBreadcrumbs={setExtraBreadcrumbs}
+                canWrite={canWrite}
+            />
+        );
     }
     if (currentView === 'project-summary') {
         return <ProjectSummary onBack={handleBack} setExtraBreadcrumbs={setExtraBreadcrumbs} canWrite={canWrite} />;
-    }
-    if (currentView === 'org-chart') {
-        return <OrganisationChart onBack={handleBack} setExtraBreadcrumbs={setExtraBreadcrumbs} canWrite={canWrite} />;
     }
     if (currentView === 'meeting-list') {
         return (
@@ -121,40 +123,26 @@ const GeneralDocumentsIndex = ({ setExtraBreadcrumbs, canWrite }) => {
     }
 
     const categories = [
-        { 
-            name: 'Project Parties',
-            desc: 'Directory of clients, PMCs, contractors, suppliers, consultants, and other project parties.',
-            icon: <FileSpreadsheet size={20} />, 
-            view: 'party-list',
+        {
+            name: 'Project Directory & Org Chart',
+            desc: 'Directory of project parties, personnel roles & responsibilities, and automated organization chart.',
+            icon: <Users size={20} />,
+            view: 'directory',
             type: 'Single Instance'
         },
-        { 
-            name: 'Project Directory', 
-            desc: 'Contact details, designations, and address information for all team members.', 
-            icon: <FileText size={20} />, 
-            view: 'directory', 
+        {
+            name: 'Project Summary',
+            desc: 'High-level project scope summary, milestones, and active status updates.',
+            icon: <FileText size={20} />,
+            view: 'project-summary',
             type: 'Single Instance'
         },
-        { 
-            name: 'Project Summary', 
-            desc: 'High-level project scope summary, milestones, and active status updates.', 
-            icon: <FileText size={20} />, 
-            view: 'project-summary', 
-            type: 'Single Instance'
-        },
-        { 
-            name: 'Project Meetings', 
-            desc: 'Meeting schedules, discussion agendas, participants, and minutes of meeting (MoM).', 
-            icon: <Calendar size={20} />, 
-            view: 'meeting-list', 
+        {
+            name: 'Project Meetings, Agendas & MoM',
+            desc: 'Draft meeting agendas, notify invited members, and record Minutes of Meetings (MoM).',
+            icon: <Calendar size={20} />,
+            view: 'meeting-list',
             type: 'Episodic'
-        },
-        { 
-            name: 'Organisation Chart', 
-            desc: 'Interactive structural view of project parties and directory relationships.',
-            icon: <FileImage size={20} />, 
-            view: 'org-chart', 
-            type: 'Single Instance'
         },
     ];
 
@@ -190,11 +178,10 @@ const GeneralDocumentsIndex = ({ setExtraBreadcrumbs, canWrite }) => {
                                             </div>
 
                                             {/* Type Badge */}
-                                            <span className={`px-2 py-0.5 text-[8px] font-bold uppercase tracking-wider rounded-full border ${
-                                                cat.type === 'Single Instance'
+                                            <span className={`px-2 py-0.5 text-[8px] font-bold uppercase tracking-wider rounded-full border ${cat.type === 'Single Instance'
                                                     ? 'bg-blue-500/10 text-blue-500 border-blue-500/20'
                                                     : 'bg-purple-500/10 text-purple-500 border-purple-500/20'
-                                            }`}>
+                                                }`}>
                                                 {cat.type}
                                             </span>
                                         </div>

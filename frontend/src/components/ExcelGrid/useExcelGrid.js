@@ -20,7 +20,12 @@ export const useExcelGrid = ({
     primaryKey = 'id',
     canWrite = true,
     initialPageSize = 100,
-    showToast = null
+    showToast = null,
+    onUndo = null,
+    onRedo = null,
+    canUndo: externalCanUndo = undefined,
+    canRedo: externalCanRedo = undefined,
+    onCellChange = null
 }) => {
     // 1. Original database data map for dirty comparison
     const originalDataMap = useMemo(() => {
@@ -64,8 +69,10 @@ export const useExcelGrid = ({
             const existingNames = new Set(
                 (data || []).map((d) => (d.name ? String(d.name).trim().toLowerCase() : null)).filter(Boolean)
             );
+            const dataIdSet = new Set((data || []).map((d) => d[primaryKey]));
 
             const newUnsaved = prevGrid.filter((r) => {
+                if (dataIdSet.has(r[primaryKey])) return false;
                 const isTemp = String(r[primaryKey]).startsWith('temp_');
                 if (!isTemp && r._status !== 'new') return false;
 
@@ -94,12 +101,19 @@ export const useExcelGrid = ({
                 .filter((item) => !curDeletedIds.has(item[primaryKey]))
                 .map((item) => {
                     if (modifiedMap.has(item[primaryKey])) {
-                        return modifiedMap.get(item[primaryKey]);
+                        return {
+                            ...item,
+                            ...modifiedMap.get(item[primaryKey]),
+                            personnel: (Array.isArray(item.personnel) && item.personnel.length > 0)
+                                ? item.personnel
+                                : modifiedMap.get(item[primaryKey]).personnel
+                        };
                     }
+                    const isNew = item._status === 'new' || String(item[primaryKey] || '').startsWith('temp_');
                     return {
                         ...item,
-                        _status: 'saved',
-                        _errors: {}
+                        _status: isNew ? 'new' : (item._status || 'saved'),
+                        _errors: item._errors || {}
                     };
                 });
 
@@ -182,6 +196,7 @@ export const useExcelGrid = ({
         if (!searchTerm.trim()) return gridData;
         const lower = searchTerm.toLowerCase();
         return gridData.filter((row) =>
+            row._status === 'new' ||
             columns.some((col) => {
                 const val = row[col.key];
                 return val !== undefined && val !== null && String(val).toLowerCase().includes(lower);
@@ -279,6 +294,9 @@ export const useExcelGrid = ({
 
     // Mouse Cell Selection & Drag Handlers
     const handleCellMouseDown = useCallback((rowIndex, colIndex, isShift = false, isCtrl = false) => {
+        if (!isShift && !isCtrl && selectedIdsRef.current.size > 0) {
+            setSelectedIds(new Set());
+        }
         if (isShift && selectionAnchorRef.current) {
             setSelectionFocus({ r: rowIndex, c: colIndex });
         } else {
@@ -313,7 +331,7 @@ export const useExcelGrid = ({
     const handleCellChange = useCallback(
         (rowIndex, colKey, value, isAtomic = false) => {
             if (!canWrite) return;
-            const targetRowObj = sortedGridDataRef.current[rowIndex];
+            const targetRowObj = sortedGridDataRef.current[rowIndex] || gridDataRef.current[rowIndex];
             if (!targetRowObj) return;
 
             if (isAtomic) {
@@ -336,8 +354,12 @@ export const useExcelGrid = ({
                 next[realIdx] = updatedRow;
                 return next;
             });
+
+            if (onCellChange && typeof onCellChange === 'function') {
+                onCellChange(rowIndex, colKey, value, isAtomic, targetRowObj);
+            }
         },
-        [canWrite, primaryKey, columns, pushUndoState]
+        [canWrite, primaryKey, columns, pushUndoState, onCellChange]
     );
 
     const handleCellBlur = useCallback(() => {
@@ -355,18 +377,18 @@ export const useExcelGrid = ({
         let minCol = 0;
         let maxCol = columns.length - 1;
 
-        const curSelectedIds = selectedIdsRef.current;
         const bounds = getBoundsFromRefs();
+        const curSelectedIds = selectedIdsRef.current;
 
-        if (curSelectedIds.size > 0) {
-            rowsToCopy = sortedGridDataRef.current.filter((r) => curSelectedIds.has(r[primaryKey]));
-        } else if (bounds) {
+        if (bounds) {
             for (let r = bounds.minRow; r <= bounds.maxRow; r++) {
                 if (sortedGridDataRef.current[r]) rowsToCopy.push(sortedGridDataRef.current[r]);
             }
             minCol = bounds.minCol;
             maxCol = bounds.maxCol;
             setCopiedBounds(bounds);
+        } else if (curSelectedIds.size > 0) {
+            rowsToCopy = sortedGridDataRef.current.filter((r) => curSelectedIds.has(r[primaryKey]));
         }
 
         if (rowsToCopy.length === 0) return;
@@ -381,22 +403,20 @@ export const useExcelGrid = ({
         });
 
         const tsvData = stringifyTSV(matrix);
-        if (tsvData) {
-            internalClipboardRef.current = tsvData;
-            try {
-                if (navigator.clipboard && navigator.clipboard.writeText) {
-                    await navigator.clipboard.writeText(tsvData);
-                }
-            } catch (err) {
-                console.warn('Clipboard write error:', err);
+        internalClipboardRef.current = tsvData;
+        try {
+            if (navigator.clipboard && navigator.clipboard.writeText) {
+                await navigator.clipboard.writeText(tsvData);
             }
-            const cellCount = matrix.length * (maxCol - minCol + 1);
-            notify(
-                'sparkle',
-                'Copied',
-                cellCount === 1 ? 'Copied 1 cell to clipboard' : `Copied ${cellCount} cells to clipboard`
-            );
+        } catch (err) {
+            console.warn('Clipboard write error:', err);
         }
+        const cellCount = matrix.length * (maxCol - minCol + 1);
+        notify(
+            'sparkle',
+            'Copied',
+            cellCount === 1 ? 'Copied 1 cell to clipboard' : `Copied ${cellCount} cells to clipboard`
+        );
     }, [columns, primaryKey, getBoundsFromRefs, notify]);
 
     // Cut to Clipboard
@@ -477,17 +497,17 @@ export const useExcelGrid = ({
             if (forcedStartRow !== undefined && forcedStartCol !== undefined) {
                 startRow = forcedStartRow;
                 startCol = forcedStartCol;
-            } else if (curSelectedIds.size > 0) {
-                const firstSelectedId = Array.from(curSelectedIds)[0];
-                const foundIdx = sortedGridDataRef.current.findIndex((r) => r[primaryKey] === firstSelectedId);
-                if (foundIdx !== -1) startRow = foundIdx;
-                startCol = bounds ? bounds.minCol : 0;
             } else if (bounds) {
                 startRow = bounds.minRow;
                 startCol = bounds.minCol;
             } else if (selectionAnchorRef.current) {
                 startRow = selectionAnchorRef.current.r;
                 startCol = selectionAnchorRef.current.c;
+            } else if (curSelectedIds.size > 0) {
+                const firstSelectedId = Array.from(curSelectedIds)[0];
+                const foundIdx = sortedGridDataRef.current.findIndex((r) => r[primaryKey] === firstSelectedId);
+                if (foundIdx !== -1) startRow = foundIdx;
+                startCol = 0;
             }
 
             // Smart Excel Range Replication
@@ -533,7 +553,14 @@ export const useExcelGrid = ({
                                 if (c < columns.length) {
                                     const col = columns[c];
                                     if (col && !col.readOnly) {
-                                        rowCopy[col.key] = (cellVal ?? '').trim();
+                                        let finalVal = cellVal ?? '';
+                                        if (col.type === 'number' && finalVal !== '') {
+                                            const num = Number(finalVal);
+                                            finalVal = isNaN(num) ? finalVal : num;
+                                        } else if (col.type === 'checkbox') {
+                                            finalVal = finalVal === true || finalVal === 'true' || finalVal === '1';
+                                        }
+                                        rowCopy[col.key] = finalVal;
                                         numCellsUpdated++;
                                     }
                                 }
@@ -556,7 +583,14 @@ export const useExcelGrid = ({
                             if (c < columns.length) {
                                 const col = columns[c];
                                 if (col && !col.readOnly) {
-                                    newRow[col.key] = (cellVal ?? '').trim();
+                                    let finalVal = cellVal ?? '';
+                                    if (col.type === 'number' && finalVal !== '') {
+                                        const num = Number(finalVal);
+                                        finalVal = isNaN(num) ? finalVal : num;
+                                    } else if (col.type === 'checkbox') {
+                                        finalVal = finalVal === true || finalVal === 'true' || finalVal === '1';
+                                    }
+                                    newRow[col.key] = finalVal;
                                     numCellsUpdated++;
                                 }
                             }
@@ -916,7 +950,7 @@ export const useExcelGrid = ({
 
     // Add Rows
     const handleAddRows = useCallback(
-        (count = 1) => {
+        (count = 1, position = 'top') => {
             pushUndoState(gridDataRef.current);
             const newRows = Array.from({ length: count }).map((_, idx) => {
                 const freshRow = {
@@ -930,8 +964,14 @@ export const useExcelGrid = ({
                 return freshRow;
             });
 
-            const targetIdx = gridDataRef.current.length;
-            setGridData((prev) => [...prev, ...newRows]);
+            const isBottom = position === 'bottom';
+            const targetIdx = isBottom ? gridDataRef.current.length : 0;
+
+            if (isBottom) {
+                setGridData((prev) => [...prev, ...newRows]);
+            } else {
+                setGridData((prev) => [...newRows, ...prev]);
+            }
 
             // Immediately focus and start editing the first editable column of the newly added row
             const firstEditableCol = columns.find((c) => !c.readOnly) || columns[0];
@@ -940,16 +980,34 @@ export const useExcelGrid = ({
                 : 0;
             const finalColIdx = firstColIdx >= 0 ? firstColIdx : 0;
 
+            if (searchTerm) {
+                setSearchTerm('');
+            }
+
+            if (isBottom) {
+                if (pageSize !== 'All') {
+                    const nextTotal = gridDataRef.current.length + count;
+                    const lastPage = Math.max(1, Math.ceil(nextTotal / Number(pageSize)));
+                    setCurrentPage(lastPage);
+                }
+            } else {
+                setCurrentPage(1);
+            }
+
             setSelectionAnchor({ r: targetIdx, c: finalColIdx });
             setSelectionFocus({ r: targetIdx, c: finalColIdx });
 
             if (firstEditableCol) {
-                setEditingCell({ rowIndex: targetIdx, colKey: firstEditableCol.key });
+                setEditingCell({
+                    rowIndex: targetIdx,
+                    rowId: newRows[0][primaryKey],
+                    colKey: firstEditableCol.key
+                });
             }
 
-            notify('info', 'Rows Added', `Added ${count} new draft row(s) at bottom`);
+            notify('info', 'Rows Added', `Added ${count} new draft row(s)`);
         },
-        [columns, primaryKey, pushUndoState, notify]
+        [columns, primaryKey, pushUndoState, notify, searchTerm, pageSize]
     );
 
     // Insert Row Above or Below Target
@@ -990,7 +1048,11 @@ export const useExcelGrid = ({
             setSelectionFocus({ r: insertIdx, c: finalColIdx });
 
             if (firstEditableCol) {
-                setEditingCell({ rowIndex: insertIdx, colKey: firstEditableCol.key });
+                setEditingCell({
+                    rowIndex: insertIdx,
+                    rowId: newRow[primaryKey],
+                    colKey: firstEditableCol.key
+                });
             }
 
             notify('info', 'Row Inserted', `Inserted new row ${position} row #${targetRowIndex + 1}`);
@@ -1118,6 +1180,9 @@ export const useExcelGrid = ({
     // 15. Keydown Event Dispatcher (FortuneSheet / Excel Shortcut Engine)
     const handleCellKeyDown = useCallback(
         (e, rowIndex, colKey) => {
+            if (e._excelHandled) return;
+            e._excelHandled = true;
+
             const colIndex = columns.findIndex((c) => c.key === colKey);
             const totalRows = sortedGridData.length;
             const totalCols = columns.length;
@@ -1174,6 +1239,9 @@ export const useExcelGrid = ({
                 // Enter / Shift+Enter
                 if (e.key === 'Enter') {
                     e.preventDefault();
+                    if (isInput && inputEl) {
+                        handleCellChange(rowIndex, colKey, inputEl.value);
+                    }
                     handleCellBlur();
                     if (!e.shiftKey && rowIndex === totalRows - 1 && canWrite) {
                         handleAddRows(1);
@@ -1199,6 +1267,9 @@ export const useExcelGrid = ({
                 // Tab / Shift+Tab
                 if (e.key === 'Tab') {
                     e.preventDefault();
+                    if (isInput && inputEl) {
+                        handleCellChange(rowIndex, colKey, inputEl.value);
+                    }
                     handleCellBlur();
                     let nextCol = e.shiftKey ? colIndex - 1 : colIndex + 1;
                     let nextRow = rowIndex;
@@ -1564,11 +1635,18 @@ export const useExcelGrid = ({
                     activeElem.tagName === 'SELECT' ||
                     activeElem.tagName === 'TEXTAREA');
 
-            if (isTyping && editingCell) {
-                return;
-            }
-
             const isCtrlOrCmd = e.ctrlKey || e.metaKey;
+
+            // If user is actively typing in a cell editor or input field:
+            // Let native clipboard events (Ctrl+C, Ctrl+V, Ctrl+X) and typing happen naturally inside the input.
+            if (isTyping) {
+                if (isCtrlOrCmd && (e.key.toLowerCase() === 'c' || e.key.toLowerCase() === 'x' || e.key.toLowerCase() === 'v')) {
+                    return;
+                }
+                if (editingCell && !isCtrlOrCmd) {
+                    return;
+                }
+            }
 
             // F1: Open Keyboard Shortcuts
             if (e.key === 'F1') {
@@ -1619,8 +1697,21 @@ export const useExcelGrid = ({
 
             // Ctrl + Z: Undo
             if (isCtrlOrCmd && e.key.toLowerCase() === 'z' && !e.shiftKey) {
+                if (isTyping) {
+                    const val = activeElem.value || '';
+                    const initVal = activeElem.dataset.initialValue || '';
+                    if (val === '' || val === initVal) {
+                        e.preventDefault();
+                        activeElem.blur();
+                        if (onUndo) onUndo();
+                        else undo();
+                        return;
+                    }
+                    return;
+                }
                 e.preventDefault();
-                undo();
+                if (onUndo) onUndo();
+                else undo();
                 return;
             }
 
@@ -1629,8 +1720,21 @@ export const useExcelGrid = ({
                 (isCtrlOrCmd && e.key.toLowerCase() === 'y') ||
                 (isCtrlOrCmd && e.shiftKey && e.key.toLowerCase() === 'z')
             ) {
+                if (isTyping) {
+                    const val = activeElem.value || '';
+                    const initVal = activeElem.dataset.initialValue || '';
+                    if (val === '' || val === initVal) {
+                        e.preventDefault();
+                        activeElem.blur();
+                        if (onRedo) onRedo();
+                        else redo();
+                        return;
+                    }
+                    return;
+                }
                 e.preventDefault();
-                redo();
+                if (onRedo) onRedo();
+                else redo();
                 return;
             }
 
@@ -1913,10 +2017,10 @@ export const useExcelGrid = ({
         hasUnsavedChanges,
         unsavedCount,
         dirtyCounts,
-        canUndo: undoStackRef.current.length > 0,
-        canRedo: redoStackRef.current.length > 0,
-        undo,
-        redo,
+        canUndo: externalCanUndo !== undefined ? externalCanUndo : undoStackRef.current.length > 0,
+        canRedo: externalCanRedo !== undefined ? externalCanRedo : redoStackRef.current.length > 0,
+        undo: onUndo || undo,
+        redo: onRedo || redo,
         pushUndoState,
 
         // Actions

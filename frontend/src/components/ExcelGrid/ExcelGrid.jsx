@@ -81,6 +81,7 @@ export const ExcelGrid = ({
     onRefresh = null,
     onViewRow = null,
     customActions = null,
+    extraTools = null,
     bulkActions = null,
     topContent = null,
     bottomContent = null,
@@ -88,7 +89,17 @@ export const ExcelGrid = ({
     emptyMessage = 'No records found',
     initialPageSize = 100,
     enablePagination = true,
-    showFormulaBar = true
+    showFormulaBar = true,
+    renderExpandedRow = null,
+    expandedRowIds = undefined,
+    onToggleExpandRow = null,
+    isRowExpandable = null,
+    onUndo = null,
+    onRedo = null,
+    canUndo = undefined,
+    canRedo = undefined,
+    onAddRows = null,
+    onCellChange = null
 }) => {
     const [toast, setToast] = useState(null);
     const showToast = useCallback((type, title, message, duration = 3000) => {
@@ -126,7 +137,12 @@ export const ExcelGrid = ({
         primaryKey,
         canWrite,
         initialPageSize,
-        showToast
+        showToast,
+        onUndo,
+        onRedo,
+        canUndo,
+        canRedo,
+        onCellChange
     });
 
     const handleAddColumn = useCallback(
@@ -149,9 +165,17 @@ export const ExcelGrid = ({
     const handleSaveBatch = async () => {
         if (!onSave || !canWrite) return;
 
-        const hasErrors = grid.gridData.some(
-            (r) => r._errors && Object.keys(r._errors).length > 0
-        );
+        const hasErrors = grid.gridData.some((r) => {
+            if (!r._errors || Object.keys(r._errors).length === 0) return false;
+            const isTemp = !r[primaryKey] || String(r[primaryKey]).startsWith('temp_') || r._status === 'new';
+            if (isTemp) {
+                const hasAnyContent = Object.entries(r).some(
+                    ([k, v]) => !k.startsWith('_') && k !== primaryKey && v != null && String(v).trim() !== ''
+                );
+                if (!hasAnyContent) return false;
+            }
+            return true;
+        });
         if (hasErrors) {
             showToast('error', 'Validation Error', 'Please fix red highlighted validation errors before saving');
             return;
@@ -175,13 +199,11 @@ export const ExcelGrid = ({
             setLastSavedTime(new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }));
             grid.setDeletedIds(new Set());
             grid.setGridData((prev) =>
-                (prev || [])
-                    .filter((r) => !String(r[primaryKey]).startsWith('temp_') || r._status !== 'new')
-                    .map((r) => ({
-                        ...r,
-                        _status: 'saved',
-                        _errors: {}
-                    }))
+                (prev || []).map((r) => ({
+                    ...r,
+                    _status: 'saved',
+                    _errors: {}
+                }))
             );
             showToast('success', 'Saved', 'All spreadsheet changes saved successfully');
             if (onRefresh) onRefresh();
@@ -267,6 +289,69 @@ export const ExcelGrid = ({
             ? totalCount
             : Math.min(grid.currentPage * Number(grid.pageSize), totalCount);
 
+    // Unified Add Rows Handler with immediate focus and editing activation
+    const handleUnifiedAddRows = useCallback((count = 1, position = 'top') => {
+        if (!canWrite) return;
+
+        if (onAddRows) {
+            onAddRows(count, position);
+        } else {
+            grid.handleAddRows(count, position);
+        }
+
+        if (grid.searchTerm) {
+            grid.setSearchTerm('');
+        }
+
+        const isBottom = position === 'bottom';
+        const targetRowIdx = isBottom ? grid.sortedGridData.length : 0;
+        const targetPage = isBottom && grid.pageSize !== 'All'
+            ? Math.max(1, Math.ceil((grid.sortedGridData.length + count) / Number(grid.pageSize)))
+            : 1;
+
+        grid.setCurrentPage(targetPage);
+
+        const firstEditableCol = mergedColumns.find((c) => !c.readOnly) || mergedColumns[0];
+        const firstColIdx = firstEditableCol
+            ? mergedColumns.findIndex((c) => c.key === firstEditableCol.key)
+            : 0;
+        const finalColIdx = Math.max(0, firstColIdx);
+
+        grid.setSelectionAnchor({ r: targetRowIdx, c: finalColIdx });
+        grid.setSelectionFocus({ r: targetRowIdx, c: finalColIdx });
+
+        if (firstEditableCol) {
+            grid.setEditingCell({ rowIndex: targetRowIdx, colKey: firstEditableCol.key });
+        }
+
+        const focusNewCell = (attempts = 0) => {
+            const gridContainer = document.querySelector('[data-excel-grid="true"]');
+            if (gridContainer) {
+                if (isBottom) {
+                    gridContainer.scrollTop = gridContainer.scrollHeight;
+                } else {
+                    gridContainer.scrollTop = 0;
+                }
+            }
+            const cellEl = document.getElementById(`excel-cell-${targetRowIdx}-${firstEditableCol?.key}`);
+            if (cellEl) {
+                try {
+                    cellEl.scrollIntoView({ block: 'nearest', inline: 'nearest' });
+                } catch {}
+                const inp = cellEl.querySelector('input, select, textarea');
+                if (inp) {
+                    inp.focus();
+                    if (inp.select) inp.select();
+                    return;
+                }
+            }
+            if (attempts < 8) {
+                setTimeout(() => focusNewCell(attempts + 1), 40);
+            }
+        };
+        setTimeout(() => focusNewCell(0), 40);
+    }, [canWrite, onAddRows, grid, mergedColumns]);
+
     return (
         <div className="flex-1 min-h-0 flex flex-col overflow-hidden bg-white dark:bg-[#0d1117] transition-colors h-full relative font-sans">
             {/* Custom Confirm Modal */}
@@ -297,11 +382,11 @@ export const ExcelGrid = ({
                 isSaving={isSaving}
                 lastSavedTime={lastSavedTime}
                 onSave={handleSaveBatch}
-                canUndo={grid.canUndo}
-                canRedo={grid.canRedo}
-                onUndo={grid.undo}
-                onRedo={grid.redo}
-                onAddRows={grid.handleAddRows}
+                canUndo={canUndo !== undefined ? canUndo : grid.canUndo}
+                canRedo={canRedo !== undefined ? canRedo : grid.canRedo}
+                onUndo={onUndo || grid.undo}
+                onRedo={onRedo || grid.redo}
+                onAddRows={handleUnifiedAddRows}
                 selectedIds={grid.selectedIds}
                 onBulkDelete={handleRequestBulkDelete}
                 onBulkDuplicate={() => {
@@ -322,6 +407,7 @@ export const ExcelGrid = ({
                 onOpenShortcutsModal={() => grid.setIsShortcutsModalOpen(true)}
                 canWrite={canWrite}
                 customActions={customActions}
+                extraTools={extraTools}
                 bulkActions={bulkActions}
                 extraFilters={extraFilters}
             />
@@ -394,6 +480,9 @@ export const ExcelGrid = ({
                 onContextMenu={(e, rowIndex, colIndex) => {
                     e.preventDefault();
                     e.stopPropagation();
+                    if (grid.selectedIds && grid.selectedIds.size > 0) {
+                        grid.setSelectedIds(new Set());
+                    }
                     grid.setSelectionAnchor({ r: rowIndex, c: colIndex });
                     grid.setSelectionFocus({ r: rowIndex, c: colIndex });
                     grid.setContextMenu({
@@ -408,7 +497,7 @@ export const ExcelGrid = ({
                 onViewRow={onViewRow}
                 onDeleteRow={handleRequestDeleteRow}
                 emptyMessage={emptyMessage}
-                onAddRows={grid.handleAddRows}
+                onAddRows={handleUnifiedAddRows}
                 onOpenImportModal={(tab) => {
                     setImportModalTab(tab);
                     setIsImportModalOpen(true);
@@ -416,6 +505,10 @@ export const ExcelGrid = ({
                 currentPage={grid.currentPage}
                 pageSize={grid.pageSize}
                 findHighlightConfig={findHighlightConfig}
+                renderExpandedRow={renderExpandedRow}
+                expandedRowIds={expandedRowIds}
+                onToggleExpandRow={onToggleExpandRow}
+                isRowExpandable={isRowExpandable}
             />
 
             {/* Live Calculation Status Bar */}
@@ -520,7 +613,7 @@ export const ExcelGrid = ({
                 onClose={() => grid.setContextMenu(null)}
                 onCut={grid.executeCut}
                 onCopy={grid.executeCopy}
-                onPaste={grid.executePaste}
+                onPaste={() => grid.executePaste(null, grid.contextMenu?.rowIndex, grid.contextMenu?.colIndex)}
                 onFillDown={grid.handleFillDown}
                 onFillRight={grid.handleFillRight}
                 onDateStamp={grid.handleDateStamp}

@@ -3,7 +3,8 @@ import {
     Building2,
     Plus,
     SlidersHorizontal,
-    CopyCheck
+    CopyCheck,
+    ChevronDown
 } from 'lucide-react';
 import api from '../../services/api';
 import vendorApi from '../../services/vendorApi';
@@ -130,10 +131,22 @@ export const VendorsList = () => {
         [vendors, allJobNatures]
     );
 
+    // Aggregate comprehensive list of Nature of Job options
+    const jobOptions = useMemo(() => {
+        const set = new Set();
+        (allJobNatures || []).forEach((j) => {
+            const name = typeof j === 'object' ? j?.job_name || j?.name : String(j || '');
+            if (name && name.trim()) set.add(name.trim());
+        });
+        (vendors || []).forEach((v) => {
+            const name = v?.job_name || v?.job_nature;
+            if (name && String(name).trim()) set.add(String(name).trim());
+        });
+        return Array.from(set).sort((a, b) => a.localeCompare(b));
+    }, [allJobNatures, vendors]);
+
     // Column Definitions for ExcelGrid
     const columns = useMemo(() => {
-        const jobOptions = allJobNatures.map((j) => j.job_name || j.name || j);
-
         return [
             {
                 key: 'name',
@@ -148,12 +161,14 @@ export const VendorsList = () => {
                 label: 'Category',
                 type: 'select',
                 options: CATEGORY_OPTIONS,
-                defaultValue: 'Contractor',
+                defaultValue: '',
                 width: '160px',
                 minWidth: '150px',
                 aliases: COLUMN_ALIASES.category,
                 renderCell: (val) => {
-                    if (!val) return null;
+                    if (!val) {
+                        return <span className="text-gray-400 font-normal italic text-[11px]">Select category...</span>;
+                    }
                     const badgeStyle =
                         CATEGORY_BADGE_STYLES[val] ||
                         'bg-gray-100 text-gray-700 border-gray-200 dark:bg-white/5 dark:text-gray-400 dark:border-white/10';
@@ -171,6 +186,7 @@ export const VendorsList = () => {
                 label: 'Nature of Job',
                 type: 'select',
                 options: jobOptions,
+                placeholder: '-- Select Trade --',
                 width: '180px',
                 minWidth: '170px',
                 aliases: COLUMN_ALIASES.job_name
@@ -225,7 +241,7 @@ export const VendorsList = () => {
                 aliases: COLUMN_ALIASES.remarks
             }
         ];
-    }, [allJobNatures]);
+    }, [jobOptions]);
 
     // Batch Save Handler
     const handleSaveGridBatch = async (payload) => {

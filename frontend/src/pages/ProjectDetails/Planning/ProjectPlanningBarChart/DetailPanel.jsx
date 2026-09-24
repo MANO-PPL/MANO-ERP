@@ -239,9 +239,9 @@ export const DetailPanel = ({ type, phase, activity, onClose, showAiPanel }) => 
                     </div>
                     {/* Tags */}
                     <div className="flex flex-wrap gap-1.5">
-                        {a.critical && <span className="text-[9px] font-bold text-red-500 bg-red-50 dark:bg-red-900/20 px-2 py-0.5 rounded-full">⚡ HIGH PRIORITY</span>}
-                        {a.milestone && <span className="text-[9px] font-bold text-amber-600 bg-amber-50 dark:bg-amber-900/20 px-2 py-0.5 rounded-full">🎯 KEY DELIVERABLE</span>}
-                        {delayed && <span className="text-[9px] font-bold text-orange-500 bg-orange-50 dark:bg-orange-900/20 px-2 py-0.5 rounded-full">⏳ DELAYED {delayDays}d</span>}
+                        {a.critical && <span className="text-[9px] font-bold text-red-500 bg-red-50 dark:bg-red-900/20 px-2 py-0.5 rounded-full">HIGH PRIORITY</span>}
+                        {a.milestone && <span className="text-[9px] font-bold text-amber-600 bg-amber-50 dark:bg-amber-900/20 px-2 py-0.5 rounded-full">KEY DELIVERABLE</span>}
+                        {delayed && <span className="text-[9px] font-bold text-orange-500 bg-orange-50 dark:bg-orange-900/20 px-2 py-0.5 rounded-full">DELAYED {delayDays}d</span>}
                     </div>
                     {/* Dates */}
                     <div className="space-y-2">

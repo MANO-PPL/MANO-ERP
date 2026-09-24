@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { X, Sparkles, Save, MapPin, CheckCircle2, AlertTriangle, Clock, Package, Truck, Box } from 'lucide-react';
+import { X, Sparkles, Save, MapPin, CheckCircle2, AlertTriangle, Clock, Package, Truck, Box, BarChart3, Lightbulb, Calendar, CheckCircle } from 'lucide-react';
 import { motion } from 'framer-motion';
 
 const toDate = (s) => new Date(s);
@@ -75,7 +75,10 @@ export const DeliveryPanel = ({ delivery, vendors, editing, onSave, onClose }) =
                         ))}
                         {delivery.actual && delivery.actual > delivery.expected && (
                             <div className="bg-red-50 dark:bg-red-900/10 rounded-lg p-3 border border-red-200 dark:border-red-500/20">
-                                <p className="text-[10px] font-bold text-red-600">⚠️ Delivered {Math.round((toDate(delivery.actual) - toDate(delivery.expected)) / 86400000)} days late</p>
+                                <p className="text-[10px] font-bold text-red-600 flex items-center gap-1.5">
+                                    <AlertTriangle size={12} className="shrink-0 text-red-500" />
+                                    <span>Delivered {Math.round((toDate(delivery.actual) - toDate(delivery.expected)) / 86400000)} days late</span>
+                                </p>
                             </div>
                         )}
                     </>
@@ -173,11 +176,11 @@ export const LogisticAIPanel = ({ title, deliveries, equipment, onClose }) => {
     const activeEquip = equipment.filter(e => e.status === 'active').length;
 
     const insights = [
-        { emoji: '📦', label: 'Deliveries', text: `${delivered}/${deliveries.length} delivered (${onTime} on time). ${pending} orders in pipeline.` },
-        delayed > 0 ? { emoji: '⚠️', label: 'Delays', text: `${delayed} order(s) delayed. Escalate with vendors for expedited shipping.`, alert: true } : { emoji: '✅', label: 'No Delays', text: 'All orders are on track or delivered.' },
-        { emoji: '🏗️', label: 'Equipment', text: `${activeEquip}/${equipment.length} equipment active. Average utilization: ${avgUtil}%.` },
-        avgUtil < 60 ? { emoji: '💡', label: 'Optimization', text: 'Equipment utilization is below 60%. Consider releasing idle equipment to reduce costs.', alert: true } : { emoji: '📊', label: 'Efficiency', text: 'Equipment utilization is healthy. Continue monitoring for maintenance schedules.' },
-        { emoji: '📅', label: 'Recommendation', text: delayed > 0 ? 'Prioritize follow-up on delayed orders. Consider alternate vendors for critical materials.' : 'Procurement pipeline is healthy. Plan ahead for finishing-stage materials.' },
+        { icon: Package, label: 'Deliveries', text: `${delivered}/${deliveries.length} delivered (${onTime} on time). ${pending} orders in pipeline.` },
+        delayed > 0 ? { icon: AlertTriangle, label: 'Delays', text: `${delayed} order(s) delayed. Escalate with vendors for expedited shipping.`, alert: true } : { icon: CheckCircle, label: 'No Delays', text: 'All orders are on track or delivered.' },
+        { icon: Truck, label: 'Equipment', text: `${activeEquip}/${equipment.length} equipment active. Average utilization: ${avgUtil}%.` },
+        avgUtil < 60 ? { icon: Lightbulb, label: 'Optimization', text: 'Equipment utilization is below 60%. Consider releasing idle equipment to reduce costs.', alert: true } : { icon: BarChart3, label: 'Efficiency', text: 'Equipment utilization is healthy. Continue monitoring for maintenance schedules.' },
+        { icon: Calendar, label: 'Recommendation', text: delayed > 0 ? 'Prioritize follow-up on delayed orders. Consider alternate vendors for critical materials.' : 'Procurement pipeline is healthy. Plan ahead for finishing-stage materials.' },
     ];
 
     return (
@@ -190,7 +193,10 @@ export const LogisticAIPanel = ({ title, deliveries, equipment, onClose }) => {
             <div className="flex-1 overflow-y-auto p-4 space-y-3 custom-scrollbar">
                 {insights.map((item, i) => (
                     <div key={i} className={`rounded-xl p-3 border ${item.alert ? 'bg-orange-50 dark:bg-orange-900/10 border-orange-200 dark:border-orange-500/20' : 'bg-gray-50 dark:bg-[#0d1117] border-gray-100 dark:border-white/5'}`}>
-                        <div className="flex items-center gap-2 mb-1"><span className="text-sm">{item.emoji}</span><span className="text-[10px] font-bold text-gray-600 dark:text-gray-300 uppercase tracking-wider">{item.label}</span></div>
+                        <div className="flex items-center gap-2 mb-1">
+                            <item.icon size={13} className={item.alert ? "text-orange-500 shrink-0" : "text-blue-500 shrink-0"} />
+                            <span className="text-[10px] font-bold text-gray-600 dark:text-gray-300 uppercase tracking-wider">{item.label}</span>
+                        </div>
                         <p className="text-[11px] text-gray-700 dark:text-gray-400 leading-relaxed">{item.text}</p>
                     </div>
                 ))}

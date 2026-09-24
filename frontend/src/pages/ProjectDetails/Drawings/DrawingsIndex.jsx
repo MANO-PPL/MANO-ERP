@@ -27,18 +27,18 @@ const ICON_MAP = {
 };
 
 const ICON_OPTIONS = [
-    { key: 'PenTool', label: '✏️' },
-    { key: 'Layers', label: '🗂️' },
-    { key: 'Droplets', label: '💧' },
-    { key: 'Zap', label: '⚡' },
-    { key: 'Flame', label: '🔥' },
-    { key: 'Folder', label: '📁' },
-    { key: 'Building2', label: '🏗️' },
-    { key: 'Wrench', label: '🔧' },
-    { key: 'Construction', label: '🚧' },
-    { key: 'Ruler', label: '📐' },
-    { key: 'Lightbulb', label: '💡' },
-    { key: 'Shield', label: '🛡️' }
+    { key: 'PenTool', label: 'Drafting' },
+    { key: 'Layers', label: 'Layers' },
+    { key: 'Droplets', label: 'Plumbing' },
+    { key: 'Zap', label: 'Electrical' },
+    { key: 'Flame', label: 'Fire Safety' },
+    { key: 'Folder', label: 'General' },
+    { key: 'Building2', label: 'Structural' },
+    { key: 'Wrench', label: 'Mechanical' },
+    { key: 'Construction', label: 'Civil' },
+    { key: 'Ruler', label: 'Architectural' },
+    { key: 'Lightbulb', label: 'Lighting' },
+    { key: 'Shield', label: 'Security' }
 ];
 
 // Category Drawer (Create & Edit)
@@ -151,8 +151,11 @@ const CategoryDrawer = ({ open, onClose, onAdd, onEdit, editingCategory }) => {
                                                 ? 'border-blue-500 bg-blue-50 dark:bg-blue-900/30 ring-1 ring-blue-500/20 shadow-xs'
                                                 : 'border-gray-200 dark:border-gh-border hover:border-gray-300 dark:hover:border-gray-700 bg-white dark:bg-[#0d1117]'
                                                 }`}
+                                            title={opt.label}
                                         >
-                                            {opt.label}
+                                            <div className="text-gray-700 dark:text-gray-300">
+                                                {ICON_MAP[opt.key]}
+                                            </div>
                                         </button>
                                     ))}
                                 </div>

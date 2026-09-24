@@ -1,6 +1,6 @@
 import React, { useRef, useCallback, useState, useEffect } from 'react';
 import { ExcelCell } from './ExcelCell';
-import { ArrowUp, ArrowDown, Eye, Trash2, Check, Plus, Table as TableIcon } from 'lucide-react';
+import { ArrowUp, ArrowDown, Eye, Trash2, Check, Plus, Table as TableIcon, ChevronDown, ChevronUp } from 'lucide-react';
 import { getColumnLetter } from './excelUtils';
 
 const CustomCheckbox = ({ checked, onChange, title }) => (
@@ -64,8 +64,28 @@ export const ExcelTable = ({
     onOpenImportModal = null,
     currentPage = 1,
     pageSize = 100,
-    findHighlightConfig = null
+    findHighlightConfig = null,
+    renderExpandedRow = null,
+    expandedRowIds = undefined,
+    onToggleExpandRow = null,
+    isRowExpandable = null
 }) => {
+    // Internal expanded rows state if not controlled externally
+    const [internalExpandedIds, setInternalExpandedIds] = useState(new Set());
+    const effectiveExpandedIds = expandedRowIds !== undefined ? expandedRowIds : internalExpandedIds;
+
+    const handleToggleExpand = (rowId) => {
+        if (onToggleExpandRow) {
+            onToggleExpandRow(rowId);
+        } else {
+            setInternalExpandedIds((prev) => {
+                const next = new Set(prev);
+                if (next.has(rowId)) next.delete(rowId);
+                else next.add(rowId);
+                return next;
+            });
+        }
+    };
     // Select All Rows toggle
     const handleToggleSelectAll = () => {
         if (selectedIds.size === sortedGridData.length && sortedGridData.length > 0) {
@@ -161,7 +181,7 @@ export const ExcelTable = ({
                         </th>
 
                         {/* Row Number Column */}
-                        <th className="px-3 py-2.5 w-11 min-w-11 max-w-11 text-center border-r border-gray-150 dark:border-white/5 font-mono text-[10px]">
+                        <th className="px-2 py-2.5 w-14 min-w-14 max-w-14 text-center border-r border-gray-150 dark:border-white/5 font-mono text-[10px]">
                             #
                         </th>
 
@@ -293,168 +313,222 @@ export const ExcelTable = ({
                         </tr>
                     ) : (
                         /* Data Rows */
-                        paginatedGridData.map((row, index) => {
-                            const rowIndex =
-                                pageSize === 'All' ? index : (currentPage - 1) * Number(pageSize) + index;
-                            const rowId = row[primaryKey] || `row-${rowIndex}`;
-                            const isNew = row._status === 'new' || (row._status !== 'saved' && String(rowId).startsWith('temp_'));
-                            const isError = row._status === 'error' || (row._errors && Object.keys(row._errors).length > 0);
-                            const isModified = row._status === 'modified';
-                            const isRowSelected = selectedIds.has(rowId);
-                            const originalRow = originalDataMap.get(rowId);
+                        (() => {
+                            const seenRowKeys = new Set();
+                            return paginatedGridData.map((row, index) => {
+                                const rowIndex =
+                                    pageSize === 'All' ? index : (currentPage - 1) * Number(pageSize) + index;
+                                const rawRowId = row[primaryKey] || `row-${rowIndex}`;
+                                let rowKey = String(rawRowId);
+                                if (seenRowKeys.has(rowKey)) {
+                                    rowKey = `${rowKey}__dup_${rowIndex}`;
+                                }
+                                seenRowKeys.add(rowKey);
+                                const rowId = rawRowId;
+                                const isNew = row._status === 'new' || (row._status !== 'saved' && String(rowId).startsWith('temp_'));
+                                const isError = row._status === 'error' || (row._errors && Object.keys(row._errors).length > 0);
+                                const isModified = row._status === 'modified';
+                                const isRowSelected = selectedIds.has(rowId);
+                                const originalRow = originalDataMap.get(rowId);
+                                const isRowExpanded = effectiveExpandedIds.has(rowId);
+                                const canExpandThisRow = Boolean(renderExpandedRow && (!isRowExpandable || isRowExpandable(row)));
 
-                            return (
-                                <tr
-                                    key={rowId}
-                                    onContextMenu={(e) => onContextMenu(e, rowIndex, 0)}
-                                    className={`hover:bg-blue-50/20 dark:hover:bg-white/[0.02] transition-colors group/row text-gray-700 dark:text-gray-300 ${isRowSelected ? 'bg-blue-50/30 dark:bg-blue-900/10' : ''
-                                        }`}
-                                >
-                                    {/* Checkbox */}
-                                    <td className="px-3 py-2 text-center border-r border-gray-100 dark:border-white/5 select-none">
-                                        <div className="flex justify-center">
-                                            <CustomCheckbox
-                                                checked={isRowSelected}
-                                                onChange={(e) => handleToggleSelectRow(e, rowId)}
-                                                title="Select Row"
-                                            />
-                                        </div>
-                                    </td>
+                                return (
+                                    <React.Fragment key={rowKey}>
+                                    <tr
+                                        onContextMenu={(e) => onContextMenu(e, rowIndex, 0)}
+                                        className={`hover:bg-blue-50/20 dark:hover:bg-white/[0.02] transition-colors group/row text-gray-700 dark:text-gray-300 ${
+                                            isRowSelected ? 'bg-blue-50/30 dark:bg-blue-900/10' : ''
+                                        } ${isRowExpanded ? 'bg-blue-50/15 dark:bg-blue-950/20' : ''}`}
+                                    >
+                                        {/* Checkbox */}
+                                        <td className="px-3 py-2 text-center border-r border-gray-100 dark:border-white/5 select-none">
+                                            <div className="flex justify-center">
+                                                <CustomCheckbox
+                                                    checked={isRowSelected}
+                                                    onChange={(e) => handleToggleSelectRow(e, rowId)}
+                                                    title="Select Row"
+                                                />
+                                            </div>
+                                        </td>
 
-                                    {/* Row # */}
-                                    <td className="px-3 py-2 text-center font-mono text-[10px] text-gray-400 border-r border-gray-100 dark:border-white/5 select-none bg-gray-50/50 dark:bg-white/[0.01]">
-                                        {rowIndex + 1}
-                                    </td>
-
-                                    {/* Status Badge */}
-                                    <td className="px-1 py-2 text-center border-r border-gray-100 dark:border-white/5 select-none">
-                                        {isNew ? (
-                                            <span className="inline-flex items-center justify-center px-1.5 py-0.5 rounded text-[9px] font-bold bg-blue-50 text-blue-600 dark:bg-blue-950/30 dark:text-blue-400 border border-blue-200 dark:border-blue-500/20 whitespace-nowrap">
-                                                NEW
-                                            </span>
-                                        ) : isError ? (
-                                            <span
-                                                className="inline-flex items-center justify-center px-1.5 py-0.5 rounded text-[9px] font-bold bg-red-50 text-red-600 dark:bg-red-950/30 dark:text-red-400 border border-red-200 dark:border-red-500/20 whitespace-nowrap cursor-help"
-                                                title="Validation error in row"
-                                            >
-                                                ERROR
-                                            </span>
-                                        ) : isModified ? (
-                                            <span className="inline-flex items-center justify-center px-1.5 py-0.5 rounded text-[9px] font-bold bg-amber-50 text-amber-600 dark:bg-amber-950/30 dark:text-amber-400 border border-amber-200 dark:border-amber-500/20 whitespace-nowrap">
-                                                MODIFIED
-                                            </span>
-                                        ) : (
-                                            <span className="inline-flex items-center justify-center px-1.5 py-0.5 rounded text-[9px] font-bold bg-emerald-50 text-emerald-600 dark:bg-emerald-950/30 dark:text-emerald-400 border border-emerald-200 dark:border-emerald-500/20 whitespace-nowrap">
-                                                SAVED
-                                            </span>
-                                        )}
-                                    </td>
-
-                                    {/* Grid Cells */}
-                                    {columns.map((col, colIndex) => {
-                                        const isDirtyCell =
-                                            !isNew &&
-                                            originalRow &&
-                                            String(row[col.key] ?? '').trim() !==
-                                            String(originalRow[col.key] ?? '').trim();
-
-                                        const isCopied =
-                                            copiedBounds &&
-                                            rowIndex >= copiedBounds.minRow &&
-                                            rowIndex <= copiedBounds.maxRow &&
-                                            colIndex >= copiedBounds.minCol &&
-                                            colIndex <= copiedBounds.maxCol;
-
-                                        let isFindMatch = false;
-                                        if (findHighlightConfig && findHighlightConfig.query && !col.readOnly) {
-                                            const cellVal = String(row[col.key] ?? '');
-                                            const q = findHighlightConfig.matchCase
-                                                ? findHighlightConfig.query
-                                                : findHighlightConfig.query.toLowerCase();
-                                            const target = findHighlightConfig.matchCase
-                                                ? cellVal
-                                                : cellVal.toLowerCase();
-                                            isFindMatch = findHighlightConfig.matchExact
-                                                ? target === q
-                                                : target.includes(q);
-                                        }
-
-                                        const isFindCurrentMatch =
-                                            isFindMatch &&
-                                            selectionFocus?.r === rowIndex &&
-                                            selectionFocus?.c === colIndex;
-
-                                        return (
-                                            <ExcelCell
-                                                key={col.key}
-                                                value={row[col.key]}
-                                                row={row}
-                                                column={col}
-                                                rowIndex={rowIndex}
-                                                colIndex={colIndex}
-                                                selectionAnchor={selectionAnchor}
-                                                selectionFocus={selectionFocus}
-                                                selectionBounds={selectionBounds}
-                                                isCopied={isCopied}
-                                                editingCell={editingCell}
-                                                isDirtyCell={isDirtyCell}
-                                                error={row._errors?.[col.key]}
-                                                canWrite={canWrite}
-                                                customColWidth={customColWidths[col.key]}
-                                                onSelectCell={onSelectCell}
-                                                onCellMouseDown={onCellMouseDown}
-                                                onCellMouseEnter={onCellMouseEnter}
-                                                onStartEditing={onStartEditing}
-                                                onStopEditing={onStopEditing}
-                                                onChangeValue={onChangeValue}
-                                                onKeyDown={onCellKeyDown}
-                                                onContextMenu={onContextMenu}
-                                                onStartFillDrag={onStartFillDrag}
-                                                onAutoFillDown={onAutoFillDown}
-                                                onOpenDropdownPortal={onOpenDropdownPortal}
-                                                isFindMatch={isFindMatch}
-                                                isFindCurrentMatch={isFindCurrentMatch}
-                                                findHighlightQuery={findHighlightConfig?.query}
-                                                findHighlightMatchCase={findHighlightConfig?.matchCase}
-                                            />
-                                        );
-                                    })}
-
-                                    {/* + Column Empty Body Cell */}
-                                    {canWrite && onOpenAddColumn && (
-                                        <td className="px-2 py-2 border-r border-b border-gray-100 dark:border-white/5 bg-gray-50/20 dark:bg-white/[0.005] select-none text-center" />
-                                    )}
-
-                                    {/* Action Buttons */}
-                                    {hasActions && (
-                                        <td className="px-3 py-2 text-center border-b border-gray-100 dark:border-white/5 select-none">
+                                        {/* Row # with Down/Up Arrow Toggle */}
+                                        <td className="px-1.5 py-2 text-center font-mono text-[10px] text-gray-400 border-r border-gray-100 dark:border-white/5 select-none bg-gray-50/50 dark:bg-white/[0.01]">
                                             <div className="flex items-center justify-center gap-1">
-                                                {onViewRow && (
+                                                <span className="font-semibold text-gray-600 dark:text-gray-300">{rowIndex + 1}</span>
+                                                {canExpandThisRow && (
                                                     <button
                                                         type="button"
-                                                        onClick={() => onViewRow(row)}
-                                                        className="p-1 hover:bg-gray-100 dark:hover:bg-white/5 text-gray-500 hover:text-blue-600 rounded transition cursor-pointer"
-                                                        title="View Details"
+                                                        onClick={(e) => {
+                                                            e.stopPropagation();
+                                                            handleToggleExpand(rowId);
+                                                        }}
+                                                        className={`p-0.5 rounded transition cursor-pointer ${
+                                                            isRowExpanded
+                                                                ? 'text-blue-600 dark:text-blue-400 font-bold bg-blue-100/80 dark:bg-blue-900/40'
+                                                                : 'text-gray-400 hover:text-blue-600 dark:hover:text-blue-400 hover:bg-gray-200/70 dark:hover:bg-white/10'
+                                                        }`}
+                                                        title={isRowExpanded ? 'Collapse sub-grid' : 'Expand sub-grid'}
                                                     >
-                                                        <Eye size={13} />
-                                                    </button>
-                                                )}
-                                                {canWrite && onDeleteRow && (
-                                                    <button
-                                                        type="button"
-                                                        onClick={() => onDeleteRow(row)}
-                                                        className="p-1 hover:bg-red-50 dark:hover:bg-red-950/30 text-gray-500 hover:text-red-600 rounded transition cursor-pointer"
-                                                        title="Delete Row"
-                                                    >
-                                                        <Trash2 size={13} />
+                                                        {isRowExpanded ? (
+                                                            <ChevronUp size={13} className="stroke-[2.5]" />
+                                                        ) : (
+                                                            <ChevronDown size={13} className="stroke-[2.5]" />
+                                                        )}
                                                     </button>
                                                 )}
                                             </div>
                                         </td>
+
+                                        {/* Status Badge */}
+                                        <td className="px-1 py-2 text-center border-r border-gray-100 dark:border-white/5 select-none">
+                                            {isNew ? (
+                                                <span className="inline-flex items-center justify-center px-1.5 py-0.5 rounded text-[9px] font-bold bg-blue-50 text-blue-600 dark:bg-blue-950/30 dark:text-blue-400 border border-blue-200 dark:border-blue-500/20 whitespace-nowrap">
+                                                    NEW
+                                                </span>
+                                            ) : isError ? (
+                                                <span
+                                                    className="inline-flex items-center justify-center px-1.5 py-0.5 rounded text-[9px] font-bold bg-red-50 text-red-600 dark:bg-red-950/30 dark:text-red-400 border border-red-200 dark:border-red-500/20 whitespace-nowrap cursor-help"
+                                                    title="Validation error in row"
+                                                >
+                                                    ERROR
+                                                </span>
+                                            ) : isModified ? (
+                                                <span className="inline-flex items-center justify-center px-1.5 py-0.5 rounded text-[9px] font-bold bg-amber-50 text-amber-600 dark:bg-amber-950/30 dark:text-amber-400 border border-amber-200 dark:border-amber-500/20 whitespace-nowrap">
+                                                    MODIFIED
+                                                </span>
+                                            ) : (
+                                                <span className="inline-flex items-center justify-center px-1.5 py-0.5 rounded text-[9px] font-bold bg-emerald-50 text-emerald-600 dark:bg-emerald-950/30 dark:text-emerald-400 border border-emerald-200 dark:border-emerald-500/20 whitespace-nowrap">
+                                                    SAVED
+                                                </span>
+                                            )}
+                                        </td>
+
+                                        {/* Grid Cells */}
+                                        {columns.map((col, colIndex) => {
+                                            const isDirtyCell =
+                                                !isNew &&
+                                                originalRow &&
+                                                String(row[col.key] ?? '').trim() !==
+                                                String(originalRow[col.key] ?? '').trim();
+
+                                            const isCopied =
+                                                copiedBounds &&
+                                                rowIndex >= copiedBounds.minRow &&
+                                                rowIndex <= copiedBounds.maxRow &&
+                                                colIndex >= copiedBounds.minCol &&
+                                                colIndex <= copiedBounds.maxCol;
+
+                                            let isFindMatch = false;
+                                            if (findHighlightConfig && findHighlightConfig.query && !col.readOnly) {
+                                                const cellVal = String(row[col.key] ?? '');
+                                                const q = findHighlightConfig.matchCase
+                                                    ? findHighlightConfig.query
+                                                    : findHighlightConfig.query.toLowerCase();
+                                                const target = findHighlightConfig.matchCase
+                                                    ? cellVal
+                                                    : cellVal.toLowerCase();
+                                                isFindMatch = findHighlightConfig.matchExact
+                                                    ? target === q
+                                                    : target.includes(q);
+                                            }
+
+                                            const isFindCurrentMatch =
+                                                isFindMatch &&
+                                                selectionFocus?.r === rowIndex &&
+                                                selectionFocus?.c === colIndex;
+
+                                            return (
+                                                <ExcelCell
+                                                    key={col.key}
+                                                    value={row[col.key]}
+                                                    row={row}
+                                                    column={col}
+                                                    rowIndex={rowIndex}
+                                                    colIndex={colIndex}
+                                                    selectionAnchor={selectionAnchor}
+                                                    selectionFocus={selectionFocus}
+                                                    selectionBounds={selectionBounds}
+                                                    isCopied={isCopied}
+                                                    editingCell={editingCell}
+                                                    isDirtyCell={isDirtyCell}
+                                                    error={row._errors?.[col.key]}
+                                                    canWrite={canWrite}
+                                                    customColWidth={customColWidths[col.key]}
+                                                    onSelectCell={onSelectCell}
+                                                    onCellMouseDown={onCellMouseDown}
+                                                    onCellMouseEnter={onCellMouseEnter}
+                                                    onStartEditing={onStartEditing}
+                                                    onStopEditing={onStopEditing}
+                                                    onChangeValue={onChangeValue}
+                                                    onKeyDown={onCellKeyDown}
+                                                    onContextMenu={onContextMenu}
+                                                    onStartFillDrag={onStartFillDrag}
+                                                    onAutoFillDown={onAutoFillDown}
+                                                    onOpenDropdownPortal={onOpenDropdownPortal}
+                                                    isFindMatch={isFindMatch}
+                                                    isFindCurrentMatch={isFindCurrentMatch}
+                                                    findHighlightQuery={findHighlightConfig?.query}
+                                                    findHighlightMatchCase={findHighlightConfig?.matchCase}
+                                                />
+                                            );
+                                        })}
+
+                                        {/* + Column Empty Body Cell */}
+                                        {canWrite && onOpenAddColumn && (
+                                            <td className="px-2 py-2 border-r border-b border-gray-100 dark:border-white/5 bg-gray-50/20 dark:bg-white/[0.005] select-none text-center" />
+                                        )}
+
+                                        {/* Action Buttons */}
+                                        {hasActions && (
+                                            <td className="px-3 py-2 text-center border-b border-gray-100 dark:border-white/5 select-none">
+                                                <div className="flex items-center justify-center gap-1">
+                                                    {onViewRow && (
+                                                        <button
+                                                            type="button"
+                                                            onClick={() => onViewRow(row)}
+                                                            className="p-1 hover:bg-gray-100 dark:hover:bg-white/5 text-gray-500 hover:text-blue-600 rounded transition cursor-pointer"
+                                                            title="View Details"
+                                                        >
+                                                            <Eye size={13} />
+                                                        </button>
+                                                    )}
+                                                    {canWrite && onDeleteRow && (
+                                                        <button
+                                                            type="button"
+                                                            onClick={() => onDeleteRow(row)}
+                                                            className="p-1 hover:bg-red-50 dark:hover:bg-red-950/30 text-gray-500 hover:text-red-600 rounded transition cursor-pointer"
+                                                            title="Delete Row"
+                                                        >
+                                                            <Trash2 size={13} />
+                                                        </button>
+                                                    )}
+                                                </div>
+                                            </td>
+                                        )}
+                                    </tr>
+
+                                    {/* ─── Expandable Sub-Grid Row ─── */}
+                                    {isRowExpanded && renderExpandedRow && (
+                                        <tr key={`${rowId}-expanded`} className="bg-slate-50/70 dark:bg-[#111620]/90">
+                                            <td
+                                                colSpan={
+                                                    columns.length +
+                                                    (hasActions ? 4 : 3) +
+                                                    (canWrite && onOpenAddColumn ? 1 : 0)
+                                                }
+                                                className="p-0 border-b border-gray-200 dark:border-white/10"
+                                            >
+                                                {renderExpandedRow(row, rowIndex, {
+                                                    collapse: () => handleToggleExpand(rowId)
+                                                })}
+                                            </td>
+                                        </tr>
                                     )}
-                                </tr>
+                                </React.Fragment>
                             );
-                        })
+                        });
+                        })()
                     )}
                 </tbody>
             </table>
@@ -464,7 +538,7 @@ export const ExcelTable = ({
                 <div className="p-3 flex items-center">
                     <button
                         type="button"
-                        onClick={() => onAddRows(1)}
+                        onClick={() => onAddRows(1, 'bottom')}
                         className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-white dark:bg-[#161b22] hover:bg-blue-50 dark:hover:bg-blue-900/20 text-gray-700 dark:text-gray-300 hover:text-blue-600 dark:hover:text-blue-400 border border-gray-200 dark:border-white/10 hover:border-blue-300 dark:hover:border-blue-700/60 rounded-lg text-xs font-bold transition-all shadow-2xs cursor-pointer active:scale-95"
                         title="Add a new row below"
                     >

@@ -135,8 +135,15 @@ export const ExcelImportModal = ({
             return;
         }
 
-        const rawRows = parseTSV(text);
-        if (rawRows.length === 0) {
+        let rawRows;
+        if (!text.includes('\t') && text.includes(',') && text.includes('\n')) {
+            const parsed = Papa.parse(text, { skipEmptyLines: true });
+            rawRows = parsed.data;
+        } else {
+            rawRows = parseTSV(text);
+        }
+
+        if (!rawRows || rawRows.length === 0) {
             setParsedData([]);
             return;
         }
