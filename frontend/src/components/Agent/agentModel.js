@@ -71,6 +71,10 @@ export const isUserVisibleConversationMessage = (message, debugMode = false) => 
 export const ERROR_COPY = {
     backend_unavailable: 'The ERP agent backend is not connected yet.',
     provider_unavailable: 'The AI provider could not complete this request. No answer is available; please try again later.',
+    provider_rate_limited: 'The AI service is temporarily rate-limited. Please wait before trying again. Previously saved changes are unaffected.',
+    provider_invalid_output: 'The AI service returned an unusable response. This failed step did not execute an ERP action. Previously saved changes are unaffected.',
+    conversion_quantity_invalid: 'Conversion quantity must be greater than zero. No action was executed for this failed step.',
+    tool_arguments_invalid: 'The assistant proposed invalid or incomplete action details. Please clarify the details and try again. No action was executed for this failed step.',
     model_unavailable: 'The configured AI model is no longer available. An administrator needs to update the Agent model.',
     network_failure: 'The connection was interrupted. The action outcome is unknown.',
     request_rejected: 'The request was rejected.',

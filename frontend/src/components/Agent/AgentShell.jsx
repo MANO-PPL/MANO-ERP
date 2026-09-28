@@ -46,6 +46,7 @@ export default function AgentShell({ transport = previewTransport }) {
     const [draft, setDraft] = useState('');
     const [attachment, setAttachment] = useState(null);
     const [uploading, setUploading] = useState(false);
+    const [attachmentError, setAttachmentError] = useState('');
     const [state, reactDispatch] = useReducer(agentReducer, undefined, () => initialAgentState(makeId()));
     const stateRef = useRef(state);
     const activeRef = useRef(null);
@@ -55,6 +56,15 @@ export default function AgentShell({ transport = previewTransport }) {
 
     const handleAttachFile = async (file) => {
         if (!file) return;
+        setAttachmentError('');
+        if (!/\.(csv|xlsx)$/i.test(file.name)) {
+            setAttachmentError('Choose a CSV or XLSX file. Save older XLS files as XLSX first.');
+            return;
+        }
+        if (file.size > 15 * 1024 * 1024) {
+            setAttachmentError('The file must be smaller than 15 MB.');
+            return;
+        }
         setUploading(true);
         try {
             if (typeof transport.uploadFile === 'function') {
@@ -75,7 +85,10 @@ export default function AgentShell({ transport = previewTransport }) {
                 });
             }
         } catch (err) {
-            console.error('File upload failed:', err);
+            setAttachmentError(err.message === 'authorization_denied'
+                ? 'Attachment upload was denied. Please sign in again and retry.'
+                : err.message === 'file_size_exceeded' ? 'The file must be smaller than 15 MB.'
+                : 'Could not attach this file. Check that it is a valid CSV or XLSX with headers and data rows, then retry.');
         } finally {
             setUploading(false);
         }
@@ -83,6 +96,7 @@ export default function AgentShell({ transport = previewTransport }) {
 
     const handleRemoveAttachment = () => {
         setAttachment(null);
+        setAttachmentError('');
     };
 
     // Update the guard synchronously: two clicks in one render cannot start two requests.
@@ -187,7 +201,7 @@ export default function AgentShell({ transport = previewTransport }) {
             projectName={(context.projectId && projectName?.id === context.projectId) ? projectName?.name : null} state={state} draft={draft} onDraft={setDraft} onSend={() => submit(false)} onRetry={() => submit(true)}
             onDecision={decide} transport={transport}
             onClearEntityContext={() => setEntityMeta(null)}
-            attachment={attachment} onAttachFile={handleAttachFile} onRemoveAttachment={handleRemoveAttachment} uploading={uploading}
+            attachment={attachment} attachmentError={attachmentError} onAttachFile={handleAttachFile} onRemoveAttachment={handleRemoveAttachment} uploading={uploading}
             onNew={() => {
                 if (!canSend(stateRef.current)) return;
                 activeRef.current?.controller.abort();

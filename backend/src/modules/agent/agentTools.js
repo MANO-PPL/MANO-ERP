@@ -3,7 +3,20 @@ import { object, text, integer, dateOnly, uuid, fail } from './agentValidation.j
 export const CONTRACT_VERSION = 'mano-agent-v1';
 const list = { query: 'query?', limit: 'limit?', offset: 'offset?' };
 const resource = { resourceId: 'id', projectId: 'id?', asOfDate: 'date?' };
+const contactEdit = { name: 'name?', contact_person: 'name?', mobile: 'phone?', email: 'email?', address: 'address?', location: 'name?', remarks: 'remarks?' };
 const definitions = {
+    'resources.create': { args: { name: 'name', type: 'type', base_unit_code: 'unit', code: 'name?', description: 'remarks?', remarks: 'remarks?' }, module: 'materials', risk: 'WRITE' },
+    'resources.update': { args: { resourceId: 'id', projectId: 'id?', name: 'name?', code: 'name?', description: 'remarks?', remarks: 'remarks?' }, module: 'materials', risk: 'WRITE' },
+    'resources.addConversion': { args: { resourceId: 'id', projectId: 'id?', name: 'name', quantity: 'quantity', unit_code: 'unit' }, module: 'materials', risk: 'WRITE' },
+    'clients.bulkImport': { args: { uploadId: 'uuid', mapping: 'mapping?' }, module: 'clients', risk: 'BULK_WRITE' },
+    'clients.create': { args: { ...contactEdit, name: 'name' }, module: 'clients', risk: 'WRITE' },
+    'clients.update': { args: { contactId: 'id', ...contactEdit }, module: 'clients', risk: 'WRITE' },
+    'vendors.update': { args: { contactId: 'id', ...contactEdit }, module: 'vendors', risk: 'WRITE' },
+    'clients.addInteraction': { args: { contactId: 'id', type: 'interactionType', interaction_date: 'date', follow_up_date: 'date?', remarks: 'remarks?' }, module: 'clients', risk: 'WRITE' },
+    'projects.create': { args: { name: 'name', location: 'name?', project_code: 'name?', start_date: 'date?', end_date: 'date?' }, module: 'projects', risk: 'WRITE' },
+    'projects.update': { args: { projectId: 'id', name: 'name?', location: 'name?', project_code: 'name?', start_date: 'date?', end_date: 'date?' }, module: 'projects', risk: 'WRITE' },
+    'tasks.create': { args: { projectId: 'id', categoryName: 'name', name: 'name', description: 'remarks?', status: 'taskStatus?', priority: 'taskPriority?', start_date: 'date?', due_date: 'date?' }, module: 'projects', risk: 'WRITE' },
+    'tasks.update': { args: { projectId: 'id', taskId: 'id', name: 'name?', description: 'remarks?', status: 'taskStatus?', priority: 'taskPriority?', start_date: 'date?', due_date: 'date?' }, module: 'projects', risk: 'WRITE' },
     'projects.search': { args: list, module: 'projects' },
     'projects.get': { args: { projectId: 'id' }, module: 'projects' },
     'projects.getExecutiveBriefing': { args: { projectId: 'id' }, module: 'projects' },
@@ -38,7 +51,16 @@ export const TOOLS = Object.freeze(Object.fromEntries(Object.entries(definitions
     Object.freeze({ name, version: 1, risk: d.risk || 'READ', module: d.module, args: Object.freeze(d.args) })])));
 // Deliberately not environment-configurable baseline. Runtime enables writes via agentRuntime configuration.
 export const LIVE_WRITE_ENABLEMENT = Object.freeze({ 'vendors.create': false, 'resources.createRateVersion': false, 'approvals.decide': false, 'approvals.batchDecide': false });
-export const RUNTIME_WRITE_ENABLEMENT = Object.freeze({ 'vendors.create': true, 'vendors.bulkImport': true, 'resources.createRateVersion': true, 'approvals.decide': true, 'approvals.batchDecide': true });
+export const RUNTIME_WRITE_ENABLEMENT = Object.freeze({ 'resources.create': true, 'resources.update': true, 'resources.addConversion': true, 'clients.bulkImport': true, 'clients.create': true, 'clients.update': true, 'clients.addInteraction': true, 'vendors.update': true, 'vendors.create': true, 'vendors.bulkImport': true, 'resources.createRateVersion': true, 'approvals.decide': true, 'approvals.batchDecide': true, 'projects.create': true, 'projects.update': true, 'tasks.create': true, 'tasks.update': true });
+export function allowedToolsForRequest(context, message, enablement) {
+    const modules = new Set();
+    const page = `${context?.module || ''} ${context?.route || ''}`.toLowerCase();
+    const explicit = String(message || '').toLowerCase();
+    for (const [module, pattern] of [['clients', /\bclients?\b/], ['vendors', /\b(vendors?|suppliers?|contractors?)\b/], ['materials', /\b(resources?|materials?|rates?)\b/], ['projects', /\b(projects?|tasks?|approvals?|approve|reject|meetings?|agendas?|mom|minutes|directory|summar(?:y|ies)|observations?|quality|checklists?|methodolog)\b/], ['parties', /\b(part(?:y|ies)|stakeholders?|contractors?)\b/]]) {
+        if (pattern.test(page) || pattern.test(explicit)) modules.add(module);
+    }
+    return Object.values(TOOLS).filter(tool => tool.risk === 'READ' || (enablement[tool.name] === true && modules.has(tool.module))).map(tool => tool.name);
+}
 export function validateIntent(intent) {
     object(intent, ['kind', 'tool', 'version', 'arguments']);
     if (intent.kind !== 'tool') fail('validation_error', 'invalid_intent');
@@ -54,39 +76,17 @@ export function validateIntent(intent) {
         else if (type === 'exportLimit') integer(value, 1, 500);
         else if (type === 'offset') integer(value, 0, 10000);
         else if (type === 'date') dateOnly(value);
-        else if (type === 'exportEntity') {
-            text(value, 40);
-            if (!['vendors', 'projects', 'clients', 'resources', 'materials', 'approvals', 'transactions', 'billing'].includes(value.toLowerCase())) {
-                fail('validation_error', 'invalid_export_entity');
-            }
+        else if (type === 'interactionType') {
+            if (!['email', 'whatsapp', 'call', 'site visit', 'meeting'].includes(value)) fail('validation_error', 'invalid_interaction_type');
         }
-        else if (type === 'entity') {
-            text(value, 40);
-            if (!['vendors', 'projects', 'clients', 'resources', 'interactions', 'materials', 'suppliers', 'vendor', 'project',
-                  'client', 'customer', 'customers', 'transactions', 'approvals', 'billing', 'bills', 'invoices', 'overview', 'tasks', 'task'].includes(value.toLowerCase())) {
-                fail('validation_error', 'invalid_analytics_entity');
-            }
-        } else if (type === 'dimension') {
-            text(value, 40);
-            if (!['category', 'status', 'sector', 'type', 'location', 'month', 'unit',
-                  'site', 'worker_type', 'date_range'].includes(value.toLowerCase())) {
-                fail('validation_error', 'invalid_analytics_dimension');
-            }
-        } else if (type === 'metric') {
-            text(value, 40);
-        } else if (type === 'viz') {
-            text(value, 20);
-            if (!['bar', 'donut', 'metric', 'table', 'line'].includes(value.toLowerCase())) {
-                fail('validation_error', 'invalid_visualization_type');
-            }
-        } else if (type === 'mapping') {
-            if (value !== undefined) {
-                if (!value || typeof value !== 'object' || Array.isArray(value)) fail('validation_error', 'invalid_mapping');
-                for (const [k, v] of Object.entries(value)) {
-                    text(k, 60);
-                    text(v, 120);
-                }
-            }
+        else if (type === 'taskStatus') {
+            if (!['open', 'in progress', 'on hold', 'completed', 'cancelled'].includes(value)) fail('validation_error', 'invalid_task_status');
+        }
+        else if (type === 'taskPriority') {
+            if (!['Urgent', 'High', 'Medium', 'Low', 'None'].includes(value)) fail('validation_error', 'invalid_task_priority');
+        }
+        } else if (type === 'quantity') {
+            if (typeof value !== 'string' || !/^(0|[1-9]\d{0,8})(\.\d{1,6})?$/.test(value) || Number(value) <= 0) fail('validation_error', 'invalid_quantity');
         } else if (type === 'rate') {
             if (typeof value !== 'string' || !/^(0|[1-9]\d{0,8})(\.\d{1,2})?$/.test(value)) fail('validation_error', 'invalid_rate');
         } else if (type === 'signedRate') {
@@ -110,6 +110,13 @@ export function validateIntent(intent) {
             if (type === 'email' && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value)) fail('validation_error', 'invalid_email');
         }
     }
+    if (['clients.update', 'vendors.update'].includes(tool.name) && Object.keys(args).every(key => key === 'contactId')) fail('validation_error', 'empty_update');
+    if (tool.name === 'resources.update' && !['name', 'code', 'description', 'remarks'].some(key => args[key] !== undefined)) fail('validation_error', 'empty_update');
+    if (tool.name === 'projects.update' && !['name', 'location', 'project_code', 'start_date', 'end_date'].some(key => args[key] !== undefined)) fail('validation_error', 'empty_update');
+    if (tool.name.startsWith('projects.') && tool.risk === 'WRITE' && args.start_date && args.end_date && args.end_date < args.start_date) fail('validation_error', 'invalid_project_dates');
+    if (tool.name === 'tasks.update' && !['name', 'description', 'status', 'priority', 'start_date', 'due_date'].some(key => args[key] !== undefined)) fail('validation_error', 'empty_update');
+    if (tool.name.startsWith('tasks.') && tool.risk === 'WRITE' && args.start_date && args.due_date && args.due_date < args.start_date) fail('validation_error', 'invalid_task_dates');
+    if (args.follow_up_date && args.follow_up_date < args.interaction_date) fail('validation_error', 'invalid_follow_up_date');
     return { tool, args: structuredClone(args) };
 }
 export function validateModelResponse(value) {

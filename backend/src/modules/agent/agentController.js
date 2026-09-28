@@ -77,16 +77,16 @@ export function createController(resolve = getAgentService, limiter = limit) {
                     // For idempotent retries (non-fresh), the callback is ignored inside
                     // submit() since the inflight promise has already resolved, and we fall
                     // back to the batch event array returned below.
-                    let liveStreamUsed = false;
+                    const streamedEventIds = new Set();
                     const onStreamEvent = event => {
-                        liveStreamUsed = true;
                         writeEvent(event);
+                        streamedEventIds.add(event.eventId);
                     };
                     const result = await service.submit(actor, req.body, req.headers['x-agent-client-request-key'], onStreamEvent);
                     res.locals.agentRequestId = result.requestId;
-                    // If events were already streamed live, return an empty array to avoid
-                    // writing duplicates. For non-fresh idempotent replays, return the full list.
-                    return liveStreamUsed ? [] : result.events;
+                    // Flush persisted events not already streamed, including terminal errors.
+                    // Idempotent replays still return the complete event list.
+                    return result.events.filter(event => !streamedEventIds.has(event.eventId));
                 }
                 if (operation === 'decision') return service.decide(actor, req.body, conversationId);
                 const after = req.query.after === undefined ? 0 : Number(req.query.after);

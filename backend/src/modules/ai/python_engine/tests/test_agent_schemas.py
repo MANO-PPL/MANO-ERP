@@ -51,8 +51,24 @@ class Schemas(unittest.TestCase):
             with self.assertRaises(ValidationError):
                 ToolIntent.model_validate(dict(kind="tool", tool="vendors.create", version=1, arguments={"name": "A"}, **{key: "allow"}))
 
-    def test_exact_fifteen_tool_contract(self):
-        self.assertEqual(len(ARG_MODELS), 29)
+    def test_registered_tool_contract(self):
+        self.assertEqual(len(ARG_MODELS), 41)
+        self.assertIn("projects.create", ARG_MODELS)
+        self.assertIn("projects.update", ARG_MODELS)
+        self.assertIn("tasks.create", ARG_MODELS)
+        self.assertIn("tasks.update", ARG_MODELS)
+        ARG_MODELS["projects.create"].model_validate({"name": "Bridge", "start_date": "2026-09-01"})
+        with self.assertRaises(ValidationError):
+            ARG_MODELS["projects.create"].model_validate({"name": "Bridge", "org_id": 8})
+        with self.assertRaises(ValidationError):
+            ARG_MODELS["projects.update"].model_validate({"projectId": 4})
+        with self.assertRaises(ValidationError):
+            ARG_MODELS["projects.update"].model_validate({"projectId": 4, "status": "closed"})
+        ARG_MODELS["tasks.create"].model_validate({"projectId": 4, "categoryName": "Planning", "name": "Survey"})
+        with self.assertRaises(ValidationError):
+            ARG_MODELS["tasks.create"].model_validate({"projectId": 4, "name": "Survey"})
+        with self.assertRaises(ValidationError):
+            ARG_MODELS["tasks.update"].model_validate({"projectId": 4, "taskId": 9})
         self.assertIn("transactions.search", ARG_MODELS)
         self.assertIn("billing.search", ARG_MODELS)
         self.assertIn("tasks.search", ARG_MODELS)

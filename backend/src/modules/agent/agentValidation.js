@@ -4,6 +4,8 @@ export class AgentError extends Error {
     constructor(code = 'validation_error', category = code) { super(category); this.code = code; this.category = category; }
 }
 export const fail = (code, category) => { throw new AgentError(code, category); };
+export const requestsInventedWriteData = message => /\b(random|dummy|invented|fake|made[- ]up)\b/i.test(message)
+    && /\b(create|add|import|update|edit|change|save)\b/i.test(message);
 export function object(value, keys) {
     if (!value || typeof value !== 'object' || Array.isArray(value)
         || ![Object.prototype, null].includes(Object.getPrototypeOf(value))) fail('validation_error', 'object_required');
@@ -94,6 +96,6 @@ export function validateDecision(value) {
     return value;
 }
 export function safeError(error) {
-    const allowed = ['backend_unavailable', 'provider_unavailable', 'model_unavailable', 'network_failure', 'request_rejected', 'authorization_denied', 'confirmation_expired', 'validation_error', 'execution_failure', 'protocol_error'];
+    const allowed = ['backend_unavailable', 'provider_unavailable', 'provider_rate_limited', 'provider_invalid_output', 'conversion_quantity_invalid', 'tool_arguments_invalid', 'model_unavailable', 'network_failure', 'request_rejected', 'authorization_denied', 'confirmation_expired', 'validation_error', 'execution_failure', 'protocol_error'];
     return { code: allowed.includes(error?.code) ? error.code : 'execution_failure', retryable: false };
 }

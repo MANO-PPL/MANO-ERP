@@ -68,11 +68,18 @@ export function agentReducer(state, action) {
             if (!event.action && event.name) return { ...next, thinkingPhase: 'executing', activeToolName: event.name };
             return append({ id: event.eventId, kind: 'action', actionId: aid, action: event.action });
         }
-        case 'confirmation_required':
+        case 'confirmation_required': {
             if (state.pending || state.messages.some(message => message.confirmation?.confirmationId === event.confirmation.confirmationId)) return next;
-            return { ...append({ id: event.eventId, kind: 'confirmation', confirmation: event.confirmation }),
+            // The confirmation is the authoritative preview for this exact action.
+            // Replace only its correlated proposal, never an unrelated action.
+            const proposal = state.messages.find(message => message.kind === 'action' && message.actionId === event.actionId);
+            const confirmation = { id: event.eventId, kind: 'confirmation', actionId: event.actionId, confirmation: event.confirmation };
+            return { ...next, messages: proposal
+                ? state.messages.map(message => message === proposal ? confirmation : message)
+                : [...state.messages, confirmation],
                 pending: event.confirmation, status: 'waiting_for_confirmation',
                 thinkingPhase: null, activeToolName: null };
+        }
         case 'confirmation_resolved':
             if (state.pending?.confirmationId !== event.confirmationId) return next;
             return { ...next, pending: null, decisionBusy: false, status: 'thinking',
@@ -92,9 +99,12 @@ export function agentReducer(state, action) {
                 // simulation: tool_completed carries output object, not a typed result
                 return { ...next, thinkingPhase: 'thinking', activeToolName: null };
             }
-            const action = state.messages.find(message => message.kind === 'action' && message.actionId === aid);
-            return { ...append({ id: event.eventId, kind: 'result', actionRiskLevel: action?.action?.riskLevel,
-                result: event.result, provenance: event.provenance }),
+            const action = state.messages.find(message => message.actionId === aid && ['action', 'confirmation'].includes(message.kind));
+            const messages = state.messages.map(message => message.kind === 'confirmation' && message.actionId === aid
+                && message.decision === 'confirm' && event.result?.kind === 'execution'
+                ? { ...message, executionOutcome: event.result.outcome } : message);
+            return { ...next, messages: [...messages, { id: event.eventId, kind: 'result', actionRiskLevel: action?.action?.riskLevel || action?.confirmation?.riskLevel,
+                result: event.result, provenance: event.provenance }],
                 thinkingPhase: 'thinking', activeToolName: null };
         }
         case 'result_ready': {
@@ -103,7 +113,13 @@ export function agentReducer(state, action) {
                 message.id === event.messageId && message.kind === 'text'
                     ? { ...message, result: event.result } : message) };
         }
-        case 'tool_failed':
+        case 'tool_failed': {
+            const aid = event.actionId || event.toolId;
+            const failed = { ...next, messages: state.messages.map(message => message.kind === 'confirmation'
+                && message.actionId === aid && message.decision === 'confirm'
+                ? { ...message, executionOutcome: 'failure' } : message) };
+            return agentReducer(failed, { type: 'failure', requestId: event.requestId, error: event.error });
+        }
         case 'agent_error': return agentReducer(next, { type: 'failure', requestId: event.requestId, error: event.error });
         case 'conversation_completed':
             if (state.pending) return next;

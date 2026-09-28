@@ -5,6 +5,7 @@ import agent_reasoning
 from agent_reasoning import redact_verified_internal_ids, reason, WRITE_TOOLS
 from agent_provider import ProviderFailure
 from agent_schemas import ARG_MODELS, ModelRequest, Assistant, ToolIntent, Diagnostics
+from agent_profiles import ModelProfile
 
 
 def request():
@@ -17,6 +18,16 @@ def metrics():
 
 
 class Reasoning(unittest.IsolatedAsyncioTestCase):
+    async def test_invented_data_and_missing_name_are_clarified_without_provider(self):
+        async def provider(messages):
+            raise AssertionError("Clarification must not call a provider")
+        for message, expected in [("Create a client with random dummy details", "actual details"),
+                                  ("Create a client.", "client's name")]:
+            value = request().model_copy(update={"message": message, "allowedTools": ["clients.create"]})
+            result = await reason(value, provider)
+            self.assertIsInstance(result, Assistant)
+            self.assertIn(expected, result.text)
+
     async def test_no_internal_dispatch_and_validated_response(self):
         async def provider(messages):
             self.assertEqual(len(messages), 2)
@@ -41,6 +52,63 @@ class Reasoning(unittest.IsolatedAsyncioTestCase):
         result = await reason(request(), read_provider=groq)
         self.assertEqual(result.response.kind, "assistant")
         self.assertEqual(len(calls), 1)
+
+    async def test_write_requests_select_groq_write_profile(self):
+        seen = {}
+
+        async def write_profile_provider(profile, messages, **kwargs):
+            seen["profile"] = profile
+            seen["native_operations"] = kwargs.get("native_operations")
+            seen["request"] = json.loads(messages[1]["content"])
+            self.assertIn('"vendors.create":"vendors__create"', messages[0]["content"])
+            self.assertIn("never kind/tool/version/arguments wrappers", messages[0]["content"])
+            return Assistant(kind="assistant", text="A confirmation is required before creating a supplier.",
+                             sources=["vendors/index.md"]), metrics()
+
+        write_request = ModelRequest.model_validate({
+            **request().model_dump(),
+            "message": "Add a new supplier named Example Supplier",
+            "knowledge": [
+                {"file": "index.md", "content": "overview"},
+                {"file": "vendors/index.md", "content": "supplier guidance"},
+                {"file": "clients/index.md", "content": "must not be sent"},
+            ],
+            "allowedTools": ["vendors.create"],
+        })
+        with patch("agent_reasoning.complete_with_profile", new=write_profile_provider):
+            result = await reason(write_request)
+        self.assertEqual(seen["profile"].provider, "groq")
+        self.assertEqual(seen["profile"].name, "groq-oss-20b")
+        self.assertEqual(seen["profile"].model, "openai/gpt-oss-20b")
+        self.assertEqual(seen["native_operations"], ["vendors.create"])
+        self.assertEqual([item["file"] for item in seen["request"]["knowledge"]], ["index.md", "vendors/index.md"])
+        self.assertEqual(result.response.kind, "assistant")
+
+    async def test_oversized_write_context_is_rejected_before_provider_call(self):
+        called = False
+
+        async def write_profile_provider(*args, **kwargs):
+            nonlocal called
+            called = True
+            raise AssertionError("provider must not receive an over-budget write request")
+
+        small_profile = ModelProfile(
+            name="fixture-groq", provider="groq", model="fixture-model",
+            supported_modes=frozenset({"planning"}), native_tools=True,
+            strict_json_schema=True, max_input_tokens=1, max_output_tokens=1,
+            supports_reasoning=False,
+        )
+        write_request = ModelRequest.model_validate({
+            **request().model_dump(),
+            "message": "Add a new supplier named Example Supplier",
+            "knowledge": [{"file": "vendors/index.md", "content": "x" * 5000}],
+            "allowedTools": ["vendors.create"],
+        })
+        with patch("agent_reasoning.get_write_profile", return_value=small_profile):
+            with patch("agent_reasoning.complete_with_profile", new=write_profile_provider):
+                with self.assertRaisesRegex(ProviderFailure, "^model_input_limit$"):
+                    await reason(write_request)
+        self.assertFalse(called)
 
     async def test_read_context_is_limited_to_relevant_canonical_files(self):
         seen = []

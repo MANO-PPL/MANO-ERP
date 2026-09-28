@@ -25,8 +25,10 @@ def create_agent_router(secret=None, reasoning=reason):
         except ValueError:
             return Response(status_code=403)
         status = 200
+        correlation = {}
         try:
             envelope = ModelRequest.model_validate(strict_json(body))
+            correlation = {"requestId": envelope.requestId, "stepId": envelope.stepId}
             async with asyncio.timeout(43):
                 async with slots:
                     result = await reasoning(envelope)
@@ -51,11 +53,16 @@ def create_agent_router(secret=None, reasoning=reason):
         except ProviderFailure as error:
             status = 503
             # Fixed public categories only; never expose provider bodies or credentials.
-            print("Agent provider failure: " + json.dumps(error.safe_metadata(), separators=(",", ":")))
-            payload = {"error": "model_unavailable" if str(error) == "provider_model_unavailable" else "provider_unavailable"}
+            print("Agent provider failure: " + json.dumps({**error.safe_metadata(), **correlation}, separators=(",", ":")))
+            public_category = {"provider_model_unavailable": "model_unavailable", "provider_rate_limited": "provider_rate_limited",
+                               "conversion_quantity_invalid": "conversion_quantity_invalid", "tool_arguments_invalid": "tool_arguments_invalid",
+                               "provider_output_empty": "provider_invalid_output", "provider_output_invalid_json": "provider_invalid_output",
+                               "provider_output_schema_invalid": "provider_invalid_output", "invalid_provider_output": "provider_invalid_output",
+                               "provider_output_limit": "provider_invalid_output"}.get(str(error), "provider_unavailable")
+            payload = {"error": public_category}
         except Exception as exc:
             status = 503
-            print(f"Agent unexpected error: {exc}")
+            print("Agent unexpected error: " + json.dumps({"category": "reasoning_unavailable", **correlation}, separators=(",", ":")))
             payload = {"error": "reasoning_unavailable"}
         output = json.dumps(payload, separators=(",", ":"), ensure_ascii=True).encode()
         return Response(output, status_code=status, media_type="application/json", headers={

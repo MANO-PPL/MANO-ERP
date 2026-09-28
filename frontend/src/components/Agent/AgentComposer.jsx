@@ -14,6 +14,7 @@ export default function AgentComposer({
     onStop,
     preview,
     attachment,
+    attachmentError,
     onAttachFile,
     onRemoveAttachment,
     uploading
@@ -54,7 +55,7 @@ export default function AgentComposer({
             <input
                 ref={fileInputRef}
                 type="file"
-                accept=".xlsx,.xls,.csv"
+                accept=".xlsx,.csv"
                 className="hidden"
                 onChange={e => {
                     if (e.target.files?.[0] && onAttachFile) {
@@ -71,6 +72,7 @@ export default function AgentComposer({
                 ? 'border-blue-500 bg-blue-50/40 dark:bg-blue-950/20 ring-2 ring-blue-500/20'
                 : 'border-gray-300/80 bg-gray-50/60 focus-within:border-blue-500 focus-within:bg-white focus-within:ring-2 focus-within:ring-blue-500/20 dark:border-gh-border dark:bg-gh-input dark:focus-within:border-blue-500 dark:focus-within:bg-gh-subtle'}`}>
 
+                {attachmentError && <p role="alert" className="mx-2.5 mt-2 text-xs text-red-600 dark:text-red-400">{attachmentError}</p>}
                 {/* Uploading progress indicator */}
                 {uploading && (
                     <div className="mx-2.5 mt-2 flex items-center gap-2 rounded-lg border border-blue-200 bg-blue-50/70 px-2.5 py-1.5 text-xs text-blue-800 dark:border-blue-900/60 dark:bg-blue-950/40 dark:text-blue-300">

@@ -35,7 +35,7 @@ export function createPythonClient({ secret, fetchImpl = fetch, now = Date.now, 
             let failure;
             try { failure = JSON.parse(bytes.toString('utf8')); } catch { /* Unrecognized failures stay generic. */ }
             if (response.status === 503 && failure && Object.keys(failure).length === 1
-                && ['provider_unavailable', 'model_unavailable'].includes(failure.error)) fail(failure.error);
+                && ['provider_unavailable', 'model_unavailable', 'provider_rate_limited', 'provider_invalid_output', 'conversion_quantity_invalid', 'tool_arguments_invalid'].includes(failure.error)) fail(failure.error);
             fail('backend_unavailable', 'python_reasoning_failed');
         }
         let value;

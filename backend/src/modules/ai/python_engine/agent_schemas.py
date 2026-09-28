@@ -36,62 +36,154 @@ class ProjectArgs(StrictModel):
     projectId: Id
 
 
-class ContactArgs(StrictModel):
-    contactId: Id
+ProjectDate = Annotated[str, Field(pattern=r"^\d{4}-\d{2}-\d{2}$")]
 
 
-class TransactionsSearchArgs(ListArgs):
-    projectId: Id | None = None
-
-
-class TasksSearchArgs(ListArgs):
-    projectId: Id | None = None
-
-
-class BillingSearchArgs(ListArgs):
-    projectId: Id | None = None
-    type: Literal["material", "contractor", "certified", "monthly"] | None = None
-
-
-class ResourceSearchArgs(ListArgs):
-    type: Literal["material", "labour", "item"] | None = None
-
-
-class ResourceArgs(StrictModel):
-    resourceId: Id
-    projectId: Id | None = None
-    asOfDate: Annotated[str, Field(pattern=r"^\d{4}-\d{2}-\d{2}$")] | None = None
-
-    @field_validator("asOfDate")
-    @classmethod
-    def valid_date(cls, value):
-        if value is not None:
-            date.fromisoformat(value)
-        return value
-
-
-class RateHistoryArgs(ResourceArgs):
-    limit: Limit | None = None
-    offset: Offset | None = None
-
-
-class PartiesArgs(ProjectArgs):
-    category: Literal["Supplier", "Contractor", "Consultant", "Manufacturer", "Service Provider", "Client", "PMC"] | None = None
-    limit: Limit | None = None
-    offset: Offset | None = None
-
-
-class InteractionsArgs(ContactArgs):
-    limit: Limit | None = None
-    offset: Offset | None = None
-
-
-class SupplierArgs(StrictModel):
+class ProjectCreateArgs(StrictModel):
     name: Name
+    location: Name | None = None
+    project_code: Name | None = None
+    start_date: ProjectDate | None = None
+    end_date: ProjectDate | None = None
+
+    @model_validator(mode="after")
+    def valid_dates(self):
+        start = date.fromisoformat(self.start_date) if self.start_date else None
+        end = date.fromisoformat(self.end_date) if self.end_date else None
+        if start and end and end < start:
+            raise ValueError("Invalid project dates")
+        return self
+
+
+class ProjectUpdateArgs(ProjectCreateArgs):
+    projectId: Id
+    name: Name | None = None
+
+    @model_validator(mode="after")
+    def nonempty_update(self):
+        if not self.model_fields_set - {"projectId"}:
+            raise ValueError("Empty update")
+        return self
+
+
+class TaskCreateArgs(StrictModel):
+    projectId: Id
+    categoryName: Name
+    name: Name
+    description: Annotated[str, Field(min_length=1, max_length=500)] | None = None
+    status: Literal["open", "in progress", "on hold", "completed", "cancelled"] | None = None
+    priority: Literal["Urgent", "High", "Medium", "Low", "None"] | None = None
+    start_date: ProjectDate | None = None
+    due_date: ProjectDate | None = None
+
+    @model_validator(mode="after")
+    def valid_dates(self):
+        start = date.fromisoformat(self.start_date) if self.start_date else None
+        end = date.fromisoformat(self.due_date) if self.due_date else None
+        if start and end and end < start:
+            raise ValueError("Invalid task dates")
+        return self
+
+
+class TaskUpdateArgs(StrictModel):
+    projectId: Id
+    taskId: Id
+    name: Name | None = None
+    description: Annotated[str, Field(min_length=1, max_length=500)] | None = None
+    status: Literal["open", "in progress", "on hold", "completed", "cancelled"] | None = None
+    priority: Literal["Urgent", "High", "Medium", "Low", "None"] | None = None
+    start_date: ProjectDate | None = None
+    due_date: ProjectDate | None = None
+
+    @model_validator(mode="after")
+    def valid_dates(self):
+        start = date.fromisoformat(self.start_date) if self.start_date else None
+        end = date.fromisoformat(self.due_date) if self.due_date else None
+        if start and end and end < start:
+            raise ValueError("Invalid task dates")
+        return self
+
+    @model_validator(mode="after")
+    def nonempty_update(self):
+        if not self.model_fields_set - {"projectId", "taskId"}:
+            raise ValueError("Empty update")
+        return self
+
+
+class ContactEditArgs(StrictModel):
+    contactId: Id
+    name: Name | None = None
     contact_person: Name | None = None
     mobile: Annotated[str, Field(min_length=1, max_length=32)] | None = None
     email: Annotated[str, Field(min_length=1, max_length=254, pattern=r"^[^\s@]+@[^\s@]+\.[^\s@]+$")] | None = None
     address: Annotated[str, Field(min_length=1, max_length=500)] | None = None
+    location: Name | None = None
+    remarks: Annotated[str, Field(min_length=1, max_length=500)] | None = None
+
+    @model_validator(mode="after")
+    def nonempty_update(self):
+        if not self.model_fields_set - {"contactId"}:
+            raise ValueError("Empty update")
+        return self
+
+
+class ClientCreateArgs(SupplierArgs):
+    location: Name | None = None
+    remarks: Annotated[str, Field(min_length=1, max_length=500)] | None = None
+
+
+class ClientInteractionArgs(StrictModel):
+    contactId: Id
+    type: Literal["email", "whatsapp", "call", "site visit", "meeting"]
+    interaction_date: Annotated[str, Field(pattern=r"^\d{4}-\d{2}-\d{2}$")]
+    follow_up_date: Annotated[str, Field(pattern=r"^\d{4}-\d{2}-\d{2}$")] | None = None
+    remarks: Annotated[str, Field(min_length=1, max_length=500)] | None = None
+
+    @model_validator(mode="after")
+    def valid_dates(self):
+        start = date.fromisoformat(self.interaction_date)
+        if self.follow_up_date is not None and date.fromisoformat(self.follow_up_date) < start:
+            raise ValueError("Invalid follow-up date")
+        return self
+
+
+class ResourceCreateArgs(StrictModel):
+    name: Name
+    type: Literal["material", "labour", "item"]
+    base_unit_code: Annotated[str, Field(min_length=1, max_length=30)]
+    code: Name | None = None
+    description: Annotated[str, Field(min_length=1, max_length=500)] | None = None
+    remarks: Annotated[str, Field(min_length=1, max_length=500)] | None = None
+
+
+class ResourceEditArgs(StrictModel):
+    resourceId: Id
+    projectId: Id | None = None
+    name: Name | None = None
+    code: Name | None = None
+    description: Annotated[str, Field(min_length=1, max_length=500)] | None = None
+    remarks: Annotated[str, Field(min_length=1, max_length=500)] | None = None
+
+    @model_validator(mode="after")
+    def nonempty_update(self):
+        if not self.model_fields_set & {"name", "code", "description", "remarks"}:
+            raise ValueError("Empty update")
+        return self
+
+
+class ConversionAddArgs(StrictModel):
+    resourceId: Id
+    projectId: Id | None = None
+    name: Name
+    quantity: Annotated[str, Field(pattern=r"^(0|[1-9]\d{0,8})(\.\d{1,6})?$")]
+    unit_code: Annotated[str, Field(min_length=1, max_length=30)]
+
+    @field_validator("quantity")
+    @classmethod
+    def positive_quantity(cls, value):
+        if float(value) <= 0:
+            raise ValueError("Quantity must be positive")
+        return value
 
 
 class RateArgs(StrictModel):
@@ -206,7 +298,12 @@ class MprArgs(StrictModel):
 
 
 ARG_MODELS = {
-    "projects.search": ListArgs, "projects.get": ProjectArgs, "projects.getExecutiveBriefing": ProjectArgs, "clients.search": ListArgs, "clients.get": ContactArgs,
+    "resources.create": ResourceCreateArgs, "resources.update": ResourceEditArgs, "resources.addConversion": ConversionAddArgs,
+    "clients.create": ClientCreateArgs, "clients.update": ContactEditArgs,
+    "vendors.update": ContactEditArgs, "clients.addInteraction": ClientInteractionArgs,
+    "projects.search": ListArgs, "projects.get": ProjectArgs, "projects.getExecutiveBriefing": ProjectArgs,
+    "projects.create": ProjectCreateArgs, "projects.update": ProjectUpdateArgs, "clients.search": ListArgs, "clients.get": ContactArgs,
+    "tasks.create": TaskCreateArgs, "tasks.update": TaskUpdateArgs,
     "vendors.search": ListArgs, "vendors.get": ContactArgs, "resources.search": ResourceSearchArgs,
     "resources.get": ResourceArgs, "resources.getRate": ResourceArgs, "resources.getRateHistory": RateHistoryArgs,
     "resources.getComposition": ResourceArgs, "resources.simulateCostImpact": CostSimulationArgs,
@@ -220,7 +317,7 @@ ARG_MODELS = {
     "reports.getWPR": WprArgs,
     "reports.getMPR": MprArgs,
     "approvals.listPending": ApprovalsListArgs, "approvals.decide": ApprovalDecideArgs, "approvals.batchDecide": ApprovalBatchDecideArgs,
-    "vendors.create": SupplierArgs, "vendors.bulkImport": BulkImportArgs, "resources.createRateVersion": RateArgs,
+    "vendors.create": SupplierArgs, "vendors.bulkImport": BulkImportArgs, "clients.bulkImport": BulkImportArgs, "resources.createRateVersion": RateArgs,
 }
 ToolName = Literal[tuple(ARG_MODELS)]
 

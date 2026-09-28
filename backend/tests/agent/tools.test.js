@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs/promises';
-import { TOOLS, LIVE_WRITE_ENABLEMENT, validateIntent } from '../../src/modules/agent/agentTools.js';
+import { TOOLS, LIVE_WRITE_ENABLEMENT, RUNTIME_WRITE_ENABLEMENT, validateIntent } from '../../src/modules/agent/agentTools.js';
 import { createReadService } from '../../src/modules/agent/agentReadService.js';
 import { createWriteService } from '../../src/modules/agent/agentWriteService.js';
 import { actor, harness, intent, answer } from './fixtures.js';
@@ -374,6 +374,6 @@ test('registry tool definitions and disabled baseline live writes', () => {
     assert.equal(TOOLS['reports.getDPR']?.risk, 'READ');
     assert.equal(TOOLS['reports.getWPR']?.risk, 'READ');
     assert.equal(TOOLS['reports.getMPR']?.risk, 'READ');
-    assert.equal(Object.values(TOOLS).filter(t => t.risk === 'WRITE').length, 4);
+    assert.equal(Object.values(TOOLS).filter(t => t.risk === 'WRITE').length, 15);
     assert.deepEqual(Object.values(LIVE_WRITE_ENABLEMENT), [false, false, false, false]);
 });

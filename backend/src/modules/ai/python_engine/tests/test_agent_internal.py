@@ -11,6 +11,22 @@ from test_agent_reasoning import request, metrics
 
 
 class Internal(unittest.IsolatedAsyncioTestCase):
+    async def test_rate_limit_response_is_sanitized_and_signed(self):
+        from agent_provider import ProviderFailure
+        async def reasoning(value):
+            raise ProviderFailure("provider_rate_limited", provider="groq", http_status=429)
+        secret = "fixture-secret-" * 4
+        app = FastAPI(); app.include_router(create_agent_router(secret, reasoning))
+        body = request().model_dump_json(exclude_none=True).encode()
+        timestamp = str(int(time.time())); nonce = "rate-limit-fixture"; path = "/internal/agent/v1/reason"
+        headers = {"X-Agent-Time": timestamp, "X-Agent-Nonce": nonce,
+                   "X-Agent-Signature": signature(secret, f"POST\n{path}\n{timestamp}\n{nonce}\n{hashlib.sha256(body).hexdigest()}")}
+        async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url="http://internal") as client:
+            response = await client.post(path, content=body, headers=headers)
+        self.assertEqual(response.status_code, 503)
+        self.assertEqual(response.json(), {"error": "provider_rate_limited"})
+        self.assertEqual(response.headers["x-agent-signature"], signature(secret, f"{nonce}\n503\n{hashlib.sha256(response.content).hexdigest()}"))
+
     async def test_hmac_request_reply_and_nonce_replay(self):
         calls = []
         secret = "fixture-secret-" * 4

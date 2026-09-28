@@ -7,6 +7,35 @@ export function makeEvent(request, type, payload = {}) {
     return event;
 }
 export function actionFor(tool, args, preconditions = null) {
+    if (['projects.create', 'projects.update'].includes(tool.name)) {
+        const title = tool.name === 'projects.create' ? 'Create project' : 'Update project';
+        return { actionType: tool.name, title, riskLevel: 'WRITE', affectedRecords: 1,
+            description: `${title}${preconditions?.current?.name ? `: ${preconditions.current.name}` : args.name ? `: ${args.name}` : ''}. Confirm the details before saving.`,
+            fields: Object.entries(args).filter(([label]) => label !== 'projectId').map(([label, value]) => ({ label, value })) };
+    }
+    if (['tasks.create', 'tasks.update'].includes(tool.name)) {
+        const title = tool.name === 'tasks.create' ? 'Create task' : 'Update task';
+        return { actionType: tool.name, title, riskLevel: 'WRITE', affectedRecords: 1,
+            description: `${title}${preconditions?.current?.name ? `: ${preconditions.current.name}` : args.name ? `: ${args.name}` : ''}. Confirm the details before saving.`,
+            fields: Object.entries(args).filter(([label]) => !['projectId', 'taskId'].includes(label)).map(([label, value]) => ({ label, value })) };
+    }
+    if (['clients.create', 'clients.update', 'vendors.update', 'clients.addInteraction'].includes(tool.name)) {
+        const titles = { 'clients.create': 'Create client', 'clients.update': 'Update client', 'vendors.update': 'Update vendor', 'clients.addInteraction': 'Log client interaction' };
+        return { actionType: tool.name, title: titles[tool.name], riskLevel: 'WRITE', affectedRecords: 1,
+            description: `${titles[tool.name]}${preconditions?.contact?.name ? `: ${preconditions.contact.name}` : ''}. Confirm the details before saving.`,
+            fields: Object.entries(args).map(([label, value]) => ({ label, value })) };
+    }
+    if (tool.name === 'clients.bulkImport') {
+        return { actionType: tool.name, title: 'Import clients', riskLevel: 'BULK_WRITE', affectedRecords: preconditions?.validCount || 0,
+            description: `Import ${preconditions?.validCount || 0} clients after confirmation.`, fields: [
+                { label: 'Spreadsheet rows', value: String(preconditions?.totalRows || 0) },
+                { label: 'Ready to import', value: String(preconditions?.validCount || 0) },
+                { label: 'Duplicates skipped', value: String(preconditions?.duplicateCount || 0) },
+                { label: 'Invalid rows skipped', value: String(preconditions?.invalidCount || 0) },
+                { label: 'Sample clients', value: (preconditions?.sampleValid || []).map(row => row.name).join(', ') },
+                { label: 'Issues', value: (preconditions?.issues || []).join('; ') }
+            ] };
+    }
     if (tool.name === 'vendors.bulkImport') {
         const count = preconditions?.validCount ?? 0;
         const total = preconditions?.totalRows ?? 0;

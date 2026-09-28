@@ -208,8 +208,9 @@ export async function createVendor(orgId, data, options = {}) {
     return newId;
 }
 
-export async function updateVendor(orgId, id, data) {
-    const vendor = await db('crm_contacts')
+export async function updateVendor(orgId, id, data, options = {}) {
+    const connection = options.transaction || db;
+    const vendor = await connection('crm_contacts')
         .where({ id, org_id: orgId })
         .where(function () {
             this.whereNull('category')
@@ -248,9 +249,9 @@ export async function updateVendor(orgId, id, data) {
         updateData.job_nature_id = await findOrCreateJobNature(orgId, data.job_nature || data.job_name);
     }
 
-    updateData.updated_at = db.fn.now();
+    updateData.updated_at = connection.fn.now();
 
-    await db('crm_contacts').where({ id, org_id: orgId }).update(updateData);
+    await connection('crm_contacts').where({ id, org_id: orgId }).update(updateData);
     return true;
 }
 

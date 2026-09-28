@@ -77,18 +77,21 @@ export function AgentConfirmationCard({ message, pending, busy, onDecision, prev
     const inactive = busy || !!message.decision || message.unavailable || pending?.confirmationId !== confirmation.confirmationId;
     return <AgentActionCard action={confirmation} preview={preview}>
         <div className="mt-3 border-t border-gray-200 pt-3 dark:border-gh-border">
-            <p className="text-xs font-semibold">Confirmation required</p>
-            <p className="mt-1 text-xs text-gray-500 dark:text-gh-muted">{preview ? 'Preview only. These buttons cannot change ERP data.' : 'This action may modify ERP data. Review the supplied details before confirming.'}</p>
-            {confirmation.expiresAt && !expired && <p className="mt-2 text-xs text-gray-500 dark:text-gh-muted">Expires {new Date(confirmation.expiresAt).toLocaleString()}</p>}
+            <p className="text-xs font-semibold">{message.executionOutcome === 'success' && !preview ? 'Action completed' : message.decision ? 'Confirmation recorded' : 'Confirmation required'}</p>
+            {!message.decision && <p className="mt-1 text-xs text-gray-500 dark:text-gh-muted">{preview ? 'Preview only. These buttons cannot change ERP data.' : 'This action may modify ERP data. Review the supplied details before confirming.'}</p>}
+            {confirmation.expiresAt && !expired && !message.decision && <p className="mt-2 text-xs text-gray-500 dark:text-gh-muted">Expires {new Date(confirmation.expiresAt).toLocaleString()}</p>}
             {expired && !message.decision && <p className="mt-2 text-xs text-amber-700 dark:text-amber-300" role="status">Confirmation expired. Cancel this proposal and request a new one.</p>}
             {message.unavailable && <p className="mt-2 text-xs">This confirmation is no longer available.</p>}
             {message.decision ? <p className="mt-2 text-xs font-medium">{preview ? `Preview ${message.decision === 'confirm' ? 'confirmed' : 'cancelled'}. No ERP action occurred.`
-                : message.decision === 'cancel' ? 'Proposal cancelled.' : 'Confirmation recorded. Execution is not yet confirmed.'}</p>
+                : message.decision === 'cancel' ? 'Proposal cancelled.'
+                    : message.executionOutcome === 'success' ? 'Saved successfully.'
+                        : message.executionOutcome === 'failure' ? 'Execution failed. No successful save was reported.'
+                            : 'Confirmation recorded. Waiting for the execution result.'}</p>
                 : <div className="mt-3 flex flex-wrap justify-end gap-2">
                     <button type="button" className={buttonClass} disabled={inactive} onClick={() => onDecision(confirmation.confirmationId, 'cancel')}>{preview ? 'Cancel preview' : 'Cancel'}</button>
                     <button type="button" className={`${buttonClass} ${confirmation.riskLevel === 'DESTRUCTIVE' ? 'border-red-400 text-red-700 dark:text-red-300' : confirmation.riskLevel === 'BULK_WRITE' ? 'bg-blue-600 text-white hover:bg-blue-700 border-blue-600 shadow-sm' : 'text-blue-700 dark:text-blue-300'}`}
                         disabled={inactive || expired} onClick={() => onDecision(confirmation.confirmationId, 'confirm')}>
-                        {busy ? 'Sending decision…' : preview ? 'Confirm preview' : confirmation.riskLevel === 'BULK_WRITE' ? `Confirm Import (${confirmation.affectedRecords ?? ''} vendors)` : 'Confirm'}
+                        {busy ? 'Sending decision…' : preview ? 'Confirm preview' : confirmation.riskLevel === 'BULK_WRITE' ? `Confirm Import (${confirmation.affectedRecords ?? ''} records)` : 'Confirm'}
                     </button>
                 </div>}
         </div>

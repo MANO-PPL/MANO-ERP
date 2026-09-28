@@ -12,6 +12,41 @@ def payload():
 
 
 class Provider(unittest.IsolatedAsyncioTestCase):
+    def test_invalid_native_arguments_are_distinct_and_redacted(self):
+        for arguments, expected in [
+            ({'resourceId': 423, 'name': 'PRIVATE_SENTINEL', 'quantity': '0', 'unit_code': 'kg'}, 'conversion_quantity_invalid'),
+            ({'resourceId': 423, 'name': 'PRIVATE_SENTINEL', 'quantity': '0.000000', 'unit_code': 'kg'}, 'conversion_quantity_invalid'),
+            ({'resourceId': 423, 'name': 'PRIVATE_SENTINEL', 'quantity': 'bad', 'unit_code': 'kg'}, 'tool_arguments_invalid'),
+            ({'resourceId': 423, 'name': 'PRIVATE_SENTINEL'}, 'tool_arguments_invalid'),
+        ]:
+            value = payload()
+            value['choices'][0] = {'finish_reason': 'tool_calls', 'message': {'content': None, 'tool_calls': [
+                {'function': {'name': 'resources__addConversion', 'arguments': json.dumps(arguments)}}]}}
+            with self.assertRaises(ProviderFailure) as failure:
+                normalize(value, native_operations=['resources.addConversion'])
+            self.assertEqual(str(failure.exception), expected)
+            self.assertNotIn('PRIVATE_SENTINEL', json.dumps(failure.exception.safe_metadata()))
+        value['choices'][0]['message']['tool_calls'][0]['function']['arguments'] = '{'
+        with self.assertRaises(ProviderFailure) as failure:
+            normalize(value, native_operations=['resources.addConversion'])
+        self.assertEqual(str(failure.exception), 'provider_output_invalid_json')
+
+    def test_empty_output_diagnostics_exclude_reasoning_and_erp_content(self):
+        value = payload(); value['choices'][0]['message']['content'] = ''
+        with self.assertRaises(ProviderFailure) as failure:
+            normalize(value)
+        metadata = failure.exception.safe_metadata()
+        self.assertEqual(metadata['finish_reason'], 'stop')
+        self.assertEqual(metadata['completion_tokens'], 20)
+        self.assertEqual(metadata['content_length'], 0)
+        self.assertEqual(metadata['has_reasoning_content'], True)
+        self.assertNotIn('PRIVATE_SENTINEL', json.dumps(metadata))
+
+    def test_tool_generation_error_is_classified_without_logging_body(self):
+        from agent_provider import safe_error_category
+        self.assertEqual(safe_error_category(json.dumps({"error": {"code": "tool_use_failed", "message": "Failed to call a function", "failed_generation": "PRIVATE ERP DATA"}})), "tool_generation_failure")
+        self.assertNotIn("read operation", native_tool_definitions(["clients.create"])[0]["function"]["description"])
+
     async def test_S53_200_and_202_protocol_and_no_fallback(self):
         for statuses in [[200], [202, 200]]:
             requests = []
@@ -73,7 +108,27 @@ class Provider(unittest.IsolatedAsyncioTestCase):
                 with patch('agent_provider.asyncio.sleep', new=AsyncMock()):
                     with self.assertRaises(ProviderFailure):
                         await complete([], client=client, api_key="fixture")
-            self.assertEqual(len(calls), 2)
+            self.assertEqual(len(calls), 1 if status == 429 else 2)
+
+    async def test_rate_limit_delay_is_respected_without_early_retry(self):
+        for headers, expected_calls, expected_sleep in [
+            ({"retry-after": "60"}, 1, None),
+            ({"retry-after": "invalid"}, 1, None),
+            ({"retry-after": "1", "x-ratelimit-reset-tokens": "1m2s"}, 1, None),
+            ({"retry-after": "1.5"}, 2, 1.5),
+            ({"x-ratelimit-reset-tokens": "1500ms"}, 2, 1.5),
+        ]:
+            calls = []
+            async with httpx.AsyncClient(transport=httpx.MockTransport(
+                    lambda req: calls.append(req) or httpx.Response(429, headers=headers, text="PRIVATE"))) as client:
+                with patch('agent_provider.asyncio.sleep', new=AsyncMock()) as sleep:
+                    with self.assertRaisesRegex(ProviderFailure, '^provider_rate_limited$'):
+                        await complete([], client=client, api_key="fixture")
+                    self.assertEqual(len(calls), expected_calls)
+                    if expected_sleep is None:
+                        sleep.assert_not_awaited()
+                    else:
+                        sleep.assert_awaited_once_with(expected_sleep)
 
     async def test_transport_error_redacts_provider_exception(self):
         def handler(request):

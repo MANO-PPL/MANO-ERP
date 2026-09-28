@@ -34,8 +34,15 @@ export function createPolicy(db) {
         if (!user) fail('authorization_denied');
         user.user_type = String(user.user_type || 'employee').toLowerCase();
         const edit = tool.risk.includes('WRITE');
+        // Project master-data mutations mirror the page's admin-only routes.
+        if (['projects.create', 'projects.update'].includes(tool.name) && user.user_type !== 'admin') fail('authorization_denied');
         const scope = { orgId: actor.orgId, userId: actor.userId, projectId: null, userType: user.user_type };
         let projectId = args.projectId;
+        if (['tasks.update'].includes(tool.name)) {
+            const task = await one('proj_tasks', { id: args.taskId, project_id: args.projectId });
+            if (!task) fail('authorization_denied');
+            scope.task = task;
+        }
         if (args.resourceId !== undefined) {
             const resource = await one('res_resources', { id: args.resourceId, org_id: actor.orgId });
             if (!resource || (projectId !== undefined && Number(resource.project_id) !== projectId)) fail('authorization_denied');
@@ -65,6 +72,7 @@ export function createPolicy(db) {
                 if (!member || (edit && user.user_type === 'client')) fail('authorization_denied');
                 const module = tool.module === 'materials' ? 'Material Management' : 'General Documents';
                 const p = permissions(member.project_permissions);
+                if (tool.name.startsWith('tasks.') && edit && !hasLevel(p.Tasks ?? p.tasks, true)) fail('authorization_denied');
                 if (tool.module !== 'projects' && user.user_type !== 'client'
                     && !hasLevel(p[module] ?? p[module.toLowerCase()] ?? p[tool.module], edit)) fail('authorization_denied');
             }
