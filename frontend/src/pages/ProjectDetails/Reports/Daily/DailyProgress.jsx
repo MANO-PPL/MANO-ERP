@@ -32,6 +32,48 @@ const DailyProgress = ({ filters, setSubBreadcrumb, view, setView, canWrite, pro
     const [reports, setReports] = useState([]);
     const [loading, setLoading] = useState(true);
 
+    // Stable, explicitly synthetic project data for report previews. These rows never
+    // go through the ledger API and are regenerated identically for each project.
+    const syntheticReports = React.useMemo(() => {
+        const projectId = project?.id || project?.dbId || 'demo';
+        const projectShift = String(projectId).split('').reduce((sum, char) => sum + char.charCodeAt(0), 0);
+        const activities = [
+            ['Site clearing and setting out', 'sqm', 420],
+            ['Earthwork excavation for foundations', 'cum', 68],
+            ['PCC bed and foundation preparation', 'cum', 24],
+            ['Reinforcement cutting and placement', 'kg', 1850],
+            ['Formwork installation', 'sqm', 96],
+            ['Concrete placement and curing', 'cum', 32],
+            ['Blockwork and internal services', 'sqm', 74]
+        ];
+        const rows = [];
+        const start = new Date('2026-02-28T12:00:00');
+        const end = new Date('2026-10-31T12:00:00');
+        let dayIndex = 0;
+        for (const date = new Date(start); date <= end; date.setDate(date.getDate() + 1)) {
+            if (date.getDay() === 0 || (date.getDay() === 6 && dayIndex % 3 === 0)) continue;
+            const dateText = date.toISOString().slice(0, 10);
+            const [item, unit, baseQty] = activities[(dayIndex + projectShift) % activities.length];
+            const quantity = Math.max(1, Math.round(baseQty * (0.72 + ((dayIndex * 17) % 55) / 100)));
+            const labour = 22 + ((dayIndex * 7) % 31);
+            rows.push({
+                id: `synthetic-${projectId}-${dateText}`, date: dateText,
+                summary: `${item}: ${quantity} ${unit} completed.`,
+                completion: 100, personnel: labour, readiness: 'Optimal',
+                weather: ['sunny', 'cloudy', 'windy', 'rainy'][(dayIndex * 3) % 4],
+                siteCondition: 'dry',
+                labourData: [{ agency: 'Site Workforce', mason: Math.round(labour * 0.35), carpenter: Math.round(labour * 0.25), steelFixer: Math.round(labour * 0.2), helper: Math.round(labour * 0.2) }],
+                todayProgress: [{ item, qty: quantity, unit, description: 'Work completed as planned' }],
+                tomorrowPlan: [{ item: activities[(dayIndex + projectShift + 1) % activities.length][0], qty: Math.round(quantity * 1.05), unit }],
+                eventsList: [], remarksList: [],
+                audit: { createdAt: `${dateText}T17:00:00.000Z`, createdBy: 'Site Engineer', approval: { status: 'Draft', by: 'Project Manager' } },
+                distribution: 'GLOWMEX', preparedBy: 'SITE ENGINEER', isSynthetic: true
+            });
+            dayIndex += 1;
+        }
+        return rows;
+    }, [project?.id, project?.dbId]);
+
     // Update breadcrumbs based on view
     useEffect(() => {
         if (view === 'details' && selectedReport) {
@@ -52,13 +94,13 @@ const DailyProgress = ({ filters, setSubBreadcrumb, view, setView, canWrite, pro
         }
         setLoading(true);
         const fetched = await dprApi.listDPRs(pId);
-        setReports(fetched);
+        setReports([...fetched, ...syntheticReports]);
         setLoading(false);
     };
 
     useEffect(() => {
         loadRealReports();
-    }, [project?.id, project?.dbId, view]);
+    }, [project?.id, project?.dbId, view, syntheticReports]);
 
     const formatReportTitle = (dateString) => {
         const date = new Date(dateString);
@@ -298,6 +340,7 @@ const DailyProgress = ({ filters, setSubBreadcrumb, view, setView, canWrite, pro
                 onClose={() => setSelectedAiReport(null)}
                 reportData={selectedAiReport}
                 reportType="Daily Progress"
+                project={project}
             />
         </div>
     );
