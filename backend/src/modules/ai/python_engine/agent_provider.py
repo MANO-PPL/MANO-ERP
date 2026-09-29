@@ -344,7 +344,9 @@ async def complete_with_profile(profile, messages, client=None, api_key=None, na
     model = profile.model
     eff_native = native_operations if (profile.native_tools and native_operations) else None
     eff_schema = response_schema if (profile.strict_json_schema and response_schema) else None
-    tokens = 384 if eff_native else profile.max_output_tokens
+    # GPT-OSS uses completion tokens for private reasoning before it emits a
+    # tool call. A 384-token cap can end the turn with no visible output.
+    tokens = min(profile.max_output_tokens, 1024) if eff_native and profile.reasoning_effort not in (None, "none") else (384 if eff_native else profile.max_output_tokens)
     effort = profile.reasoning_effort if profile.supports_reasoning else None
     try:
         return await complete(

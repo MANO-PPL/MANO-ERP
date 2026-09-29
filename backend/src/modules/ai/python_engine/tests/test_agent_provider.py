@@ -2,7 +2,8 @@ import json
 import unittest
 from unittest.mock import AsyncMock, patch
 import httpx
-from agent_provider import complete, complete_groq, complete_nvidia_read, native_tool_definitions, normalize, ProviderFailure, HOST, GROQ_HOST, GROQ_MODEL, NVIDIA_READ_MODEL
+from agent_provider import complete, complete_groq, complete_nvidia_read, complete_with_profile, native_tool_definitions, normalize, ProviderFailure, HOST, GROQ_HOST, GROQ_MODEL, NVIDIA_READ_MODEL
+from agent_profiles import get_profile
 
 
 def payload():
@@ -12,6 +13,11 @@ def payload():
 
 
 class Provider(unittest.IsolatedAsyncioTestCase):
+    async def test_reasoning_native_tool_budget_allows_visible_output(self):
+        with patch('agent_provider.complete', new=AsyncMock(return_value=(None, None))) as mocked:
+            await complete_with_profile(get_profile('groq-oss-20b'), [], native_operations=['tasks.search'])
+        self.assertEqual(mocked.call_args.kwargs['max_tokens'], 1024)
+
     def test_invalid_native_arguments_are_distinct_and_redacted(self):
         for arguments, expected in [
             ({'resourceId': 423, 'name': 'PRIVATE_SENTINEL', 'quantity': '0', 'unit_code': 'kg'}, 'conversion_quantity_invalid'),
