@@ -54,11 +54,11 @@ export default function AgentShell({ transport = previewTransport }) {
     const launcherRef = useRef(null);
     const inputRef = useRef(null);
 
-    const handleAttachFile = async (file) => {
+    const handleAttachFile = async (file, { approvedForAgentWrite = false } = {}) => {
         if (!file) return;
         setAttachmentError('');
-        if (!/\.(csv|xlsx)$/i.test(file.name)) {
-            setAttachmentError('Choose a CSV or XLSX file. Save older XLS files as XLSX first.');
+        if (!/\.(csv|xlsx|xls|pdf|doc|docx|jpg|jpeg|png|webp)$/i.test(file.name)) {
+            setAttachmentError('Choose a spreadsheet, PDF, Word document, or image file.');
             return;
         }
         if (file.size > 15 * 1024 * 1024) {
@@ -68,27 +68,26 @@ export default function AgentShell({ transport = previewTransport }) {
         setUploading(true);
         try {
             if (typeof transport.uploadFile === 'function') {
-                const result = await transport.uploadFile(file);
+                const result = await transport.uploadFile(file, { approvedForAgentWrite });
                 setAttachment({ file, uploadInfo: result });
             } else {
-                // Preview mode fallback
+                // Preview mode fallback: this remains disconnected and never
+                // represents a persisted ERP attachment.
+                const isSpreadsheet = /\.(csv|xlsx|xls)$/i.test(file.name);
                 setAttachment({
                     file,
-                    uploadInfo: {
-                        uploadId: crypto.randomUUID(),
-                        filename: file.name,
-                        sheetName: 'Sheet1',
-                        totalRows: 25,
-                        headers: ['Vendor Name', 'Contact Person', 'Phone', 'Category', 'Address'],
-                        preview: []
-                    }
+                    uploadInfo: isSpreadsheet
+                        ? { uploadId: crypto.randomUUID(), kind: 'spreadsheet', filename: file.name, sheetName: 'Sheet1', totalRows: 25,
+                            headers: ['Vendor Name', 'Contact Person', 'Phone', 'Category', 'Address'], preview: [] }
+                        : { uploadId: crypto.randomUUID(), kind: 'attachment', filename: file.name, mimeType: file.type || 'application/octet-stream',
+                            size: file.size, approvedForAgentWrite }
                 });
             }
         } catch (err) {
             setAttachmentError(err.message === 'authorization_denied'
                 ? 'Attachment upload was denied. Please sign in again and retry.'
                 : err.message === 'file_size_exceeded' ? 'The file must be smaller than 15 MB.'
-                : 'Could not attach this file. Check that it is a valid CSV or XLSX with headers and data rows, then retry.');
+                : 'Could not attach this file. Check its format and try again.');
         } finally {
             setUploading(false);
         }
@@ -135,7 +134,8 @@ export default function AgentShell({ transport = previewTransport }) {
     const submit = async (retry = false) => {
         const current = stateRef.current;
         if (!canSend(current) || (retry && !current.error?.retryable)) return;
-        const message = retry ? current.request?.message : (draft.trim() || (attachment ? 'Please import these vendors into our system from the attached spreadsheet.' : ''));
+        const message = retry ? current.request?.message : (draft.trim() || (attachment
+            ? (attachment.uploadInfo?.kind === 'attachment' ? 'Use the attached approved quality file.' : 'Please import these vendors into our system from the attached spreadsheet.') : ''));
         if (!message) return;
         const activeProjectName = (context.projectId && projectName?.id === context.projectId) ? projectName?.name : null;
         const requestContext = activeProjectName ? { ...context, projectName: activeProjectName } : { ...context };
@@ -144,14 +144,13 @@ export default function AgentShell({ transport = previewTransport }) {
             message,
             context: requestContext,
             ...(attachment?.uploadInfo ? {
-                attachment: {
-                    uploadId: attachment.uploadInfo.uploadId,
-                    filename: attachment.uploadInfo.filename,
-                    sheetName: attachment.uploadInfo.sheetName || 'Sheet1',
-                    totalRows: attachment.uploadInfo.totalRows,
-                    headers: attachment.uploadInfo.headers,
-                    preview: attachment.uploadInfo.preview || []
-                }
+                attachment: attachment.uploadInfo.kind === 'attachment'
+                    ? { uploadId: attachment.uploadInfo.uploadId, filename: attachment.uploadInfo.filename, kind: 'attachment',
+                        mimeType: attachment.uploadInfo.mimeType, size: attachment.uploadInfo.size,
+                        approvedForAgentWrite: attachment.uploadInfo.approvedForAgentWrite === true }
+                    : { uploadId: attachment.uploadInfo.uploadId, filename: attachment.uploadInfo.filename, kind: 'spreadsheet',
+                        sheetName: attachment.uploadInfo.sheetName || 'Sheet1', totalRows: attachment.uploadInfo.totalRows,
+                        headers: attachment.uploadInfo.headers, preview: attachment.uploadInfo.preview || [] }
             } : {})
         };
         const requestId = makeId();
@@ -172,11 +171,11 @@ export default function AgentShell({ transport = previewTransport }) {
             if (!controller.signal.aborted) dispatch({ type: 'failure', requestId, error: { code: 'network_failure' } });
         }
     };
-    const decide = async (confirmationId, decision) => {
+    const decide = async (confirmationId, decision, confirmationText) => {
         const current = stateRef.current;
         if (current.pending?.confirmationId !== confirmationId || current.decisionBusy || !current.activeRequestId
             || (decision === 'confirm' && isExpired(current.pending))) return;
-        const payload = createDecision(confirmationId, decision);
+        const payload = createDecision(confirmationId, decision, confirmationText);
         dispatch({ type: 'decision_start', ...payload, now: Date.now() });
         const { controller, requestId } = activeRef.current;
         try {

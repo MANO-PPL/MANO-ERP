@@ -58,7 +58,8 @@ export function AgentActionCard({ action, preview = false, children }) {
         <h3 className="break-words font-semibold">{action.title}</h3>
         {action.description && <p className="mt-1 break-words text-xs leading-relaxed text-gray-500 dark:text-gh-muted">{action.description}</p>}
         {destructive && <p className="mt-2 text-xs font-semibold text-red-700 dark:text-red-300">Destructive action — review carefully. Changes may be irreversible.</p>}
-        {action.riskLevel === 'BULK_WRITE' && <p className="mt-2 text-xs">Affected records: {action.affectedRecords ?? 'Not supplied'}</p>}
+        {(action.riskLevel === 'BULK_WRITE' || (action.riskLevel === 'DESTRUCTIVE' && action.affectedRecords > 1))
+            && <p className="mt-2 text-xs">Affected records: {action.affectedRecords ?? 'Not supplied'}</p>}
         <Fields fields={action.fields} />
         {children}
     </section>;
@@ -67,6 +68,7 @@ export function AgentActionCard({ action, preview = false, children }) {
 export function AgentConfirmationCard({ message, pending, busy, onDecision, preview }) {
     const confirmation = message.confirmation;
     const [now, setNow] = useState(Date.now);
+    const [confirmationText, setConfirmationText] = useState('');
     useEffect(() => {
         if (!confirmation.expiresAt || message.decision || message.unavailable) return;
         setNow(Date.now());
@@ -75,6 +77,8 @@ export function AgentConfirmationCard({ message, pending, busy, onDecision, prev
     }, [confirmation.expiresAt, message.decision, message.unavailable]);
     const expired = isExpired(confirmation, now);
     const inactive = busy || !!message.decision || message.unavailable || pending?.confirmationId !== confirmation.confirmationId;
+    const typedConfirmationRequired = typeof confirmation.confirmationPhrase === 'string';
+    const typedConfirmationMatches = !typedConfirmationRequired || confirmationText === confirmation.confirmationPhrase;
     return <AgentActionCard action={confirmation} preview={preview}>
         <div className="mt-3 border-t border-gray-200 pt-3 dark:border-gh-border">
             <p className="text-xs font-semibold">{message.executionOutcome === 'success' && !preview ? 'Action completed' : message.decision ? 'Confirmation recorded' : 'Confirmation required'}</p>
@@ -82,6 +86,12 @@ export function AgentConfirmationCard({ message, pending, busy, onDecision, prev
             {confirmation.expiresAt && !expired && !message.decision && <p className="mt-2 text-xs text-gray-500 dark:text-gh-muted">Expires {new Date(confirmation.expiresAt).toLocaleString()}</p>}
             {expired && !message.decision && <p className="mt-2 text-xs text-amber-700 dark:text-amber-300" role="status">Confirmation expired. Cancel this proposal and request a new one.</p>}
             {message.unavailable && <p className="mt-2 text-xs">This confirmation is no longer available.</p>}
+            {!message.decision && typedConfirmationRequired && <label className="mt-3 block text-xs font-medium text-red-700 dark:text-red-300">
+                Type <code className="rounded bg-red-50 px-1 py-0.5 dark:bg-red-950/40">{confirmation.confirmationPhrase}</code> to authorize this deletion.
+                <input value={confirmationText} onChange={event => setConfirmationText(event.target.value)} autoComplete="off" spellCheck="false"
+                    aria-label={`Type ${confirmation.confirmationPhrase} to authorize deletion`}
+                    className="mt-1 block min-h-10 w-full rounded-lg border border-red-300 bg-white px-3 py-2 font-mono text-sm text-gray-900 dark:border-red-900 dark:bg-gh-canvas dark:text-gh-text" />
+            </label>}
             {message.decision ? <p className="mt-2 text-xs font-medium">{preview ? `Preview ${message.decision === 'confirm' ? 'confirmed' : 'cancelled'}. No ERP action occurred.`
                 : message.decision === 'cancel' ? 'Proposal cancelled.'
                     : message.executionOutcome === 'success' ? 'Saved successfully.'
@@ -90,8 +100,10 @@ export function AgentConfirmationCard({ message, pending, busy, onDecision, prev
                 : <div className="mt-3 flex flex-wrap justify-end gap-2">
                     <button type="button" className={buttonClass} disabled={inactive} onClick={() => onDecision(confirmation.confirmationId, 'cancel')}>{preview ? 'Cancel preview' : 'Cancel'}</button>
                     <button type="button" className={`${buttonClass} ${confirmation.riskLevel === 'DESTRUCTIVE' ? 'border-red-400 text-red-700 dark:text-red-300' : confirmation.riskLevel === 'BULK_WRITE' ? 'bg-blue-600 text-white hover:bg-blue-700 border-blue-600 shadow-sm' : 'text-blue-700 dark:text-blue-300'}`}
-                        disabled={inactive || expired} onClick={() => onDecision(confirmation.confirmationId, 'confirm')}>
-                        {busy ? 'Sending decision…' : preview ? 'Confirm preview' : confirmation.riskLevel === 'BULK_WRITE' ? `Confirm Import (${confirmation.affectedRecords ?? ''} records)` : 'Confirm'}
+                        disabled={inactive || expired || !typedConfirmationMatches} onClick={() => onDecision(confirmation.confirmationId, 'confirm', typedConfirmationRequired ? confirmationText : undefined)}>
+                        {busy ? 'Sending decision…' : preview ? 'Confirm preview' : confirmation.riskLevel === 'DESTRUCTIVE'
+                            ? `Confirm Deletion (${confirmation.affectedRecords ?? 0} task${confirmation.affectedRecords === 1 ? '' : 's'})`
+                            : confirmation.riskLevel === 'BULK_WRITE' ? `Confirm Import (${confirmation.affectedRecords ?? ''} records)` : 'Confirm'}
                     </button>
                 </div>}
         </div>

@@ -142,6 +142,19 @@ const Tasks = ({ setExtraBreadcrumbs, projectPermissions, isAdmin }) => {
         return rows;
     }, [taskData, expandedLists]);
 
+    useEffect(() => {
+        const selectedTask = selectedTaskForDrawer || (selectedRowIds.size === 1
+            ? flatGridRows.find(({ task }) => selectedRowIds.has(task.id))?.task
+            : null);
+        window.dispatchEvent(new CustomEvent('active-entity-updated', {
+            detail: selectedTask ? {
+                selectedEntityType: 'task', selectedEntityId: selectedTask.id,
+                selectedEntityName: selectedTask.name, activeTab: 'Tasks',
+            } : null,
+        }));
+        return () => window.dispatchEvent(new CustomEvent('active-entity-updated', { detail: null }));
+    }, [selectedTaskForDrawer, selectedRowIds, flatGridRows]);
+
     const getSelectionBounds = useCallback(() => {
         if (!selectionAnchor || !selectionFocus) return null;
         return {

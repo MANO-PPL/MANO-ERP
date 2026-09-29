@@ -1,7 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import { getAgentService, createRuntimeLimits } from './agentRuntime.js';
 import { fail, identity, integer, safeError, sha256 } from './agentValidation.js';
-import { parseSpreadsheet } from './agentUploadService.js';
+import { parseSpreadsheet, stageAttachment } from './agentUploadService.js';
 import { getExportedDataset } from './agentExportService.js';
 
 const limit = createRuntimeLimits();
@@ -44,7 +44,11 @@ export function createController(resolve = getAgentService, limiter = limit) {
             try {
                 const actor = actorFromRequest(req);
                 if (!req.file) fail('validation_error', 'no_file_uploaded');
-                const result = await parseSpreadsheet(req.file.buffer, req.file.originalname, actor.orgId);
+                const ext = String(req.file.originalname || '').toLowerCase().split('.').pop();
+                const result = ['xlsx', 'xls', 'csv'].includes(ext)
+                    ? await parseSpreadsheet(req.file.buffer, req.file.originalname, actor.orgId)
+                    : stageAttachment(req.file.buffer, req.file.originalname, req.file.mimetype, actor.orgId,
+                        req.body?.approvedForAgentWrite === 'true');
                 return res.status(200).json(result);
             } catch (error) {
                 return res.status(error?.code === 'authorization_denied' ? 403 : 400).json({ error: safeError(error) });

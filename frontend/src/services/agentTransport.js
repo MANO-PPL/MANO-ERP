@@ -68,9 +68,10 @@ export function createConnectedTransport({ fetchImpl = (...args) => fetch(...arg
             if (!logicalKeys.has(request)) logicalKeys.set(request, randomKey());
             return exchange('/api/agent/requests', request, options, logicalKeys.get(request));
         },
-        async uploadFile(file) {
+        async uploadFile(file, { approvedForAgentWrite = false } = {}) {
             const formData = new FormData();
             formData.append('file', file);
+            formData.append('approvedForAgentWrite', String(approvedForAgentWrite === true));
             let response;
             for (let attempt = 0; attempt < 2; attempt++) {
             const token = typeof getAccessToken === 'function' ? getAccessToken() : null;

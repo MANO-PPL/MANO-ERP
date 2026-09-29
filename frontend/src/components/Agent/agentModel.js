@@ -9,7 +9,7 @@
  * @typedef {{label: string, value?: string|number, before?: string|number,
  * after?: string|number}} AgentField
  * @typedef {{actionType: string, title: string,
- * description?: string, fields: AgentField[], riskLevel: 'READ'|'WRITE'|'DESTRUCTIVE'|'BULK_WRITE',
+ * description?: string, confirmationPhrase?: string, fields: AgentField[], riskLevel: 'READ'|'WRITE'|'DESTRUCTIVE'|'BULK_WRITE',
  * affectedRecords?: number, simulation?: boolean}} AgentAction
  * @typedef {(AgentAction & {confirmationId: string, expiresAt?: string})} AgentConfirmation
  * @typedef {{label: string, tool?: string, entityId?: string, timestamp?: string}} AgentProvenance
@@ -95,6 +95,7 @@ export function isAction(action, confirmation = false) {
     return !!action && isText(action.title) && isText(action.actionType) && RISKS.includes(action.riskLevel)
         && fieldsValid(action.fields) && (!confirmation || isText(action.confirmationId))
         && (action.description === undefined || typeof action.description === 'string')
+        && (action.confirmationPhrase === undefined || isText(action.confirmationPhrase))
         && (action.affectedRecords === undefined || (Number.isInteger(action.affectedRecords) && action.affectedRecords >= 0))
         && (action.expiresAt === undefined || typeof action.expiresAt === 'string');
 }
@@ -156,9 +157,10 @@ export function isPreviewEvent(event) {
         && event.result === undefined;
 }
 
-export function createDecision(confirmationId, decision) {
+export function createDecision(confirmationId, decision, confirmationText) {
     if (!isText(confirmationId) || !['confirm', 'cancel'].includes(decision)) throw new Error('Invalid confirmation decision');
-    return { confirmationId, decision };
+    if (confirmationText !== undefined && (typeof confirmationText !== 'string' || confirmationText.length > 80)) throw new Error('Invalid confirmation text');
+    return { confirmationId, decision, ...(confirmationText !== undefined ? { confirmationText } : {}) };
 }
 
 export function safeError(error = {}) {

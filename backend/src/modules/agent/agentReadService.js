@@ -565,7 +565,12 @@ export function createReadService({ db, projects, clients, vendors, resources, p
                 break;
             }
             case 'projects.search': result = await projects.getProjects(orgId, userId, userType, { ...paging, query: args.query, agentRead: true }); break;
-            case 'projects.get': result = [project(await projects.getProjectById(orgId, args.projectId, { agentRead: true }))]; break;
+            case 'projects.get': {
+                const record = project(await projects.getProjectById(orgId, args.projectId, { agentRead: true }));
+                const members = await projects.getProjectMembers(orgId, args.projectId);
+                result = [{ ...record, members: members.map(member => ({ id: member.id, name: member.user_name })) }];
+                break;
+            }
             case 'projects.getExecutiveBriefing': result = await projects.getProjectExecutiveBriefing(orgId, args.projectId); break;
             case 'tasks.search': {
                 let q = db('proj_tasks as t')

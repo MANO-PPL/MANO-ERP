@@ -84,7 +84,6 @@ class TaskCreateArgs(StrictModel):
             raise ValueError("Invalid task dates")
         return self
 
-
 class TaskUpdateArgs(StrictModel):
     projectId: Id
     taskId: Id
@@ -108,6 +107,264 @@ class TaskUpdateArgs(StrictModel):
         if not self.model_fields_set - {"projectId", "taskId"}:
             raise ValueError("Empty update")
         return self
+
+
+class TaskDeleteSelectedArgs(StrictModel):
+    projectId: Id
+    taskIds: list[Id] = Field(min_length=1, max_length=20)
+
+    @model_validator(mode="after")
+    def unique_tasks(self):
+        if len(set(self.taskIds)) != len(self.taskIds):
+            raise ValueError("Duplicate task IDs")
+        return self
+
+class ProjectPartyAddArgs(StrictModel):
+    projectId: Id
+    contactId: Id
+
+
+class ProjectPartyUpdateArgs(StrictModel):
+    projectId: Id
+    projectPartyId: Id
+    name: Name | None = None
+    contact_person: Name | None = None
+    mobile: Annotated[str, Field(min_length=1, max_length=32)] | None = None
+    email: Annotated[str, Field(min_length=1, max_length=254, pattern=r"^[^\s@]+@[^\s@]+\.[^\s@]+$")] | None = None
+    address: Annotated[str, Field(min_length=1, max_length=500)] | None = None
+    location: Name | None = None
+    remarks: Annotated[str, Field(min_length=1, max_length=500)] | None = None
+
+    @model_validator(mode="after")
+    def nonempty_update(self):
+        if not self.model_fields_set - {"projectId", "projectPartyId"}:
+            raise ValueError("Empty update")
+        return self
+
+
+class ProjectMemberAssignArgs(StrictModel):
+    projectId: Id
+    userId: Id
+
+
+class TaskAssignArgs(StrictModel):
+    projectId: Id
+    taskId: Id
+    assigneeIds: list[Id] = Field(min_length=1, max_length=20)
+
+
+class TaskCategoryCreateArgs(StrictModel):
+    projectId: Id
+    name: Name
+
+
+class TaskCategoryUpdateArgs(TaskCategoryCreateArgs):
+    categoryId: Id
+
+
+class OrderItem(StrictModel):
+    id: Id
+    sortOrder: Annotated[int, Field(strict=True, ge=0, le=1000000)]
+
+
+class TaskReorderArgs(StrictModel):
+    projectId: Id
+    type: Literal["task", "category"]
+    items: list[OrderItem] = Field(min_length=1, max_length=50)
+
+
+MeetingStatus = Literal["scheduled", "postponed", "cancelled", "completed"]
+Point = Annotated[str, Field(strict=True, min_length=1, max_length=500)]
+
+
+class MeetingCreateArgs(StrictModel):
+    projectId: Id
+    subject: Name
+    venue: Name | None = None
+    date: ProjectDate | None = None
+    time: Annotated[str, Field(pattern=r"^([01]\d|2[0-3]):[0-5]\d$")] | None = None
+    status: MeetingStatus | None = None
+    agendaPoints: list[Point] = Field(default_factory=list, max_length=30)
+    momPoints: list[Point] = Field(default_factory=list, max_length=30)
+
+
+class MeetingUpdateArgs(StrictModel):
+    projectId: Id
+    meetingId: Id
+    subject: Name | None = None
+    venue: Name | None = None
+    date: ProjectDate | None = None
+    time: Annotated[str, Field(pattern=r"^([01]\d|2[0-3]):[0-5]\d$")] | None = None
+    status: MeetingStatus | None = None
+    agendaPoints: list[Point] | None = Field(default=None, max_length=30)
+    momPoints: list[Point] | None = Field(default=None, max_length=30)
+
+    @model_validator(mode="after")
+    def nonempty_update(self):
+        if not self.model_fields_set - {"projectId", "meetingId"}:
+            raise ValueError("Empty update")
+        return self
+
+
+class DirectoryCreateArgs(StrictModel):
+    projectId: Id
+    partyId: Id | None = None
+    contact_person: Name
+    designation: Name | None = None
+    responsibilities: Annotated[str, Field(min_length=1, max_length=500)] | None = None
+    mobile_no: Annotated[str, Field(min_length=1, max_length=32)] | None = None
+    email: Annotated[str, Field(min_length=1, max_length=254, pattern=r"^[^\s@]+@[^\s@]+\.[^\s@]+$")] | None = None
+    address_line: Annotated[str, Field(min_length=1, max_length=500)] | None = None
+
+
+class DirectoryUpdateArgs(DirectoryCreateArgs):
+    directoryId: Id
+    contact_person: Name | None = None
+
+    @model_validator(mode="after")
+    def nonempty_update(self):
+        if not self.model_fields_set - {"projectId", "directoryId"}:
+            raise ValueError("Empty update")
+        return self
+
+
+class SummaryCreateArgs(StrictModel):
+    projectId: Id
+    title: Name
+    details: Annotated[str, Field(min_length=1, max_length=500)]
+    status: Literal["pending", "in progress", "completed", "on hold"] | None = None
+    date: ProjectDate | None = None
+
+
+class SummaryUpdateArgs(SummaryCreateArgs):
+    summaryId: Id
+    title: Name | None = None
+    details: Annotated[str, Field(min_length=1, max_length=500)] | None = None
+
+    @model_validator(mode="after")
+    def nonempty_update(self):
+        if not self.model_fields_set - {"projectId", "summaryId"}:
+            raise ValueError("Empty update")
+        return self
+
+
+class QualityObservationCreateArgs(StrictModel):
+    projectId: Id
+    location: Name
+    note: Annotated[str, Field(min_length=1, max_length=500)]
+
+
+class QualityObservationUpdateArgs(StrictModel):
+    projectId: Id
+    observationId: Id
+    location: Name | None = None
+    note: Annotated[str, Field(min_length=1, max_length=500)] | None = None
+
+    @model_validator(mode="after")
+    def nonempty_update(self):
+        if not self.model_fields_set - {"projectId", "observationId"}:
+            raise ValueError("Empty update")
+        return self
+
+
+class QualityObservationFixArgs(StrictModel):
+    projectId: Id
+    observationId: Id
+    uploadId: Annotated[str, Field(pattern=r"^[0-9a-fA-F-]{36}$")]
+    note: Annotated[str, Field(min_length=1, max_length=500)] | None = None
+
+
+class QualityDocumentCreateArgs(StrictModel):
+    projectId: Id
+    title: Name
+    uploadId: Annotated[str, Field(pattern=r"^[0-9a-fA-F-]{36}$")]
+
+
+class QualityDocumentUpdateArgs(StrictModel):
+    projectId: Id
+    documentId: Id
+    title: Name | None = None
+    uploadId: Annotated[str, Field(pattern=r"^[0-9a-fA-F-]{36}$")]
+
+
+class DocumentDraftArgs(StrictModel):
+    projectId: Id
+    cycleId: Id
+    content: dict[str, Any]
+
+    @field_validator("content")
+    @classmethod
+    def bounded_content(cls, value):
+        try:
+            if len(json.dumps(value, separators=(",", ":")).encode()) > 32000:
+                raise ValueError("Draft content is too large")
+        except (TypeError, ValueError) as exc:
+            raise ValueError("Invalid draft content") from exc
+        return value
+
+
+class DocumentSubmitArgs(StrictModel):
+    projectId: Id
+    cycleId: Id
+    changes_summary: Annotated[str, Field(min_length=1, max_length=500)] | None = None
+    comments: Annotated[str, Field(min_length=1, max_length=500)] | None = None
+
+class ContactArgs(StrictModel):
+    contactId: Id
+
+
+class TransactionsSearchArgs(ListArgs):
+    projectId: Id | None = None
+
+
+class TasksSearchArgs(ListArgs):
+    projectId: Id | None = None
+
+
+class BillingSearchArgs(ListArgs):
+    projectId: Id | None = None
+    type: Literal["material", "contractor", "certified", "monthly"] | None = None
+
+
+class ResourceSearchArgs(ListArgs):
+    type: Literal["material", "labour", "item"] | None = None
+
+
+class ResourceArgs(StrictModel):
+    resourceId: Id
+    projectId: Id | None = None
+    asOfDate: Annotated[str, Field(pattern=r"^\d{4}-\d{2}-\d{2}$")] | None = None
+
+    @field_validator("asOfDate")
+    @classmethod
+    def valid_date(cls, value):
+        if value is not None:
+            date.fromisoformat(value)
+        return value
+
+
+class RateHistoryArgs(ResourceArgs):
+    limit: Limit | None = None
+    offset: Offset | None = None
+
+
+class PartiesArgs(ProjectArgs):
+    category: Literal["Supplier", "Contractor", "Consultant", "Manufacturer", "Service Provider", "Client", "PMC"] | None = None
+    limit: Limit | None = None
+    offset: Offset | None = None
+
+
+class InteractionsArgs(ContactArgs):
+    limit: Limit | None = None
+    offset: Offset | None = None
+
+
+class SupplierArgs(StrictModel):
+    name: Name
+    contact_person: Name | None = None
+    mobile: Annotated[str, Field(min_length=1, max_length=32)] | None = None
+    email: Annotated[str, Field(min_length=1, max_length=254, pattern=r"^[^\s@]+@[^\s@]+\.[^\s@]+$")] | None = None
+    address: Annotated[str, Field(min_length=1, max_length=500)] | None = None
 
 
 class ContactEditArgs(StrictModel):
@@ -303,7 +560,18 @@ ARG_MODELS = {
     "vendors.update": ContactEditArgs, "clients.addInteraction": ClientInteractionArgs,
     "projects.search": ListArgs, "projects.get": ProjectArgs, "projects.getExecutiveBriefing": ProjectArgs,
     "projects.create": ProjectCreateArgs, "projects.update": ProjectUpdateArgs, "clients.search": ListArgs, "clients.get": ContactArgs,
-    "tasks.create": TaskCreateArgs, "tasks.update": TaskUpdateArgs,
+    "tasks.create": TaskCreateArgs, "tasks.update": TaskUpdateArgs, "tasks.deleteSelected": TaskDeleteSelectedArgs,
+    "projectParties.add": ProjectPartyAddArgs, "projectParties.update": ProjectPartyUpdateArgs,
+    "projects.assignMember": ProjectMemberAssignArgs, "tasks.assign": TaskAssignArgs,
+    "tasks.createCategory": TaskCategoryCreateArgs, "tasks.updateCategory": TaskCategoryUpdateArgs, "tasks.reorder": TaskReorderArgs,
+    "meetings.create": MeetingCreateArgs, "meetings.update": MeetingUpdateArgs,
+    "directory.create": DirectoryCreateArgs, "directory.update": DirectoryUpdateArgs,
+    "summaries.create": SummaryCreateArgs, "summaries.update": SummaryUpdateArgs,
+    "documents.saveDraft": DocumentDraftArgs, "documents.submitDraft": DocumentSubmitArgs,
+    "qualityObservations.create": QualityObservationCreateArgs, "qualityObservations.update": QualityObservationUpdateArgs,
+    "qualityObservations.submitFix": QualityObservationFixArgs,
+    "qualityMethodologies.create": QualityDocumentCreateArgs, "qualityMethodologies.update": QualityDocumentUpdateArgs,
+    "qualityChecklists.create": QualityDocumentCreateArgs, "qualityChecklists.update": QualityDocumentUpdateArgs,
     "vendors.search": ListArgs, "vendors.get": ContactArgs, "resources.search": ResourceSearchArgs,
     "resources.get": ResourceArgs, "resources.getRate": ResourceArgs, "resources.getRateHistory": RateHistoryArgs,
     "resources.getComposition": ResourceArgs, "resources.simulateCostImpact": CostSimulationArgs,

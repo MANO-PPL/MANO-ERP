@@ -89,10 +89,15 @@ export function harness(options = {}) {
         reason: options.reason || (async () => { calls++; const response = responses.shift() ?? answer; if (response instanceof Error) throw response; return response; }),
         read: options.read || (async () => { reads++; return [{ id: 5, name: 'Fixture supplier' }]; }),
         writes: options.writes || {
-            preconditions: async () => ({ version: options.version?.() || 1 }),
+            preconditions: async (tool, args) => options.preconditions
+                ? options.preconditions(tool, args)
+                : ({ version: options.version?.() || 1 }),
             execute: async (tool, args, scope, trx) => { if (!trx?.isTransaction) throw Error('No transaction'); attempts++; const id = trx.state.business.length + 1; trx.state.business.push({ id, tool: tool.name, args }); return { id }; }
         },
-        ...(options.enableWrites ? { writeEnablement: { 'vendors.create': true, 'resources.createRateVersion': true } } : {})
+        ...(options.enableWrites || options.writeEnablement ? { writeEnablement: {
+            ...(options.enableWrites ? { 'vendors.create': true, 'resources.createRateVersion': true } : {}),
+            ...(options.writeEnablement || {})
+        } } : {})
     });
     return { service, store, knowledge, get calls() { return calls; }, get reads() { return reads; }, get attempts() { return attempts; },
         advance(ms) { time += ms; },

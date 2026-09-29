@@ -3,8 +3,10 @@ import ExcelJS from 'exceljs';
 import { Readable } from 'node:stream';
 import { fail } from './agentValidation.js';
 
-// 30-minute time-to-live for temporary in-memory spreadsheet staging
+// 30-minute time-to-live for temporary in-memory upload staging.
 const TTL_MS = 30 * 60 * 1000;
+const MAX_FILE_SIZE = 15 * 1024 * 1024;
+const ATTACHMENT_EXTENSIONS = new Set(['pdf', 'doc', 'docx', 'jpg', 'jpeg', 'png', 'webp']);
 const uploads = new Map();
 
 function sweep() {
@@ -35,7 +37,7 @@ export async function parseSpreadsheet(buffer, filename, orgId) {
     if (!buffer || !Buffer.isBuffer(buffer)) {
         fail('validation_error', 'invalid_file_buffer');
     }
-    if (buffer.length > 15 * 1024 * 1024) {
+    if (buffer.length > MAX_FILE_SIZE) {
         fail('validation_error', 'file_size_exceeded');
     }
 
@@ -92,6 +94,7 @@ export async function parseSpreadsheet(buffer, filename, orgId) {
 
     const uploadId = randomUUID();
     const dataset = {
+        kind: 'spreadsheet',
         uploadId,
         orgId,
         filename,
@@ -106,6 +109,7 @@ export async function parseSpreadsheet(buffer, filename, orgId) {
     uploads.set(uploadId, dataset);
 
     return {
+        kind: 'spreadsheet',
         uploadId,
         filename,
         sheetName: dataset.sheetName,
@@ -121,7 +125,7 @@ export async function parseSpreadsheet(buffer, filename, orgId) {
 export function getUploadedDataset(uploadId, orgId) {
     if (!uploadId) return null;
     const dataset = uploads.get(uploadId);
-    if (!dataset) return null;
+    if (!dataset || dataset.kind !== 'spreadsheet') return null;
     if (Number(dataset.orgId) !== Number(orgId)) {
         fail('authorization_denied', 'upload_org_mismatch');
     }
@@ -130,6 +134,36 @@ export function getUploadedDataset(uploadId, orgId) {
         return null;
     }
     return dataset;
+}
+
+/**
+ * Stage a bounded quality attachment until the user confirms the proposed
+ * write. Approval is an explicit declaration captured with the upload and is
+ * re-checked server-side during write preconditions.
+ */
+export function stageAttachment(buffer, filename, mimeType, orgId, approvedForAgentWrite = false) {
+    if (!buffer || !Buffer.isBuffer(buffer)) fail('validation_error', 'invalid_file_buffer');
+    if (buffer.length < 1 || buffer.length > MAX_FILE_SIZE) fail('validation_error', 'file_size_exceeded');
+    const ext = String(filename || '').toLowerCase().split('.').pop();
+    if (!ATTACHMENT_EXTENSIONS.has(ext)) fail('validation_error', 'unsupported_attachment_type');
+    const uploadId = randomUUID();
+    const attachment = {
+        kind: 'attachment', uploadId, orgId, filename: String(filename).slice(0, 255),
+        extension: ext, mimeType: String(mimeType || 'application/octet-stream').slice(0, 120), size: buffer.length,
+        approvedForAgentWrite: approvedForAgentWrite === true, buffer: Buffer.from(buffer), createdAt: Date.now()
+    };
+    uploads.set(uploadId, attachment);
+    return { uploadId, kind: 'attachment', filename: attachment.filename, mimeType: attachment.mimeType,
+        size: attachment.size, approvedForAgentWrite: attachment.approvedForAgentWrite };
+}
+
+export function getUploadedAttachment(uploadId, orgId) {
+    if (!uploadId) return null;
+    const attachment = uploads.get(uploadId);
+    if (!attachment || attachment.kind !== 'attachment') return null;
+    if (Number(attachment.orgId) !== Number(orgId)) fail('authorization_denied', 'upload_org_mismatch');
+    if (Date.now() - attachment.createdAt > TTL_MS) { uploads.delete(uploadId); return null; }
+    return attachment;
 }
 
 /**

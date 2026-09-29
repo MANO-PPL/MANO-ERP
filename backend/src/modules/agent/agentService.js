@@ -232,6 +232,11 @@ export function createAgentService({ store, authorize, read, writes, reason, okf
             if (found.execution.credential_hash !== actor.credentialHash) fail('authorization_denied', 'credential_binding_changed');
             // Replays do not call Python, load a new operation, or dispatch a tool.
             if (found.execution.status !== 'PENDING_CONFIRMATION') return authorizedEvents(actor, found.request.request_id);
+            if (decision.decision === 'confirm' && found.execution.tool === 'tasks.deleteSelected') {
+                const count = Array.isArray(found.execution.args_json?.taskIds) ? found.execution.args_json.taskIds.length : 0;
+                const expected = `DELETE ${count} TASK${count === 1 ? '' : 'S'}`;
+                if (decision.confirmationText !== expected) fail('validation_error', 'typed_confirmation_mismatch');
+            }
             let generation;
             if (decision.decision === 'confirm') generation = (await okf.acquire()).generation;
             try {
@@ -262,6 +267,8 @@ export function createAgentService({ store, authorize, read, writes, reason, okf
                         'tasks.create': 'Task created', 'tasks.update': 'Task updated' };
                     const outcomeText = deliveryWrites[tool.name]
                         ? `${deliveryWrites[tool.name]} successfully.`
+                        : tool.name === 'tasks.deleteSelected'
+                            ? `Deleted ${result.deletedCount} selected project task${result.deletedCount === 1 ? '' : 's'}.`
                         : tool.name === 'vendors.bulkImport'
                         ? `Successfully imported ${result.count} vendors into your organization.`
                         : tool.name === 'approvals.batchDecide'
@@ -270,7 +277,7 @@ export function createAgentService({ store, authorize, read, writes, reason, okf
                                 ? `Successfully recorded decision '${result.action}' for ${result.itemType} #${result.id}.`
                                 : `Committed record ${result.id}.`;
                     await session.append('tool_completed', { actionId: execution.execution_id,
-                        result: { kind: 'execution', title: deliveryWrites[tool.name] || (tool.name === 'vendors.bulkImport' ? 'Bulk Vendor Import' : tool.name === 'approvals.batchDecide' ? 'Batch Approval Decision' : tool.name === 'approvals.decide' ? 'Approval Decision' : tool.name), outcome: 'success', text: outcomeText },
+                        result: { kind: 'execution', title: deliveryWrites[tool.name] || (tool.name === 'tasks.deleteSelected' ? 'Delete Project Tasks' : tool.name === 'vendors.bulkImport' ? 'Bulk Vendor Import' : tool.name === 'approvals.batchDecide' ? 'Batch Approval Decision' : tool.name === 'approvals.decide' ? 'Approval Decision' : tool.name), outcome: 'success', text: outcomeText },
                         provenance: provenance(tool, scope, now()) }, execution.execution_id);
                     await session.updateRequest({ status: 'COMPLETE' }); await session.append('conversation_completed');
                 });

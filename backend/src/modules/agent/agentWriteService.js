@@ -1,8 +1,9 @@
 import { fail, fingerprint } from './agentValidation.js';
 import { validateIntent } from './agentTools.js';
-import { getUploadedDataset, cleanupUpload } from './agentUploadService.js';
+import { getUploadedDataset, getUploadedAttachment, cleanupUpload } from './agentUploadService.js';
 import { findOrCreateSector } from '../shared/sectorService.js';
 import { findOrCreateJobNature } from '../shared/jobNatureService.js';
+import { storeQualityAttachment } from '../projects/quality/qualityService.js';
 
 const VALID_CATEGORIES = ['Contractor', 'Supplier', 'Consultant', 'Manufacturer', 'Service Provider'];
 
@@ -66,6 +67,20 @@ function extractRow(row, mapping) {
 }
 
 export function createWriteService({ db, clients, vendors, resources, approvalService }) {
+    const stagedQualityAttachment = (args, scope, imageOnly = false) => {
+        const attachment = getUploadedAttachment(args.uploadId, scope.orgId);
+        if (!attachment) fail('validation_error', 'staged_attachment_expired_or_not_found');
+        if (!attachment.approvedForAgentWrite) fail('validation_error', 'approved_attachment_required');
+        if (imageOnly && (!['jpg', 'jpeg', 'png', 'webp'].includes(attachment.extension)
+            || !attachment.mimeType.toLowerCase().startsWith('image/'))) fail('validation_error', 'resolution_image_required');
+        return attachment;
+    };
+    const fileFromAttachment = attachment => ({ buffer: attachment.buffer, originalname: attachment.filename,
+        mimetype: attachment.mimeType, size: attachment.size });
+    const qualityFileName = (prefix, id, attachment) => `${prefix}_${id}_${Date.now()}_${attachment.filename.replace(/[^a-zA-Z0-9.-]/g, '_')}`;
+    const qualityDocumentTable = toolName => toolName.startsWith('qualityMethodologies.')
+        ? { table: 'proj_quality_methodologies', prefix: 'methodology', folder: 'methodology' }
+        : { table: 'proj_quality_checklists', prefix: 'checklist', folder: 'check_snag' };
     async function clientImport(args, scope, connection, lock = false) {
         const dataset = getUploadedDataset(args.uploadId, scope.orgId);
         if (!dataset) fail('validation_error', 'staged_dataset_expired_or_not_found');
@@ -99,6 +114,165 @@ export function createWriteService({ db, clients, vendors, resources, approvalSe
     }
     return {
         async preconditions(tool, args, scope, connection = db, lock = false) {
+            if (tool.name === 'tasks.deleteSelected') {
+                const taskQuery = connection('proj_tasks as t').leftJoin('proj_task_categories as c', 't.category_id', 'c.id')
+                    .join('proj_projects as p', 't.project_id', 'p.id')
+                    .where('t.project_id', args.projectId).whereIn('t.id', args.taskIds);
+                if (lock) taskQuery.forUpdate();
+                const tasks = await taskQuery.select('t.id', 't.name', 't.task_code', 't.status', 't.priority', 't.category_id',
+                    't.description', 't.start_date', 't.due_date', 't.sort_order', 't.updated_at', 'c.name as categoryName', 'p.name as projectName');
+                if (tasks.length !== args.taskIds.length) fail('authorization_denied', 'task_delete_target_out_of_scope');
+                if (tasks.some(task => ['in_review', 'pending_approval', 'review'].includes(String(task.status || '').toLowerCase()))) {
+                    fail('validation_error', 'task_pending_approval_cannot_be_deleted');
+                }
+                const assigneeQuery = connection('proj_task_assignees as a')
+                    .leftJoin('iam_users as u', 'a.user_id', 'u.id').whereIn('a.task_id', args.taskIds);
+                if (lock) assigneeQuery.forUpdate();
+                const assignees = await assigneeQuery.select('a.task_id', 'a.user_id', 'u.user_name');
+                return { projectId: args.projectId, operation: tool.name,
+                    tasks: JSON.parse(JSON.stringify(tasks)), assignees: JSON.parse(JSON.stringify(assignees)),
+                    assigneeLinksRemoved: assignees.length, pendingApprovals: 0 };
+            }
+            if (tool.name === 'projectParties.add') {
+                const contactQuery = connection('crm_contacts').where({ id: args.contactId, org_id: scope.orgId });
+                if (lock) contactQuery.forUpdate();
+                const contact = await contactQuery.first('id', 'name', 'category');
+                if (!contact) fail('authorization_denied');
+                const linkedQuery = connection('proj_parties').where({ project_id: args.projectId, contact_id: args.contactId });
+                if (lock) linkedQuery.forUpdate();
+                if (await linkedQuery.first('id')) fail('validation_error', 'project_party_already_linked');
+                return { projectId: args.projectId, contact: JSON.parse(JSON.stringify(contact)) };
+            }
+            if (tool.name === 'projectParties.update') {
+                const partyQuery = connection('proj_parties').where({ id: args.projectPartyId, project_id: args.projectId });
+                if (lock) partyQuery.forUpdate();
+                const party = await partyQuery.first('id', 'contact_id');
+                if (!party) fail('authorization_denied');
+                const contactQuery = connection('crm_contacts').where({ id: party.contact_id, org_id: scope.orgId });
+                if (lock) contactQuery.forUpdate();
+                const contact = await contactQuery.first('id', 'name', 'category');
+                if (!contact) fail('authorization_denied');
+                return { projectId: args.projectId, projectPartyId: args.projectPartyId, contact: JSON.parse(JSON.stringify(contact)) };
+            }
+            if (tool.name === 'projects.assignMember') {
+                const userQuery = connection('iam_users').where({ id: args.userId, org_id: scope.orgId });
+                if (lock) userQuery.forUpdate();
+                if (!await userQuery.first('id')) fail('validation_error', 'project_member_not_in_organization');
+                const memberQuery = connection('proj_members').where({ project_id: args.projectId, user_id: args.userId, org_id: scope.orgId });
+                if (lock) memberQuery.forUpdate();
+                if (await memberQuery.first('project_id')) fail('validation_error', 'project_member_already_assigned');
+                return { projectId: args.projectId, userId: args.userId, restricted: true };
+            }
+            if (['tasks.assign', 'tasks.updateCategory', 'tasks.reorder'].includes(tool.name)) {
+                const taskId = args.taskId;
+                let task = null;
+                if (taskId) {
+                    const taskQuery = connection('proj_tasks').where({ id: taskId, project_id: args.projectId });
+                    if (lock) taskQuery.forUpdate();
+                    task = await taskQuery.first('id', 'name');
+                    if (!task) fail('authorization_denied');
+                }
+                if (tool.name === 'tasks.updateCategory') {
+                    const categoryQuery = connection('proj_task_categories').where({ id: args.categoryId, project_id: args.projectId });
+                    if (lock) categoryQuery.forUpdate();
+                    if (!await categoryQuery.first('id')) fail('authorization_denied');
+                }
+                if (tool.name === 'tasks.assign') {
+                    const membersQuery = connection('proj_members as pm').join('iam_users as u', 'pm.user_id', 'u.id')
+                        .where({ 'pm.project_id': args.projectId, 'pm.org_id': scope.orgId })
+                        .whereIn('pm.user_id', args.assigneeIds);
+                    if (lock) membersQuery.forUpdate();
+                    const members = await membersQuery.select('pm.user_id as id', 'u.user_name as name');
+                    if (members.length !== args.assigneeIds.length) fail('validation_error', 'assignee_not_project_member');
+                    return { projectId: args.projectId, operation: tool.name, task: JSON.parse(JSON.stringify(task)),
+                        members: JSON.parse(JSON.stringify(members)) };
+                }
+                if (tool.name === 'tasks.reorder') {
+                    const table = args.type === 'task' ? 'proj_tasks' : 'proj_task_categories';
+                    const query = connection(table).where({ project_id: args.projectId }).whereIn('id', args.items.map(item => item.id));
+                    if (lock) query.forUpdate();
+                    if ((await query.select('id')).length !== args.items.length) fail('validation_error', 'reorder_item_out_of_scope');
+                }
+                return { projectId: args.projectId, operation: tool.name };
+            }
+            if (tool.name === 'tasks.createCategory') {
+                const duplicate = connection('proj_task_categories').where({ project_id: args.projectId }).whereRaw('LOWER(??) = ?', ['name', args.name.trim().toLowerCase()]);
+                if (lock) duplicate.forUpdate();
+                if (await duplicate.first('id')) fail('validation_error', 'duplicate_task_category');
+                return { projectId: args.projectId, name: args.name.trim() };
+            }
+            if (['meetings.create', 'meetings.update'].includes(tool.name)) {
+                if (tool.name === 'meetings.update') {
+                    const query = connection('proj_meetings').where({ id: args.meetingId, project_id: args.projectId });
+                    if (lock) query.forUpdate();
+                    if (!await query.first('id')) fail('authorization_denied');
+                }
+                return { projectId: args.projectId, operation: tool.name };
+            }
+            if (['directory.create', 'directory.update'].includes(tool.name)) {
+                if (args.partyId) {
+                    const party = connection('proj_parties').where({ id: args.partyId, project_id: args.projectId });
+                    if (lock) party.forUpdate();
+                    if (!await party.first('id')) fail('authorization_denied');
+                }
+                if (tool.name === 'directory.update') {
+                    const query = connection('proj_directory').where({ id: args.directoryId, project_id: args.projectId });
+                    if (lock) query.forUpdate();
+                    if (!await query.first('id')) fail('authorization_denied');
+                }
+                return { projectId: args.projectId, operation: tool.name };
+            }
+            if (['summaries.create', 'summaries.update'].includes(tool.name)) {
+                if (tool.name === 'summaries.update') {
+                    const query = connection('proj_summary').where({ id: args.summaryId, project_id: args.projectId });
+                    if (lock) query.forUpdate();
+                    if (!await query.first('id')) fail('authorization_denied');
+                }
+                return { projectId: args.projectId, operation: tool.name };
+            }
+            if (['documents.saveDraft', 'documents.submitDraft'].includes(tool.name)) {
+                const cycleQuery = connection('wf_approval_cycles as ac')
+                    .join('wf_document_instances as di', 'ac.instance_id', 'di.instance_id')
+                    .where({ 'ac.cycle_id': args.cycleId, 'di.org_id': scope.orgId, 'di.project_id': args.projectId });
+                if (lock) cycleQuery.forUpdate();
+                const cycle = await cycleQuery.first('ac.cycle_id', 'ac.instance_id', 'ac.current_holder_id', 'ac.current_level', 'ac.initiated_by', 'ac.status', 'di.document_id');
+                if (!cycle) fail('authorization_denied');
+                if (Number(cycle.current_holder_id) !== Number(scope.userId)) fail('authorization_denied');
+                if (tool.name === 'documents.saveDraft' && !['drafting', 'revision_requested', 'in_review'].includes(cycle.status)) fail('validation_error', 'document_cycle_not_draftable');
+                if (tool.name === 'documents.submitDraft') {
+                    if (['approved', 'rejected', 'cancelled'].includes(cycle.status)) fail('validation_error', 'document_cycle_closed');
+                    if (Number(cycle.current_level) === 0 && Number(cycle.initiated_by) !== Number(scope.userId)) fail('authorization_denied');
+                    const documentQuery = connection('wf_documents').where({ document_id: cycle.document_id });
+                    if (lock) documentQuery.forUpdate();
+                    const document = await documentQuery.first('requires_approval');
+                    // Avoid a hidden auto-approval/publish side effect. The regular
+                    // approval operation handles configured approval decisions.
+                    if (!document || Number(document.requires_approval) !== 1) fail('validation_error', 'document_auto_approval_restricted');
+                }
+                return { projectId: args.projectId, cycleId: args.cycleId, operation: tool.name };
+            }
+            if (tool.name.startsWith('qualityObservations.')) {
+                if (tool.name !== 'qualityObservations.create') {
+                    const query = connection('proj_qaqc_observations').where({ id: args.observationId, project_id: args.projectId });
+                    if (lock) query.forUpdate();
+                    const observation = await query.first('id', 'status', 'reported_by');
+                    if (!observation) fail('authorization_denied');
+                    if (String(observation.status).toUpperCase() !== 'PENDING') fail('validation_error', 'observation_not_pending');
+                    if (tool.name === 'qualityObservations.update' && Number(observation.reported_by) !== Number(scope.userId)) fail('authorization_denied');
+                    if (tool.name === 'qualityObservations.submitFix') stagedQualityAttachment(args, scope, true);
+                }
+                return { projectId: args.projectId, operation: tool.name };
+            }
+            if (tool.name.startsWith('qualityMethodologies.') || tool.name.startsWith('qualityChecklists.')) {
+                const spec = qualityDocumentTable(tool.name);
+                if (tool.name.endsWith('.update')) {
+                    const query = connection(spec.table).where({ id: args.documentId, project_id: args.projectId });
+                    if (lock) query.forUpdate();
+                    if (!await query.first('id')) fail('authorization_denied');
+                }
+                if (args.uploadId) stagedQualityAttachment(args, scope);
+                return { projectId: args.projectId, operation: tool.name };
+            }
             if (['tasks.create', 'tasks.update'].includes(tool.name)) {
                 let task = null;
                 let category = null;
@@ -269,6 +443,206 @@ export function createWriteService({ db, clients, vendors, resources, approvalSe
 
         async execute(tool, args, scope, trx) {
             if (!trx?.isTransaction) fail('execution_failure', 'caller_transaction_required');
+            if (tool.name === 'tasks.deleteSelected') {
+                const taskIds = [...args.taskIds].sort((a, b) => a - b);
+                const removedAssignees = await trx('proj_task_assignees').whereIn('task_id', taskIds).del();
+                const removedTasks = await trx('proj_tasks').where({ project_id: args.projectId }).whereIn('id', taskIds).del();
+                if (removedTasks !== taskIds.length) fail('request_rejected', 'task_delete_target_changed');
+                return { id: args.projectId, deletedCount: removedTasks, assigneeLinksRemoved: removedAssignees };
+            }
+            if (tool.name === 'projectParties.add') {
+                const [id] = await trx('proj_parties').insert({ project_id: args.projectId, contact_id: args.contactId });
+                if (!Number.isSafeInteger(Number(id)) || Number(id) < 1) fail('execution_failure', 'invalid_service_result');
+                return { id: Number(id) };
+            }
+            if (tool.name === 'projectParties.update') {
+                const party = await trx('proj_parties').where({ id: args.projectPartyId, project_id: args.projectId }).first('contact_id');
+                if (!party) fail('request_rejected', 'project_party_changed');
+                const updates = Object.fromEntries(Object.entries(args)
+                    .filter(([key]) => !['projectId', 'projectPartyId'].includes(key))
+                    .map(([key, value]) => [key, typeof value === 'string' ? value.trim() : value]));
+                updates.updated_at = trx.fn.now();
+                const changed = await trx('crm_contacts').where({ id: party.contact_id, org_id: scope.orgId }).update(updates);
+                if (changed !== 1) fail('execution_failure', 'project_party_update_not_applied');
+                return { id: args.projectPartyId };
+            }
+            if (tool.name === 'projects.assignMember') {
+                const [id] = await trx('proj_members').insert({ project_id: args.projectId, user_id: args.userId,
+                    org_id: scope.orgId, project_permissions: null });
+                if (!Number.isSafeInteger(Number(id)) || Number(id) < 1) fail('execution_failure', 'invalid_service_result');
+                return { id: Number(id) };
+            }
+            if (tool.name === 'tasks.assign') {
+                await trx('proj_task_assignees').where({ task_id: args.taskId }).del();
+                if (args.assigneeIds.length) await trx('proj_task_assignees').insert(args.assigneeIds.map(user_id => ({ task_id: args.taskId, user_id: String(user_id) })));
+                return { id: args.taskId };
+            }
+            if (tool.name === 'tasks.createCategory') {
+                const last = await trx('proj_task_categories').where({ project_id: args.projectId }).orderBy('sort_order', 'desc').first('sort_order');
+                const [id] = await trx('proj_task_categories').insert({ project_id: args.projectId, name: args.name.trim(), sort_order: last ? Number(last.sort_order) + 10 : 10 });
+                if (!Number.isSafeInteger(Number(id)) || Number(id) < 1) fail('execution_failure', 'invalid_service_result');
+                return { id: Number(id) };
+            }
+            if (tool.name === 'tasks.updateCategory') {
+                const changed = await trx('proj_task_categories').where({ id: args.categoryId, project_id: args.projectId }).update({ name: args.name.trim(), updated_at: trx.fn.now() });
+                if (changed !== 1) fail('execution_failure', 'task_category_update_not_applied');
+                return { id: args.categoryId };
+            }
+            if (tool.name === 'tasks.reorder') {
+                const table = args.type === 'task' ? 'proj_tasks' : 'proj_task_categories';
+                for (const item of args.items) {
+                    const changed = await trx(table).where({ id: item.id, project_id: args.projectId }).update({ sort_order: item.sortOrder });
+                    if (changed !== 1) fail('execution_failure', 'task_reorder_not_applied');
+                }
+                return { id: args.projectId };
+            }
+            if (tool.name === 'meetings.create') {
+                const last = await trx('proj_meetings').where({ project_id: args.projectId }).max('meeting_no as maxNo').first();
+                const content = JSON.stringify({ time: args.time || '', status: args.status || 'scheduled', agenda_points: (args.agendaPoints || []).map((point, index) => ({ sl_no: index + 1, point })), mom_points: (args.momPoints || []).map((point, index) => ({ sl_no: index + 1, point })), attendance: {} });
+                const [id] = await trx('proj_meetings').insert({ project_id: args.projectId, meeting_no: Number(last?.maxNo || 0) + 1, subject: args.subject.trim(), venue: args.venue?.trim() || '', date: args.date || new Date().toISOString().slice(0, 10), status: args.status || 'scheduled', content });
+                if (!Number.isSafeInteger(Number(id)) || Number(id) < 1) fail('execution_failure', 'invalid_service_result');
+                return { id: Number(id) };
+            }
+            if (tool.name === 'meetings.update') {
+                const current = await trx('proj_meetings').where({ id: args.meetingId, project_id: args.projectId }).first('content');
+                if (!current) fail('request_rejected', 'meeting_changed');
+                let content = {}; try { content = typeof current.content === 'string' ? JSON.parse(current.content) : (current.content || {}); } catch { content = {}; }
+                if (args.time !== undefined) content.time = args.time;
+                if (args.agendaPoints !== undefined) content.agenda_points = args.agendaPoints.map((point, index) => ({ sl_no: index + 1, point }));
+                if (args.momPoints !== undefined) content.mom_points = args.momPoints.map((point, index) => ({ sl_no: index + 1, point }));
+                const updates = Object.fromEntries(Object.entries(args).filter(([key]) => !['projectId', 'meetingId', 'time', 'agendaPoints', 'momPoints'].includes(key)).map(([key, value]) => [key, typeof value === 'string' ? value.trim() : value]));
+                updates.content = JSON.stringify(content);
+                const changed = await trx('proj_meetings').where({ id: args.meetingId, project_id: args.projectId }).update(updates);
+                if (changed !== 1) fail('execution_failure', 'meeting_update_not_applied');
+                return { id: args.meetingId };
+            }
+            if (tool.name === 'directory.create') {
+                const { projectId, partyId, ...data } = args;
+                const [id] = await trx('proj_directory').insert({ project_id: projectId, party_id: partyId || null, ...data, created_at: trx.fn.now(), updated_at: trx.fn.now() });
+                if (!Number.isSafeInteger(Number(id)) || Number(id) < 1) fail('execution_failure', 'invalid_service_result');
+                return { id: Number(id) };
+            }
+            if (tool.name === 'directory.update') {
+                const updates = Object.fromEntries(Object.entries(args).filter(([key]) => !['projectId', 'directoryId'].includes(key)).map(([key, value]) => [key === 'partyId' ? 'party_id' : key, typeof value === 'string' ? value.trim() : value]));
+                updates.updated_at = trx.fn.now();
+                const changed = await trx('proj_directory').where({ id: args.directoryId, project_id: args.projectId }).update(updates);
+                if (changed !== 1) fail('execution_failure', 'directory_update_not_applied');
+                return { id: args.directoryId };
+            }
+            if (tool.name === 'summaries.create') {
+                const [id] = await trx('proj_summary').insert({ project_id: args.projectId, title: args.title.trim(), details: args.details.trim(), status: args.status || 'pending', date: args.date || new Date().toISOString().slice(0, 10) });
+                if (!Number.isSafeInteger(Number(id)) || Number(id) < 1) fail('execution_failure', 'invalid_service_result');
+                return { id: Number(id) };
+            }
+            if (tool.name === 'summaries.update') {
+                const updates = Object.fromEntries(Object.entries(args).filter(([key]) => !['projectId', 'summaryId'].includes(key)).map(([key, value]) => [key, typeof value === 'string' ? value.trim() : value]));
+                const changed = await trx('proj_summary').where({ id: args.summaryId, project_id: args.projectId }).update(updates);
+                if (changed !== 1) fail('execution_failure', 'summary_update_not_applied');
+                return { id: args.summaryId };
+            }
+            if (tool.name === 'documents.saveDraft') {
+                const cycle = await trx('wf_approval_cycles as ac').join('wf_document_instances as di', 'ac.instance_id', 'di.instance_id')
+                    .where({ 'ac.cycle_id': args.cycleId, 'di.org_id': scope.orgId, 'di.project_id': args.projectId })
+                    .first('ac.cycle_id', 'ac.current_holder_id', 'ac.current_level', 'ac.status');
+                if (!cycle || Number(cycle.current_holder_id) !== Number(scope.userId)
+                    || !['drafting', 'revision_requested', 'in_review'].includes(cycle.status)) fail('request_rejected', 'document_cycle_changed');
+                const now = new Date();
+                const changed = await trx('wf_approval_cycles').where({ cycle_id: args.cycleId }).update({ draft_content: JSON.stringify(args.content), last_draft_saved: now });
+                if (changed !== 1) fail('execution_failure', 'document_draft_not_saved');
+                const lastLog = await trx('wf_approval_logs').where({ cycle_id: args.cycleId, action: 'draft_saved' }).orderBy('acted_at', 'desc').first('acted_at');
+                if (!lastLog || now - new Date(lastLog.acted_at) > 60000) {
+                    await trx('wf_approval_logs').insert({ cycle_id: args.cycleId, action: 'draft_saved', level_order: cycle.current_level, acted_by: scope.userId });
+                }
+                return { id: args.cycleId };
+            }
+            if (tool.name === 'documents.submitDraft') {
+                const cycle = await trx('wf_approval_cycles as ac').join('wf_document_instances as di', 'ac.instance_id', 'di.instance_id')
+                    .where({ 'ac.cycle_id': args.cycleId, 'di.org_id': scope.orgId, 'di.project_id': args.projectId })
+                    .first('ac.cycle_id', 'ac.instance_id', 'ac.current_holder_id', 'ac.current_level', 'ac.initiated_by', 'ac.status', 'ac.draft_content', 'di.document_id');
+                if (!cycle || Number(cycle.current_holder_id) !== Number(scope.userId) || ['approved', 'rejected', 'cancelled'].includes(cycle.status)) fail('request_rejected', 'document_cycle_changed');
+                if (Number(cycle.current_level) === 0 && Number(cycle.initiated_by) !== Number(scope.userId)) fail('authorization_denied');
+                const document = await trx('wf_documents').where({ document_id: cycle.document_id }).first('requires_approval');
+                if (!document || Number(document.requires_approval) !== 1) fail('validation_error', 'document_auto_approval_restricted');
+                const approvers = await trx('wf_document_roles as dr').join('wf_approval_levels as al', 'dr.level_id', 'al.level_id')
+                    .where({ 'dr.document_id': cycle.document_id, 'dr.role': 'approver' })
+                    .select('dr.id', 'dr.user_id', 'al.level_order').orderBy([{ column: 'al.level_order', order: 'asc' }, { column: 'dr.id', order: 'asc' }]);
+                if (!approvers.length || new Set(approvers.map(approver => String(approver.level_order))).size !== approvers.length) fail('validation_error', 'document_approval_chain_invalid');
+                const currentIndex = Number(cycle.current_level) === 0 ? -1 : approvers.findIndex(approver => Number(approver.user_id) === Number(scope.userId) && Number(approver.level_order) === Number(cycle.current_level));
+                if (Number(cycle.current_level) > 0 && currentIndex < 0) fail('authorization_denied');
+                const nextApprover = approvers[currentIndex + 1];
+                // Finalization can invoke arbitrary configured document mappings, so
+                // the agent only advances an explicit approval chain.
+                if (!nextApprover) fail('validation_error', 'document_finalization_restricted');
+                await trx('wf_cycle_submissions').insert({ cycle_id: args.cycleId, level_order: cycle.current_level,
+                    submitted_by: scope.userId, content_snapshot: cycle.draft_content, changes_summary: args.changes_summary || null });
+                const changed = await trx('wf_approval_cycles').where({ cycle_id: args.cycleId }).update({ status: 'in_review',
+                    current_level: nextApprover.level_order, current_holder_id: nextApprover.user_id });
+                if (changed !== 1) fail('execution_failure', 'document_submit_not_applied');
+                await trx('wf_document_instances').where({ instance_id: cycle.instance_id }).update({ locked_by: nextApprover.user_id });
+                await trx('wf_approval_logs').insert({ cycle_id: args.cycleId, action: 'submitted', level_order: cycle.current_level,
+                    acted_by: scope.userId, comments: args.comments || null });
+                return { id: args.cycleId };
+            }
+            if (tool.name === 'qualityObservations.create') {
+                const [id] = await trx('proj_qaqc_observations').insert({ project_id: args.projectId, location: args.location.trim(), before_note: args.note.trim(), status: 'PENDING', reported_by: scope.userId, reported_at: trx.fn.now() });
+                if (!Number.isSafeInteger(Number(id)) || Number(id) < 1) fail('execution_failure', 'invalid_service_result');
+                return { id: Number(id) };
+            }
+            if (tool.name === 'qualityObservations.update') {
+                const updates = Object.fromEntries(Object.entries(args).filter(([key]) => !['projectId', 'observationId'].includes(key)).map(([key, value]) => [key === 'note' ? 'before_note' : key, value.trim()]));
+                updates.updated_at = trx.fn.now();
+                const changed = await trx('proj_qaqc_observations').where({ id: args.observationId, project_id: args.projectId, status: 'PENDING' }).update(updates);
+                if (changed !== 1) fail('execution_failure', 'observation_update_not_applied');
+                return { id: args.observationId };
+            }
+            if (tool.name === 'qualityObservations.submitFix') {
+                const attachment = stagedQualityAttachment(args, scope, true);
+                const folder = `projects/org_${scope.orgId}/proj_${args.projectId}/qaqc`;
+                const uploadedUrl = await storeQualityAttachment(fileFromAttachment(attachment), folder, qualityFileName(`obs_${args.observationId}_after`, args.observationId, attachment));
+                if (!uploadedUrl) fail('execution_failure', 'quality_attachment_not_saved');
+                const photos = JSON.stringify([{ url: uploadedUrl, label: 'Resolution View 1' }]);
+                const changed = await trx('proj_qaqc_observations').where({ id: args.observationId, project_id: args.projectId, status: 'PENDING' }).update({
+                    status: 'FIXED', after_photo_url: uploadedUrl, after_photos: photos, after_note: args.note?.trim() || null,
+                    fixed_by: scope.userId, fixed_at: trx.fn.now()
+                });
+                if (changed !== 1) fail('execution_failure', 'observation_fix_not_applied');
+                cleanupUpload(args.uploadId);
+                return { id: args.observationId };
+            }
+            if (tool.name.startsWith('qualityMethodologies.') || tool.name.startsWith('qualityChecklists.')) {
+                const spec = qualityDocumentTable(tool.name);
+                if (tool.name.endsWith('.create')) {
+                    const attachment = stagedQualityAttachment(args, scope);
+                    const [id] = await trx(spec.table).insert({ project_id: args.projectId, title: args.title.trim(), file_url: 'pending_upload',
+                        file_type: attachment.filename.split('.').pop()?.toUpperCase() || null, file_size: attachment.size,
+                        uploaded_by: scope.userId, uploaded_at: trx.fn.now() });
+                    if (!Number.isSafeInteger(Number(id)) || Number(id) < 1) fail('execution_failure', 'invalid_service_result');
+                    const url = await storeQualityAttachment(fileFromAttachment(attachment), `projects/org_${scope.orgId}/proj_${args.projectId}/${spec.folder}`,
+                        qualityFileName(spec.prefix, id, attachment));
+                    if (!url) fail('execution_failure', 'quality_attachment_not_saved');
+                    const changed = await trx(spec.table).where({ id, project_id: args.projectId }).update({ file_url: url });
+                    if (changed !== 1) fail('execution_failure', 'quality_document_not_saved');
+                    cleanupUpload(args.uploadId);
+                    return { id: Number(id) };
+                }
+                const updates = {};
+                if (args.title !== undefined) updates.title = args.title.trim();
+                if (args.uploadId !== undefined) {
+                    const attachment = stagedQualityAttachment(args, scope);
+                    const url = await storeQualityAttachment(fileFromAttachment(attachment), `projects/org_${scope.orgId}/proj_${args.projectId}/${spec.folder}`,
+                        qualityFileName(spec.prefix, args.documentId, attachment));
+                    if (!url) fail('execution_failure', 'quality_attachment_not_saved');
+                    updates.file_url = url;
+                    updates.file_type = attachment.filename.split('.').pop()?.toUpperCase() || null;
+                    updates.file_size = attachment.size;
+                    updates.uploaded_by = scope.userId;
+                    updates.uploaded_at = trx.fn.now();
+                }
+                const changed = await trx(spec.table).where({ id: args.documentId, project_id: args.projectId }).update(updates);
+                if (changed !== 1) fail('execution_failure', 'quality_document_update_not_applied');
+                if (args.uploadId) cleanupUpload(args.uploadId);
+                return { id: args.documentId };
+            }
             if (tool.name === 'tasks.create') {
                 const category = await trx('proj_task_categories').where({ project_id: args.projectId })
                     .whereRaw('LOWER(??) = ?', ['name', args.categoryName.trim().toLowerCase()]).first('id');

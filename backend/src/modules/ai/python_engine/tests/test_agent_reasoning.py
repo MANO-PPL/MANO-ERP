@@ -18,6 +18,20 @@ def metrics():
 
 
 class Reasoning(unittest.IsolatedAsyncioTestCase):
+    async def test_task_assignment_looks_up_project_members_after_task_search(self):
+        req = ModelRequest(
+            protocol="mano-agent-v1", requestId="r-assign", stepId="r-assign_2",
+            message="Assign Mano Manager to the selected task",
+            context={"route": "/projects/85", "module": "Tasks", "projectId": "85",
+                     "selectedEntityType": "task", "selectedEntityId": "90"},
+            generation="a" * 64, knowledge=[{"file": "projects/index.md", "content": "Project guidance"}],
+            results=[{"stepId": "r-assign_1", "tool": "tasks.search", "data": [{"id": 90, "name": "QA task"}]}],
+            allowedTools=["tasks.assign", "tasks.search", "projects.get"],
+        )
+        result = await reason(req)
+        self.assertEqual(result.tool, "projects.get")
+        self.assertEqual(result.arguments, {"projectId": 85})
+
     async def test_invented_data_and_missing_name_are_clarified_without_provider(self):
         async def provider(messages):
             raise AssertionError("Clarification must not call a provider")
@@ -52,6 +66,43 @@ class Reasoning(unittest.IsolatedAsyncioTestCase):
         result = await reason(request(), read_provider=groq)
         self.assertEqual(result.response.kind, "assistant")
         self.assertEqual(len(calls), 1)
+
+    async def test_quality_page_explanation_uses_read_profile(self):
+        seen = []
+
+        async def read_provider(messages, **kwargs):
+            seen.append(json.loads(messages[1]["content"]))
+            self.assertIn("QA/QC Matrix", messages[0]["content"])
+            self.assertIn("Do not claim a metrics dashboard", messages[0]["content"])
+            return Assistant(kind="assistant", text="Quality page fixture", sources=[]), metrics()
+
+        req = ModelRequest(
+            protocol="mano-agent-v1", requestId="r-quality-page", stepId="r-quality-page-1",
+            message="What can I do on this Quality page?",
+            context={"route": "/projects/85", "module": "Projects", "activeTab": "Quality", "projectId": "85"},
+            generation="a" * 64, knowledge=[{"file": "projects/index.md", "content": "Quality guidance"}],
+            results=[], allowedTools=["qualityObservations.create", "projects.get"],
+        )
+        with patch("agent_reasoning.complete_with_profile", side_effect=AssertionError("write profile called")):
+            result = await reason(req, read_provider=read_provider)
+
+        self.assertEqual(result.response.text, "Quality page fixture")
+        self.assertEqual(seen[0]["allowedTools"], [])
+
+    async def test_incomplete_quality_observation_asks_for_required_details_without_provider(self):
+        req = ModelRequest(
+            protocol="mano-agent-v1", requestId="r-quality-create", stepId="r-quality-create-1",
+            message="Create a quality observation for this project.",
+            context={"route": "/projects/85", "module": "Projects", "activeTab": "Quality", "projectId": "85"},
+            generation="a" * 64, knowledge=[{"file": "index.md", "content": "Overview"}],
+            results=[], allowedTools=["qualityObservations.create"],
+        )
+        with patch("agent_reasoning.complete_with_profile", side_effect=AssertionError("provider called")):
+            result = await reason(req)
+
+        self.assertIsInstance(result, Assistant)
+        self.assertIn("location", result.text)
+        self.assertIn("what you observed", result.text)
 
     async def test_write_requests_select_groq_write_profile(self):
         seen = {}
@@ -512,6 +563,207 @@ class Reasoning(unittest.IsolatedAsyncioTestCase):
         self.assertIn("projects.getExecutiveBriefing", tools)
         self.assertIn("projects.get", tools)
         self.assertIn("tasks.search", tools)
+
+    def test_write_tool_selection_prioritizes_explicit_operation_over_project_scope(self):
+        from agent_reasoning import select_write_tools
+        allowed = [
+            "projects.create", "projects.update", "meetings.create", "meetings.update",
+            "summaries.create", "summaries.update", "qualityObservations.create",
+            "qualityObservations.update", "projects.search", "projects.get",
+        ]
+        for message, expected in [
+            ("Create a project summary titled QA update", {"summaries.create", "summaries.update"}),
+            ("Schedule a meeting for this project", {"meetings.create", "meetings.update"}),
+            ("Create a quality observation for this project", {"qualityObservations.create", "qualityObservations.update"}),
+        ]:
+            req = ModelRequest(
+                protocol="mano-agent-v1", requestId="r-write", stepId="r-write-1", message=message,
+                context={"route": "/projects/4", "module": "Projects", "projectId": "4"},
+                generation="a" * 64, knowledge=[{"file": "projects/index.md", "content": "Projects knowledge"}],
+                results=[], allowedTools=allowed,
+            )
+            selected = set(select_write_tools(req))
+            self.assertTrue(expected.issubset(selected), message)
+            self.assertNotIn("projects.create", selected, message)
+
+    def test_task_write_selection_exposes_only_requested_mutation(self):
+        from agent_reasoning import select_write_tools
+        task_mutations = {
+            "tasks.create", "tasks.update", "tasks.deleteSelected", "tasks.assign", "tasks.createCategory",
+            "tasks.updateCategory", "tasks.reorder",
+        }
+        for message, expected in [
+            ("Create a task named QA test for this project", "tasks.create"),
+            ("Update the selected task's priority to High", "tasks.update"),
+            ("Assign a member to the selected task", "tasks.assign"),
+            ("Create a task category called QA", "tasks.createCategory"),
+            ("Rename the selected task category to QA", "tasks.updateCategory"),
+            ("Reorder the tasks in this project", "tasks.reorder"),
+            ("Delete these selected tasks from this project", "tasks.deleteSelected"),
+        ]:
+            req = ModelRequest(
+                protocol="mano-agent-v1", requestId="r-task-write", stepId="r-task-write-1",
+                message=message, context={"route": "/projects/4", "module": "Tasks", "projectId": "4"},
+                generation="a" * 64, knowledge=[{"file": "projects/index.md", "content": "Projects knowledge"}],
+                results=[], allowedTools=list(task_mutations | {"projects.search", "projects.get", "tasks.search"}),
+            )
+            selected = set(select_write_tools(req))
+            self.assertEqual(selected & task_mutations, {expected}, message)
+            self.assertIn("tasks.search", selected, message)
+
+    def test_named_vendor_party_add_exposes_vendor_lookup(self):
+        from agent_reasoning import select_write_tools
+        req = ModelRequest(
+            protocol="mano-agent-v1", requestId="r-party-add", stepId="r-party-add-1",
+            message="Add the existing vendor Agent QA Vendor 20260927 as a contractor to this project.",
+            context={"route": "/projects/85", "module": "Projects", "projectId": "85"},
+            generation="a" * 64, knowledge=[{"file": "projects/index.md", "content": "Projects knowledge"}],
+            results=[], allowedTools=[
+                "projectParties.add", "projectParties.update", "vendors.search", "vendors.get",
+                "projects.search", "projects.get",
+            ],
+        )
+        selected = set(select_write_tools(req))
+        self.assertIn("projectParties.add", selected)
+        self.assertIn("vendors.search", selected)
+        self.assertNotIn("projectParties.update", selected)
+
+    async def test_party_add_rejects_verified_category_mismatch(self):
+        async def provider(messages):
+            return ToolIntent(kind="tool", tool="projectParties.add", version=1,
+                              arguments={"projectId": 85, "contactId": 42}), metrics().model_copy(
+                                  update={"finishReason": "tool_calls"})
+
+        base = ModelRequest(
+            protocol="mano-agent-v1", requestId="r-party-role", stepId="r-party-role-2",
+            message="Add the existing vendor Example Vendor as a contractor to this project.",
+            context={"route": "/projects/85", "module": "Projects", "projectId": "85"},
+            generation="a" * 64, knowledge=[{"file": "projects/index.md", "content": "Projects knowledge"}],
+            results=[{"stepId": "r-party-role-1", "tool": "vendors.search",
+                      "data": [{"id": 42, "name": "Example Vendor", "category": "Supplier"}]}],
+            allowedTools=["projectParties.add", "vendors.search"],
+        )
+        result = await reason(base, provider)
+        self.assertEqual(result.response.kind, "assistant")
+        self.assertIn("Supplier, not Contractor", result.response.text)
+        self.assertEqual(result.diagnostics.finishReason, "stop")
+
+        matching = base.model_copy(update={"results": [base.results[0].model_copy(update={
+            "data": [{"id": 42, "name": "Example Vendor", "category": "Contractor"}]})]})
+        matching_result = await reason(matching, provider)
+        self.assertEqual(matching_result.response.tool, "projectParties.add")
+        self.assertEqual(matching_result.diagnostics.finishReason, "tool_calls")
+
+    async def test_answer_to_directory_write_clarification_stays_on_write_path(self):
+        seen = {}
+
+        async def write_provider(profile, messages, **kwargs):
+            seen["profile"] = profile
+            seen["native_operations"] = kwargs.get("native_operations")
+            seen["request"] = json.loads(messages[1]["content"])
+            return ToolIntent(
+                kind="tool", tool="directory.create", version=1,
+                arguments={"projectId": 4, "contact_person": "Tester", "designation": "Employee"},
+            ), metrics()
+
+        req = ModelRequest(
+            protocol="mano-agent-v1", requestId="r-directory-followup", stepId="r-directory-followup-1",
+            message="Tester is the name",
+            context={"route": "/projects/4/directory", "module": "Projects", "projectId": "4"},
+            history=[
+                {"role": "user", "text": "Add Employee to this project directory as employee"},
+                {"role": "assistant", "text": "No ERP changes were made. I need the employee's name (and optional contact details) to add them to the project directory. Could you provide that information?"},
+            ],
+            generation="a" * 64, knowledge=[
+                {"file": "index.md", "content": "Overview"},
+                {"file": "projects/index.md", "content": "Project directory guidance"},
+            ],
+            results=[], allowedTools=["projects.search", "projects.get", "directory.create", "directory.update"],
+        )
+        with patch("agent_reasoning.complete_with_profile", new=write_provider):
+            result = await reason(req)
+
+        self.assertEqual(result.response.tool, "directory.create")
+        self.assertIn("directory.create", seen["native_operations"])
+        self.assertIn("directory.update", seen["native_operations"])
+        self.assertNotIn("projects.create", seen["native_operations"])
+        self.assertEqual(seen["request"]["message"], "Tester is the name")
+        self.assertEqual(seen["request"]["history"][-1]["role"], "assistant")
+
+    async def test_scheduled_meeting_is_a_write_and_never_an_executive_briefing(self):
+        seen = {}
+
+        async def write_provider(profile, messages, **kwargs):
+            seen["tools"] = kwargs.get("native_operations")
+            return ToolIntent(
+                kind="tool", tool="meetings.create", version=1,
+                arguments={"projectId": 4, "subject": "QA review"},
+            ), metrics()
+
+        req = ModelRequest(
+            protocol="mano-agent-v1", requestId="r-meeting", stepId="r-meeting-1",
+            message="Schedule a meeting for this project titled QA review",
+            context={"route": "/projects/4", "module": "Projects", "projectId": "4"},
+            generation="a" * 64, knowledge=[{"file": "projects/index.md", "content": "Projects knowledge"}],
+            results=[], allowedTools=[
+                "projects.getExecutiveBriefing", "projects.search", "projects.get",
+                "meetings.create", "meetings.update",
+            ],
+        )
+        with patch("agent_reasoning.complete_with_profile", new=write_provider):
+            result = await reason(req)
+        self.assertEqual(result.response.tool, "meetings.create")
+        self.assertIn("meetings.create", seen["tools"])
+        self.assertNotIn("projects.getExecutiveBriefing", seen["tools"])
+
+    async def test_incomplete_native_write_retries_in_json_mode(self):
+        failures = [
+            ProviderFailure(
+                "provider_http_failure",
+                provider="groq",
+                http_status=400,
+                provider_error_category="tool_generation_failure",
+            ),
+            ProviderFailure(
+                "provider_output_empty",
+                provider="groq",
+                profile="groq-oss-20b",
+                finish_reason="stop",
+                completion_tokens=66,
+                content_length=0,
+            ),
+            ProviderFailure("provider_output_invalid_json", provider="groq", profile="groq-oss-20b"),
+            ProviderFailure("provider_output_limit", provider="groq", profile="groq-oss-20b"),
+        ]
+        for failure in failures:
+            calls = []
+
+            async def write_provider(profile, messages, **kwargs):
+                calls.append({"messages": messages, **kwargs})
+                if len(calls) == 1:
+                    raise failure
+                return ToolIntent(
+                    kind="tool", tool="meetings.create", version=1,
+                    arguments={"projectId": 4, "subject": "QA review"},
+                ), metrics()
+
+            req = ModelRequest(
+                protocol="mano-agent-v1", requestId="r-meeting-retry", stepId="r-meeting-retry-1",
+                message="Schedule a meeting for this project titled QA review",
+                context={"route": "/projects/4", "module": "Projects", "projectId": "4"},
+                generation="a" * 64, knowledge=[{"file": "projects/index.md", "content": "Projects knowledge"}],
+                results=[], allowedTools=["meetings.create"],
+            )
+            with patch("agent_reasoning.complete_with_profile", new=write_provider):
+                result = await reason(req)
+
+            self.assertEqual(result.response.tool, "meetings.create")
+            self.assertEqual(len(calls), 2)
+            self.assertEqual(calls[0]["native_operations"], ["meetings.create"])
+            self.assertIsNone(calls[1]["native_operations"])
+            self.assertIn("native function call", calls[0]["messages"][0]["content"])
+            self.assertIn("Return exactly one JSON object", calls[1]["messages"][0]["content"])
+            self.assertNotIn("native function call", calls[1]["messages"][0]["content"])
 
     async def test_show_the_tasks_routes_to_tasks_search_not_briefing(self):
         req = ModelRequest(
