@@ -14,7 +14,10 @@ export default function MobileBottomSheet({
     closeLabel = 'Close',
     closeDisabled = false,
     returnFocusRef,
+    placement = 'bottom',
+    variant,
 }) {
+    const isCenter = placement === 'center' || variant === 'popup';
     const panelRef = useRef(null);
     const restoreFocusTargetRef = useRef(null);
     const onCloseRef = useRef(onClose);
@@ -27,7 +30,8 @@ export default function MobileBottomSheet({
     onCloseRef.current = onClose;
     useBodyScrollLock(open);
     const canClose = typeof onClose === 'function' && !closeDisabled;
-    const panelStyle = {
+
+    const panelStyle = isCenter ? undefined : {
         transform: dragOffset ? `translate3d(0, ${dragOffset}px, 0)` : undefined,
         ...(snap === BOTTOM_SHEET_EXPANDED
             ? {
@@ -37,7 +41,7 @@ export default function MobileBottomSheet({
             }
             : {
                 bottom: 0,
-                height: 'min(88dvh, 760px)',
+                maxHeight: 'min(88dvh, 760px)',
             }),
     };
 
@@ -53,6 +57,7 @@ export default function MobileBottomSheet({
     }, [restoreFocus]);
 
     const finishDrag = useCallback((event, cancelled = false) => {
+        if (isCenter) return;
         const drag = dragRef.current;
         if (!drag || (event && drag.pointerId !== event.pointerId)) return;
         dragRef.current = null;
@@ -64,17 +69,19 @@ export default function MobileBottomSheet({
         const result = resolveBottomSheetGesture({ origin: drag.origin, deltaX, deltaY, velocityY, canClose, cancelled: cancelled || drag.horizontal });
         if (result.action === 'dismiss') requestClose();
         else setSnap(result.state);
-    }, [canClose, requestClose]);
+    }, [canClose, isCenter, requestClose]);
 
     const startDrag = useCallback((event) => {
+        if (isCenter) return;
         if (event.button !== undefined && event.button !== 0) return;
         if (event.target.closest('button, a, input, select, textarea, [data-bottom-sheet-no-drag]')) return;
         dragRef.current = { pointerId: event.pointerId, startX: event.clientX, startY: event.clientY, lastX: event.clientX, lastY: event.clientY, lastDeltaY: 0, lastTime: performance.now(), velocityY: 0, origin: snap, horizontal: false };
         event.currentTarget.setPointerCapture?.(event.pointerId);
         setDragging(true);
-    }, [snap]);
+    }, [isCenter, snap]);
 
     const moveDrag = useCallback((event) => {
+        if (isCenter) return;
         const drag = dragRef.current;
         if (!drag || drag.pointerId !== event.pointerId) return;
         const deltaX = event.clientX - drag.startX;
@@ -89,7 +96,7 @@ export default function MobileBottomSheet({
         drag.lastDeltaY = deltaY;
         drag.lastTime = now;
         setDragOffset(bottomSheetDragOffset({ origin: drag.origin, deltaX, deltaY }));
-    }, []);
+    }, [isCenter]);
 
     useEffect(() => {
         if (open) { setSnap(BOTTOM_SHEET_DEFAULT); setDragOffset(0); setDragging(false); }
@@ -148,15 +155,59 @@ export default function MobileBottomSheet({
 
     if (!open || typeof document === 'undefined') return null;
 
+    if (isCenter) {
+        return createPortal(
+            <div className="fixed inset-0 z-[60] flex items-center justify-center p-3 sm:p-4" data-testid="mobile-bottom-sheet-layer">
+                <div
+                    aria-hidden="true"
+                    onClick={canClose ? requestClose : undefined}
+                    className="fixed inset-0 bg-black/60 backdrop-blur-sm transition-opacity animate-in fade-in duration-150"
+                />
+                <section
+                    ref={panelRef}
+                    role="dialog"
+                    aria-modal="true"
+                    aria-labelledby={title ? titleId : undefined}
+                    aria-describedby={description ? descriptionId : undefined}
+                    tabIndex={-1}
+                    className="relative w-full max-w-lg max-h-[85dvh] my-auto flex flex-col overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-2xl outline-none dark:border-gh-border dark:bg-gh-subtle z-10 animate-in fade-in zoom-in-95 duration-150"
+                >
+                    {(title || description || canClose) && (
+                        <div className="flex min-h-12 items-center justify-between gap-3 border-b border-gray-100 px-4 py-3 dark:border-gh-border shrink-0">
+                            <div className="min-w-0 flex-1">
+                                {title && <h2 id={titleId} className="text-sm font-semibold text-gray-900 dark:text-gh-text truncate">{title}</h2>}
+                                {description && <p id={descriptionId} className="mt-0.5 text-xs font-normal leading-relaxed text-gray-500 dark:text-gh-muted">{description}</p>}
+                            </div>
+                            <button
+                                type="button"
+                                aria-label={closeLabel}
+                                disabled={!canClose}
+                                onClick={canClose ? requestClose : undefined}
+                                className="inline-flex min-h-8 min-w-8 shrink-0 items-center justify-center rounded-lg text-gray-400 hover:text-gray-600 hover:bg-gray-100 focus-visible:outline focus-visible:outline-2 focus-visible:outline-blue-500 disabled:cursor-not-allowed disabled:opacity-40 dark:text-gh-muted dark:hover:text-white dark:hover:bg-gh-hover transition-colors"
+                            >
+                                <X size={18} aria-hidden="true" />
+                            </button>
+                        </div>
+                    )}
+                    <div data-testid="mobile-bottom-sheet-content" className="min-h-0 flex-1 overflow-x-hidden overflow-y-auto overscroll-contain p-4">
+                        {children}
+                    </div>
+                    {footer && <div className="shrink-0 border-t border-gray-100 bg-gray-50/70 px-4 py-3 dark:border-gh-border dark:bg-gh-subtle">{footer}</div>}
+                </section>
+            </div>,
+            document.body,
+        );
+    }
+
     return createPortal(
-        <div className="fixed inset-0 z-[60]" data-testid="mobile-bottom-sheet-layer">
+        <div className="fixed inset-0 z-[60] flex flex-col justify-end" data-testid="mobile-bottom-sheet-layer">
             <button
                 type="button"
                 tabIndex={-1}
                 aria-label={closeLabel}
                 disabled={!canClose}
                 onClick={canClose ? requestClose : undefined}
-                className="absolute inset-0 bg-slate-950/45 backdrop-blur-[1px]"
+                className="fixed inset-0 bg-black/55 backdrop-blur-[2px] transition-opacity animate-in fade-in duration-200"
             />
             <section
                 ref={panelRef}
@@ -168,7 +219,7 @@ export default function MobileBottomSheet({
                 data-bottom-sheet-snap={snap}
                 data-bottom-sheet-dragging={dragging ? 'true' : 'false'}
                 style={panelStyle}
-                className={`absolute inset-x-0 flex flex-col overflow-hidden rounded-t-3xl border border-b-0 border-gray-200 bg-white pb-[env(safe-area-inset-bottom)] shadow-2xl outline-none transition-[transform,height,top] duration-200 motion-reduce:transition-none dark:border-gh-border dark:bg-gh-subtle ${dragging ? 'transition-none' : ''}`}
+                className={`relative w-full max-w-lg mx-auto flex flex-col overflow-hidden rounded-t-3xl border-t border-gray-200 bg-white pb-[env(safe-area-inset-bottom)] shadow-2xl outline-none transition-[transform,height,top] duration-200 motion-reduce:transition-none dark:border-gh-border dark:bg-gh-subtle animate-in slide-in-from-bottom duration-200 z-10 ${dragging ? 'transition-none' : ''}`}
             >
                 <div
                     data-testid="mobile-bottom-sheet-drag-region"
@@ -177,13 +228,14 @@ export default function MobileBottomSheet({
                     onPointerUp={finishDrag}
                     onPointerCancel={(event) => finishDrag(event, true)}
                     onLostPointerCapture={(event) => finishDrag(event, true)}
-                    className="shrink-0 touch-none select-none"
+                    className="shrink-0 touch-none select-none pt-2.5 pb-1"
                 >
-                    <div className="mx-auto mt-2 h-1 w-10 rounded-full bg-gray-300 dark:bg-gray-600" aria-hidden="true" />
-                    <div className="flex min-h-14 items-start gap-3 border-b border-gray-100 px-4 py-3 dark:border-gh-border">
+                    <div className="mx-auto h-1 w-10 rounded-full bg-gray-300 dark:bg-gray-600" aria-hidden="true" />
+                </div>
+                <div className="flex min-h-11 items-center justify-between gap-3 border-b border-gray-100 px-4 py-2 dark:border-gh-border shrink-0">
                     <div className="min-w-0 flex-1">
-                        {title && <h2 id={titleId} className="text-base font-bold text-gray-900 dark:text-gh-text">{title}</h2>}
-                        {description && <p id={descriptionId} className="mt-0.5 text-xs leading-5 text-gray-500 dark:text-gh-muted">{description}</p>}
+                        {title && <h2 id={titleId} className="text-sm font-semibold text-gray-900 dark:text-gh-text truncate">{title}</h2>}
+                        {description && <p id={descriptionId} className="mt-0.5 text-xs font-normal leading-relaxed text-gray-500 dark:text-gh-muted">{description}</p>}
                     </div>
                     <button
                         type="button"
@@ -191,16 +243,15 @@ export default function MobileBottomSheet({
                         disabled={!canClose}
                         data-bottom-sheet-no-drag
                         onClick={canClose ? requestClose : undefined}
-                        className="inline-flex min-h-11 min-w-11 shrink-0 items-center justify-center rounded-xl text-gray-500 hover:bg-gray-100 focus-visible:outline focus-visible:outline-2 focus-visible:outline-blue-500 disabled:cursor-not-allowed disabled:opacity-40 dark:text-gh-muted dark:hover:bg-gh-hover"
+                        className="inline-flex min-h-8 min-w-8 shrink-0 items-center justify-center rounded-lg text-gray-400 hover:text-gray-600 hover:bg-gray-100 focus-visible:outline focus-visible:outline-2 focus-visible:outline-blue-500 disabled:cursor-not-allowed disabled:opacity-40 dark:text-gh-muted dark:hover:text-white dark:hover:bg-gh-hover transition-colors"
                     >
-                        <X size={20} aria-hidden="true" />
+                        <X size={18} aria-hidden="true" />
                     </button>
-                    </div>
                 </div>
                 <div data-testid="mobile-bottom-sheet-content" className="min-h-0 flex-1 overflow-x-hidden overflow-y-auto overscroll-contain p-4">
                     {children}
                 </div>
-                {footer && <div className="shrink-0 border-t border-gray-100 bg-white px-4 py-3 dark:border-gh-border dark:bg-gh-subtle">{footer}</div>}
+                {footer && <div className="shrink-0 border-t border-gray-100 bg-gray-50/70 px-4 py-3 dark:border-gh-border dark:bg-gh-subtle">{footer}</div>}
             </section>
         </div>,
         document.body,
@@ -222,13 +273,13 @@ export function MobileActionSheet({ open, onClose, title = 'Actions', actions = 
                                 action.onSelect?.();
                                 if (action.closeOnSelect !== false) onClose?.();
                             }}
-                            className={`flex min-h-12 w-full items-center gap-3 rounded-xl px-3 text-left text-sm font-semibold transition-colors disabled:cursor-not-allowed disabled:opacity-50 ${
+                            className={`flex min-h-10 w-full items-center gap-2.5 rounded-lg px-2.5 text-left text-xs font-semibold transition-colors disabled:cursor-not-allowed disabled:opacity-50 ${
                                 action.danger
                                     ? 'text-red-700 hover:bg-red-50 dark:text-red-300 dark:hover:bg-red-950/40'
                                     : 'text-gray-700 hover:bg-gray-100 dark:text-gh-text dark:hover:bg-gh-hover'
                             }`}
                         >
-                            {Icon && <Icon size={19} aria-hidden="true" />}
+                            {Icon && <Icon size={16} aria-hidden="true" />}
                             <span className="min-w-0 flex-1">{action.label}</span>
                         </button>
                     );

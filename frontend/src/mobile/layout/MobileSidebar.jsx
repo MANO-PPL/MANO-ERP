@@ -90,21 +90,21 @@ export default function MobileSidebar({ open, onClose, onNavigate, loadProjects 
                 aria-label="Main navigation"
                 className="absolute inset-y-0 left-0 flex w-[min(86vw,340px)] flex-col overflow-hidden border-r border-gray-200 bg-white pb-[env(safe-area-inset-bottom)] pt-[env(safe-area-inset-top)] shadow-2xl dark:border-gh-border dark:bg-gh-subtle"
             >
-                <div className="flex min-h-14 items-center gap-2 border-b border-gray-200 px-4 dark:border-gh-border">
-                    <img src="/mano-logo.svg" alt="" className="h-8 w-8 object-contain" />
-                    <span className="flex-1 text-sm font-extrabold text-gray-900 dark:text-gh-text">MANO ERP</span>
+                <div className="flex min-h-12 items-center gap-2 border-b border-gray-200 px-3 dark:border-gh-border">
+                    <img src="/mano-logo.svg" alt="" className="h-6 w-6 object-contain" />
+                    <span className="flex-1 text-xs font-semibold text-gray-900 dark:text-gh-text">MANO ERP</span>
                     <button
                         ref={closeButtonRef}
                         type="button"
                         aria-label="Close navigation drawer"
                         onClick={onClose}
-                        className="inline-flex min-h-11 min-w-11 items-center justify-center rounded-xl text-gray-500 hover:bg-gray-100 focus-visible:outline focus-visible:outline-2 focus-visible:outline-blue-500 dark:text-gh-muted dark:hover:bg-gh-hover"
+                        className="inline-flex min-h-9 min-w-9 items-center justify-center rounded-lg text-gray-500 hover:bg-gray-100 focus-visible:outline focus-visible:outline-2 focus-visible:outline-blue-500 dark:text-gh-muted dark:hover:bg-gh-hover"
                     >
-                        <X size={21} aria-hidden="true" />
+                        <X size={18} aria-hidden="true" />
                     </button>
                 </div>
 
-                <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-3 py-4">
+                <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-2 py-3">
                     <nav aria-label="ERP sections" className="space-y-1">
                         {navItems.map((item) => {
                             const Icon = ICONS[item.icon];
@@ -114,36 +114,36 @@ export default function MobileSidebar({ open, onClose, onNavigate, loadProjects 
                                     to={item.path}
                                     end={item.path === '/'}
                                     onClick={(event) => navigateTo(event, item.path)}
-                                    className={({ isActive }) => `flex min-h-11 items-center gap-3 rounded-xl px-3 text-sm font-semibold transition-colors ${
+                                    className={({ isActive }) => `flex min-h-9 items-center gap-2.5 rounded-lg px-2.5 text-xs font-medium transition-colors ${
                                         isActive
-                                            ? 'bg-blue-50 text-blue-700 dark:bg-blue-950/60 dark:text-blue-300'
+                                            ? 'bg-blue-50 font-semibold text-blue-700 dark:bg-blue-950/60 dark:text-blue-300'
                                             : 'text-gray-600 hover:bg-gray-100 dark:text-gh-muted dark:hover:bg-gh-hover'
                                     }`}
                                 >
-                                    <Icon size={19} aria-hidden="true" />
+                                    <Icon size={16} aria-hidden="true" />
                                     <span className="min-w-0 flex-1 truncate">{item.label}</span>
-                                    <ChevronRight size={16} aria-hidden="true" className="opacity-50" />
+                                    <ChevronRight size={14} aria-hidden="true" className="opacity-50" />
                                 </NavLink>
                             );
                         })}
                     </nav>
 
-                    <section className="mt-6" aria-labelledby="mobile-recent-projects-heading">
-                        <h2 id="mobile-recent-projects-heading" className="px-3 text-[11px] font-bold uppercase tracking-[0.14em] text-gray-400 dark:text-gray-500">
+                    <section className="mt-4" aria-labelledby="mobile-recent-projects-heading">
+                        <h2 id="mobile-recent-projects-heading" className="px-2.5 text-[10px] font-semibold uppercase tracking-wider text-gray-400 dark:text-gray-500">
                             Recent projects
                         </h2>
-                        <div className="mt-2 space-y-1">
-                            {loading && <p role="status" className="px-3 py-2 text-xs text-gray-500 dark:text-gh-muted">Loading projects…</p>}
-                            {!loading && error && <p className="px-3 py-2 text-xs text-gray-500 dark:text-gh-muted">Projects unavailable</p>}
-                            {!loading && !error && projects.length === 0 && <p className="px-3 py-2 text-xs text-gray-500 dark:text-gh-muted">No assigned projects</p>}
+                        <div className="mt-1.5 space-y-1">
+                            {loading && <div className="space-y-1.5 px-2.5 py-1">{[1, 2, 3].map((key) => <div key={key} className="flex min-h-8 items-center gap-2.5"><div className="h-4 w-4 animate-pulse rounded bg-gray-200 dark:bg-white/10" /><div className="h-3 w-32 animate-pulse rounded bg-gray-200 dark:bg-white/10" /></div>)}</div>}
+                            {!loading && error && <p className="px-2.5 py-1.5 text-xs text-gray-500 dark:text-gh-muted">Projects unavailable</p>}
+                            {!loading && !error && projects.length === 0 && <p className="px-2.5 py-1.5 text-xs text-gray-500 dark:text-gh-muted">No assigned projects</p>}
                             {projects.map((project) => (
                                 <NavLink
                                     key={project.id}
                                     to={`/projects/${project.id}`}
                                     onClick={(event) => navigateTo(event, `/projects/${project.id}`)}
-                                    className="flex min-h-11 items-center gap-3 rounded-xl px-3 text-sm text-gray-600 hover:bg-gray-100 dark:text-gh-muted dark:hover:bg-gh-hover"
+                                    className="flex min-h-8 items-center gap-2.5 rounded-lg px-2.5 text-xs font-normal text-gray-600 hover:bg-gray-100 dark:text-gh-muted dark:hover:bg-gh-hover"
                                 >
-                                    <BriefcaseBusiness size={17} aria-hidden="true" className="shrink-0 text-blue-500" />
+                                    <BriefcaseBusiness size={15} aria-hidden="true" className="shrink-0 text-blue-500" />
                                     <span className="min-w-0 flex-1 truncate">{project.name}</span>
                                 </NavLink>
                             ))}
@@ -151,13 +151,13 @@ export default function MobileSidebar({ open, onClose, onNavigate, loadProjects 
                     </section>
                 </div>
 
-                <div className="flex items-center gap-3 border-t border-gray-200 px-4 py-3 dark:border-gh-border">
-                    <span className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-blue-100 text-xs font-bold text-blue-700 dark:bg-blue-950 dark:text-blue-300">
+                <div className="flex items-center gap-2.5 border-t border-gray-200 px-3 py-2.5 dark:border-gh-border">
+                    <span className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-blue-100 text-xs font-semibold text-blue-700 dark:bg-blue-950 dark:text-blue-300">
                         {initialsFor(user?.user_name)}
                     </span>
                     <div className="min-w-0">
-                        <p className="truncate text-sm font-bold text-gray-900 dark:text-gh-text">{user?.user_name || 'User'}</p>
-                        <p className="truncate text-xs text-gray-500 dark:text-gh-muted">{user?.desg_name || user?.user_type || 'Employee'}</p>
+                        <p className="truncate text-xs font-semibold text-gray-900 dark:text-gh-text">{user?.user_name || 'User'}</p>
+                        <p className="truncate text-[11px] font-normal text-gray-500 dark:text-gh-muted">{user?.desg_name || user?.user_type || 'Employee'}</p>
                     </div>
                 </div>
             </aside>
