@@ -5,7 +5,7 @@ export default function MobileTabs({ items = [], value, onChange, label = 'Secti
         <div
             role="tablist"
             aria-label={label}
-            className={`flex max-w-full gap-1 overflow-x-auto overscroll-x-contain ${segmented ? 'rounded-xl bg-gray-100 p-1 dark:bg-gh-subtle' : 'border-b border-gray-200 dark:border-gh-border'}`}
+            className={`flex max-w-full gap-1 overflow-x-auto overscroll-x-contain ${segmented ? 'rounded-lg bg-gray-100 p-0.5 dark:bg-gh-subtle' : 'border-b border-gray-200 dark:border-gh-border'}`}
         >
             {items.map((item) => {
                 const selected = item.value === value;
@@ -17,16 +17,16 @@ export default function MobileTabs({ items = [], value, onChange, label = 'Secti
                         aria-selected={selected}
                         disabled={item.disabled}
                         onClick={() => onChange?.(item.value)}
-                        className={`min-h-11 shrink-0 rounded-lg px-3 text-sm font-semibold transition-colors disabled:opacity-50 ${
+                        className={`min-h-8 shrink-0 rounded-md px-2.5 text-xs font-medium transition-colors disabled:opacity-50 ${
                             selected
                                 ? segmented
-                                    ? 'bg-white text-blue-700 shadow-sm dark:bg-gh-hover dark:text-blue-300'
-                                    : 'border-b-2 border-blue-600 text-blue-700 dark:border-blue-400 dark:text-blue-300'
+                                    ? 'bg-white font-semibold text-blue-700 shadow-sm dark:bg-gh-hover dark:text-blue-300'
+                                    : 'border-b-2 border-blue-600 font-semibold text-blue-700 dark:border-blue-400 dark:text-blue-300'
                                 : 'text-gray-500 hover:text-gray-900 dark:text-gh-muted dark:hover:text-gh-text'
                         }`}
                     >
                         {item.label}
-                        {item.count != null && <span className="ml-1.5 text-[11px] opacity-70">{item.count}</span>}
+                        {item.count != null && <span className="ml-1.5 text-[10px] opacity-70">{item.count}</span>}
                     </button>
                 );
             })}

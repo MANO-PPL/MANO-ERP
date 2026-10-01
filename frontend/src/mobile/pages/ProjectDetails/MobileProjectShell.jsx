@@ -32,6 +32,21 @@ export default function MobileProjectShell({ authOverride, projectService, modul
         }
     }, [activeKey, loading, searchParams, setSearchParams]);
 
+    useEffect(() => {
+        if (activeModule?.label) {
+            window.dispatchEvent(new CustomEvent('active-project-tab-updated', { detail: activeModule.label }));
+        }
+    }, [activeModule?.label]);
+
+
+    useEffect(() => {
+        const handleOpenModules = () => {
+            drawer.openDrawer();
+        };
+        window.addEventListener('open-mobile-project-modules', handleOpenModules);
+        return () => window.removeEventListener('open-mobile-project-modules', handleOpenModules);
+    }, [drawer]);
+
     const selectModule = (moduleKey) => {
         const nextSearch = updateProjectModuleSearch(searchParams, moduleKey);
         drawer.navigateFromDrawer(`${location.pathname}${nextSearch}`);
@@ -44,12 +59,10 @@ export default function MobileProjectShell({ authOverride, projectService, modul
     };
 
     if (loading) return <MobileLoadingState label="Loading project" rows={4} />;
-    if (error) return <div className="px-4 pb-28"><MobileEmptyState title="Project unavailable" description={error?.message || 'The project could not be loaded.'} action={<button type="button" onClick={refresh} className="min-h-11 rounded-xl bg-blue-600 px-4 text-sm font-bold text-white">Try again</button>} /></div>;
-    if (!project || !activeModule) return <div className="px-4 pb-28"><MobileEmptyState title="Project unavailable" description="No project context was returned." /></div>;
+    if (error) return <div className="w-full min-w-0 px-2 sm:px-3 pb-24"><MobileEmptyState title="Project unavailable" description={error?.message || 'The project could not be loaded.'} action={<button type="button" onClick={refresh} className="min-h-10 rounded-xl bg-blue-600 px-4 text-xs font-semibold text-white">Try again</button>} /></div>;
+    if (!project || !activeModule) return <div className="w-full min-w-0 px-2 sm:px-3 pb-24"><MobileEmptyState title="Project unavailable" description="No project context was returned." /></div>;
 
-    return <div data-mobile-page="project-shell" className="min-w-0 pb-4">
-        <div ref={moduleButtonRef}><MobileProjectHeader project={project} projectId={projectId} activeModule={activeModule.label} onBack={() => navigate('/projects')} onOpenModules={drawer.openDrawer} /></div>
-        <button type="button" aria-label="Open project module selector" onClick={drawer.openDrawer} className="mx-4 mb-4 flex min-h-12 w-[calc(100%-2rem)] items-center justify-between rounded-xl border border-gray-200 bg-white px-4 text-left shadow-sm dark:border-gh-border dark:bg-gh-subtle"><span><span className="block text-[10px] font-bold uppercase text-gray-500">Current module</span><span className="mt-1 block text-sm font-bold text-gray-950 dark:text-gh-text">{activeModule.label}</span></span><span className="text-xs font-bold text-blue-600 dark:text-blue-400">Change</span></button>
+    return <div data-mobile-page="project-shell" className="w-full min-w-0 pb-4">
         <MobileProjectModuleOutlet module={activeModule} project={project} projectId={projectId} permissions={permissions} visibleModules={modules} isAdmin={isAdmin} user={user} canWrite={canWrite} refreshProject={refresh} onSelectModule={navigateToModule} services={moduleServices} taskService={moduleServices.tasks} projectService={moduleServices.projects || projectService} />
         <MobileProjectModuleSheet open={drawer.isOpen} onClose={drawer.closeDrawer} modules={modules} activeKey={activeKey} onSelect={selectModule} />
     </div>;
