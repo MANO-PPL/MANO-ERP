@@ -7,8 +7,10 @@ const ToastContext = createContext(null);
 export const ToastProvider = ({ children }) => {
     const [toast, setToast] = useState(null);
 
-    const showToast = useCallback((type, title, message, duration = 3500) => {
-        setToast({ type, title, message, duration, id: Date.now() });
+    const showToast = useCallback((type, title, message, duration = 3000) => {
+        const actualMessage = message !== undefined ? message : title;
+        const actualTitle = message !== undefined ? title : null;
+        setToast({ type, title: actualTitle, message: actualMessage, duration, id: Date.now() });
     }, []);
 
     useEffect(() => {
@@ -39,11 +41,11 @@ export const useToast = () => {
     if (!context) {
         return {
             showToast: customToast.show,
-            showSuccess: (title, message) => customToast.success(message, title),
-            showError: (title, message) => customToast.error(message, title),
-            showWarning: (title, message) => customToast.warning(message, title),
-            showInfo: (title, message) => customToast.info(message, title),
-            showSparkle: (title, message) => customToast.sparkle(message, title),
+            showSuccess: (title, message) => customToast.success(message !== undefined ? message : title, message !== undefined ? title : 'Success'),
+            showError: (title, message) => customToast.error(message !== undefined ? message : title, message !== undefined ? title : 'Error'),
+            showWarning: (title, message) => customToast.warning(message !== undefined ? message : title, message !== undefined ? title : 'Warning'),
+            showInfo: (title, message) => customToast.info(message !== undefined ? message : title, message !== undefined ? title : 'Info'),
+            showSparkle: (title, message) => customToast.sparkle(message !== undefined ? message : title, message !== undefined ? title : 'Notification'),
             hideToast: () => {}
         };
     }

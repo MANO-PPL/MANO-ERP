@@ -135,7 +135,9 @@ api.interceptors.response.use(
                 processQueue(refreshError, null);
                 setAccessToken(null);
                 try {
+                    localStorage.removeItem('mano_access_token');
                     sessionStorage.clear();
+                    document.cookie = 'userType=; path=/; expires=Thu, 01 Jan 1970 00:00:00 GMT; max-age=0';
                 } catch (e) {}
                 if (window.location.pathname !== '/login') {
                     window.location.href = '/login';

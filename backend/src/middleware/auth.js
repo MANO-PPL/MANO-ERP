@@ -43,6 +43,9 @@ export const authenticateJWT = catchAsync(async (req, res, next) => {
 
     try {
         const targetUserId = decoded.id || decoded.user_id;
+        if (!targetUserId) {
+            return res.status(401).json({ success: false, message: "Unauthorized: Invalid token payload" });
+        }
         const user = await db('iam_users').where({ id: targetUserId }).first();
 
         if (!user) {

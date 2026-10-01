@@ -1,5 +1,8 @@
 import React, { useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
+import { customToast } from '../utils/toast';
+
+export { customToast };
 
 const TOAST_VARIANTS = {
     success: {
@@ -24,41 +27,44 @@ const TOAST_VARIANTS = {
     }
 };
 
-const Toast = ({ toast, onClose }) => {
+const Toast = ({ toast, toasts, onClose }) => {
+    const currentToast = toast || (toasts && toasts.length > 0 ? toasts[toasts.length - 1] : null);
+
     useEffect(() => {
-        if (!toast) return;
-        const duration = toast.duration || 3000;
+        if (!currentToast) return;
+        const duration = currentToast.duration || 3000;
         const timer = setTimeout(() => {
-            if (onClose) onClose();
+            if (onClose) onClose(currentToast.id);
         }, duration);
         return () => clearTimeout(timer);
-    }, [toast, onClose]);
+    }, [currentToast, onClose]);
 
-    if (!toast) return null;
+    if (!currentToast) return null;
 
-    const variantKey = toast.type || 'info';
+    const variantKey = currentToast.type || 'info';
     const config = TOAST_VARIANTS[variantKey] || TOAST_VARIANTS.info;
 
     return (
         <AnimatePresence>
-            {toast && (
+            {currentToast && (
                 <div className="fixed bottom-8 left-1/2 -translate-x-1/2 z-[99999] pointer-events-auto select-none">
                     <motion.div
+                        key={currentToast.id || currentToast.message}
                         initial={{ opacity: 0, y: 20, scale: 0.95 }}
                         animate={{ opacity: 1, y: 0, scale: 1 }}
                         exit={{ opacity: 0, y: 15, scale: 0.95 }}
                         transition={{ type: 'spring', damping: 25, stiffness: 350 }}
                         className={`flex items-center gap-2.5 px-5 py-2.5 rounded-xl border backdrop-blur-md shadow-2xl ${config.bg} max-w-[90vw] whitespace-nowrap cursor-pointer`}
-                        onClick={onClose}
+                        onClick={() => onClose && onClose(currentToast.id)}
                     >
                         <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${config.dot}`} />
                         <div className="flex items-center gap-1.5 text-xs font-semibold tracking-tight font-sans">
-                            {toast.title && toast.title !== 'Success' && toast.title !== 'Error' && toast.title !== 'Info' && toast.title !== 'Warning' && toast.title !== 'Notification' && (
+                            {currentToast.title && currentToast.title !== 'Success' && currentToast.title !== 'Error' && currentToast.title !== 'Info' && currentToast.title !== 'Warning' && currentToast.title !== 'Notification' && (
                                 <span className="font-bold uppercase tracking-wider text-[11px] opacity-80 mr-1">
-                                    {toast.title}:
+                                    {currentToast.title}:
                                 </span>
                             )}
-                            <span>{toast.message}</span>
+                            <span className="truncate">{currentToast.message}</span>
                         </div>
                     </motion.div>
                 </div>
