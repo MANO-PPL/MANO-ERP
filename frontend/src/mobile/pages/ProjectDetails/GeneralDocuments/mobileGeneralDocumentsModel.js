@@ -1,7 +1,25 @@
-export const GENERAL_DOCUMENTS_VIEWS = Object.freeze(['hub', 'parties', 'directory', 'summary', 'meetings', 'organisation']);
+export const GENERAL_DOCUMENTS_VIEWS = Object.freeze([
+    'hub',
+    'directory',
+    'org-chart',
+    'parties',
+    'party-list',
+    'organisation',
+    'summary',
+    'project-summary',
+    'meetings',
+    'meeting-list',
+    'agenda-list',
+    'mom-list'
+]);
 
 export function resolveGeneralDocumentsView(value) {
-    return GENERAL_DOCUMENTS_VIEWS.includes(value) ? value : 'hub';
+    if (!value) return 'hub';
+    if (value === 'org-chart' || value === 'organisation') return 'org-chart';
+    if (value === 'directory' || value === 'parties' || value === 'party-list') return 'directory';
+    if (value === 'summary' || value === 'project-summary') return 'summary';
+    if (value === 'meetings' || value === 'meeting-list' || value === 'agenda-list' || value === 'mom-list') return 'meetings';
+    return 'hub';
 }
 
 export function normalizeAvailableParties(response = {}) {
@@ -38,7 +56,22 @@ export function meetingPayload(form = {}) {
     const mom = (form.mom_points || []).filter((point) => point?.point?.trim()).map((point, index) => ({ sl_no: index + 1, point: point.point.trim() }));
     const participants = (form.participants || []).map((person) => ({ pd_id: person.pd_id, attended: person.attended !== false }));
     const attendance = Object.fromEntries(participants.map((person) => [person.pd_id, person.attended ? 'present' : 'absent']));
-    return { subject: (form.subject || '').trim(), meeting_no: form.meeting_no ? Number(form.meeting_no) : undefined, venue: (form.venue || '').trim(), date: form.date || '', time: form.time || '', participants, agenda_points: agenda, mom_points: mom, content: { time: form.time || '', attendance, agenda_points: agenda, mom_points: mom } };
+    const payload = {
+        subject: (form.subject || '').trim(),
+        meeting_no: form.meeting_no ? Number(form.meeting_no) : undefined,
+        venue: (form.venue || '').trim(),
+        date: form.date || '',
+        time: form.time || '',
+        participants,
+        agenda_points: agenda,
+        mom_points: mom,
+        content: { time: form.time || '', attendance, agenda_points: agenda, mom_points: mom }
+    };
+    if (form.status) {
+        payload.status = form.status;
+        payload.content.status = form.status;
+    }
+    return payload;
 }
 
 export function createGeneralDocumentsRequestGuard() {

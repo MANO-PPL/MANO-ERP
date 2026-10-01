@@ -15,9 +15,9 @@ export default function MobileCollaboration() {
         return () => window.removeEventListener('hashchange', onHash);
     }, []);
     const changeView = (next) => { if (resolveCollaborationView(window.location.hash) === next && window.location.hash === `#${next}`) return; window.location.hash = next; };
-    return <section className="min-w-0" data-mobile-collaboration data-collaboration-view={view}>
+    return <section className="w-full min-w-0" data-mobile-collaboration data-collaboration-view={view}>
         <MobilePageHeader eyebrow="MANO WORKSPACE" title="Collaboration" subtitle="Static communication and schedule preview" />
-        <div className="px-4 pb-4"><MobileTabs segmented label="Collaboration view" value={view} onChange={changeView} items={[{ value: 'chat', label: 'Chat' }, { value: 'calendar', label: 'Calendar' }]} /></div>
+        <div className="w-full min-w-0 px-2 sm:px-3 pb-2"><MobileTabs segmented label="Collaboration view" value={view} onChange={changeView} items={[{ value: 'chat', label: 'Chat' }, { value: 'calendar', label: 'Calendar' }]} /></div>
         {view === 'calendar' ? <MobileCalendar /> : <MobileChat />}
     </section>;
 }
