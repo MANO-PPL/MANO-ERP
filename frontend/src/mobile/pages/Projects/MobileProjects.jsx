@@ -1,5 +1,15 @@
 import React, { useMemo, useState } from 'react';
-import { Archive, BriefcaseBusiness, MoreVertical, Pencil, Plus, RotateCcw } from 'lucide-react';
+import {
+    Archive,
+    BriefcaseBusiness,
+    Building2,
+    Info,
+    MapPin,
+    MoreVertical,
+    Pencil,
+    Plus,
+    RotateCcw,
+} from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../../../context/AuthContext';
 import { adminApi } from '../../../services/adminApi';
@@ -22,6 +32,30 @@ import {
     filterProjects,
     normalizeProject,
 } from './projectModel';
+
+function formatCurrency(amount) {
+    const val = Number(amount) || 0;
+    if (val >= 10000000) return `₹${(val / 10000000).toFixed(2)} Cr`;
+    if (val >= 100000) return `₹${(val / 100000).toFixed(2)} L`;
+    return `₹${val.toLocaleString('en-IN')}`;
+}
+
+function getStatusTheme(status, archived) {
+    if (archived) return { dot: 'bg-gray-400', badge: 'bg-gray-100 text-gray-700 dark:bg-gray-800 dark:text-gray-300', bar: 'bg-gray-400' };
+    const s = String(status || '').toLowerCase().replace(/\s+/g, '_');
+    if (s === 'completed') return { dot: 'bg-blue-500', badge: 'bg-blue-50 text-blue-700 dark:bg-blue-950/50 dark:text-blue-300', bar: 'bg-blue-500' };
+    if (s === 'on_hold') return { dot: 'bg-amber-500', badge: 'bg-amber-50 text-amber-700 dark:bg-amber-950/50 dark:text-amber-300', bar: 'bg-amber-500' };
+    if (s === 'planning') return { dot: 'bg-purple-500', badge: 'bg-purple-50 text-purple-700 dark:bg-purple-950/50 dark:text-purple-300', bar: 'bg-purple-500' };
+    return { dot: 'bg-emerald-500', badge: 'bg-emerald-50 text-emerald-700 dark:bg-emerald-950/50 dark:text-emerald-300', bar: 'bg-emerald-500' };
+}
+
+function getIssueBadge(issue) {
+    const i = String(issue || '').toLowerCase();
+    if (i === 'blocked') return 'bg-red-50 text-red-700 border-red-200 dark:bg-red-950/40 dark:text-red-300 dark:border-red-900';
+    if (i === 'risk') return 'bg-amber-50 text-amber-700 border-amber-200 dark:bg-amber-950/40 dark:text-amber-300 dark:border-amber-900';
+    if (i === 'resolved') return 'bg-emerald-50 text-emerald-700 border-emerald-200 dark:bg-emerald-950/40 dark:text-emerald-300 dark:border-emerald-900';
+    return null;
+}
 
 function FilterChoices({ label, values, selected, onChange }) {
     if (values.length === 0) return null;
@@ -135,12 +169,12 @@ export default function MobileProjects({
     ] : [];
 
     return (
-        <div data-mobile-page="projects" className="mx-auto w-full max-w-2xl space-y-4 px-4 pb-28">
+        <div data-mobile-page="projects" className="w-full min-w-0 space-y-2 px-2 sm:px-3 pb-24">
             <MobilePageHeader
                 eyebrow="Portfolio"
                 title="Projects"
                 subtitle={`${projects.length} assigned project${projects.length === 1 ? '' : 's'}`}
-                actions={canWrite ? <button type="button" onClick={() => go('/projects/create')} className="inline-flex min-h-11 items-center gap-1 px-2 text-xs font-bold text-blue-600 dark:text-blue-400"><Plus size={16} aria-hidden="true" />Add</button> : null}
+                actions={canWrite ? <button type="button" onClick={() => go('/projects/create')} className="inline-flex h-9 items-center gap-1 rounded-lg border border-blue-200 bg-blue-50 px-2.5 text-xs font-semibold text-blue-600 dark:border-blue-900/50 dark:bg-blue-950/40 dark:text-blue-300"><Plus size={15} aria-hidden="true" />Add</button> : null}
             />
 
             <MobileTabs
@@ -158,7 +192,7 @@ export default function MobileProjects({
                 <button
                     type="button"
                     onClick={() => { setDraftFilters(filters); setFiltersOpen(true); }}
-                    className={`min-h-11 shrink-0 rounded-xl border px-3 text-xs font-bold ${filterCount ? 'border-blue-500 bg-blue-50 text-blue-700 dark:bg-blue-950/50 dark:text-blue-300' : 'border-gray-200 dark:border-gh-border'}`}
+                    className={`h-9 shrink-0 rounded-lg border px-2.5 text-xs font-medium ${filterCount ? 'border-blue-500 bg-blue-50 text-blue-700 dark:bg-blue-950/50 dark:text-blue-300' : 'border-gray-200 text-gray-700 dark:border-gh-border dark:text-gh-text'}`}
                 >
                     Filters{filterCount ? ` (${filterCount})` : ''}
                 </button>
@@ -170,35 +204,126 @@ export default function MobileProjects({
                 <MobileEmptyState
                     title="Projects unavailable"
                     description="The project list could not be loaded."
-                    action={<button type="button" onClick={refresh} className="min-h-11 rounded-xl bg-blue-600 px-4 text-sm font-bold text-white">Try again</button>}
+                    action={<button type="button" onClick={refresh} className="min-h-9 rounded-lg bg-blue-600 px-3 text-xs font-semibold text-white">Try again</button>}
                 />
             ) : filtered.length === 0 ? (
                 <MobileEmptyState title="No projects found" description="Try another search, filter, or collection." />
             ) : (
-                <div className="space-y-3">
-                    {filtered.map((project) => (
-                        <MobileCard key={project.id} as="article" className="p-0">
-                            <div className="flex items-start gap-3 p-4">
-                                <button type="button" onClick={() => setSelectedProject(project)} className="flex min-h-11 min-w-0 flex-1 items-start gap-3 text-left focus-visible:outline focus-visible:outline-2 focus-visible:outline-blue-500">
-                                    <span className="inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-blue-50 text-blue-700 dark:bg-blue-950/50 dark:text-blue-300"><BriefcaseBusiness size={20} aria-hidden="true" /></span>
-                                    <span className="min-w-0 flex-1">
-                                        <span className="block truncate text-sm font-extrabold">{project.name}</span>
-                                        <span className="mt-0.5 block truncate font-mono text-[11px] text-blue-600 dark:text-blue-400">{project.code}</span>
-                                    </span>
-                                </button>
-                                <button type="button" aria-label={`Actions for ${project.name}`} onClick={() => setActionsProject(project)} className="inline-flex min-h-11 min-w-11 items-center justify-center rounded-xl text-gray-500 hover:bg-gray-100 dark:text-gh-muted dark:hover:bg-gh-hover"><MoreVertical size={20} aria-hidden="true" /></button>
+                <div className="space-y-2.5">
+                    {filtered.map((project) => {
+                        const statusTheme = getStatusTheme(project.status, project.archived);
+                        const issueBadge = getIssueBadge(project.issues);
+                        const progressPct = Math.round(Number(project.completion || 0));
+                        const budgetVal = Number(project.budget || 0);
+
+                        return (
+                            <div
+                                key={project.id}
+                                className="group relative overflow-hidden rounded-xl border border-gray-200 bg-white shadow-xs transition hover:shadow-md dark:border-gh-border dark:bg-[#161B22]"
+                            >
+                                {project.logoUrl && (
+                                    <div className="h-16 w-full overflow-hidden border-b border-gray-100 dark:border-gh-border">
+                                        <img src={project.logoUrl} alt="" className="h-full w-full object-cover" />
+                                    </div>
+                                )}
+
+                                <div className="p-3">
+                                    <div className="flex items-center gap-1.5">
+                                        <span className="rounded bg-blue-50 px-1.5 py-0.5 font-mono text-[10px] font-bold text-blue-600 dark:bg-blue-950/50 dark:text-blue-400">
+                                            {project.code || 'PRJ'}
+                                        </span>
+
+                                        {issueBadge && (
+                                            <span className={`rounded border px-1.5 py-0.5 text-[8.5px] font-bold uppercase ${issueBadge}`}>
+                                                {project.issues}
+                                            </span>
+                                        )}
+
+                                        <div className="flex-1" />
+
+                                        <span className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[9px] font-bold uppercase ${statusTheme.badge}`}>
+                                            <span className={`h-1.5 w-1.5 rounded-full ${statusTheme.dot}`} />
+                                            {project.archived ? 'ARCHIVED' : (project.statusLabel || project.status || 'ACTIVE').toUpperCase()}
+                                        </span>
+
+                                        <button
+                                            type="button"
+                                            aria-label="Overview summary"
+                                            onClick={(e) => {
+                                                e.stopPropagation();
+                                                setSelectedProject(project);
+                                            }}
+                                            className="inline-flex h-6 w-6 items-center justify-center rounded-md text-gray-400 hover:bg-gray-100 hover:text-gray-700 dark:text-gh-muted dark:hover:bg-gh-hover"
+                                        >
+                                            <Info size={14} />
+                                        </button>
+
+                                        <button
+                                            type="button"
+                                            aria-label={`Actions for ${project.name}`}
+                                            onClick={(e) => {
+                                                e.stopPropagation();
+                                                setActionsProject(project);
+                                            }}
+                                            className="inline-flex h-6 w-6 items-center justify-center rounded-md text-gray-400 hover:bg-gray-100 hover:text-gray-700 dark:text-gh-muted dark:hover:bg-gh-hover"
+                                        >
+                                            <MoreVertical size={14} />
+                                        </button>
+                                    </div>
+
+                                    <button
+                                        type="button"
+                                        onClick={() => go(`/projects/${project.id}`)}
+                                        className="mt-2 block w-full text-left"
+                                    >
+                                        <h3 className="truncate text-sm font-bold text-gray-900 group-hover:text-blue-600 dark:text-gh-text dark:group-hover:text-blue-400">
+                                            {project.name}
+                                        </h3>
+                                    </button>
+
+                                    <div className="mt-1 flex items-center gap-3 text-[11px] text-gray-500 dark:text-gh-muted">
+                                        {project.client && (
+                                            <span className="flex items-center gap-1 truncate">
+                                                <Building2 size={12} className="shrink-0 text-gray-400" />
+                                                <span className="truncate">{project.client}</span>
+                                            </span>
+                                        )}
+                                        {project.location && (
+                                            <span className="flex items-center gap-1 truncate">
+                                                <MapPin size={12} className="shrink-0 text-gray-400" />
+                                                <span className="truncate">{project.location}</span>
+                                            </span>
+                                        )}
+                                    </div>
+
+                                    <div className="mt-2.5 flex items-center gap-2">
+                                        <div className="h-1.5 flex-1 overflow-hidden rounded-full bg-gray-100 dark:bg-gray-800">
+                                            <div
+                                                className={`h-full rounded-full ${statusTheme.bar}`}
+                                                style={{ width: `${Math.min(100, Math.max(0, progressPct))}%` }}
+                                            />
+                                        </div>
+                                        <span className="font-mono text-[10.5px] font-bold text-gray-700 dark:text-gh-text">
+                                            {progressPct}%
+                                        </span>
+                                    </div>
+
+                                    <div className="mt-2.5 flex items-center justify-between rounded-lg bg-gray-50/80 px-2.5 py-1.5 text-xs dark:bg-gh-bg">
+                                        <span className="text-[11px] text-gray-500 dark:text-gh-muted">
+                                            Budget: <span className="font-mono font-semibold text-gray-800 dark:text-gh-text">{formatCurrency(budgetVal)}</span>
+                                        </span>
+                                        <span className="text-[11px] text-gray-500 dark:text-gh-muted">
+                                            {project.totalPhases > 0 ? (
+                                                <span>Phases: <span className="font-semibold text-gray-800 dark:text-gh-text">{project.completedPhases}/{project.totalPhases}</span></span>
+                                            ) : (
+                                                <span>Team: <span className="font-semibold text-gray-800 dark:text-gh-text">{project.memberCount || 1}</span></span>
+                                            )}
+                                        </span>
+                                    </div>
+                                </div>
                             </div>
-                            <div className="grid grid-cols-3 gap-px border-t border-gray-100 bg-gray-100 text-center text-[11px] dark:border-gh-border dark:bg-gh-border">
-                                <div className="bg-white px-2 py-3 dark:bg-gh-subtle"><p className="text-gray-500 dark:text-gh-muted">Status</p><p className="mt-1 truncate font-bold">{project.archived ? 'Archived' : project.statusLabel}</p></div>
-                                <div className="bg-white px-2 py-3 dark:bg-gh-subtle"><p className="text-gray-500 dark:text-gh-muted">Progress</p><p className="mt-1 font-bold">{project.completion}%</p></div>
-                                <div className="bg-white px-2 py-3 dark:bg-gh-subtle"><p className="text-gray-500 dark:text-gh-muted">Team</p><p className="mt-1 font-bold">{project.memberCount}</p></div>
-                            </div>
-                            <div className="flex min-w-0 items-center justify-between gap-2 px-4 py-3 text-xs">
-                                <span className="min-w-0 truncate text-gray-500 dark:text-gh-muted">{project.owner}</span>
-                                <span className="shrink-0 rounded-full bg-gray-100 px-2 py-1 font-semibold dark:bg-gh-bg">{project.issues}</span>
-                            </div>
-                        </MobileCard>
-                    ))}
+                        );
+                    })}
                 </div>
             )}
 

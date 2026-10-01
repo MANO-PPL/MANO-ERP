@@ -7,6 +7,7 @@ import { projectApi } from '../../../services/projectApi.js';
 import { customToast } from '../../../utils/toast';
 import MobileDatePicker from '../../components/MobileDatePicker';
 import MobileFormSection from '../../components/MobileFormSection';
+import MobileLoadingState from '../../components/MobileLoadingState';
 import MobilePageHeader from '../../components/MobilePageHeader';
 import MobileSelect from '../../components/MobileSelect';
 import MobileStickyActions from '../../components/MobileStickyActions';
@@ -234,38 +235,38 @@ export default function MobileProjectForm({
         }
     };
 
-    if (loading) return <div className="p-4 text-sm text-gray-500 dark:text-gh-muted"><LoaderCircle className="mr-2 inline animate-spin" size={18} aria-hidden="true" />Loading project details…</div>;
-    if (loadError) return <p role="alert" className="rounded-xl border border-red-200 bg-red-50 p-3 text-sm text-red-700 dark:border-red-900 dark:bg-red-950/30 dark:text-red-300">{loadError}</p>;
+    if (loading) return <MobileLoadingState variant="detail" rows={3} />;
+    if (loadError) return <p role="alert" className="rounded-xl border border-red-200 bg-red-50 p-2.5 text-xs text-red-700 dark:border-red-900 dark:bg-red-950/30 dark:text-red-300">{loadError}</p>;
 
     const actions = (
-        <div className={`flex w-full gap-2 ${presentation === 'sheet' ? 'pt-3' : ''}`}>
-            <button type="button" onClick={cancel} className="min-h-11 flex-1 rounded-xl border border-gray-200 px-4 text-sm font-semibold dark:border-gh-border">Cancel</button>
-            <button type="submit" form={formId} disabled={!canWrite || submitting} className="min-h-11 flex-[1.4] rounded-xl bg-blue-600 px-4 text-sm font-bold text-white disabled:opacity-50">
+        <div className={`flex w-full gap-2 ${presentation === 'sheet' ? 'pt-2' : ''}`}>
+            <button type="button" onClick={cancel} className="min-h-10 flex-1 rounded-xl border border-gray-200 px-3 text-xs font-normal dark:border-gh-border">Cancel</button>
+            <button type="submit" form={formId} disabled={!canWrite || submitting} className="min-h-10 flex-[1.4] rounded-xl bg-blue-600 px-4 text-xs font-semibold text-white disabled:opacity-50">
                 {submitting ? 'Saving…' : isEdit ? 'Save changes' : 'Create project'}
             </button>
         </div>
     );
 
     const formElement = (
-        <form id={formId} onSubmit={handleSubmit} className="space-y-4" data-project-form-mode={isEdit ? 'edit' : 'create'}>
+        <form id={formId} onSubmit={handleSubmit} className="space-y-2.5" data-project-form-mode={isEdit ? 'edit' : 'create'}>
             <MobileFormSection title="Project information" description="Core project identity and location.">
                 <div>
-                    <label htmlFor={`${formId}-name`} className="mb-1.5 block text-xs font-semibold">Project name *</label>
+                    <label htmlFor={`${formId}-name`} className="mb-1 block text-xs font-medium">Project name *</label>
                     <input id={`${formId}-name`} required value={form.name} onChange={(event) => updateField('name', event.target.value)} className={inputClass} placeholder="Project name" />
                 </div>
                 <div>
-                    <div className="mb-1.5 flex items-center justify-between gap-3">
-                        <label htmlFor={`${formId}-code`} className="text-xs font-semibold">Project code</label>
-                        {!isEdit && <button type="button" onClick={generateCode} className="inline-flex min-h-11 items-center gap-1 px-2 text-xs font-bold text-blue-600 dark:text-blue-400"><Sparkles size={14} aria-hidden="true" />Generate</button>}
+                    <div className="mb-1 flex items-center justify-between gap-3">
+                        <label htmlFor={`${formId}-code`} className="text-xs font-medium">Project code</label>
+                        {!isEdit && <button type="button" onClick={generateCode} className="inline-flex min-h-8 items-center gap-1 px-1.5 text-xs font-medium text-blue-600 dark:text-blue-400"><Sparkles size={13} aria-hidden="true" />Generate</button>}
                     </div>
                     <input id={`${formId}-code`} value={form.projectCode} onChange={(event) => updateField('projectCode', event.target.value)} className={inputClass} placeholder="Project code" />
                 </div>
                 <div>
-                    <label htmlFor={`${formId}-description`} className="mb-1.5 block text-xs font-semibold">Description</label>
-                    <textarea id={`${formId}-description`} rows={4} value={form.description} onChange={(event) => updateField('description', event.target.value)} className={`${inputClass} py-3`} placeholder="Project scope and key deliverables" />
+                    <label htmlFor={`${formId}-description`} className="mb-1 block text-xs font-medium">Description</label>
+                    <textarea id={`${formId}-description`} rows={3} value={form.description} onChange={(event) => updateField('description', event.target.value)} className={`${inputClass} py-2`} placeholder="Project scope and key deliverables" />
                 </div>
                 <div>
-                    <label htmlFor={`${formId}-location`} className="mb-1.5 block text-xs font-semibold">Location</label>
+                    <label htmlFor={`${formId}-location`} className="mb-1 block text-xs font-medium">Location</label>
                     <input id={`${formId}-location`} value={form.location} onChange={(event) => updateField('location', event.target.value)} className={inputClass} placeholder="City or site address" />
                 </div>
             </MobileFormSection>
@@ -291,37 +292,37 @@ export default function MobileProjectForm({
             </MobileFormSection>
 
             <MobileFormSection title="Project logo" description="PNG, JPG, WEBP or SVG, up to 5MB.">
-                {logoPreview && <img src={logoPreview} alt="Selected project logo preview" className="h-28 w-full rounded-xl border border-gray-200 object-contain p-2 dark:border-gh-border" />}
+                {logoPreview && <img src={logoPreview} alt="Selected project logo preview" className="h-24 w-full rounded-xl border border-gray-200 object-contain p-2 dark:border-gh-border" />}
                 <div className="flex gap-2">
-                    <label className="inline-flex min-h-11 flex-1 cursor-pointer items-center justify-center gap-2 rounded-xl border border-gray-200 px-3 text-sm font-semibold dark:border-gh-border">
-                        <ImagePlus size={18} aria-hidden="true" />Choose image
+                    <label className="inline-flex min-h-10 flex-1 cursor-pointer items-center justify-center gap-2 rounded-xl border border-gray-200 px-3 text-xs font-medium dark:border-gh-border">
+                        <ImagePlus size={16} aria-hidden="true" />Choose image
                         <input ref={fileInputRef} type="file" accept="image/png,image/jpeg,image/webp,image/svg+xml" onChange={selectLogo} className="sr-only" />
                     </label>
-                    {logoPreview && <button type="button" aria-label="Remove selected logo" onClick={removeLogo} className="inline-flex min-h-11 min-w-11 items-center justify-center rounded-xl border border-red-200 text-red-600 dark:border-red-900 dark:text-red-300"><Trash2 size={18} aria-hidden="true" /></button>}
+                    {logoPreview && <button type="button" aria-label="Remove selected logo" onClick={removeLogo} className="inline-flex min-h-10 min-w-10 items-center justify-center rounded-xl border border-red-200 text-red-600 dark:border-red-900 dark:text-red-300"><Trash2 size={16} aria-hidden="true" /></button>}
                 </div>
             </MobileFormSection>
 
             {canWrite && (
-                <MobileFormSection title="Project members" description={membersLoading ? 'Loading employees…' : `${selectedMemberIds.length} selected`}>
+                <MobileFormSection title="Project members" description={membersLoading ? 'Loading members' : `${selectedMemberIds.length} selected`}>
                     <input value={memberQuery} onChange={(event) => setMemberQuery(event.target.value)} className={inputClass} placeholder="Search employees" aria-label="Search employees" />
-                    <div className="max-h-64 space-y-1 overflow-y-auto overscroll-contain">
+                    <div className="max-h-56 space-y-1 overflow-y-auto overscroll-contain">
                         {!membersLoading && visibleEmployees.map((employee) => {
                             const userId = Number(employee.user_id);
                             const selected = selectedMemberIds.includes(userId);
                             return (
-                                <label key={employee.user_id} className="flex min-h-12 cursor-pointer items-center gap-3 rounded-xl px-2 hover:bg-gray-50 dark:hover:bg-gh-hover">
+                                <label key={employee.user_id} className="flex min-h-10 cursor-pointer items-center gap-2.5 rounded-xl px-2 hover:bg-gray-50 dark:hover:bg-gh-hover">
                                     <input
                                         type="checkbox"
                                         checked={selected}
                                         onChange={() => setSelectedMemberIds((current) => selected ? current.filter((item) => item !== userId) : [...current, userId])}
-                                        className="h-5 w-5 rounded border-gray-300"
+                                        className="h-4 w-4 rounded border-gray-300"
                                     />
-                                    <span className="min-w-0 flex-1"><span className="block truncate text-sm font-semibold">{employee.user_name}</span><span className="block truncate text-xs text-gray-500 dark:text-gh-muted">{employee.user_type || employee.email}</span></span>
+                                    <span className="min-w-0 flex-1"><span className="block truncate text-xs font-semibold text-gray-900 dark:text-gh-text">{employee.user_name}</span><span className="block truncate text-[11px] font-normal text-gray-500 dark:text-gh-muted">{employee.user_type || employee.email}</span></span>
                                 </label>
                             );
                         })}
-                        {membersLoading && <p role="status" className="py-4 text-center text-xs text-gray-500 dark:text-gh-muted">Loading employees…</p>}
-                        {!membersLoading && visibleEmployees.length === 0 && <p className="py-4 text-center text-xs text-gray-500 dark:text-gh-muted">No employees found</p>}
+                        {membersLoading && <div className="space-y-1.5 py-1">{[1, 2, 3].map((key) => <div key={key} className="flex min-h-9 items-center gap-2 px-2"><div className="h-4 w-4 animate-pulse rounded bg-gray-200 dark:bg-white/10" /><div className="flex-1 space-y-1"><div className="h-3 w-28 animate-pulse rounded bg-gray-200 dark:bg-white/10" /><div className="h-2.5 w-20 animate-pulse rounded bg-gray-200 dark:bg-white/10" /></div></div>)}</div>}
+                        {!membersLoading && visibleEmployees.length === 0 && <p className="py-3 text-center text-xs font-normal text-gray-500 dark:text-gh-muted">No employees found</p>}
                     </div>
                 </MobileFormSection>
             )}
@@ -332,7 +333,7 @@ export default function MobileProjectForm({
 
     if (presentation === 'sheet') return formElement;
     return (
-        <div data-mobile-page="project-form" className="mx-auto w-full max-w-2xl space-y-4 px-4 pb-28">
+        <div data-mobile-page="project-form" className="w-full min-w-0 space-y-2 px-2 sm:px-3 pb-24">
             <MobilePageHeader eyebrow="Projects" title="Create project" subtitle="Initialize a new project workspace." onBack={cancel} />
             {formElement}
         </div>

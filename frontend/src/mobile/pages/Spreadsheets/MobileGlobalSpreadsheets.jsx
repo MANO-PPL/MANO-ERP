@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Calculator, Copy, FileSpreadsheet, Plus, Upload } from 'lucide-react';
 import { useAuth } from '../../../context/AuthContext';
+import { customToast } from '../../../components/Toast';
 import { deleteWorkbook, getConstructionTemplates, getSavedWorkbooksList, getWorkbookById, importFromFile, saveWorkbook } from '../../../utils/spreadsheetConverters';
 import { ExcelFormulaAssistantModal } from '../../../components/common/ExcelFormulas';
 import MobilePageHeader from '../../components/MobilePageHeader';
@@ -58,18 +59,23 @@ export default function MobileGlobalSpreadsheets({ authOverride, storage: storag
         if (!canWrite) return false;
         const result = storage.saveWorkbook(workbook, null);
         if (!result?.success) {
-            setMessage(result?.error || 'The workbook could not be stored locally.');
+            const err = result?.error || 'The workbook could not be stored locally.';
+            setMessage(err);
+            customToast.error(err, 'Global Spreadsheets');
             return false;
         }
         refresh();
         setActiveId(result.workbook.id);
+        customToast.success(`Workbook "${result.workbook.name || 'Untitled'}" saved.`, 'Global Spreadsheets');
         return true;
     }, [canWrite, refresh, storage]);
 
     const openWorkbook = useCallback((id) => {
         const workbook = storage.getWorkbookById(id);
         if (!isGlobalWorkbookReachable(workbook, workbooks)) {
-            setMessage('This workbook is unavailable in Global Spreadsheets.');
+            const err = 'This workbook is unavailable in Global Spreadsheets.';
+            setMessage(err);
+            customToast.warning(err, 'Global Spreadsheets');
             return;
         }
         setActionWorkbook(null);
@@ -82,13 +88,17 @@ export default function MobileGlobalSpreadsheets({ authOverride, storage: storag
         if (!file || !canWrite) return;
         const token = ++generationRef.current;
         setMessage('Importing workbook…');
+        customToast.info(`Importing ${file.name}...`, 'Global Spreadsheets');
         try {
             const parsed = await storage.importFromFile(file);
             if (token !== generationRef.current) return;
             if (!parsed?.success || !parsed?.sheets) throw new Error(parsed?.error || 'The selected file could not be parsed.');
             saveNew(createImportedGlobalWorkbook(parsed, file));
+            customToast.success(`Imported ${file.name} successfully.`, 'Global Spreadsheets');
         } catch (error) {
-            if (token === generationRef.current) setMessage(error?.message || 'Import failed.');
+            const msg = error?.message || 'Import failed.';
+            if (token === generationRef.current) setMessage(msg);
+            customToast.error(msg, 'Global Spreadsheets');
         }
     };
 
@@ -96,12 +106,15 @@ export default function MobileGlobalSpreadsheets({ authOverride, storage: storag
         if (!canWrite || !actionWorkbook) return;
         const workbook = storage.getWorkbookById(actionWorkbook.id);
         if (!isGlobalWorkbookReachable(workbook, workbooks)) {
-            setMessage('This workbook is unavailable in Global Spreadsheets.');
+            const err = 'This workbook is unavailable in Global Spreadsheets.';
+            setMessage(err);
+            customToast.warning(err, 'Global Spreadsheets');
             setActionWorkbook(null);
             return;
         }
         setActionWorkbook(null);
         saveNew(duplicateGlobalWorkbook(workbook));
+        customToast.success(`Duplicated "${workbook.name}".`, 'Global Spreadsheets');
     };
 
     if (activeId) return <MobileSpreadsheetEditor
@@ -115,23 +128,42 @@ export default function MobileGlobalSpreadsheets({ authOverride, storage: storag
     />;
 
     const visible = filterGlobalWorkbooks(workbooks, query);
-    return <section data-mobile-global-spreadsheets className="min-w-0 space-y-4 px-4 pb-28">
+    return <section data-mobile-global-spreadsheets className="w-full min-w-0 space-y-2 px-2 sm:px-3 pb-24">
         <MobilePageHeader eyebrow="MANO ERP" title="Spreadsheets" subtitle="Global browser-local workbooks" />
-        <MobileCard className="p-4">
-            <div className="flex items-start gap-3"><span className="inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-emerald-100 text-emerald-700 dark:bg-emerald-950/50 dark:text-emerald-300"><FileSpreadsheet size={21} /></span><div><h2 className="text-base font-bold text-gray-950 dark:text-gh-text">Global workbooks</h2><p className="mt-1 text-xs leading-5 text-gray-500 dark:text-gh-muted">FortuneSheet editing with the existing MANO workbook format.</p></div></div>
-            <ul className="mt-3 space-y-1 text-[11px] leading-5 text-amber-800 dark:text-amber-200">{GLOBAL_SPREADSHEET_DISCLOSURE.map((line) => <li key={line}>• {line}</li>)}</ul>
-            {!canWrite && <p className="mt-3 rounded-lg bg-amber-50 px-3 py-2 text-xs font-semibold text-amber-800 dark:bg-amber-950/40 dark:text-amber-200">View only. Local create, import, edit, duplicate, and delete controls are disabled.</p>}
+        <MobileCard className="p-2.5 sm:p-3">
+            <div className="flex items-start gap-2.5"><span className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-emerald-100 text-emerald-700 dark:bg-emerald-950/50 dark:text-emerald-300"><FileSpreadsheet size={16} /></span><div><h2 className="text-xs font-semibold text-gray-950 dark:text-gh-text">Global workbooks</h2><p className="mt-0.5 text-[11px] leading-4 font-normal text-gray-500 dark:text-gh-muted">FortuneSheet editing with the existing MANO workbook format.</p></div></div>
+            <ul className="mt-2 space-y-0.5 text-[10px] leading-4 text-amber-800 dark:text-amber-200 font-normal">{GLOBAL_SPREADSHEET_DISCLOSURE.map((line) => <li key={line}>• {line}</li>)}</ul>
+            {!canWrite && <p className="mt-2 rounded-lg bg-amber-50 px-2.5 py-1.5 text-xs font-normal text-amber-800 dark:bg-amber-950/40 dark:text-amber-200">View only. Local create, import, edit, duplicate, and delete controls are disabled.</p>}
         </MobileCard>
         <div className="grid grid-cols-2 gap-2">
-            <button type="button" onClick={() => setFormulaOpen(true)} className="min-h-11 rounded-xl border border-gray-200 bg-white px-3 text-sm font-bold dark:border-gh-border dark:bg-gh-subtle"><Calculator size={17} className="mr-1 inline text-blue-600" />Formula Assistant</button>
-            {canWrite && <><button type="button" onClick={() => saveNew(createGlobalWorkbook(templates[0]))} className="min-h-11 rounded-xl bg-blue-600 px-3 text-sm font-bold text-white"><Plus size={17} className="mr-1 inline" />New workbook</button><button type="button" onClick={() => inputRef.current?.click()} className="col-span-2 min-h-11 rounded-xl border border-gray-200 bg-white px-3 text-sm font-bold dark:border-gh-border dark:bg-gh-subtle"><Upload size={17} className="mr-1 inline" />Import XLSX, XLS, or CSV</button><input ref={inputRef} type="file" accept=".xlsx,.xls,.csv" onChange={handleImport} className="hidden" /></>}
+            <button type="button" onClick={() => setFormulaOpen(true)} className="min-h-9 rounded-lg border border-gray-200 bg-white px-2.5 text-xs font-semibold dark:border-gh-border dark:bg-gh-subtle"><Calculator size={14} className="mr-1 inline text-blue-600" />Formula Assistant</button>
+            {canWrite && <><button type="button" onClick={() => saveNew(createGlobalWorkbook(templates[0]))} className="min-h-9 rounded-lg bg-blue-600 px-2.5 text-xs font-semibold text-white"><Plus size={14} className="mr-1 inline" />New workbook</button><button type="button" onClick={() => inputRef.current?.click()} className="col-span-2 min-h-9 rounded-lg border border-gray-200 bg-white px-2.5 text-xs font-semibold dark:border-gh-border dark:bg-gh-subtle"><Upload size={14} className="mr-1 inline" />Import XLSX, XLS, or CSV</button><input ref={inputRef} type="file" accept=".xlsx,.xls,.csv" onChange={handleImport} className="hidden" /></>}
         </div>
-        {message && <p role="status" className="rounded-xl bg-blue-50 px-3 py-2 text-xs font-semibold text-blue-800 dark:bg-blue-950/40 dark:text-blue-200">{message}</p>}
+        {message && <p role="status" className="rounded-lg bg-blue-50 px-2.5 py-1.5 text-xs font-normal text-blue-800 dark:bg-blue-950/40 dark:text-blue-200">{message}</p>}
         <MobileSearchBar value={query} onChange={setQuery} placeholder="Search global workbooks" />
-        {visible.length === 0 ? <MobileEmptyState icon={FileSpreadsheet} title={query ? 'No matching workbooks' : 'No global workbooks'} description={canWrite ? 'Create a workbook, choose a source-proven template, or import XLSX, XLS, or CSV.' : 'No locally stored global workbook is available.'} /> : <div className="space-y-3">{visible.map((workbook) => <MobileCard key={workbook.id} className="p-4"><button type="button" onClick={() => openWorkbook(workbook.id)} className="w-full text-left"><div className="flex items-start gap-3"><FileSpreadsheet size={20} className="mt-0.5 shrink-0 text-emerald-600" /><div className="min-w-0 flex-1"><h3 className="truncate text-sm font-bold text-gray-950 dark:text-gh-text">{workbook.name}</h3><p className="mt-1 text-xs text-gray-500 dark:text-gh-muted">{workbook.sheetCount || 1} sheet{workbook.sheetCount === 1 ? '' : 's'} · {workbook.updatedAt ? new Date(workbook.updatedAt).toLocaleString() : 'Stored locally'}</p></div></div></button><button type="button" aria-label={`Actions for ${workbook.name}`} onClick={() => setActionWorkbook(workbook)} className="mt-2 inline-flex min-h-11 w-full items-center justify-center gap-2 rounded-xl border border-gray-200 text-xs font-bold dark:border-gh-border"><Copy size={17} />Actions</button></MobileCard>)}</div>}
-        {canWrite && <div><h3 className="mb-2 text-xs font-bold uppercase tracking-wide text-gray-500 dark:text-gh-muted">Construction templates</h3><div className="grid grid-cols-1 gap-2">{templates.slice(1).map((template) => <button key={template.id} type="button" onClick={() => saveNew(createGlobalWorkbook(template))} className="min-h-12 rounded-xl border border-gray-200 bg-white px-3 text-left text-sm font-semibold dark:border-gh-border dark:bg-gh-subtle"><Copy size={16} className="mr-2 inline text-blue-600" />{template.name}</button>)}</div></div>}
+        {visible.length === 0 ? <MobileEmptyState icon={FileSpreadsheet} title={query ? 'No matching workbooks' : 'No global workbooks'} description={canWrite ? 'Create a workbook, choose a source-proven template, or import XLSX, XLS, or CSV.' : 'No locally stored global workbook is available.'} /> : <div className="space-y-2">{visible.map((workbook) => <MobileCard key={workbook.id} className="p-2.5 sm:p-3"><button type="button" onClick={() => openWorkbook(workbook.id)} className="w-full text-left"><div className="flex items-start gap-2.5"><FileSpreadsheet size={16} className="mt-0.5 shrink-0 text-emerald-600" /><div className="min-w-0 flex-1"><h3 className="truncate text-xs font-semibold text-gray-950 dark:text-gh-text">{workbook.name}</h3><p className="mt-0.5 text-[11px] font-normal text-gray-500 dark:text-gh-muted">{workbook.sheetCount || 1} sheet{workbook.sheetCount === 1 ? '' : 's'} · {workbook.updatedAt ? new Date(workbook.updatedAt).toLocaleString() : 'Stored locally'}</p></div></div></button><button type="button" aria-label={`Actions for ${workbook.name}`} onClick={() => setActionWorkbook(workbook)} className="mt-2 inline-flex min-h-8 w-full items-center justify-center gap-1.5 rounded-lg border border-gray-200 text-xs font-semibold dark:border-gh-border"><Copy size={14} />Actions</button></MobileCard>)}</div>}
+        {canWrite && <div><h3 className="mb-1.5 text-[10px] font-semibold uppercase tracking-wide text-gray-500 dark:text-gh-muted">Construction templates</h3><div className="grid grid-cols-1 gap-1.5">{templates.slice(1).map((template) => <button key={template.id} type="button" onClick={() => saveNew(createGlobalWorkbook(template))} className="min-h-9 rounded-lg border border-gray-200 bg-white px-2.5 text-left text-xs font-semibold dark:border-gh-border dark:bg-gh-subtle"><Copy size={13} className="mr-1.5 inline text-blue-600" />{template.name}</button>)}</div></div>}
         <MobileWorkbookActionsSheet open={Boolean(actionWorkbook)} onClose={() => setActionWorkbook(null)} workbook={actionWorkbook} canWrite={canWrite} onOpen={() => openWorkbook(actionWorkbook?.id)} onDuplicate={duplicate} onDelete={() => { setDeleteTarget(actionWorkbook); setActionWorkbook(null); }} />
-        <MobileConfirmModal open={Boolean(deleteTarget)} onClose={() => setDeleteTarget(null)} onConfirm={() => { if (!canWrite || !deleteTarget) return; const workbook = storage.getWorkbookById(deleteTarget.id); if (!isGlobalWorkbookReachable(workbook, workbooks)) setMessage('This workbook is unavailable in Global Spreadsheets.'); else { const result = storage.deleteWorkbook(deleteTarget.id, null); if (!result?.success) setMessage(result?.error || 'Delete failed.'); refresh(); } setDeleteTarget(null); }} title="Delete workbook" message={`Permanently remove “${deleteTarget?.name || 'this workbook'}” from local browser storage?`} confirmLabel="Delete" danger />
+        <MobileConfirmModal open={Boolean(deleteTarget)} onClose={() => setDeleteTarget(null)} onConfirm={() => {
+            if (!canWrite || !deleteTarget) return;
+            const workbook = storage.getWorkbookById(deleteTarget.id);
+            if (!isGlobalWorkbookReachable(workbook, workbooks)) {
+                const err = 'This workbook is unavailable in Global Spreadsheets.';
+                setMessage(err);
+                customToast.warning(err, 'Global Spreadsheets');
+            } else {
+                const result = storage.deleteWorkbook(deleteTarget.id, null);
+                if (!result?.success) {
+                    const err = result?.error || 'Delete failed.';
+                    setMessage(err);
+                    customToast.error(err, 'Global Spreadsheets');
+                } else {
+                    customToast.info(`Deleted "${deleteTarget?.name || 'workbook'}".`, 'Global Spreadsheets');
+                }
+                refresh();
+            }
+            setDeleteTarget(null);
+        }} title="Delete workbook" message={`Permanently remove “${deleteTarget?.name || 'this workbook'}” from local browser storage?`} confirmLabel="Delete" danger />
         <ExcelFormulaAssistantModal isOpen={formulaOpen} onClose={() => setFormulaOpen(false)} />
     </section>;
 }

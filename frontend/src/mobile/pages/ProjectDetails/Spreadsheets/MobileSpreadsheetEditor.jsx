@@ -3,6 +3,7 @@ import { ArrowLeft, Download, FileDown, Printer, Save } from 'lucide-react';
 import { Workbook } from '@fortune-sheet/react';
 import '@fortune-sheet/react/dist/index.css';
 import '../../../../components/common/Spreadsheet/spreadsheet-theme.css';
+import { customToast } from '../../../../components/Toast';
 import { exportToCSV, exportToXLSX, getWorkbookById, saveWorkbook } from '../../../../utils/spreadsheetConverters';
 import MobileBottomSheet from '../../../components/MobileBottomSheet';
 import MobileEmptyState from '../../../components/MobileEmptyState';
@@ -60,10 +61,15 @@ export default function MobileSpreadsheetEditor({ project, projectId, workbookId
         setSaving(false);
         if (result?.success) {
             setWorkbook(result.workbook);
-            if (announce) setMessage('Saved locally on this device.');
+            if (announce) {
+                setMessage('Saved locally on this device.');
+                customToast.success('Workbook saved locally.', 'Spreadsheet');
+            }
             return true;
         }
-        setMessage(result?.error || 'The workbook could not be saved locally.');
+        const err = result?.error || 'The workbook could not be saved locally.';
+        setMessage(err);
+        customToast.error(err, 'Spreadsheet Error');
         return false;
     }, [canWrite, name, projectId, sheets, storage, workbook]);
 
@@ -78,30 +84,38 @@ export default function MobileSpreadsheetEditor({ project, projectId, workbookId
         }, 1500);
     }, [canWrite, name, persist, projectId]);
 
-    if (!workbook) return <MobileEmptyState title="Workbook unavailable" description={workspaceConfig.unavailableDescription} action={<button type="button" onClick={onBack} className="min-h-11 rounded-xl bg-blue-600 px-4 text-sm font-bold text-white">Back to workbooks</button>} />;
+    if (!workbook) return <MobileEmptyState title="Workbook unavailable" description={workspaceConfig.unavailableDescription} action={<button type="button" onClick={onBack} className="min-h-9 rounded-lg bg-blue-600 px-3 text-xs font-semibold text-white">Back to workbooks</button>} />;
 
     const exportFile = (format) => {
         const filename = name.trim() || 'Spreadsheet';
         const result = format === 'csv'
             ? storage.exportToCSV(sheets, 0, `${filename}.csv`)
             : storage.exportToXLSX(sheets, `${filename}.xlsx`);
-        setMessage(result?.success ? `Downloaded ${result.fileName}.` : result?.error || 'Export failed.');
+        if (result?.success) {
+            const msg = `Downloaded ${result.fileName}.`;
+            setMessage(msg);
+            customToast.success(msg, 'Export');
+        } else {
+            const err = result?.error || 'Export failed.';
+            setMessage(err);
+            customToast.error(err, 'Export Error');
+        }
         setExportOpen(false);
     };
 
-    return <div data-mobile-spreadsheet-editor className="min-w-0 space-y-3 px-4 pb-28">
-        <div className="flex items-center gap-2">
-            <button type="button" aria-label="Back to workbooks" onClick={onBack} className="inline-flex min-h-11 min-w-11 items-center justify-center rounded-xl border border-gray-200 bg-white dark:border-gh-border dark:bg-gh-subtle"><ArrowLeft size={19} /></button>
+    return <div data-mobile-spreadsheet-editor className="w-full min-w-0 space-y-2 px-2 sm:px-3 pb-24">
+        <div className="flex items-center gap-1.5">
+            <button type="button" aria-label="Back to workbooks" onClick={onBack} className="inline-flex min-h-9 min-w-9 items-center justify-center rounded-lg border border-gray-200 bg-white dark:border-gh-border dark:bg-gh-subtle"><ArrowLeft size={16} /></button>
             <div className="min-w-0 flex-1">
                 <label htmlFor="mobile-workbook-name" className="sr-only">Workbook name</label>
-                <input id="mobile-workbook-name" value={name} readOnly={!canWrite} onChange={(event) => setName(event.target.value)} className="min-h-11 w-full rounded-xl border border-gray-200 bg-white px-3 text-sm font-bold text-gray-950 outline-none focus:border-blue-500 read-only:bg-gray-50 dark:border-gh-border dark:bg-gh-input dark:text-gh-text dark:read-only:bg-gh-subtle" />
-                <p className="mt-1 truncate text-[11px] text-gray-500 dark:text-gh-muted">{project?.project_code || 'Project'} · {canWrite ? 'Local autosave enabled' : 'View only'}</p>
+                <input id="mobile-workbook-name" value={name} readOnly={!canWrite} onChange={(event) => setName(event.target.value)} className="min-h-9 w-full rounded-lg border border-gray-200 bg-white px-2.5 text-xs font-semibold text-gray-950 outline-none focus:border-blue-500 read-only:bg-gray-50 dark:border-gh-border dark:bg-gh-input dark:text-gh-text dark:read-only:bg-gh-subtle" />
+                <p className="mt-0.5 truncate text-[11px] font-normal text-gray-500 dark:text-gh-muted">{project?.project_code || 'Project'} · {canWrite ? 'Local autosave enabled' : 'View only'}</p>
             </div>
-            {canWrite && <button type="button" disabled={saving} aria-label="Save workbook" onClick={() => persist()} className="inline-flex min-h-11 min-w-11 items-center justify-center rounded-xl bg-blue-600 text-white disabled:opacity-50"><Save size={18} /></button>}
-            <button type="button" aria-label="Export workbook" onClick={() => setExportOpen(true)} className="inline-flex min-h-11 min-w-11 items-center justify-center rounded-xl border border-gray-200 bg-white dark:border-gh-border dark:bg-gh-subtle"><Download size={18} /></button>
+            {canWrite && <button type="button" disabled={saving} aria-label="Save workbook" onClick={() => persist()} className="inline-flex min-h-9 min-w-9 items-center justify-center rounded-lg bg-blue-600 text-white disabled:opacity-50"><Save size={15} /></button>}
+            <button type="button" aria-label="Export workbook" onClick={() => setExportOpen(true)} className="inline-flex min-h-9 min-w-9 items-center justify-center rounded-lg border border-gray-200 bg-white dark:border-gh-border dark:bg-gh-subtle"><Download size={15} /></button>
         </div>
-        {message && <p role="status" className="rounded-xl bg-blue-50 px-3 py-2 text-xs font-semibold text-blue-800 dark:bg-blue-950/40 dark:text-blue-200">{message}</p>}
-        <div className="overflow-x-auto overscroll-x-contain rounded-2xl border border-gray-200 bg-white dark:border-gh-border dark:bg-[#0d1117]" data-testid="mobile-fortune-sheet-scroll">
+        {message && <p role="status" className="rounded-lg bg-blue-50 px-2.5 py-1.5 text-xs font-normal text-blue-800 dark:bg-blue-950/40 dark:text-blue-200">{message}</p>}
+        <div className="overflow-x-auto overscroll-x-contain rounded-lg border border-gray-200 bg-white dark:border-gh-border dark:bg-[#0d1117]" data-testid="mobile-fortune-sheet-scroll">
             <div className="h-[min(66dvh,660px)] min-h-[480px] min-w-[760px]" data-testid="mobile-fortune-sheet">
                 <Workbook
                     key={`${workspaceConfig.key}:${workbookId}`}
@@ -126,10 +140,10 @@ export default function MobileSpreadsheetEditor({ project, projectId, workbookId
             </div>
         </div>
         <MobileBottomSheet open={exportOpen} onClose={() => setExportOpen(false)} title="Export workbook" description="Exports do not change the locally stored workbook.">
-            <div className="space-y-2">
-                <button type="button" onClick={() => exportFile('xlsx')} className="flex min-h-12 w-full items-center gap-3 rounded-xl bg-gray-50 px-3 text-sm font-semibold dark:bg-gh-input"><FileDown size={18} />Export all sheets as XLSX</button>
-                <button type="button" onClick={() => exportFile('csv')} className="flex min-h-12 w-full items-center gap-3 rounded-xl bg-gray-50 px-3 text-sm font-semibold dark:bg-gh-input"><FileDown size={18} />Export active sheet as CSV</button>
-                <button type="button" onClick={() => { window.print(); setExportOpen(false); }} className="flex min-h-12 w-full items-center gap-3 rounded-xl bg-gray-50 px-3 text-sm font-semibold dark:bg-gh-input"><Printer size={18} />Print from browser</button>
+            <div className="space-y-1.5">
+                <button type="button" onClick={() => exportFile('xlsx')} className="flex min-h-10 w-full items-center gap-2.5 rounded-lg bg-gray-50 px-2.5 text-xs font-semibold dark:bg-gh-input"><FileDown size={16} />Export all sheets as XLSX</button>
+                <button type="button" onClick={() => exportFile('csv')} className="flex min-h-10 w-full items-center gap-2.5 rounded-lg bg-gray-50 px-2.5 text-xs font-semibold dark:bg-gh-input"><FileDown size={16} />Export active sheet as CSV</button>
+                <button type="button" onClick={() => { window.print(); setExportOpen(false); }} className="flex min-h-10 w-full items-center gap-2.5 rounded-lg bg-gray-50 px-2.5 text-xs font-semibold dark:bg-gh-input"><Printer size={16} />Print from browser</button>
             </div>
         </MobileBottomSheet>
     </div>;

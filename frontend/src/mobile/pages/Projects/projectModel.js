@@ -119,5 +119,5 @@ export function buildProjectMetadataPatch(project, changes) {
 }
 
 export function getCreatedProjectId(response) {
-    return response?.project_id ?? response?.project?.id ?? response?.project?.project_id ?? null;
+    return response?.project_id ?? response?.project?.id ?? response?.project?.project_id ?? response?.id ?? null;
 }
