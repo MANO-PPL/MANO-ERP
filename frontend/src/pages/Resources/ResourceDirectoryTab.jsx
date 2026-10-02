@@ -9,7 +9,7 @@ import {
 import { resourceApi } from '../../services/resourceApi';
 import ResourceDetail from './ResourceDetail';
 import ResourceForm from './ResourceForm';
-import { UNIT_OPTIONS } from './resourceConstants';
+import { UNIT_OPTIONS, normalizeUnitCode } from './resourceConstants';
 import DuplicateResolverModal from '../../components/DuplicateResolverModal';
 import ResourceFilterDropdown from './ResourceFilterDropdown';
 import { ExcelGrid } from '../../components/ExcelGrid';
@@ -84,7 +84,10 @@ export const ResourceDirectoryTab = ({
 
     // Column Definitions for ExcelGrid
     const columns = useMemo(() => {
-        const unitValues = (UNIT_OPTIONS || []).map((u) => u.value || u);
+        const unitValues = (UNIT_OPTIONS || []).map((u) => ({
+            value: u.code || u.value,
+            label: `${u.name || u.label || u.code} (${u.code || u.value})`
+        }));
 
         return [
             {
@@ -180,7 +183,14 @@ export const ResourceDirectoryTab = ({
         if (created.length > 0) {
             for (const item of created) {
                 if (item.name && item.name.trim()) {
-                    await resourceApi.createResource(item);
+                    const cleanType = (item.type || 'material').toString().toLowerCase().trim();
+                    const finalType = ['material', 'item', 'labour'].includes(cleanType) ? cleanType : 'material';
+                    const finalUnit = normalizeUnitCode(item.base_unit_code || 'Nos');
+                    await resourceApi.createResource({
+                        ...item,
+                        type: finalType,
+                        base_unit_code: finalUnit
+                    });
                 }
             }
         }
@@ -188,7 +198,15 @@ export const ResourceDirectoryTab = ({
         if (updated.length > 0) {
             for (const item of updated) {
                 if (item.id && item.name && item.name.trim()) {
-                    await resourceApi.updateResource(item.id, item);
+                    const updatePayload = { ...item };
+                    if (item.type) {
+                        const cleanType = item.type.toString().toLowerCase().trim();
+                        updatePayload.type = ['material', 'item', 'labour'].includes(cleanType) ? cleanType : undefined;
+                    }
+                    if (item.base_unit_code) {
+                        updatePayload.base_unit_code = normalizeUnitCode(item.base_unit_code);
+                    }
+                    await resourceApi.updateResource(item.id, updatePayload);
                 }
             }
         }

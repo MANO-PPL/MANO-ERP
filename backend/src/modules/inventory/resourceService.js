@@ -1,6 +1,6 @@
 import { db } from '../../config/database.js';
 import AppError from '../../utils/AppError.js';
-import { getUnit, convert, UNIT_REGISTRY } from '../../services/unitRegistry.js';
+import { getUnit, convert, UNIT_REGISTRY, normalizeUnitCode } from '../../services/unitRegistry.js';
 import { detectCycle, getCompositionColumns } from '../../services/compositionResolver.js';
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -1231,30 +1231,32 @@ export async function createResource(orgId, {
     rate_effective_from,
     rate_remarks
 }) {
-    if (!name || !type || !base_unit_code) {
-        throw new AppError('name, type, and base_unit_code are required', 400);
-    }
-    if (!['material', 'item', 'labour'].includes(type)) {
-        throw new AppError('type must be "material", "item", or "labour"', 400);
+    if (!name || !String(name).trim()) {
+        throw new AppError('name is required', 400);
     }
 
-    // App-level validation for standard units
-    let unit;
-    try {
-        unit = getUnit(base_unit_code);
-    } catch (err) {
-        throw new AppError(err.message, 400);
+    // Normalize type (case-insensitive and default fallback)
+    let normalizedType = (type || 'material').toString().toLowerCase().trim();
+    if (normalizedType === 'materials') normalizedType = 'material';
+    if (normalizedType === 'items') normalizedType = 'item';
+    if (normalizedType === 'labor' || normalizedType === 'labours') normalizedType = 'labour';
+    if (!['material', 'item', 'labour'].includes(normalizedType)) {
+        normalizedType = 'material';
     }
+
+    // Normalize base_unit_code
+    const normalizedBaseUnitCode = normalizeUnitCode(base_unit_code || 'Nos');
+    const unit = getUnit(normalizedBaseUnitCode);
 
     const insertId = await db.transaction(async (trx) => {
         const [id] = await trx('res_resources').insert({
             org_id: orgId,
             project_id: null,
             parent_id: null,
-            name,
-            code: code || null,
-            type,
-            base_unit_code,
+            name: name.trim(),
+            code: code ? String(code).trim() : null,
+            type: normalizedType,
+            base_unit_code: normalizedBaseUnitCode,
             description: description || null,
             remarks: remarks || null
         });
@@ -1267,18 +1269,18 @@ export async function createResource(orgId, {
         if (rate !== undefined && rate !== null && rate !== '') {
             await _writeManualRateVersion(orgId, {
                 id,
-                type,
-                base_unit_code
+                type: normalizedType,
+                base_unit_code: normalizedBaseUnitCode
             }, {
                 rate,
-                unit_code: rate_unit_code || base_unit_code,
+                unit_code: rate_unit_code ? normalizeUnitCode(rate_unit_code) : normalizedBaseUnitCode,
                 effective_from: rate_effective_from,
                 remarks: rate_remarks || remarks
             }, trx);
         }
 
         // If item, insert compositions
-        if (type === 'item' && compositions.length > 0) {
+        if (normalizedType === 'item' && compositions.length > 0) {
             await _replaceCompositions(orgId, id, compositions, trx, effective_from);
         }
 
@@ -1316,10 +1318,15 @@ export async function updateResource(orgId, id, {
         
         let activeType = resource.type;
         if (type !== undefined && type !== resource.type) {
-            if (!['material', 'item', 'labour'].includes(type)) {
-                throw new AppError('type must be "material", "item", or "labour"', 400);
+            let normalizedType = type.toString().toLowerCase().trim();
+            if (normalizedType === 'materials') normalizedType = 'material';
+            if (normalizedType === 'items') normalizedType = 'item';
+            if (normalizedType === 'labor' || normalizedType === 'labours') normalizedType = 'labour';
+            if (!['material', 'item', 'labour'].includes(normalizedType)) {
+                normalizedType = 'material';
             }
-            if (type === 'item') {
+
+            if (normalizedType === 'item') {
                 const compositionColumns = await getCompositionColumns(trx);
                 const usedAsComponent = await trx('res_compositions')
                     .where(compositionColumns.component, id)
@@ -1332,31 +1339,27 @@ export async function updateResource(orgId, id, {
                 const compositionColumns = await getCompositionColumns(trx);
                 await trx('res_compositions').where(compositionColumns.item, id).del();
             }
-            updates.type = type;
-            activeType = type;
+            updates.type = normalizedType;
+            activeType = normalizedType;
         }
 
         let activeBaseUnitCode = resource.base_unit_code;
         if (base_unit_code !== undefined && base_unit_code !== resource.base_unit_code) {
-            let newUnit;
-            try {
-                newUnit = getUnit(base_unit_code);
-            } catch (err) {
-                throw new AppError(err.message, 400);
-            }
+            const normalizedBaseUnitCode = normalizeUnitCode(base_unit_code);
+            const newUnit = getUnit(normalizedBaseUnitCode);
 
             if (resource.base_unit_code) {
                 const oldUnit = getUnit(resource.base_unit_code);
-                if (newUnit.type !== oldUnit.type) {
+                if (newUnit.type !== oldUnit.type && !newUnit.isDynamic && !oldUnit.isDynamic) {
                     throw new AppError(
-                        `Cannot change base unit category from "${resource.base_unit_code}" (${oldUnit.type}) to "${base_unit_code}" (${newUnit.type}). Unit changes must remain within the same measurement category (e.g., grams to kilograms, meters to centimeters) to preserve rate, conversion, and recipe integrity.`,
+                        `Cannot change base unit category from "${resource.base_unit_code}" (${oldUnit.type}) to "${normalizedBaseUnitCode}" (${newUnit.type}). Unit changes must remain within the same measurement category to preserve rate and recipe integrity.`,
                         400
                     );
                 }
             }
 
-            updates.base_unit_code = base_unit_code;
-            activeBaseUnitCode = base_unit_code;
+            updates.base_unit_code = normalizedBaseUnitCode;
+            activeBaseUnitCode = normalizedBaseUnitCode;
         }
         if (description !== undefined) updates.description = description;
         if (remarks !== undefined) updates.remarks = remarks;

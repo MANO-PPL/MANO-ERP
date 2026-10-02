@@ -197,7 +197,9 @@ export const ExcelCell = ({
 
         if (column.type === 'select') {
             const opts = column.options || [];
-            const hasCurrentVal = !localValue || opts.some(opt => (typeof opt === 'object' ? opt.value : opt) === localValue);
+            const getOptValue = (opt) => (typeof opt === 'object' && opt !== null ? (opt.value !== undefined ? opt.value : (opt.code !== undefined ? opt.code : opt.id)) : opt);
+            const getOptLabel = (opt) => (typeof opt === 'object' && opt !== null ? (opt.label !== undefined ? opt.label : (opt.name ? `${opt.name} (${opt.code || opt.symbol || opt.value || ''})` : (opt.code || opt.value || ''))) : opt);
+            const hasCurrentVal = !localValue || opts.some(opt => String(getOptValue(opt)) === String(localValue));
             return (
                 <select
                     ref={inputRef}
@@ -211,17 +213,17 @@ export const ExcelCell = ({
                     onKeyDown={(e) => onKeyDown(e, rowIndex, column.key)}
                     className="w-full h-full px-2 py-0.5 bg-white dark:bg-[#161b22] text-gray-900 dark:text-white border border-blue-500 rounded text-xs outline-none focus:ring-1 focus:ring-blue-500 cursor-pointer"
                 >
-                    <option value="">-- Select --</option>
+                    <option value="" className="text-gray-900 dark:text-white dark:bg-[#161b22]">-- Select --</option>
                     {!hasCurrentVal && (
                         <option value={localValue} className="text-gray-900 dark:text-white dark:bg-[#161b22]">
                             {localValue}
                         </option>
                     )}
-                    {opts.map((opt) => {
-                        const optVal = typeof opt === 'object' ? opt.value : opt;
-                        const optLabel = typeof opt === 'object' ? opt.label : opt;
+                    {opts.map((opt, idx) => {
+                        const optVal = getOptValue(opt);
+                        const optLabel = getOptLabel(opt);
                         return (
-                            <option key={String(optVal)} value={optVal} className="text-gray-900 dark:text-white dark:bg-[#161b22]">
+                            <option key={optVal !== undefined && optVal !== null ? String(optVal) : idx} value={optVal} className="text-gray-900 dark:text-white dark:bg-[#161b22]">
                                 {optLabel}
                             </option>
                         );

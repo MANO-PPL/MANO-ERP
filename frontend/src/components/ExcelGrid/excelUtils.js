@@ -490,6 +490,13 @@ export const parseRawRowsToEntities = (rawRows = [], columns = [], primaryKey = 
                 val = '';
             }
 
+            if (col.key === 'type' && val) {
+                const lower = val.toLowerCase();
+                if (lower === 'material' || lower === 'materials') val = 'material';
+                else if (lower === 'item' || lower === 'items') val = 'item';
+                else if (lower === 'labour' || lower === 'labor' || lower === 'labours') val = 'labour';
+            }
+
             if (col.type === 'number' && val !== '') {
                 const num = Number(val);
                 entity[col.key] = isNaN(num) ? val : num;

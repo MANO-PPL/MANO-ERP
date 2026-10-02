@@ -48,8 +48,175 @@ export const UNIT_REGISTRY = {
     'yr': { name: 'Year', symbol: 'yr', type: 'time', factor: 8760.0 }
 };
 
+export const UNIT_ALIASES = {
+    // volume
+    'litre': 'L',
+    'liter': 'L',
+    'litres': 'L',
+    'liters': 'L',
+    'ltr': 'L',
+    'ltrs': 'L',
+    'lt': 'L',
+    'l': 'L',
+    'cu.m': 'cum',
+    'cu m': 'cum',
+    'cu-m': 'cum',
+    'm3': 'cum',
+    'm^3': 'cum',
+    'cubic meter': 'cum',
+    'cubic meters': 'cum',
+    'cubic metre': 'cum',
+    'cu.ft': 'cft',
+    'cu ft': 'cft',
+    'cu-ft': 'cft',
+    'ft3': 'cft',
+    'ft^3': 'cft',
+    'cubic feet': 'cft',
+    'cubic foot': 'cft',
+    'cubic ft': 'cft',
+    'gallon': 'gal',
+    'gallons': 'gal',
+
+    // area
+    'sq.ft': 'sqft',
+    'sq ft': 'sqft',
+    'sq-ft': 'sqft',
+    'sqft': 'sqft',
+    'square feet': 'sqft',
+    'square foot': 'sqft',
+    'sq. feet': 'sqft',
+    'sq feet': 'sqft',
+    'sq. foot': 'sqft',
+    'sqfeet': 'sqft',
+    'sq.m': 'sqm',
+    'sq m': 'sqm',
+    'sq-m': 'sqm',
+    'sqm': 'sqm',
+    'square meter': 'sqm',
+    'square meters': 'sqm',
+    'square metre': 'sqm',
+    'sq. meter': 'sqm',
+    'sq.in': 'sqin',
+    'sq in': 'sqin',
+    'sq-in': 'sqin',
+    'sqin': 'sqin',
+    'square inch': 'sqin',
+    'square inches': 'sqin',
+    'ha': 'hectare',
+
+    // weight
+    'kilogram': 'kg',
+    'kilograms': 'kg',
+    'kilo': 'kg',
+    'kilos': 'kg',
+    'kgs': 'kg',
+    'gram': 'g',
+    'grams': 'g',
+    'gm': 'g',
+    'gms': 'g',
+    'milligram': 'mg',
+    'milligrams': 'mg',
+    'ton': 'MT',
+    'tons': 'MT',
+    'tonne': 'MT',
+    'tonnes': 'MT',
+    'metric ton': 'MT',
+    'metric tonne': 'MT',
+    'pound': 'lb',
+    'pounds': 'lb',
+    'lbs': 'lb',
+
+    // length
+    'meter': 'm',
+    'meters': 'm',
+    'metre': 'm',
+    'metres': 'm',
+    'mtr': 'm',
+    'mtrs': 'm',
+    'centimeter': 'cm',
+    'centimeters': 'cm',
+    'centimetre': 'cm',
+    'millimeter': 'mm',
+    'millimeters': 'mm',
+    'millimetre': 'mm',
+    'kilometer': 'km',
+    'kilometers': 'km',
+    'inch': 'in',
+    'inches': 'in',
+    'foot': 'ft',
+    'feet': 'ft',
+    'yard': 'yd',
+    'yards': 'yd',
+    'r.ft': 'RFT',
+    'rft': 'RFT',
+    'r. ft': 'RFT',
+    'running foot': 'RFT',
+    'running feet': 'RFT',
+    'running ft': 'RFT',
+
+    // count & packaging -> map to Nos
+    'nos': 'Nos',
+    'no': 'Nos',
+    'no.': 'Nos',
+    'nos.': 'Nos',
+    'number': 'Nos',
+    'numbers': 'Nos',
+    'each': 'Nos',
+    'ea': 'Nos',
+    'dozen': 'doz',
+    'dozens': 'doz',
+    'pairs': 'pair',
+    'sets': 'set',
+
+    // time
+    'hour': 'hr',
+    'hours': 'hr',
+    'hrs': 'hr',
+    'minute': 'min',
+    'minutes': 'min',
+    'mins': 'min',
+    'second': 'sec',
+    'seconds': 'sec',
+    'secs': 'sec',
+    'days': 'day',
+    'weeks': 'wk',
+    'wks': 'wk',
+    'months': 'month',
+    'mon': 'month',
+    'years': 'yr',
+    'yrs': 'yr'
+};
+
+/**
+ * Normalizes any unit input string into a standard canonical code or dynamic unit code.
+ * @param {string} rawCode
+ * @returns {string}
+ */
+export function normalizeUnitCode(rawCode) {
+    if (!rawCode || typeof rawCode !== 'string') return 'Nos';
+    const trimmed = rawCode.trim();
+    if (!trimmed) return 'Nos';
+
+    // Exact match in registry
+    if (UNIT_REGISTRY[trimmed]) return trimmed;
+
+    // Lowercase match in aliases
+    const lower = trimmed.toLowerCase();
+    if (UNIT_ALIASES[lower]) return UNIT_ALIASES[lower];
+
+    // Case-insensitive match in registry
+    const registryKey = Object.keys(UNIT_REGISTRY).find(k => k.toLowerCase() === lower);
+    if (registryKey) return registryKey;
+
+    // Return trimmed code as dynamic unit code
+    return trimmed;
+}
+
 export const UNIT_OPTIONS = Object.entries(UNIT_REGISTRY).map(([code, u]) => ({
-    code, ...u
+    value: code,
+    label: `${u.name} (${code})`,
+    code,
+    ...u
 }));
 
 export const UNIT_GROUPS = UNIT_OPTIONS.reduce((acc, u) => {
@@ -59,9 +226,21 @@ export const UNIT_GROUPS = UNIT_OPTIONS.reduce((acc, u) => {
 }, {});
 
 export function getUnit(code) {
-    const unit = UNIT_REGISTRY[code];
-    if (!unit) throw new Error(`Invalid unit code: "${code}"`);
-    return unit;
+    if (!code || typeof code !== 'string') {
+        return { name: 'Number/Each', symbol: 'Nos', type: 'count', factor: 1.0, isBase: true, isDynamic: true };
+    }
+    const normalized = normalizeUnitCode(code);
+    if (UNIT_REGISTRY[normalized]) {
+        return UNIT_REGISTRY[normalized];
+    }
+    return {
+        name: code.trim(),
+        symbol: code.trim(),
+        type: 'count',
+        factor: 1.0,
+        isBase: true,
+        isDynamic: true
+    };
 }
 
 export function convert(fromCode, toCode, quantity) {
