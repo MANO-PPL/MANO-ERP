@@ -1,5 +1,5 @@
 export const VENDOR_CATEGORIES = Object.freeze([
-    'Consultant', 'Contractor', 'Supplier', 'Manufacturer', 'Service Provider', 'Other',
+    'Consultant', 'Contractor', 'Supplier', 'Manufacturer', 'Other',
 ]);
 
 const value = (row, keys) => keys.map((key) => row?.[key]).find((item) => item !== undefined && item !== null && item !== '');
