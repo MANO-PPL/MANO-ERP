@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { useAuth } from '../../../context/AuthContext';
 import { adminApi as defaultAdminApi } from '../../../services/adminApi';
 import { projectApi as defaultProjectApi } from '../../../services/projectApi';
+import { customToast } from '../../../utils/toast';
 import {
     classifyReconciledCreate, createEmployeePayload, createOwnershipSlots, isBackendAdmin,
     normalizeImportResult, normalizeProjectsResponse, normalizeTemplatesResponse, normalizeUsersResponse,
@@ -27,7 +28,15 @@ export default function useMobileAdmin({ services = {}, authOverride } = {}) {
     const [loading, setLoading] = useState({ users: true, templates: true, projects: true });
     const [errors, setErrors] = useState({ users: '', templates: '', projects: '' });
     const [pending, setPending] = useState({});
-    const [notice, setNotice] = useState(null);
+    const [notice, _setNotice] = useState(null);
+    const setNotice = useCallback((next) => {
+        _setNotice(next);
+        if (next?.text) {
+            if (next.tone === 'error') customToast.error(next.text, 'Admin Error');
+            else if (next.tone === 'warning') customToast.warning(next.text, 'Admin Notice');
+            else customToast.success(next.text, 'Admin');
+        }
+    }, []);
     const current = useCallback((token) => mountedRef.current && slotsRef.current.isCurrent(token), []);
     const setBusy = useCallback((name, value, token) => { if (current(token)) setPending((state) => ({ ...state, [name]: value })); }, [current]);
 
