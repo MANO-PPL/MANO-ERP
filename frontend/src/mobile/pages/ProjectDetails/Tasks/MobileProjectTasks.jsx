@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { Download, Filter, ListChecks, Plus, Trash2 } from 'lucide-react';
 import { useSearchParams } from 'react-router-dom';
+import { customToast } from '../../../../components/Toast';
 import MobileBottomSheet from '../../../components/MobileBottomSheet';
 import MobileConfirmModal from '../../../components/MobileConfirmModal';
 import MobileEmptyState from '../../../components/MobileEmptyState';
@@ -17,7 +18,7 @@ import MobileTaskEditor from './MobileTaskEditor';
 import useMobileProjectTasks from './useMobileProjectTasks';
 import { buildAssigneePayload, buildCategoryPayload, buildTaskCsv, buildTaskPayload, buildTaskReorderPayload, filterTaskCategories, flattenTaskCategories, taskDuration, taskStats, TASK_PRIORITIES, TASK_STATUSES } from './mobileTaskModel';
 
-const buttonClass = 'min-h-11 rounded-xl border border-gray-200 px-3 text-sm font-bold dark:border-gh-border';
+const buttonClass = 'min-h-9 rounded-lg border border-gray-200 px-2.5 text-xs font-semibold text-gray-700 hover:bg-gray-50 dark:border-gh-border dark:text-gh-text dark:hover:bg-gh-card';
 const errorMessage = (error, fallback) => error?.response?.status === 403 ? 'Access denied by the current ERP permission policy.' : error?.response?.data?.message || error?.message || fallback;
 
 export default function MobileProjectTasks({ projectId, canWrite, taskService, projectService }) {
@@ -39,7 +40,26 @@ export default function MobileProjectTasks({ projectId, canWrite, taskService, p
     const filtered = useMemo(() => filterTaskCategories(categories, { query, status, priority, quick, members }), [categories, members, priority, query, quick, status]);
     const allFiltered = flattenTaskCategories(filtered); const stats = taskStats(categories);
     const setQueryParam = (key, value, defaultValue) => { const next = new URLSearchParams(params); if (!value || value === defaultValue) next.delete(key); else next.set(key, value); setParams(next); };
-    const commit = async (work, success) => { const operationProjectId = String(projectId); setPending(true); setMessage(''); try { await work(); if (String(activeProjectRef.current) !== operationProjectId) return false; setMessage(success); return true; } catch (caught) { if (String(activeProjectRef.current) !== operationProjectId) return false; setMessage(errorMessage(caught, 'The task change failed.')); return false; } finally { if (String(activeProjectRef.current) === operationProjectId) setPending(false); } };
+    const commit = async (work, success) => {
+        const operationProjectId = String(projectId);
+        setPending(true);
+        setMessage('');
+        try {
+            await work();
+            if (String(activeProjectRef.current) !== operationProjectId) return false;
+            setMessage(success);
+            customToast.success(success, 'Tasks');
+            return true;
+        } catch (caught) {
+            if (String(activeProjectRef.current) !== operationProjectId) return false;
+            const errText = errorMessage(caught, 'The task change failed.');
+            setMessage(errText);
+            customToast.error(errText, 'Task Error');
+            return false;
+        } finally {
+            if (String(activeProjectRef.current) === operationProjectId) setPending(false);
+        }
+    };
     const replaceTask = (taskId, patch) => setCategories((current) => current.map((category) => ({ ...category, tasks: (category.tasks || []).map((task) => task.id === taskId ? { ...task, ...patch } : task) })));
     const removeTask = (taskId) => setCategories((current) => current.map((category) => ({ ...category, tasks: (category.tasks || []).filter((task) => task.id !== taskId) })));
 
@@ -58,23 +78,36 @@ export default function MobileProjectTasks({ projectId, canWrite, taskService, p
     const saveCategory = async () => { const name = categoryEditor.name.trim(); if (!name) return; if (categoryEditor.id) { if (await commit(() => service.updateCategory(projectId, categoryEditor.id, buildCategoryPayload(name)), 'Category renamed.')) setCategories((current) => current.map((item) => item.id === categoryEditor.id ? { ...item, listName: name } : item)); } else { let created; if (await commit(async () => { created = (await service.createCategory(projectId, buildCategoryPayload(name))).category; }, 'Category created.')) setCategories((current) => [...current, created]); } setCategoryEditor(null); };
     const deleteCategory = async () => { const target = confirm.category; if (await commit(() => service.deleteCategory(projectId, target.id), 'Category deleted.')) setCategories((current) => current.filter((item) => item.id !== target.id)); setConfirm(null); };
     const moveTask = async (task, direction) => { const category = categories.find((item) => item.id === task.categoryId); const index = category.tasks.findIndex((item) => item.id === task.id); const target = index + direction; if (target < 0 || target >= category.tasks.length) return; const reordered = [...category.tasks]; [reordered[index], reordered[target]] = [reordered[target], reordered[index]]; if (await commit(() => service.reorder(projectId, buildTaskReorderPayload(reordered)), 'Task order updated.')) setCategories((current) => current.map((item) => item.id === category.id ? { ...item, tasks: reordered } : item)); };
-    const exportCsv = () => { const blob = new Blob([buildTaskCsv(filtered)], { type: 'text/csv' }); const url = URL.createObjectURL(blob); const anchor = document.createElement('a'); anchor.href = url; anchor.download = `tasks_export_${Date.now()}.csv`; anchor.click(); URL.revokeObjectURL(url); };
-    if (loading) return <div data-m5-module="Tasks"><MobileLoadingState label="Loading tasks" rows={4} /></div>;
-    if (error) return <MobileEmptyState title="Tasks unavailable" description={errorMessage(error, 'Tasks could not be loaded.')} action={<button className={buttonClass} onClick={() => workspace.load(true)}>Try again</button>} />;
-    return <div data-m5-module="Tasks" className="min-w-0 space-y-4 px-4 pb-28">
-        {message && <p role="status" className="rounded-xl bg-blue-50 p-3 text-xs text-blue-800 dark:bg-blue-950/40 dark:text-blue-200">{message}</p>}
-        <div className="grid grid-cols-2 gap-3"><MobileStatCard label="Total" value={stats.total} icon={ListChecks} /><MobileStatCard label="Completed" value={stats.completed} detail={`${stats.overdue} overdue`} tone="green" /></div>
+    const exportCsv = () => {
+        try {
+            const blob = new Blob([buildTaskCsv(filtered)], { type: 'text/csv' });
+            const url = URL.createObjectURL(blob);
+            const anchor = document.createElement('a');
+            anchor.href = url;
+            anchor.download = `tasks_export_${Date.now()}.csv`;
+            anchor.click();
+            URL.revokeObjectURL(url);
+            customToast.success('Tasks exported to CSV successfully.', 'Export');
+        } catch (err) {
+            customToast.error('Failed to export tasks to CSV.', 'Export Error');
+        }
+    };
+    if (loading) return <div data-m5-module="Tasks" className="w-full min-w-0 px-2 sm:px-3 pb-24"><MobileLoadingState rows={4} /></div>;
+    if (error) return <div className="w-full min-w-0 px-2 sm:px-3 pb-24"><MobileEmptyState title="Tasks unavailable" description={errorMessage(error, 'Tasks could not be loaded.')} action={<button className={buttonClass} onClick={() => workspace.load(true)}>Try again</button>} /></div>;
+    return <div data-m5-module="Tasks" className="w-full min-w-0 space-y-2 px-2 sm:px-3 pb-24">
+        {message && <p role="status" className="rounded-lg bg-blue-50 p-2 text-xs font-normal text-blue-800 dark:bg-blue-950/40 dark:text-blue-200">{message}</p>}
+        <div className="grid grid-cols-2 gap-2"><MobileStatCard label="Total" value={stats.total} icon={ListChecks} /><MobileStatCard label="Completed" value={stats.completed} detail={`${stats.overdue} overdue`} tone="green" /></div>
         <MobileTabs segmented label="Task view" value={view} onChange={(value) => setQueryParam('view', value, 'list')} items={[{ value: 'list', label: 'List' }, { value: 'board', label: 'Board' }]} />
-        <div className="flex gap-2"><MobileSearchBar value={query} onChange={setQuery} placeholder="Search tasks, codes, assignees" /><button type="button" aria-label="Filter tasks" onClick={() => { setDraftFilters({ status, priority }); setFiltersOpen(true); }} className={buttonClass}><Filter size={18} /></button></div>
+        <div className="flex gap-2"><MobileSearchBar value={query} onChange={setQuery} placeholder="Search tasks, codes, assignees" /><button type="button" aria-label="Filter tasks" onClick={() => { setDraftFilters({ status, priority }); setFiltersOpen(true); }} className={buttonClass}><Filter size={16} /></button></div>
         <MobileTabs label="Task KPI filters" value={quick} onChange={setQuick} items={[{ value: 'all', label: 'All', count: stats.total }, { value: 'in_progress', label: 'In progress', count: stats.inProgress }, { value: 'high_priority', label: 'High', count: stats.highPriority }, { value: 'overdue', label: 'Overdue', count: stats.overdue }]} />
-        <div className="flex flex-wrap gap-2"><button className={buttonClass} onClick={exportCsv}><Download size={16} className="inline" /> Export CSV</button>{canWrite && <button className={buttonClass} onClick={() => setCategoryEditor({ name: '' })}><Plus size={16} className="inline" /> Category</button>}<button className={buttonClass} onClick={() => setSelected((current) => current.size ? new Set() : new Set(allFiltered.map((task) => task.id)))}>{selected.size ? 'Exit selection' : 'Select'}</button></div>
-        {selected.size > 0 && canWrite && <button onClick={() => setConfirm({ ids: [...selected] })} className="min-h-11 w-full rounded-xl bg-red-600 text-sm font-bold text-white"><Trash2 size={16} className="inline" /> Delete {selected.size} selected</button>}
-        {view === 'board' ? <MobileTaskBoard tasks={allFiltered} lane={lane} onLaneChange={setLane} members={members} onOpen={(task) => setEditor({ task })} /> : <div className="space-y-5">{filtered.map((category) => <section key={category.id} className="space-y-3"><div className="flex items-center justify-between"><h2 className="text-sm font-black dark:text-gh-text">{category.listName} <span className="text-gray-400">({category.tasks.length})</span></h2>{canWrite && <div className="flex gap-1"><button className={buttonClass} onClick={() => setCategoryEditor({ id: category.id, name: category.listName })}>Rename</button><button className={`${buttonClass} text-red-600`} onClick={() => setConfirm({ category })}>Delete</button></div>}</div>{category.tasks.map((task) => <div key={task.id}><MobileTaskCard task={task} category={category.listName} members={members} selectionMode={selected.size > 0} selected={selected.has(task.id)} onToggle={() => setSelected((current) => { const next = new Set(current); next.has(task.id) ? next.delete(task.id) : next.add(task.id); return next; })} onOpen={() => setEditor({ task: { ...task, categoryId: category.id } })} />{canWrite && <div className="mt-1 flex justify-end gap-1"><button className="min-h-9 px-3 text-xs" onClick={() => moveTask({ ...task, categoryId: category.id }, -1)}>Move up</button><button className="min-h-9 px-3 text-xs" onClick={() => moveTask({ ...task, categoryId: category.id }, 1)}>Move down</button></div>}</div>)}{category.tasks.length === 0 && <p className="text-xs text-gray-500">No matching tasks.</p>}</section>)}</div>}
+        <div className="flex flex-wrap gap-1.5"><button className={buttonClass} onClick={exportCsv}><Download size={14} className="inline mr-1" /> Export CSV</button>{canWrite && <button className={buttonClass} onClick={() => setCategoryEditor({ name: '' })}><Plus size={14} className="inline mr-1" /> Category</button>}<button className={buttonClass} onClick={() => setSelected((current) => current.size ? new Set() : new Set(allFiltered.map((task) => task.id)))}>{selected.size ? 'Exit selection' : 'Select'}</button></div>
+        {selected.size > 0 && canWrite && <button onClick={() => setConfirm({ ids: [...selected] })} className="min-h-9 w-full rounded-lg bg-red-600 text-xs font-semibold text-white"><Trash2 size={14} className="inline mr-1" /> Delete {selected.size} selected</button>}
+        {view === 'board' ? <MobileTaskBoard tasks={allFiltered} lane={lane} onLaneChange={setLane} members={members} onOpen={(task) => setEditor({ task })} /> : <div className="space-y-3">{filtered.map((category) => <section key={category.id} className="space-y-1.5"><div className="flex items-center justify-between"><h2 className="text-xs font-semibold text-gray-900 dark:text-gh-text">{category.listName} <span className="font-normal text-gray-400">({category.tasks.length})</span></h2>{canWrite && <div className="flex gap-1"><button className="min-h-7 rounded border border-gray-200 px-2 text-[11px] font-normal hover:bg-gray-50 dark:border-gh-border dark:hover:bg-gh-card" onClick={() => setCategoryEditor({ id: category.id, name: category.listName })}>Rename</button><button className="min-h-7 rounded border border-gray-200 px-2 text-[11px] font-normal text-red-600 hover:bg-red-50 dark:border-gh-border dark:hover:bg-red-950/20" onClick={() => setConfirm({ category })}>Delete</button></div>}</div><div className="space-y-1.5">{category.tasks.map((task) => <div key={task.id}><MobileTaskCard task={task} category={category.listName} members={members} selectionMode={selected.size > 0} selected={selected.has(task.id)} onToggle={() => setSelected((current) => { const next = new Set(current); next.has(task.id) ? next.delete(task.id) : next.add(task.id); return next; })} onOpen={() => setEditor({ task: { ...task, categoryId: category.id } })} />{canWrite && <div className="mt-0.5 flex justify-end gap-1"><button className="min-h-7 px-2 text-[10px] font-normal text-gray-500 hover:text-gray-700 dark:text-gh-muted dark:hover:text-gh-text" onClick={() => moveTask({ ...task, categoryId: category.id }, -1)}>Move up</button><button className="min-h-7 px-2 text-[10px] font-normal text-gray-500 hover:text-gray-700 dark:text-gh-muted dark:hover:text-gh-text" onClick={() => moveTask({ ...task, categoryId: category.id }, 1)}>Move down</button></div>}</div>)}</div>{category.tasks.length === 0 && <p className="text-xs font-normal text-gray-500">No matching tasks.</p>}</section>)}</div>}
         {categories.length === 0 && <MobileEmptyState title="No task categories" description="Create a category before adding tasks." />}
         {canWrite && categories.length > 0 && <MobileFAB label="Create task" extended onClick={() => setEditor({ task: null })} />}
         <MobileTaskEditor open={editor !== null} onClose={() => setEditor(null)} task={editor?.task} categories={categories} members={members} canWrite={canWrite} pending={pending} onSave={saveTask} onDelete={() => setConfirm({ ids: [editor.task.id] })} onAssignees={(id) => toggleAssignee(editor.task, id)} />
         <MobileFilterSheet open={filtersOpen} onClose={() => setFiltersOpen(false)} onReset={() => setDraftFilters({ status: 'All', priority: 'All' })} onApply={() => { const next = new URLSearchParams(params); if (draftFilters.status === 'All') next.delete('status'); else next.set('status', draftFilters.status); if (draftFilters.priority === 'All') next.delete('priority'); else next.set('priority', draftFilters.priority); setParams(next); setFiltersOpen(false); }}><MobileSelect label="Status" value={draftFilters.status} onChange={(event) => setDraftFilters((current) => ({ ...current, status: event.target.value }))} options={['All', ...TASK_STATUSES].map((value) => ({ value, label: value }))} /><MobileSelect label="Priority" value={draftFilters.priority} onChange={(event) => setDraftFilters((current) => ({ ...current, priority: event.target.value }))} options={['All', ...TASK_PRIORITIES].map((value) => ({ value, label: value }))} /></MobileFilterSheet>
-        <MobileBottomSheet open={categoryEditor !== null} onClose={() => setCategoryEditor(null)} title={categoryEditor?.id ? 'Rename category' : 'Create category'} footer={<button disabled={pending || !categoryEditor?.name.trim()} onClick={saveCategory} className="min-h-11 w-full rounded-xl bg-blue-600 font-bold text-white disabled:opacity-50">Save category</button>}><label className="text-xs font-semibold">Name<input value={categoryEditor?.name || ''} onChange={(event) => setCategoryEditor((current) => ({ ...current, name: event.target.value }))} className="mt-2 min-h-11 w-full rounded-xl border border-gray-200 px-3 dark:border-gh-border dark:bg-gh-input" /></label></MobileBottomSheet>
+        <MobileBottomSheet open={categoryEditor !== null} onClose={() => setCategoryEditor(null)} title={categoryEditor?.id ? 'Rename category' : 'Create category'} footer={<button disabled={pending || !categoryEditor?.name.trim()} onClick={saveCategory} className="min-h-9 w-full rounded-lg bg-blue-600 text-xs font-semibold text-white disabled:opacity-50">Save category</button>}><label className="text-xs font-medium text-gray-700 dark:text-gh-text">Name<input value={categoryEditor?.name || ''} onChange={(event) => setCategoryEditor((current) => ({ ...current, name: event.target.value }))} className="mt-1.5 min-h-9 w-full rounded-lg border border-gray-200 px-3 text-xs font-normal dark:border-gh-border dark:bg-gh-input" /></label></MobileBottomSheet>
         <MobileConfirmModal open={confirm !== null} onClose={() => setConfirm(null)} onConfirm={() => confirm?.category ? deleteCategory() : deleteTasks(confirm?.ids || [])} pending={pending} danger title={confirm?.category ? 'Delete category' : 'Delete tasks'} message={confirm?.category ? `Delete ${confirm.category.listName} and its tasks?` : `Delete ${confirm?.ids?.length || 0} selected task(s)?`} />
     </div>;
 }
