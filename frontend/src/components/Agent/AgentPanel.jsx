@@ -4,6 +4,7 @@ import { X, Plus, Loader2 } from 'lucide-react';
 import AgentConversation from './AgentConversation.jsx';
 import AgentComposer from './AgentComposer.jsx';
 import { canSend } from './agentReducer.js';
+import { isExpired } from './agentModel.js';
 
 export default function AgentPanel({ open, onClose, launcherRef, inputRef, context, projectName, state, draft,
     onDraft, onSend, onNew, onDecision, onRetry, transport, onStop,
@@ -136,7 +137,8 @@ export default function AgentPanel({ open, onClose, launcherRef, inputRef, conte
         </div>
 
         {/* Bottom Composer */}
-        <AgentComposer draft={draft} onDraft={onDraft} onSend={onSend} blocked={!canSend(state)} inputRef={inputRef}
+        <AgentComposer draft={draft} onDraft={onDraft} onSend={onSend}
+            blocked={!canSend(state) && !state.pending} decisionReply={!!state.pending && !state.decisionBusy && !state.pending.confirmationPhrase && !isExpired(state.pending)} inputRef={inputRef}
             preview={preview}
             attachment={attachment} attachmentError={attachmentError} onAttachFile={onAttachFile} onRemoveAttachment={onRemoveAttachment} uploading={uploading}
             canStop={transport.supportsStop && !!state.activeRequestId && !state.pending && state.status !== 'executing'} onStop={onStop} />

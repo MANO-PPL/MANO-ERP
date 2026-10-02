@@ -30,9 +30,10 @@ export async function getAgentService() {
     return initPromise;
 }
 export async function initializeAgentRuntime() {
-    const [{ db }, projects, clients, vendors, resources, parties] = await Promise.all([
+    const [{ db }, projects, clients, vendors, resources, parties, cycles] = await Promise.all([
         import('../../config/database.js'), import('../projects/core/projectService.js'), import('../clients/clientService.js'),
-        import('../vendors/vendorService.js'), import('../inventory/resourceService.js'), import('../projects/parties/partyService.js')
+        import('../vendors/vendorService.js'), import('../inventory/resourceService.js'), import('../projects/parties/partyService.js'),
+        import('../documents/cycleService.js')
     ]);
     await initializeAgentSchema(db);
     const store = createAgentStore(db); const authorize = createPolicy(db); const okf = createSafeOkfProvider();
@@ -41,7 +42,7 @@ export async function initializeAgentRuntime() {
     const exportService = createExportService({ db, approvalService });
     service = createAgentService({ store, authorize, okf, reason: createPythonClient({ secret: agentInternalSecret }),
         read: createReadService({ db, projects, clients, vendors, resources, parties, approvalService, exportService, costSimulationService: null, authorize }),
-        writes: createWriteService({ db, clients, vendors, resources, approvalService }),
+        writes: createWriteService({ db, clients, vendors, resources, approvalService, cycles }),
         writeEnablement: RUNTIME_WRITE_ENABLEMENT });
     cleanup = setInterval(() => store.cleanup().catch(() => { /* No request data or database diagnostics are logged. */ }), 60000);
     cleanup.unref();

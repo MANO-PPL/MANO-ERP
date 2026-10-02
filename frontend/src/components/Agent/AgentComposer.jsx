@@ -9,6 +9,7 @@ export default function AgentComposer({
     onDraft,
     onSend,
     blocked,
+    decisionReply = false,
     inputRef,
     canStop,
     onStop,
@@ -26,7 +27,7 @@ export default function AgentComposer({
     const handleDragOver = (e) => {
         e.preventDefault();
         e.stopPropagation();
-        if (!blocked && !uploading) setIsDragging(true);
+        if (!blocked && !decisionReply && !uploading) setIsDragging(true);
     };
 
     const handleDragLeave = (e) => {
@@ -39,7 +40,7 @@ export default function AgentComposer({
         e.preventDefault();
         e.stopPropagation();
         setIsDragging(false);
-        if (blocked || uploading) return;
+        if (blocked || decisionReply || uploading) return;
         const droppedFile = e.dataTransfer.files?.[0];
         if (droppedFile && onAttachFile) {
             onAttachFile(droppedFile, { approvedForAgentWrite });
@@ -59,7 +60,7 @@ export default function AgentComposer({
                 accept=".xlsx,.xls,.csv,.pdf,.doc,.docx,.jpg,.jpeg,.png,.webp"
                 className="hidden"
                 onChange={e => {
-                    if (e.target.files?.[0] && onAttachFile) {
+                    if (!decisionReply && e.target.files?.[0] && onAttachFile) {
                         onAttachFile(e.target.files[0], { approvedForAgentWrite });
                     }
                     e.target.value = '';
@@ -110,7 +111,7 @@ export default function AgentComposer({
 
                 <textarea ref={inputRef} id="erp-agent-input" rows={1} maxLength={8000} value={draft}
                     onChange={event => onDraft(event.target.value)}
-                    placeholder={attachment ? "Tell the assistant how to handle this file…" : "Ask about projects, inventory, vendors…"}
+                    placeholder={decisionReply ? "Reply yes to confirm or no to cancel…" : attachment ? "Tell the assistant how to handle this file…" : "Ask about projects, inventory, vendors…"}
                     aria-describedby="erp-agent-input-help"
                     className="block max-h-28 min-h-[40px] w-full resize-none bg-transparent px-3 pt-2 text-xs sm:text-sm leading-relaxed outline-none placeholder:text-gray-400 dark:placeholder:text-gh-muted"
                     onKeyDown={event => {
@@ -127,7 +128,7 @@ export default function AgentComposer({
                                 className="h-3 w-3 rounded border-gray-300 text-blue-600 focus:ring-blue-500" />
                             Approved quality file
                         </label>
-                        <button type="button" onClick={() => fileInputRef.current?.click()} disabled={blocked || uploading}
+                        <button type="button" onClick={() => fileInputRef.current?.click()} disabled={blocked || decisionReply || uploading}
                             className="flex items-center gap-1 rounded-md px-2 py-1 text-[11px] font-medium text-gray-500 hover:bg-gray-200/60 hover:text-gray-800 dark:text-gh-muted dark:hover:bg-gh-hover dark:hover:text-gh-text transition-colors disabled:opacity-50"
                             title="Attach a spreadsheet, approved quality document, or resolution image">
                             <Paperclip size={13} />

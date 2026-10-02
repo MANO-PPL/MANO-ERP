@@ -15,6 +15,52 @@ function displayFieldValue(value) {
     return JSON.stringify(value);
 }
 export function actionFor(tool, args, preconditions = null) {
+    if (tool.name === 'documents.archiveInstance') {
+        return { actionType: tool.name, title: 'Archive document', riskLevel: 'WRITE', affectedRecords: 1,
+            description: 'Archive this document instance. Its completed approval history remains available; no active cycle may remain.',
+            confirmationPhrase: 'ARCHIVE DOCUMENT', fields: [
+                { label: 'Project', value: preconditions?.instance?.projectName || 'Selected project' },
+                { label: 'Document', value: preconditions?.instance?.title || 'Selected document' },
+                { label: 'Template', value: preconditions?.instance?.templateName || 'Unknown' },
+                { label: 'Completed cycles retained', value: String(preconditions?.cycleCount || 0) },
+                { label: 'Active cycles', value: 'None' }
+            ] };
+    }
+    if (tool.risk === 'WRITE' && (tool.name === 'projects.setMemberPermissions'
+        || tool.name === 'adminUsers.setSystemPermissions' || tool.name.startsWith('permissionTemplates.'))) {
+        const target = preconditions?.member?.user_name || preconditions?.user?.user_name
+            || preconditions?.template?.name || args.name || 'Selected access template';
+        return { actionType: tool.name, title: 'Change access permissions', riskLevel: 'WRITE', affectedRecords: 1,
+            description: `Administrator-only access change for ${target}. Confirm the complete before-and-after permissions.`,
+            confirmationPhrase: 'CONFIRM ACCESS CHANGE', fields: [
+                { label: 'Target', value: target },
+                ...(preconditions?.template?.type || args.type ? [{ label: 'Template type', value: preconditions?.template?.type || args.type }] : []),
+                { label: 'Current permissions', value: displayFieldValue(preconditions?.member?.project_permissions
+                    || preconditions?.user?.system_permissions || preconditions?.template?.permissions || 'None') },
+                { label: 'Requested permissions', value: args.permissions ? JSON.stringify(args.permissions) : 'Unchanged' },
+                ...(args.name && preconditions?.template ? [{ label: 'New template name', value: args.name }] : [])
+            ] };
+    }
+    if (tool.risk === 'WRITE' && (tool.name.startsWith('admin') || tool.name.startsWith('documentTemplates.'))) {
+        const isTemplate = tool.name.startsWith('documentTemplates.');
+        const current = preconditions?.template;
+        const currentUser = preconditions?.user;
+        return { actionType: tool.name, title: isTemplate ? 'Change document template'
+            : currentUser ? 'Update user profile' : 'Create organization setting',
+            riskLevel: 'WRITE', affectedRecords: 1,
+            description: `Administrator-only change${current ? ` to ${current.name}` : ''}. Review its impact before confirming.`,
+            confirmationPhrase: 'CONFIRM ADMIN CHANGE',
+            fields: [
+                ...(current ? [{ label: 'Current template', value: current.name },
+                    { label: 'Current type', value: current.doc_type },
+                    { label: 'Current description', value: current.description || 'None' }] : []),
+                ...(currentUser ? [{ label: 'Current user', value: currentUser.user_name },
+                    { label: 'Current email', value: currentUser.email },
+                    { label: 'Current phone', value: currentUser.phone_no || 'None' }] : []),
+                ...Object.entries(args).filter(([key]) => !['projectId', 'documentId'].includes(key))
+                    .map(([label, value]) => ({ label, value }))
+            ] };
+    }
     if (tool.name === 'tasks.deleteSelected') {
         const tasks = preconditions?.tasks || [];
         const names = tasks.map(task => `${task.name}${task.task_code ? ` (${task.task_code})` : ''}`).join(', ');
@@ -45,6 +91,28 @@ export function actionFor(tool, args, preconditions = null) {
         return { actionType: tool.name, title, riskLevel: 'WRITE', affectedRecords: 1,
             description: `${title}${preconditions?.current?.name ? `: ${preconditions.current.name}` : args.name ? `: ${args.name}` : ''}. Confirm the details before saving.`,
             fields: Object.entries(args).filter(([label]) => label !== 'projectId').map(([label, value]) => ({ label, value })) };
+    }
+    if (['documents.requestRevision', 'documents.cancelCycle', 'documents.claimRevision'].includes(tool.name)) {
+        const titles = {
+            'documents.requestRevision': 'Request document revision',
+            'documents.cancelCycle': 'Cancel document cycle',
+            'documents.claimRevision': 'Claim document revision'
+        };
+        const title = titles[tool.name];
+        const operation = tool.name === 'documents.requestRevision' ? 'Return this document cycle to its initiator for revision'
+            : tool.name === 'documents.cancelCycle' ? 'Cancel this open document cycle and release its document lock'
+                : 'Claim this requested revision for drafting';
+        return { actionType: tool.name, title, riskLevel: 'WRITE', affectedRecords: 1,
+            description: `${operation}. Review the current state before confirming.`,
+            ...(tool.name === 'documents.cancelCycle' ? { confirmationPhrase: 'CANCEL DOCUMENT CYCLE' } : {}),
+            fields: [
+                { label: 'Project', value: preconditions?.projectName || 'Selected project' },
+                { label: 'Document', value: preconditions?.documentName || 'Document' },
+                { label: 'Current status', value: preconditions?.status || 'Unknown' },
+                ...(preconditions?.holderName ? [{ label: 'Current holder', value: preconditions.holderName }] : []),
+                ...(preconditions?.initiatorName ? [{ label: 'Initiated by', value: preconditions.initiatorName }] : []),
+                ...(args.comments ? [{ label: 'Comments', value: args.comments }] : [])
+            ] };
     }
     if (['tasks.create', 'tasks.update'].includes(tool.name)) {
         const title = tool.name === 'tasks.create' ? 'Create task' : 'Update task';

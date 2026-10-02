@@ -6,6 +6,13 @@ import { findOrCreateJobNature } from '../shared/jobNatureService.js';
 import { storeQualityAttachment } from '../projects/quality/qualityService.js';
 
 const VALID_CATEGORIES = ['Contractor', 'Supplier', 'Consultant', 'Manufacturer', 'Service Provider'];
+const ADMIN_NAMED_TABLES = Object.freeze({
+    'adminDepartments.create': ['iam_departments', 'dept_name'],
+    'adminDesignations.create': ['iam_designations', 'desg_name'],
+    'adminSectors.create': ['crm_sectors', 'sector_name'],
+    'adminJobNatures.create': ['crm_job_nature', 'job_name']
+});
+const sameName = (actual, expected) => String(actual || '').trim().toLowerCase() === expected.trim().toLowerCase();
 
 function cleanCategory(cat) {
     if (!cat) return 'Supplier';
@@ -66,7 +73,7 @@ function extractRow(row, mapping) {
     };
 }
 
-export function createWriteService({ db, clients, vendors, resources, approvalService }) {
+export function createWriteService({ db, clients, vendors, resources, approvalService, cycles }) {
     const stagedQualityAttachment = (args, scope, imageOnly = false) => {
         const attachment = getUploadedAttachment(args.uploadId, scope.orgId);
         if (!attachment) fail('validation_error', 'staged_attachment_expired_or_not_found');
@@ -114,6 +121,100 @@ export function createWriteService({ db, clients, vendors, resources, approvalSe
     }
     return {
         async preconditions(tool, args, scope, connection = db, lock = false) {
+            if (['adminUsers.updateProfile', 'adminUsers.setSystemPermissions'].includes(tool.name)) {
+                const query = connection('iam_users').where({ id: args.userId, org_id: scope.orgId });
+                if (lock) query.forUpdate();
+                const user = await query.first('id', 'user_name', 'email', 'phone_no', 'user_type', 'system_permissions');
+                if (!user) fail('authorization_denied');
+                if (!sameName(user.user_name, args.expectedName)) fail('validation_error', 'user_name_mismatch');
+                for (const [column, value] of tool.name === 'adminUsers.updateProfile'
+                    ? [['email', args.email], ['phone_no', args.phone_no]] : []) {
+                    if (value === undefined) continue;
+                    const duplicate = connection('iam_users').where({ [column]: value.trim() }).whereNot({ id: args.userId });
+                    if (lock) duplicate.forUpdate();
+                    if (await duplicate.first('id')) fail('validation_error', 'duplicate_user_contact');
+                }
+                return { operation: tool.name, user: JSON.parse(JSON.stringify(user)) };
+            }
+            if (tool.name === 'projects.setMemberPermissions') {
+                const query = connection('proj_members as m').join('iam_users as u', 'm.user_id', 'u.id')
+                    .where({ 'm.project_id': args.projectId, 'm.user_id': args.userId, 'm.org_id': scope.orgId,
+                        'u.org_id': scope.orgId });
+                if (lock) query.forUpdate();
+                const member = await query.first('m.user_id', 'm.project_permissions', 'u.user_name');
+                if (!member) fail('authorization_denied');
+                if (!sameName(member.user_name, args.expectedName)) fail('validation_error', 'member_name_mismatch');
+                return { projectId: args.projectId, operation: tool.name, member: JSON.parse(JSON.stringify(member)),
+                    requestedPermissions: args.permissions };
+            }
+            if (tool.name.startsWith('permissionTemplates.')) {
+                if (tool.name === 'permissionTemplates.create') {
+                    if (lock) await connection('org_organizations').where({ id: scope.orgId }).forUpdate().first('id');
+                    const query = connection('iam_permission_templates').where({ org_id: scope.orgId, type: args.type })
+                        .whereRaw('LOWER(??) = ?', ['name', args.name.trim().toLowerCase()]);
+                    if (lock) query.forUpdate();
+                    if (await query.first('id')) fail('validation_error', 'duplicate_permission_template');
+                    return { operation: tool.name, name: args.name.trim(), type: args.type,
+                        requestedPermissions: args.permissions };
+                }
+                const query = connection('iam_permission_templates').where({ id: args.templateId, org_id: scope.orgId });
+                if (lock) query.forUpdate();
+                const template = await query.first('id', 'name', 'type', 'permissions');
+                if (!template || template.type !== args.type) fail('authorization_denied');
+                if (!sameName(template.name, args.expectedName)) fail('validation_error', 'template_name_mismatch');
+                if (args.name && args.name.trim().toLowerCase() !== String(template.name).trim().toLowerCase()) {
+                    const duplicate = connection('iam_permission_templates').where({ org_id: scope.orgId, type: args.type })
+                        .whereNot({ id: args.templateId })
+                        .whereRaw('LOWER(??) = ?', ['name', args.name.trim().toLowerCase()]);
+                    if (lock) duplicate.forUpdate();
+                    if (await duplicate.first('id')) fail('validation_error', 'duplicate_permission_template');
+                }
+                return { operation: tool.name, template: JSON.parse(JSON.stringify(template)),
+                    requestedPermissions: args.permissions || null };
+            }
+            if (ADMIN_NAMED_TABLES[tool.name]) {
+                const [table, column] = ADMIN_NAMED_TABLES[tool.name];
+                if (lock) await connection('org_organizations').where({ id: scope.orgId }).forUpdate().first('id');
+                const query = connection(table).where({ org_id: scope.orgId })
+                    .whereRaw('LOWER(??) = ?', [column, args.name.trim().toLowerCase()]);
+                if (lock) query.forUpdate();
+                if (await query.first('id')) fail('validation_error', 'duplicate_admin_name');
+                return { operation: tool.name, name: args.name.trim(), organizationId: scope.orgId };
+            }
+            if (tool.name === 'documents.archiveInstance') {
+                const query = connection('wf_document_instances as di')
+                    .join('wf_documents as d', 'di.document_id', 'd.document_id')
+                    .join('proj_projects as p', 'di.project_id', 'p.id')
+                    .where({ 'di.instance_id': args.instanceId, 'di.org_id': scope.orgId, 'di.project_id': args.projectId });
+                if (lock) query.forUpdate();
+                const instance = await query.first('di.instance_id', 'di.instance_status', 'di.is_locked', 'di.title',
+                    'd.name as templateName', 'p.name as projectName');
+                if (!instance) fail('authorization_denied');
+                if (instance.instance_status !== 'active' || Number(instance.is_locked) !== 0) fail('validation_error', 'document_not_archivable');
+                const cycles = connection('wf_approval_cycles').where({ instance_id: args.instanceId });
+                if (lock) cycles.forUpdate();
+                const cycleRows = await cycles.select('cycle_id', 'status');
+                if (cycleRows.some(row => !['approved', 'rejected', 'cancelled'].includes(row.status))) fail('validation_error', 'active_document_cycle');
+                return { projectId: args.projectId, operation: tool.name, instance: JSON.parse(JSON.stringify(instance)),
+                    cycleCount: cycleRows.length, activeCycleCount: 0 };
+            }
+            if (tool.name === 'documentTemplates.create') {
+                if (lock) await connection('proj_projects').where({ id: args.projectId, org_id: scope.orgId }).forUpdate().first('id');
+                const query = connection('wf_documents').where({ org_id: scope.orgId, project_id: args.projectId })
+                    .whereRaw('LOWER(??) = ?', ['name', args.name.trim().toLowerCase()]);
+                if (lock) query.forUpdate();
+                if (await query.first('document_id')) fail('validation_error', 'duplicate_document_template');
+                return { projectId: args.projectId, operation: tool.name, name: args.name.trim(), docType: args.docType };
+            }
+            if (tool.name === 'documentTemplates.update') {
+                const query = connection('wf_documents').where({ document_id: args.documentId,
+                    org_id: scope.orgId, project_id: args.projectId });
+                if (lock) query.forUpdate();
+                const template = await query.first('document_id', 'name', 'doc_type', 'description', 'is_active');
+                if (!template) fail('authorization_denied');
+                if (!sameName(template.name, args.expectedName)) fail('validation_error', 'document_template_name_mismatch');
+                return { projectId: args.projectId, operation: tool.name, template: JSON.parse(JSON.stringify(template)) };
+            }
             if (tool.name === 'tasks.deleteSelected') {
                 const taskQuery = connection('proj_tasks as t').leftJoin('proj_task_categories as c', 't.category_id', 'c.id')
                     .join('proj_projects as p', 't.project_id', 'p.id')
@@ -201,6 +302,39 @@ export function createWriteService({ db, clients, vendors, resources, approvalSe
                 if (await duplicate.first('id')) fail('validation_error', 'duplicate_task_category');
                 return { projectId: args.projectId, name: args.name.trim() };
             }
+            if (['documents.requestRevision', 'documents.cancelCycle', 'documents.claimRevision'].includes(tool.name)) {
+                const cycleQuery = connection('wf_approval_cycles as ac')
+                    .join('wf_document_instances as di', 'ac.instance_id', 'di.instance_id')
+                    .join('wf_documents as d', 'di.document_id', 'd.document_id')
+                    .join('proj_projects as p', 'di.project_id', 'p.id')
+                    .leftJoin('iam_users as holder', 'ac.current_holder_id', 'holder.id')
+                    .leftJoin('iam_users as initiator', 'ac.initiated_by', 'initiator.id')
+                    .where({ 'ac.cycle_id': args.cycleId, 'di.org_id': scope.orgId, 'di.project_id': args.projectId });
+                if (lock) cycleQuery.forUpdate();
+                const cycle = await cycleQuery.first('ac.cycle_id', 'ac.instance_id', 'ac.status', 'ac.current_level',
+                    'ac.current_holder_id', 'ac.initiated_by', 'ac.version_number', 'di.is_locked', 'd.title as documentName',
+                    'p.name as projectName', 'holder.user_name as holderName', 'initiator.user_name as initiatorName');
+                if (!cycle) fail('authorization_denied');
+                if (tool.name === 'documents.requestRevision'
+                    && (cycle.status !== 'in_review' || Number(cycle.current_holder_id) !== Number(scope.userId))) {
+                    fail('validation_error', 'document_cycle_not_revision_requestable');
+                }
+                if (tool.name === 'documents.claimRevision'
+                    && (cycle.status !== 'revision_requested' || Number(cycle.initiated_by) !== Number(scope.userId))) {
+                    fail('authorization_denied');
+                }
+                if (tool.name === 'documents.cancelCycle'
+                    && (['approved', 'rejected', 'cancelled'].includes(String(cycle.status).toLowerCase())
+                        || (Number(cycle.initiated_by) !== Number(scope.userId) && scope.userType !== 'admin'))) {
+                    fail('authorization_denied');
+                }
+                return { projectId: args.projectId, cycleId: args.cycleId, operation: tool.name,
+                    status: cycle.status, currentLevel: cycle.current_level, currentHolderId: cycle.current_holder_id,
+                    initiatedBy: cycle.initiated_by, versionNumber: cycle.version_number, isLocked: cycle.is_locked,
+                    documentName: cycle.documentName || 'Document', projectName: cycle.projectName || 'Project',
+                    holderName: cycle.holderName || null, initiatorName: cycle.initiatorName || null,
+                    comments: args.comments || null };
+            }
             if (['meetings.create', 'meetings.update'].includes(tool.name)) {
                 if (tool.name === 'meetings.update') {
                     const query = connection('proj_meetings').where({ id: args.meetingId, project_id: args.projectId });
@@ -230,7 +364,7 @@ export function createWriteService({ db, clients, vendors, resources, approvalSe
                 }
                 return { projectId: args.projectId, operation: tool.name };
             }
-            if (['documents.saveDraft', 'documents.submitDraft'].includes(tool.name)) {
+            if (['documents.saveDraft', 'documents.submitDraft', 'documents.requestRevision', 'documents.cancelCycle', 'documents.claimRevision'].includes(tool.name)) {
                 const cycleQuery = connection('wf_approval_cycles as ac')
                     .join('wf_document_instances as di', 'ac.instance_id', 'di.instance_id')
                     .where({ 'ac.cycle_id': args.cycleId, 'di.org_id': scope.orgId, 'di.project_id': args.projectId });
@@ -443,6 +577,69 @@ export function createWriteService({ db, clients, vendors, resources, approvalSe
 
         async execute(tool, args, scope, trx) {
             if (!trx?.isTransaction) fail('execution_failure', 'caller_transaction_required');
+            if (tool.name === 'adminUsers.setSystemPermissions') {
+                const changed = await trx('iam_users').where({ id: args.userId, org_id: scope.orgId })
+                    .update({ system_permissions: JSON.stringify(args.permissions) });
+                if (changed !== 1) fail('request_rejected', 'user_permissions_changed');
+                return { id: args.userId };
+            }
+            if (tool.name === 'adminUsers.updateProfile') {
+                const updates = Object.fromEntries(['user_name', 'email', 'phone_no']
+                    .filter(key => args[key] !== undefined).map(key => [key, args[key].trim()]));
+                const changed = await trx('iam_users').where({ id: args.userId, org_id: scope.orgId }).update(updates);
+                if (changed !== 1) fail('request_rejected', 'user_profile_changed');
+                return { id: args.userId };
+            }
+            if (tool.name === 'projects.setMemberPermissions') {
+                const changed = await trx('proj_members').where({ project_id: args.projectId, user_id: args.userId,
+                    org_id: scope.orgId }).update({ project_permissions: JSON.stringify(args.permissions) });
+                if (changed !== 1) fail('request_rejected', 'project_member_changed');
+                return { id: args.userId };
+            }
+            if (tool.name === 'permissionTemplates.create') {
+                const [id] = await trx('iam_permission_templates').insert({ org_id: scope.orgId, name: args.name.trim(),
+                    type: args.type, permissions: JSON.stringify(args.permissions) });
+                if (!Number.isSafeInteger(Number(id)) || Number(id) < 1) fail('execution_failure', 'invalid_service_result');
+                return { id: Number(id) };
+            }
+            if (tool.name === 'permissionTemplates.update') {
+                const updates = {};
+                if (args.name !== undefined) updates.name = args.name.trim();
+                if (args.permissions !== undefined) updates.permissions = JSON.stringify(args.permissions);
+                const changed = await trx('iam_permission_templates').where({ id: args.templateId,
+                    org_id: scope.orgId, type: args.type }).update(updates);
+                if (changed !== 1) fail('request_rejected', 'permission_template_changed');
+                return { id: args.templateId };
+            }
+            if (ADMIN_NAMED_TABLES[tool.name]) {
+                const [table, column] = ADMIN_NAMED_TABLES[tool.name];
+                const [id] = await trx(table).insert({ org_id: scope.orgId, [column]: args.name.trim() });
+                if (!Number.isSafeInteger(Number(id)) || Number(id) < 1) fail('execution_failure', 'invalid_service_result');
+                return { id: Number(id) };
+            }
+            if (tool.name === 'documents.archiveInstance') {
+                const changed = await trx('wf_document_instances').where({ instance_id: args.instanceId,
+                    org_id: scope.orgId, project_id: args.projectId, instance_status: 'active', is_locked: 0 })
+                    .update({ instance_status: 'archived' });
+                if (changed !== 1) fail('request_rejected', 'document_instance_changed');
+                return { id: args.instanceId, status: 'archived' };
+            }
+            if (tool.name === 'documentTemplates.create') {
+                const [id] = await trx('wf_documents').insert({ org_id: scope.orgId, project_id: args.projectId,
+                    name: args.name.trim(), doc_type: args.docType, description: args.description?.trim() || null,
+                    created_by: scope.userId });
+                if (!Number.isSafeInteger(Number(id)) || Number(id) < 1) fail('execution_failure', 'invalid_service_result');
+                return { id: Number(id) };
+            }
+            if (tool.name === 'documentTemplates.update') {
+                const updates = Object.fromEntries(['name', 'description'].filter(key => args[key] !== undefined)
+                    .map(key => [key, args[key].trim()]));
+                if (!Object.keys(updates).length) fail('validation_error', 'empty_document_template_update');
+                const changed = await trx('wf_documents').where({ document_id: args.documentId,
+                    org_id: scope.orgId, project_id: args.projectId }).update(updates);
+                if (changed !== 1) fail('request_rejected', 'document_template_changed');
+                return { id: args.documentId };
+            }
             if (tool.name === 'tasks.deleteSelected') {
                 const taskIds = [...args.taskIds].sort((a, b) => a - b);
                 const removedAssignees = await trx('proj_task_assignees').whereIn('task_id', taskIds).del();
@@ -582,6 +779,19 @@ export function createWriteService({ db, clients, vendors, resources, approvalSe
                 await trx('wf_approval_logs').insert({ cycle_id: args.cycleId, action: 'submitted', level_order: cycle.current_level,
                     acted_by: scope.userId, comments: args.comments || null });
                 return { id: args.cycleId };
+            }
+            if (['documents.requestRevision', 'documents.cancelCycle', 'documents.claimRevision'].includes(tool.name)) {
+                if (!trx?.isTransaction || !cycles) fail('execution_failure', 'caller_transaction_required');
+                let result;
+                if (tool.name === 'documents.requestRevision') {
+                    result = await cycles.requestRevision(scope.orgId, args.cycleId, scope.userId, args.comments, { transaction: trx });
+                } else if (tool.name === 'documents.cancelCycle') {
+                    result = await cycles.cancelCycle(scope.orgId, args.cycleId, scope.userId, args.comments, { transaction: trx });
+                } else {
+                    result = await cycles.claimRevision(scope.orgId, args.cycleId, scope.userId, { transaction: trx });
+                }
+                if (!result || !result.status) fail('execution_failure', 'document_cycle_action_failed');
+                return { id: args.cycleId, status: result.status };
             }
             if (tool.name === 'qualityObservations.create') {
                 const [id] = await trx('proj_qaqc_observations').insert({ project_id: args.projectId, location: args.location.trim(), before_note: args.note.trim(), status: 'PENDING', reported_by: scope.userId, reported_at: trx.fn.now() });

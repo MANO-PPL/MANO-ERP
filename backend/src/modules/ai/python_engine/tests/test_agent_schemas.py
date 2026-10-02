@@ -54,7 +54,7 @@ class Schemas(unittest.TestCase):
     def test_registered_tool_contract(self):
         # Keep the Python contract in lockstep with the complete Node tool
         # registry, including the Phase 2 write operations and read helpers.
-        self.assertEqual(len(ARG_MODELS), 64)
+        self.assertEqual(len(ARG_MODELS), 84)
         self.assertIn("projects.create", ARG_MODELS)
         self.assertIn("projects.update", ARG_MODELS)
         self.assertIn("tasks.create", ARG_MODELS)
@@ -65,6 +65,18 @@ class Schemas(unittest.TestCase):
         self.assertIn("projects.assignMember", ARG_MODELS)
         self.assertIn("documents.saveDraft", ARG_MODELS)
         self.assertIn("documents.submitDraft", ARG_MODELS)
+        self.assertIn("documents.requestRevision", ARG_MODELS)
+        self.assertIn("documents.cancelCycle", ARG_MODELS)
+        self.assertIn("documents.claimRevision", ARG_MODELS)
+        self.assertIn("documents.archiveInstance", ARG_MODELS)
+        self.assertIn("documentTemplates.create", ARG_MODELS)
+        self.assertIn("permissionTemplates.update", ARG_MODELS)
+        self.assertIn("projects.setMemberPermissions", ARG_MODELS)
+        self.assertIn("adminUsers.updateProfile", ARG_MODELS)
+        self.assertIn("adminUsers.setSystemPermissions", ARG_MODELS)
+        self.assertIn("adminUsers.search", ARG_MODELS)
+        self.assertIn("permissionTemplates.search", ARG_MODELS)
+        self.assertIn("documentTemplates.search", ARG_MODELS)
         self.assertIn("qualityObservations.submitFix", ARG_MODELS)
         self.assertIn("qualityMethodologies.create", ARG_MODELS)
         self.assertIn("qualityChecklists.update", ARG_MODELS)
@@ -88,6 +100,11 @@ class Schemas(unittest.TestCase):
         ARG_MODELS["projectParties.update"].model_validate({"projectId": 4, "projectPartyId": 8, "email": "party@example.com"})
         ARG_MODELS["projects.assignMember"].model_validate({"projectId": 4, "userId": 8})
         ARG_MODELS["documents.saveDraft"].model_validate({"projectId": 4, "cycleId": 8, "content": {"title": "Inspection"}})
+        ARG_MODELS["documents.requestRevision"].model_validate({"projectId": 4, "cycleId": 8, "comments": "Revise quantities"})
+        ARG_MODELS["documents.cancelCycle"].model_validate({"projectId": 4, "cycleId": 8})
+        ARG_MODELS["documents.claimRevision"].model_validate({"projectId": 4, "cycleId": 8})
+        with self.assertRaises(ValidationError):
+            ARG_MODELS["documents.cancelCycle"].model_validate({"projectId": 4, "cycleId": 8, "force": True})
         ARG_MODELS["qualityObservations.submitFix"].model_validate({"projectId": 4, "observationId": 8, "uploadId": "123e4567-e89b-12d3-a456-426614174000"})
         ARG_MODELS["qualityMethodologies.create"].model_validate({"projectId": 4, "title": "Concrete", "uploadId": "123e4567-e89b-12d3-a456-426614174000"})
         with self.assertRaises(ValidationError):

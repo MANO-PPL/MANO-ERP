@@ -153,7 +153,7 @@ def create_langchain_chat_model(
     if not key:
         raise ProviderFailure("provider_unconfigured")
 
-    model_name = model or os.getenv("GROQ_AGENT_MODEL", "qwen/qwen3.8-27b")
+    model_name = model or "openai/gpt-oss-20b"
     return ChatGroq(
         model=model_name,
         groq_api_key=key,
@@ -222,6 +222,13 @@ def parse_langchain_output(
         completion_tokens = getattr(callback_handler, "completion_tokens", 0)
         total_tokens = getattr(callback_handler, "total_tokens", prompt_tokens + completion_tokens)
 
+    resp_metadata = getattr(ai_message, "response_metadata", None) or {}
+    finish_reason = resp_metadata.get("finish_reason", "stop") if isinstance(resp_metadata, dict) else "stop"
+    if finish_reason == "length":
+        raise ProviderFailure("provider_output_limit", provider=provider, finish_reason="length",
+                              prompt_tokens=prompt_tokens, completion_tokens=completion_tokens,
+                              total_tokens=total_tokens)
+
     # 2. Check for tool calls
     if tool_calls and len(tool_calls) >= 1:
         call = tool_calls[0]
@@ -267,18 +274,20 @@ def parse_langchain_output(
     if len(content.encode()) > 65536:
         raise ProviderFailure("provider_output_limit")
 
-    # Try strict JSON response model first
+    # The assistant/tool contract requires JSON. Plain text can be truncated
+    # reasoning output, and must not be shown as a verified ERP answer.
     try:
         parsed = strict_json(content)
+    except Exception:
+        raise ProviderFailure("provider_output_invalid_json", provider=provider,
+                              finish_reason=finish_reason, prompt_tokens=prompt_tokens,
+                              completion_tokens=completion_tokens, total_tokens=total_tokens) from None
+    try:
         response = ResponseModel.validate_python(parsed)
     except Exception:
-        # If response was delivered as plain text, package as Assistant
-        response = Assistant(kind="assistant", text=content.strip(), sources=[])
-
-    finish_reason = "stop"
-    resp_metadata = getattr(ai_message, "response_metadata", None) or {}
-    if isinstance(resp_metadata, dict) and "finish_reason" in resp_metadata:
-        finish_reason = resp_metadata["finish_reason"]
+        raise ProviderFailure("provider_output_schema_invalid", provider=provider,
+                              finish_reason=finish_reason, prompt_tokens=prompt_tokens,
+                              completion_tokens=completion_tokens, total_tokens=total_tokens) from None
 
     diagnostics = Diagnostics(
         provider=provider,

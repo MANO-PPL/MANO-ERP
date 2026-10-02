@@ -91,6 +91,16 @@ const fieldsValid = fields => Array.isArray(fields) && fields.every(field => fie
 export const isExpired = (confirmation, now = Date.now()) => confirmation.expiresAt !== undefined
     && (!Number.isFinite(Date.parse(confirmation.expiresAt)) || Date.parse(confirmation.expiresAt) <= now);
 
+// A short reply can confirm only an ordinary stored proposal. Typed phrases
+// remain mandatory for destructive and access-control actions.
+export function confirmationReplyDecision(reply, confirmation, now = Date.now()) {
+    if (!confirmation || isExpired(confirmation, now)) return null;
+    const normalized = typeof reply === 'string' ? reply.trim().toLowerCase() : '';
+    if (normalized === 'no' || normalized === 'n') return 'cancel';
+    if (!confirmation.confirmationPhrase && (normalized === 'yes' || normalized === 'y')) return 'confirm';
+    return null;
+}
+
 export function isAction(action, confirmation = false) {
     return !!action && isText(action.title) && isText(action.actionType) && RISKS.includes(action.riskLevel)
         && fieldsValid(action.fields) && (!confirmation || isText(action.confirmationId))

@@ -24,6 +24,7 @@ const definitions = {
     'projectParties.add': { args: { projectId: 'id', contactId: 'id' }, module: 'parties', risk: 'WRITE' },
     'projectParties.update': { args: { projectId: 'id', projectPartyId: 'id', ...contactEdit }, module: 'parties', risk: 'WRITE' },
     'projects.assignMember': { args: { projectId: 'id', userId: 'id' }, module: 'projects', risk: 'WRITE' },
+    'projects.setMemberPermissions': { args: { projectId: 'id', userId: 'id', expectedName: 'name', permissions: 'projectPermissions' }, module: 'projects', risk: 'WRITE' },
     'tasks.assign': { args: { projectId: 'id', taskId: 'id', assigneeIds: 'idList' }, module: 'projects', risk: 'WRITE' },
     'tasks.createCategory': { args: { projectId: 'id', name: 'name' }, module: 'projects', risk: 'WRITE' },
     'tasks.updateCategory': { args: { projectId: 'id', categoryId: 'id', name: 'name' }, module: 'projects', risk: 'WRITE' },
@@ -36,6 +37,22 @@ const definitions = {
     'summaries.update': { args: { projectId: 'id', summaryId: 'id', title: 'name?', details: 'remarks?', status: 'summaryStatus?', date: 'date?' }, module: 'documents', risk: 'WRITE' },
     'documents.saveDraft': { args: { projectId: 'id', cycleId: 'id', content: 'json' }, module: 'documents', risk: 'WRITE' },
     'documents.submitDraft': { args: { projectId: 'id', cycleId: 'id', changes_summary: 'remarks?', comments: 'remarks?' }, module: 'documents', risk: 'WRITE' },
+    'documents.requestRevision': { args: { projectId: 'id', cycleId: 'id', comments: 'remarks?' }, module: 'documents', risk: 'WRITE' },
+    'documents.cancelCycle': { args: { projectId: 'id', cycleId: 'id', comments: 'remarks?' }, module: 'documents', risk: 'WRITE' },
+    'documents.claimRevision': { args: { projectId: 'id', cycleId: 'id' }, module: 'documents', risk: 'WRITE' },
+    'documents.archiveInstance': { args: { projectId: 'id', instanceId: 'id' }, module: 'documents', risk: 'WRITE' },
+    'documentCycles.search': { args: { projectId: 'id', query: 'query?', limit: 'limit?', offset: 'offset?' }, module: 'documents' },
+    'documentInstances.search': { args: { projectId: 'id', query: 'query?', limit: 'limit?', offset: 'offset?' }, module: 'documents' },
+    'documentTemplates.create': { args: { projectId: 'id', name: 'name', docType: 'docType', description: 'remarks?' }, module: 'documents', risk: 'WRITE' },
+    'documentTemplates.update': { args: { projectId: 'id', documentId: 'id', expectedName: 'name', name: 'name?', description: 'remarks?' }, module: 'documents', risk: 'WRITE' },
+    'adminDepartments.create': { args: { name: 'name' }, module: 'admin', risk: 'WRITE' },
+    'adminDesignations.create': { args: { name: 'name' }, module: 'admin', risk: 'WRITE' },
+    'adminSectors.create': { args: { name: 'name' }, module: 'admin', risk: 'WRITE' },
+    'adminJobNatures.create': { args: { name: 'name' }, module: 'admin', risk: 'WRITE' },
+    'permissionTemplates.create': { args: { name: 'name', type: 'permissionType', permissions: 'templatePermissions' }, module: 'admin', risk: 'WRITE' },
+    'permissionTemplates.update': { args: { templateId: 'id', type: 'permissionType', expectedName: 'name', name: 'name?', permissions: 'templatePermissions?' }, module: 'admin', risk: 'WRITE' },
+    'adminUsers.updateProfile': { args: { userId: 'id', expectedName: 'name', user_name: 'name?', email: 'email?', phone_no: 'phone?' }, module: 'admin', risk: 'WRITE' },
+    'adminUsers.setSystemPermissions': { args: { userId: 'id', expectedName: 'name', permissions: 'systemPermissions' }, module: 'admin', risk: 'WRITE' },
     'qualityObservations.create': { args: { projectId: 'id', location: 'name', note: 'remarks' }, module: 'quality', risk: 'WRITE' },
     'qualityObservations.update': { args: { projectId: 'id', observationId: 'id', location: 'name?', note: 'remarks?' }, module: 'quality', risk: 'WRITE' },
     'qualityObservations.submitFix': { args: { projectId: 'id', observationId: 'id', uploadId: 'uuid', note: 'remarks?' }, module: 'quality', risk: 'WRITE' },
@@ -44,6 +61,9 @@ const definitions = {
     'qualityChecklists.create': { args: { projectId: 'id', title: 'name', uploadId: 'uuid' }, module: 'quality', risk: 'WRITE' },
     'qualityChecklists.update': { args: { projectId: 'id', documentId: 'id', title: 'name?', uploadId: 'uuid' }, module: 'quality', risk: 'WRITE' },
     'projects.search': { args: list, module: 'projects' },
+    'adminUsers.search': { args: list, module: 'admin' },
+    'permissionTemplates.search': { args: list, module: 'admin' },
+    'documentTemplates.search': { args: { ...list, projectId: 'id' }, module: 'documents' },
     'projects.get': { args: { projectId: 'id' }, module: 'projects' },
     'projects.getExecutiveBriefing': { args: { projectId: 'id' }, module: 'projects' },
     'tasks.search': { args: { ...list, projectId: 'id?' }, module: 'projects' },
@@ -77,14 +97,15 @@ export const TOOLS = Object.freeze(Object.fromEntries(Object.entries(definitions
     Object.freeze({ name, version: 1, risk: d.risk || 'READ', module: d.module, args: Object.freeze(d.args) })])));
 // Deliberately not environment-configurable baseline. Runtime enables writes via agentRuntime configuration.
 export const LIVE_WRITE_ENABLEMENT = Object.freeze({ 'vendors.create': false, 'resources.createRateVersion': false, 'approvals.decide': false, 'approvals.batchDecide': false });
-export const RUNTIME_WRITE_ENABLEMENT = Object.freeze({ 'resources.create': true, 'resources.update': true, 'resources.addConversion': true, 'clients.bulkImport': true, 'clients.create': true, 'clients.update': true, 'clients.addInteraction': true, 'vendors.update': true, 'vendors.create': true, 'vendors.bulkImport': true, 'resources.createRateVersion': true, 'approvals.decide': true, 'approvals.batchDecide': true, 'projects.create': true, 'projects.update': true, 'projectParties.add': true, 'projectParties.update': true, 'projects.assignMember': true, 'tasks.create': true, 'tasks.update': true, 'tasks.deleteSelected': true, 'tasks.assign': true, 'tasks.createCategory': true, 'tasks.updateCategory': true, 'tasks.reorder': true, 'meetings.create': true, 'meetings.update': true, 'directory.create': true, 'directory.update': true, 'summaries.create': true, 'summaries.update': true, 'documents.saveDraft': true, 'documents.submitDraft': true, 'qualityObservations.create': true, 'qualityObservations.update': true, 'qualityObservations.submitFix': true, 'qualityMethodologies.create': true, 'qualityMethodologies.update': true, 'qualityChecklists.create': true, 'qualityChecklists.update': true });
+export const RUNTIME_WRITE_ENABLEMENT = Object.freeze({ 'resources.create': true, 'resources.update': true, 'resources.addConversion': true, 'clients.bulkImport': true, 'clients.create': true, 'clients.update': true, 'clients.addInteraction': true, 'vendors.update': true, 'vendors.create': true, 'vendors.bulkImport': true, 'resources.createRateVersion': true, 'approvals.decide': true, 'approvals.batchDecide': true, 'projects.create': true, 'projects.update': true, 'projectParties.add': true, 'projectParties.update': true, 'projects.assignMember': true, 'projects.setMemberPermissions': true, 'tasks.create': true, 'tasks.update': true, 'tasks.deleteSelected': true, 'tasks.assign': true, 'tasks.createCategory': true, 'tasks.updateCategory': true, 'tasks.reorder': true, 'meetings.create': true, 'meetings.update': true, 'directory.create': true, 'directory.update': true, 'summaries.create': true, 'summaries.update': true, 'documents.saveDraft': true, 'documents.submitDraft': true, 'documents.requestRevision': true, 'documents.cancelCycle': true, 'documents.claimRevision': true, 'documents.archiveInstance': true, 'documentTemplates.create': true, 'documentTemplates.update': true, 'adminDepartments.create': true, 'adminDesignations.create': true, 'adminSectors.create': true, 'adminJobNatures.create': true, 'permissionTemplates.create': true, 'permissionTemplates.update': true, 'adminUsers.updateProfile': true, 'adminUsers.setSystemPermissions': true, 'qualityObservations.create': true, 'qualityObservations.update': true, 'qualityObservations.submitFix': true, 'qualityMethodologies.create': true, 'qualityMethodologies.update': true, 'qualityChecklists.create': true, 'qualityChecklists.update': true });
 export function allowedToolsForRequest(context, message, enablement) {
     const modules = new Set();
     const page = `${context?.module || ''} ${context?.route || ''}`.toLowerCase();
     const explicit = String(message || '').toLowerCase();
-    for (const [module, pattern] of [['clients', /\bclients?\b/], ['vendors', /\b(vendors?|suppliers?|contractors?)\b/], ['materials', /\b(resources?|materials?|rates?)\b/], ['projects', /\b(projects?|tasks?|approvals?|approve|reject|members?)\b/], ['parties', /\b(part(?:y|ies)|stakeholders?|contractors?)\b/], ['documents', /\b(meetings?|agendas?|mom|minutes|directory|summar(?:y|ies)|documents?|drafts?|workflows?|cycles?)\b/], ['quality', /\b(observations?|quality|checklists?|methodolog(?:y|ies)|corrective|rectif)\b/]]) {
+    for (const [module, pattern] of [['clients', /\bclients?\b/], ['vendors', /\b(vendors?|suppliers?|contractors?)\b/], ['materials', /\b(resources?|materials?|rates?)\b/], ['projects', /\b(projects?|tasks?|approvals?|approve|reject|members?)\b/], ['parties', /\b(part(?:y|ies)|stakeholders?|contractors?)\b/], ['documents', /\b(meetings?|agendas?|mom|minutes|directory|summar(?:y|ies)|documents?|drafts?|workflows?|cycles?|revisions?|archiv(?:e|ing))\b/], ['quality', /\b(observations?|quality|checklists?|methodolog(?:y|ies)|corrective|rectif)\b/], ['admin', /\b(admin|departments?|designations?|sectors?|job natures?|permission templates?|users?|employees?)\b/]]) {
         if (pattern.test(page) || pattern.test(explicit)) modules.add(module);
     }
+    if (/\bdocument\s+templates?\b/.test(explicit)) modules.add('documents');
     const available = Object.values(TOOLS).filter(tool => tool.risk === 'READ' || (enablement[tool.name] === true && modules.has(tool.module)));
     // The Python protocol caps allowed tools at 50. A multi-domain request can
     // otherwise cross that bound after adding Phase 2 operations; keep every
@@ -117,6 +138,30 @@ export function validateIntent(intent) {
         }
         else if (type === 'taskPriority') {
             if (!['Urgent', 'High', 'Medium', 'Low', 'None'].includes(value)) fail('validation_error', 'invalid_task_priority');
+        }
+        else if (type === 'docType') {
+            if (!['singleton', 'episodic'].includes(value)) fail('validation_error', 'invalid_document_type');
+        }
+        else if (type === 'permissionType') {
+            if (!['system', 'project'].includes(value)) fail('validation_error', 'invalid_permission_type');
+        }
+        else if (type === 'projectPermissions' || type === 'templatePermissions') {
+            if (!value || typeof value !== 'object' || Array.isArray(value)) fail('validation_error', 'invalid_permission_map');
+            const projectKeys = ['Tasks', 'WIP', 'Reports', 'General Documents', 'Drawings', 'Planning', 'Contracts', 'Quality', 'Safety', 'Billing', 'Material Management', 'Approvals'];
+            const systemKeys = ['projects', 'vendors', 'clients', 'resources', 'units', 'collaboration', 'admin'];
+            const keys = type === 'projectPermissions' || args.type === 'project' ? projectKeys : systemKeys;
+            if (Object.keys(value).length !== keys.length || keys.some(key => !Object.hasOwn(value, key))) fail('validation_error', 'invalid_permission_map');
+            if (type === 'projectPermissions') {
+                if (Object.values(value).some(level => !['none', 'view', 'edit'].includes(level))) fail('validation_error', 'invalid_permission_map');
+            } else if (Object.values(value).some(level => !Number.isInteger(level) || level < 0 || level > 2)) {
+                fail('validation_error', 'invalid_permission_map');
+            }
+        }
+        else if (type === 'systemPermissions') {
+            if (!value || typeof value !== 'object' || Array.isArray(value)) fail('validation_error', 'invalid_permission_map');
+            const keys = ['projects', 'vendors', 'clients', 'resources', 'units', 'collaboration', 'admin'];
+            if (Object.keys(value).length !== keys.length || keys.some(key => !Object.hasOwn(value, key))
+                || Object.values(value).some(level => !['none', 'view', 'edit'].includes(level))) fail('validation_error', 'invalid_permission_map');
         }
         else if (type === 'idList') {
             if (!Array.isArray(value) || value.length < 1 || value.length > 20) fail('validation_error', 'invalid_id_list');
@@ -212,6 +257,9 @@ export function validateIntent(intent) {
         }
     }
     if (['clients.update', 'vendors.update'].includes(tool.name) && Object.keys(args).every(key => key === 'contactId')) fail('validation_error', 'empty_update');
+    if (tool.name === 'documentTemplates.update' && Object.keys(args).every(key => ['projectId', 'documentId', 'expectedName'].includes(key))) fail('validation_error', 'empty_update');
+    if (tool.name === 'permissionTemplates.update' && Object.keys(args).every(key => ['templateId', 'type', 'expectedName'].includes(key))) fail('validation_error', 'empty_update');
+    if (tool.name === 'adminUsers.updateProfile' && Object.keys(args).every(key => ['userId', 'expectedName'].includes(key))) fail('validation_error', 'empty_update');
     if (tool.name === 'resources.update' && !['name', 'code', 'description', 'remarks'].some(key => args[key] !== undefined)) fail('validation_error', 'empty_update');
     if (tool.name === 'projects.update' && !['name', 'location', 'project_code', 'start_date', 'end_date'].some(key => args[key] !== undefined)) fail('validation_error', 'empty_update');
     if (tool.name.startsWith('projects.') && tool.risk === 'WRITE' && args.start_date && args.end_date && args.end_date < args.start_date) fail('validation_error', 'invalid_project_dates');

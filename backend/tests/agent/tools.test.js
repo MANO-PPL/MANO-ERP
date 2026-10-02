@@ -376,19 +376,119 @@ test('reports.getMPR returns complete monthly progress report with dynamic calen
 });
 
 test('registry tool definitions and disabled baseline live writes', () => {
-    assert.equal(Object.values(TOOLS).filter(t => t.risk === 'READ').length, 24);
+    assert.equal(Object.values(TOOLS).filter(t => t.risk === 'READ').length, 29);
     assert.equal(TOOLS['transactions.search']?.risk, 'READ');
     assert.equal(TOOLS['billing.search']?.risk, 'READ');
     assert.equal(TOOLS['tasks.search']?.risk, 'READ');
     assert.equal(TOOLS['reports.getDPR']?.risk, 'READ');
     assert.equal(TOOLS['reports.getWPR']?.risk, 'READ');
     assert.equal(TOOLS['reports.getMPR']?.risk, 'READ');
-    assert.equal(Object.values(TOOLS).filter(t => t.risk === 'WRITE').length, 37);
+    assert.equal(Object.values(TOOLS).filter(t => t.risk === 'WRITE').length, 52);
     assert.equal(TOOLS['tasks.deleteSelected']?.risk, 'BULK_WRITE');
     assert.equal(RUNTIME_WRITE_ENABLEMENT['tasks.deleteSelected'], true);
-    for (const name of ['projectParties.add', 'projectParties.update', 'projects.assignMember', 'tasks.assign', 'tasks.createCategory', 'tasks.updateCategory', 'tasks.reorder', 'meetings.create', 'meetings.update', 'directory.create', 'directory.update', 'summaries.create', 'summaries.update', 'documents.saveDraft', 'documents.submitDraft', 'qualityObservations.create', 'qualityObservations.update', 'qualityObservations.submitFix', 'qualityMethodologies.create', 'qualityMethodologies.update', 'qualityChecklists.create', 'qualityChecklists.update']) {
+    for (const name of ['projectParties.add', 'projectParties.update', 'projects.assignMember', 'projects.setMemberPermissions', 'tasks.assign', 'tasks.createCategory', 'tasks.updateCategory', 'tasks.reorder', 'meetings.create', 'meetings.update', 'directory.create', 'directory.update', 'summaries.create', 'summaries.update', 'documents.saveDraft', 'documents.submitDraft', 'documents.requestRevision', 'documents.cancelCycle', 'documents.claimRevision', 'documents.archiveInstance', 'documentTemplates.create', 'documentTemplates.update', 'adminDepartments.create', 'adminDesignations.create', 'adminSectors.create', 'adminJobNatures.create', 'permissionTemplates.create', 'permissionTemplates.update', 'adminUsers.updateProfile', 'adminUsers.setSystemPermissions', 'qualityObservations.create', 'qualityObservations.update', 'qualityObservations.submitFix', 'qualityMethodologies.create', 'qualityMethodologies.update', 'qualityChecklists.create', 'qualityChecklists.update']) {
         assert.equal(TOOLS[name]?.risk, 'WRITE');
         assert.equal(RUNTIME_WRITE_ENABLEMENT[name], true);
     }
+    for (const [tool, arguments_] of [
+        ['documents.requestRevision', { projectId: 4, cycleId: 8, comments: 'Please revise' }],
+        ['documents.cancelCycle', { projectId: 4, cycleId: 8 }],
+        ['documents.claimRevision', { projectId: 4, cycleId: 8 }],
+    ]) {
+        assert.equal(validateIntent({ kind: 'tool', tool, version: 1, arguments: arguments_ }).tool.name, tool);
+        assert.throws(() => validateIntent({ kind: 'tool', tool, version: 1, arguments: { ...arguments_, force: true } }));
+    }
     assert.deepEqual(Object.values(LIVE_WRITE_ENABLEMENT), [false, false, false, false]);
+});
+
+test('Phase 3 access maps and administrator tools reject unbounded arguments', () => {
+    const projectPermissions = Object.fromEntries(['Tasks', 'WIP', 'Reports', 'General Documents', 'Drawings',
+        'Planning', 'Contracts', 'Quality', 'Safety', 'Billing', 'Material Management', 'Approvals']
+        .map(key => [key, 'view']));
+    const systemPermissions = Object.fromEntries(['projects', 'vendors', 'clients', 'resources', 'units',
+        'collaboration', 'admin'].map(key => [key, 0]));
+    assert.equal(validateIntent(intent('projects.setMemberPermissions', { projectId: 4, userId: 8, expectedName: 'Asha',
+        permissions: projectPermissions })).tool.name, 'projects.setMemberPermissions');
+    assert.throws(() => validateIntent(intent('projects.setMemberPermissions', { projectId: 4, userId: 8, expectedName: 'Asha',
+        permissions: { ...projectPermissions, Secret: 'edit' } })));
+    assert.equal(validateIntent(intent('permissionTemplates.create', { name: 'Read only', type: 'system',
+        permissions: systemPermissions })).tool.name, 'permissionTemplates.create');
+    assert.throws(() => validateIntent(intent('permissionTemplates.create', { name: 'Admin', type: 'system',
+        permissions: { ...systemPermissions, admin: 3 } })));
+    const userPermissions = Object.fromEntries(Object.keys(systemPermissions).map(key => [key, 'view']));
+    assert.equal(validateIntent(intent('adminUsers.setSystemPermissions', { userId: 8, expectedName: 'Asha',
+        permissions: userPermissions })).tool.name, 'adminUsers.setSystemPermissions');
+    assert.throws(() => validateIntent(intent('adminUsers.setSystemPermissions', { userId: 8, expectedName: 'Asha',
+        permissions: { ...userPermissions, admin: 'owner' } })));
+    assert.throws(() => validateIntent(intent('documentTemplates.update', { projectId: 4, documentId: 8, expectedName: 'Inspection' })));
+    assert.throws(() => validateIntent(intent('documents.archiveInstance', { projectId: 4, instanceId: 8, force: true })));
+});
+
+test('document archive snapshots relationship impact and refuses active cycles', async () => {
+    const fixtureDb = status => table => ({
+        join() { return this; }, where() { return this; }, forUpdate() { return this; },
+        async first() { return table === 'wf_document_instances as di'
+            ? { instance_id: 9, instance_status: 'active', is_locked: 0, title: 'Inspection',
+                templateName: 'Inspection Template', projectName: 'Bridge' } : null; },
+        async select() { return [{ cycle_id: 12, status }]; }
+    });
+    const tool = TOOLS['documents.archiveInstance'];
+    const args = { projectId: 4, instanceId: 9 };
+    const preview = await createWriteService({ db: fixtureDb('approved') })
+        .preconditions(tool, args, { orgId: 2 }, fixtureDb('approved'), true);
+    assert.equal(preview.cycleCount, 1);
+    assert.equal(preview.instance.title, 'Inspection');
+    await assert.rejects(createWriteService({ db: fixtureDb('in_review') })
+        .preconditions(tool, args, { orgId: 2 }), /active_document_cycle/);
+});
+
+test('Phase 3 metadata and archive writes require the caller transaction', async () => {
+    const calls = [];
+    const trx = table => ({
+        insert: async row => { calls.push({ table, row }); return [15]; },
+        where() { return this; },
+        update: async row => { calls.push({ table, row }); return 1; }
+    });
+    trx.isTransaction = true;
+    const writes = createWriteService({});
+    await assert.rejects(writes.execute(TOOLS['documents.archiveInstance'],
+        { projectId: 4, instanceId: 9 }, { orgId: 2 }, {}), /caller_transaction_required/);
+    await writes.execute(TOOLS['documents.archiveInstance'], { projectId: 4, instanceId: 9 }, { orgId: 2 }, trx);
+    await writes.execute(TOOLS['adminDepartments.create'], { name: 'Civil' }, { orgId: 2 }, trx);
+    await writes.execute(TOOLS['documentTemplates.create'], { projectId: 4, name: 'Inspection', docType: 'episodic' },
+        { orgId: 2, userId: 7 }, trx);
+    assert.deepEqual(calls.map(call => call.table), ['wf_document_instances', 'iam_departments', 'wf_documents']);
+    assert.equal(calls[1].row.org_id, 2);
+    assert.equal(calls[2].row.project_id, 4);
+});
+
+test('administrator lookup tools return bounded, organization-scoped targets', async () => {
+    const calls = [];
+    const db = table => ({
+        where(...args) { calls.push({ table, where: args }); return this; },
+        leftJoin() { return this; }, join() { return this; }, orWhere() { return this; },
+        orderBy() { return this; }, limit() { return this; }, offset() { return this; },
+        async select() { return table.startsWith('iam_users')
+            ? [{ id: 8, name: 'Asha', email: 'asha@example.com', user_type: 'employee' }]
+            : table.startsWith('wf_approval_cycles')
+                ? [{ id: 19, title: 'Project Summary', status: 'revision_requested' }]
+                : table.startsWith('wf_document_instances')
+                    ? [{ id: 11, title: 'Project Summary', status: 'active' }]
+                    : [{ id: 12, name: 'Inspection', doc_type: 'episodic' }]; }
+    });
+    const read = createReadService({ db });
+    const scope = { orgId: 2, userId: 7, userType: 'admin', projectId: 4 };
+    const users = await read(actor, TOOLS['adminUsers.search'], { query: 'Asha', limit: 5 }, scope);
+    const templates = await read(actor, TOOLS['documentTemplates.search'], { projectId: 4, query: 'Inspection' }, scope);
+    const cycles = await read(actor, TOOLS['documentCycles.search'], { projectId: 4, query: 'Project Summary' }, scope);
+    const instances = await read(actor, TOOLS['documentInstances.search'], { projectId: 4, query: 'Project Summary' }, scope);
+    assert.equal(users[0].name, 'Asha');
+    assert.equal(templates[0].name, 'Inspection');
+    assert.equal(cycles[0].id, 19);
+    assert.equal(instances[0].id, 11);
+    assert.ok(calls.some(call => call.table === 'iam_users as u'
+        && call.where.some((where, index) => where?.['u.org_id'] === 2 || (where === 'u.org_id' && call.where[index + 1] === 2))));
+    assert.ok(calls.some(call => call.table === 'wf_documents' && call.where[0]?.project_id === 4));
+    assert.ok(calls.some(call => call.table === 'wf_approval_cycles as ac' && call.where[0]?.['di.project_id'] === 4));
+    assert.ok(calls.some(call => call.table === 'wf_document_instances as di' && call.where[0]?.['di.project_id'] === 4));
 });

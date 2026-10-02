@@ -76,14 +76,15 @@ export function createAgentService({ store, authorize, read, writes, reason, okf
      * CHUNK_SIZE characters are emitted per tick, TICK_MS apart.
      */
     async function streamTextDeltas(onStreamEvent, persistedDeltaEvent, fullText) {
-        const CHUNK_SIZE = 3;  // characters per tick
+        const CHUNK_SIZE = 64; // at most 125 text events for an 8,000-character answer
         const TICK_MS = 8;     // ms between ticks — ~375 chars/s, feels natural
         const sleep = ms => new Promise(resolve => setTimeout(resolve, ms));
 
         for (let i = 0; i < fullText.length; i += CHUNK_SIZE) {
             const chunk = fullText.slice(i, i + CHUNK_SIZE);
             // Re-use the persisted event envelope but with only the current chunk as delta
-            emitLive(onStreamEvent, { ...persistedDeltaEvent, delta: chunk });
+            emitLive(onStreamEvent, { ...persistedDeltaEvent,
+                eventId: i === 0 ? persistedDeltaEvent.eventId : randomUUID(), delta: chunk });
             if (i + CHUNK_SIZE < fullText.length) await sleep(TICK_MS);
         }
     }
@@ -232,10 +233,23 @@ export function createAgentService({ store, authorize, read, writes, reason, okf
             if (found.execution.credential_hash !== actor.credentialHash) fail('authorization_denied', 'credential_binding_changed');
             // Replays do not call Python, load a new operation, or dispatch a tool.
             if (found.execution.status !== 'PENDING_CONFIRMATION') return authorizedEvents(actor, found.request.request_id);
-            if (decision.decision === 'confirm' && found.execution.tool === 'tasks.deleteSelected') {
-                const count = Array.isArray(found.execution.args_json?.taskIds) ? found.execution.args_json.taskIds.length : 0;
-                const expected = `DELETE ${count} TASK${count === 1 ? '' : 'S'}`;
-                if (decision.confirmationText !== expected) fail('validation_error', 'typed_confirmation_mismatch');
+            if (decision.decision === 'confirm') {
+                let expected = null;
+                if (found.execution.tool === 'tasks.deleteSelected') {
+                    const count = Array.isArray(found.execution.args_json?.taskIds) ? found.execution.args_json.taskIds.length : 0;
+                    expected = `DELETE ${count} TASK${count === 1 ? '' : 'S'}`;
+                } else if (found.execution.tool === 'documents.cancelCycle') {
+                    expected = 'CANCEL DOCUMENT CYCLE';
+                } else if (found.execution.tool === 'documents.archiveInstance') {
+                    expected = 'ARCHIVE DOCUMENT';
+                } else if (found.execution.tool === 'projects.setMemberPermissions'
+                    || found.execution.tool === 'adminUsers.setSystemPermissions'
+                    || found.execution.tool.startsWith('permissionTemplates.')) {
+                    expected = 'CONFIRM ACCESS CHANGE';
+                } else if (found.execution.tool.startsWith('admin') || found.execution.tool.startsWith('documentTemplates.')) {
+                    expected = 'CONFIRM ADMIN CHANGE';
+                }
+                if (expected !== null && decision.confirmationText !== expected) fail('validation_error', 'typed_confirmation_mismatch');
             }
             let generation;
             if (decision.decision === 'confirm') generation = (await okf.acquire()).generation;
@@ -264,7 +278,22 @@ export function createAgentService({ store, authorize, read, writes, reason, okf
                     await session.append('confirmation_resolved', { ...decision }, execution.execution_id);
                     await session.append('tool_started', { actionId: execution.execution_id }, execution.execution_id);
                     const deliveryWrites = { 'projects.create': 'Project created', 'projects.update': 'Project updated',
-                        'tasks.create': 'Task created', 'tasks.update': 'Task updated' };
+                        'tasks.create': 'Task created', 'tasks.update': 'Task updated',
+                        'documents.requestRevision': 'Document revision requested',
+                        'documents.cancelCycle': 'Document cycle cancelled',
+                        'documents.claimRevision': 'Document revision claimed',
+                        'documents.archiveInstance': 'Document archived',
+                        'documentTemplates.create': 'Document template created',
+                        'documentTemplates.update': 'Document template updated',
+                        'adminDepartments.create': 'Department created',
+                        'adminDesignations.create': 'Designation created',
+                        'adminSectors.create': 'Sector created',
+                        'adminJobNatures.create': 'Job nature created',
+                        'permissionTemplates.create': 'Permission template created',
+                        'permissionTemplates.update': 'Permission template updated',
+                        'projects.setMemberPermissions': 'Project member permissions updated',
+                        'adminUsers.updateProfile': 'User profile updated',
+                        'adminUsers.setSystemPermissions': 'User system permissions updated' };
                     const outcomeText = deliveryWrites[tool.name]
                         ? `${deliveryWrites[tool.name]} successfully.`
                         : tool.name === 'tasks.deleteSelected'

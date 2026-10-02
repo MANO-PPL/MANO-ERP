@@ -3,7 +3,7 @@ import { useLocation } from 'react-router-dom';
 import { MessageSquare } from 'lucide-react';
 import AgentPanel from './AgentPanel.jsx';
 import { agentReducer, canSend, initialAgentState } from './agentReducer.js';
-import { createDecision, isAgentEvent, isExpired, isPreviewEvent } from './agentModel.js';
+import { confirmationReplyDecision, createDecision, isAgentEvent, isExpired, isPreviewEvent } from './agentModel.js';
 import { extractAgentContext, projectDisplay, getNavigationTrail } from './agentContext.js';
 import { previewTransport } from './agentTransport.js';
 
@@ -133,6 +133,14 @@ export default function AgentShell({ transport = previewTransport }) {
 
     const submit = async (retry = false) => {
         const current = stateRef.current;
+        if (current.pending) {
+            if (retry || current.decisionBusy) return;
+            const decision = confirmationReplyDecision(draft, current.pending);
+            if (!decision) return;
+            setDraft('');
+            await decide(current.pending.confirmationId, decision);
+            return;
+        }
         if (!canSend(current) || (retry && !current.error?.retryable)) return;
         const message = retry ? current.request?.message : (draft.trim() || (attachment
             ? (attachment.uploadInfo?.kind === 'attachment' ? 'Use the attached approved quality file.' : 'Please import these vendors into our system from the attached spreadsheet.') : ''));

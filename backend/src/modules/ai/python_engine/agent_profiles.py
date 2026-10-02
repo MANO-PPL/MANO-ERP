@@ -123,26 +123,29 @@ def get_profile(name: str) -> ModelProfile:
 
 
 def get_read_primary_profile() -> ModelProfile:
-    """Return the configured primary read profile."""
-    profile_name = os.getenv("AGENT_READ_PRIMARY_PROFILE", "groq-qwen")
-    return PROFILES.get(profile_name, PROFILES["groq-qwen"])
+    """Use the same Groq GPT-OSS 20B model for read and write reasoning."""
+    return PROFILES["groq-oss-20b"]
 
 
 def get_read_fallback_profile() -> Optional[ModelProfile]:
-    """Return the configured read fallback profile, or None if disabled."""
-    profile_name = os.getenv("AGENT_READ_FALLBACK_PROFILE", "groq-oss-120b")
-    if not profile_name or profile_name.lower() in {"none", "disabled", "false"}:
-        return None
-    return PROFILES.get(profile_name)
+    """Keep reads on GPT-OSS 20B even when its quota is exhausted."""
+    return None
 
 
 def get_write_profile() -> ModelProfile:
-    """Return the dedicated write profile (isolated from read profiles)."""
-    # Node still owns authorization, confirmation, and execution of every
-    # proposed write. GPT-OSS 20B is isolated from the Qwen read profile.
-    default_profile = "groq-oss-20b"
-    profile_name = os.getenv("AGENT_WRITE_PROFILE", default_profile)
-    return PROFILES.get(profile_name, PROFILES["groq-qwen"])
+    """Use Groq GPT-OSS 20B for write planning; Node still owns execution."""
+    return PROFILES["groq-oss-20b"]
+
+
+def get_write_fallback_profile(primary: Optional[ModelProfile] = None) -> Optional[ModelProfile]:
+    """Return the first separately configured profile for write-planning recovery."""
+    profiles = get_write_fallback_profiles(primary)
+    return profiles[0] if profiles else None
+
+
+def get_write_fallback_profiles(primary: Optional[ModelProfile] = None) -> list[ModelProfile]:
+    """Do not switch providers or models during write planning."""
+    return []
 
 
 def is_retryable_failure(category: str, http_status: Optional[int] = None) -> bool:
@@ -158,4 +161,7 @@ def is_retryable_failure(category: str, http_status: Optional[int] = None) -> bo
         "network_failure",
         "timeout",
         "rate_limit",
+        "provider_output_empty",
+        "provider_output_invalid_json",
+        "provider_output_limit",
     }

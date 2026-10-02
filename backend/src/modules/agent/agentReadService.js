@@ -565,6 +565,79 @@ export function createReadService({ db, projects, clients, vendors, resources, p
                 break;
             }
             case 'projects.search': result = await projects.getProjects(orgId, userId, userType, { ...paging, query: args.query, agentRead: true }); break;
+            case 'adminUsers.search': {
+                const query = db('iam_users as u')
+                    .leftJoin('iam_designations as d', 'u.desg_id', 'd.id')
+                    .leftJoin('iam_departments as dep', 'u.dept_id', 'dep.id')
+                    .where('u.org_id', orgId);
+                if (args.query && String(args.query).trim()) {
+                    const terms = String(args.query).trim().split(/\s+/).filter(Boolean);
+                    query.where(function matchDisplayName() {
+                        for (const term of terms) {
+                            const pattern = `%${term}%`;
+                            this.where(function matchDisplayNamePart() {
+                                this.where('u.user_name', 'like', pattern)
+                                    .orWhere('d.desg_name', 'like', pattern)
+                                    .orWhere('dep.dept_name', 'like', pattern)
+                                    .orWhere('u.email', 'like', pattern);
+                            });
+                        }
+                    });
+                }
+                result = await query.orderBy('u.user_name').limit(paging.limit).offset(paging.offset)
+                    .select('u.id', 'u.user_name as name', 'd.desg_name as designation', 'dep.dept_name as department',
+                        'u.email', 'u.phone_no', 'u.user_type');
+                break;
+            }
+            case 'permissionTemplates.search': {
+                const query = db('iam_permission_templates').where({ org_id: orgId });
+                if (args.query) query.where('name', 'like', `%${args.query}%`);
+                result = await query.orderBy('name').limit(paging.limit).offset(paging.offset)
+                    .select('id', 'name', 'type', 'permissions');
+                break;
+            }
+            case 'documentTemplates.search': {
+                const query = db('wf_documents').where({ org_id: orgId, project_id: args.projectId });
+                if (args.query) query.where('name', 'like', `%${args.query}%`);
+                result = await query.orderBy('name').limit(paging.limit).offset(paging.offset)
+                    .select('document_id as id', 'name', 'doc_type', 'description');
+                break;
+            }
+            case 'documentCycles.search': {
+                const query = db('wf_approval_cycles as ac')
+                    .join('wf_document_instances as di', 'ac.instance_id', 'di.instance_id')
+                    .join('wf_documents as d', 'di.document_id', 'd.document_id')
+                    .join('proj_projects as p', 'di.project_id', 'p.id')
+                    .where({ 'di.org_id': orgId, 'di.project_id': args.projectId, 'p.org_id': orgId });
+                if (args.query && String(args.query).trim()) {
+                    const pattern = `%${String(args.query).trim()}%`;
+                    query.where(function matchCycle() {
+                        this.where('di.title', 'like', pattern).orWhere('d.name', 'like', pattern)
+                            .orWhere('ac.status', 'like', pattern);
+                    });
+                }
+                result = await query.orderBy('ac.cycle_id', 'desc').limit(paging.limit).offset(paging.offset)
+                    .select('ac.cycle_id as id', 'ac.instance_id as instanceId', 'ac.status', 'ac.version_number',
+                        'ac.initiated_by as initiatorId', 'ac.current_holder_id as holderId', 'di.title',
+                        'd.name as documentName', 'p.name as projectName');
+                break;
+            }
+            case 'documentInstances.search': {
+                const query = db('wf_document_instances as di')
+                    .join('wf_documents as d', 'di.document_id', 'd.document_id')
+                    .join('proj_projects as p', 'di.project_id', 'p.id')
+                    .where({ 'di.org_id': orgId, 'di.project_id': args.projectId, 'p.org_id': orgId });
+                if (args.query && String(args.query).trim()) {
+                    const pattern = `%${String(args.query).trim()}%`;
+                    query.where(function matchInstance() {
+                        this.where('di.title', 'like', pattern).orWhere('d.name', 'like', pattern);
+                    });
+                }
+                result = await query.orderBy('di.instance_id', 'desc').limit(paging.limit).offset(paging.offset)
+                    .select('di.instance_id as id', 'di.title', 'di.instance_status as status', 'di.is_locked as isLocked',
+                        'd.name as documentName', 'd.doc_type as documentType', 'p.name as projectName');
+                break;
+            }
             case 'projects.get': {
                 const record = project(await projects.getProjectById(orgId, args.projectId, { agentRead: true }));
                 const members = await projects.getProjectMembers(orgId, args.projectId);

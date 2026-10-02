@@ -87,9 +87,9 @@ export function AgentConfirmationCard({ message, pending, busy, onDecision, prev
             {expired && !message.decision && <p className="mt-2 text-xs text-amber-700 dark:text-amber-300" role="status">Confirmation expired. Cancel this proposal and request a new one.</p>}
             {message.unavailable && <p className="mt-2 text-xs">This confirmation is no longer available.</p>}
             {!message.decision && typedConfirmationRequired && <label className="mt-3 block text-xs font-medium text-red-700 dark:text-red-300">
-                Type <code className="rounded bg-red-50 px-1 py-0.5 dark:bg-red-950/40">{confirmation.confirmationPhrase}</code> to authorize this deletion.
+                Type <code className="rounded bg-red-50 px-1 py-0.5 dark:bg-red-950/40">{confirmation.confirmationPhrase}</code> to authorize this action.
                 <input value={confirmationText} onChange={event => setConfirmationText(event.target.value)} autoComplete="off" spellCheck="false"
-                    aria-label={`Type ${confirmation.confirmationPhrase} to authorize deletion`}
+                    aria-label={`Type ${confirmation.confirmationPhrase} to authorize this action`}
                     className="mt-1 block min-h-10 w-full rounded-lg border border-red-300 bg-white px-3 py-2 font-mono text-sm text-gray-900 dark:border-red-900 dark:bg-gh-canvas dark:text-gh-text" />
             </label>}
             {message.decision ? <p className="mt-2 text-xs font-medium">{preview ? `Preview ${message.decision === 'confirm' ? 'confirmed' : 'cancelled'}. No ERP action occurred.`

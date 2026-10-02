@@ -36,6 +36,76 @@ test('selected task deletion rejects missing or incorrect typed confirmation and
     await h.service.decide(actor, { confirmationId, decision: 'confirm', confirmationText: 'DELETE 2 TASKS' }, requestBody.conversationId);
     assert.equal(h.attempts, 1);
 });
+test('document-cycle cancellation requires its exact typed confirmation before execution', async () => {
+    const h = harness({ writeEnablement: { 'documents.cancelCycle': true },
+        responses: [intent('documents.cancelCycle', { projectId: 4, cycleId: 12, comments: 'Test cancellation' })] });
+    const requestBody = { ...body('Cancel this document cycle'),
+        context: { route: '/projects/4/documents', module: 'General Documents', projectId: '4' } };
+    const proposed = await h.submit(requestBody);
+    const confirmation = proposed.events.find(event => event.type === 'confirmation_required')?.confirmation;
+    assert.equal(confirmation?.confirmationPhrase, 'CANCEL DOCUMENT CYCLE');
+    for (const confirmationText of [undefined, 'CANCEL CYCLE']) {
+        await assert.rejects(h.service.decide(actor, { confirmationId: confirmation.confirmationId, decision: 'confirm', ...(confirmationText ? { confirmationText } : {}) }, requestBody.conversationId), /typed_confirmation_mismatch/);
+        assert.equal(h.attempts, 0);
+    }
+    const events = await h.service.decide(actor, { confirmationId: confirmation.confirmationId, decision: 'confirm', confirmationText: 'CANCEL DOCUMENT CYCLE' }, requestBody.conversationId);
+    assert.equal(h.attempts, 1);
+    assert.equal(events.find(event => event.type === 'tool_completed').result.text, 'Document cycle cancelled successfully.');
+});
+test('document archive requires typed confirmation before any ERP write', async () => {
+    const h = harness({ writeEnablement: { 'documents.archiveInstance': true },
+        responses: [intent('documents.archiveInstance', { projectId: 4, instanceId: 12 })] });
+    const requestBody = { ...body('Archive this document'),
+        context: { route: '/projects/4/documents', module: 'General Documents', projectId: '4' } };
+    const proposed = await h.submit(requestBody);
+    const confirmation = proposed.events.find(event => event.type === 'confirmation_required')?.confirmation;
+    assert.equal(confirmation?.confirmationPhrase, 'ARCHIVE DOCUMENT');
+    await assert.rejects(h.service.decide(actor, { confirmationId: confirmation.confirmationId,
+        decision: 'confirm', confirmationText: 'ARCHIVE' }, requestBody.conversationId), /typed_confirmation_mismatch/);
+    assert.equal(h.attempts, 0);
+});
+test('administrator setting changes require typed confirmation', async () => {
+    const h = harness({ writeEnablement: { 'adminDepartments.create': true },
+        responses: [intent('adminDepartments.create', { name: 'Civil Engineering' })] });
+    const requestBody = { ...body('Create the Civil Engineering department'),
+        context: { route: '/admin/departments', module: 'Admin' } };
+    const proposed = await h.submit(requestBody);
+    const confirmation = proposed.events.find(event => event.type === 'confirmation_required')?.confirmation;
+    assert.equal(confirmation?.confirmationPhrase, 'CONFIRM ADMIN CHANGE');
+    await assert.rejects(h.service.decide(actor, { confirmationId: confirmation.confirmationId,
+        decision: 'confirm' }, requestBody.conversationId), /typed_confirmation_mismatch/);
+    assert.equal(h.attempts, 0);
+});
+test('project member permissions require explicit typed access confirmation', async () => {
+    const permissions = Object.fromEntries(['Tasks', 'WIP', 'Reports', 'General Documents', 'Drawings',
+        'Planning', 'Contracts', 'Quality', 'Safety', 'Billing', 'Material Management', 'Approvals']
+        .map(key => [key, 'view']));
+    const h = harness({ writeEnablement: { 'projects.setMemberPermissions': true },
+        responses: [intent('projects.setMemberPermissions', { projectId: 4, userId: 8,
+            expectedName: 'Asha Engineer', permissions })] });
+    const requestBody = { ...body('Set permissions for this project member'),
+        context: { route: '/projects/4/settings', module: 'Projects', projectId: '4' } };
+    const proposed = await h.submit(requestBody);
+    const confirmation = proposed.events.find(event => event.type === 'confirmation_required')?.confirmation;
+    assert.equal(confirmation?.confirmationPhrase, 'CONFIRM ACCESS CHANGE');
+    await assert.rejects(h.service.decide(actor, { confirmationId: confirmation.confirmationId,
+        decision: 'confirm' }, requestBody.conversationId), /typed_confirmation_mismatch/);
+    assert.equal(h.attempts, 0);
+});
+test('user system permissions cannot execute without typed access confirmation', async () => {
+    const permissions = Object.fromEntries(['projects', 'vendors', 'clients', 'resources', 'units',
+        'collaboration', 'admin'].map(key => [key, 'view']));
+    const h = harness({ writeEnablement: { 'adminUsers.setSystemPermissions': true },
+        responses: [intent('adminUsers.setSystemPermissions', { userId: 8, expectedName: 'Asha', permissions })] });
+    const requestBody = { ...body('Set system permissions for user Asha'),
+        context: { route: '/admin/users', module: 'Admin' } };
+    const proposed = await h.submit(requestBody);
+    const confirmation = proposed.events.find(event => event.type === 'confirmation_required')?.confirmation;
+    assert.equal(confirmation?.confirmationPhrase, 'CONFIRM ACCESS CHANGE');
+    await assert.rejects(h.service.decide(actor, { confirmationId: confirmation.confirmationId,
+        decision: 'confirm' }, requestBody.conversationId), /typed_confirmation_mismatch/);
+    assert.equal(h.attempts, 0);
+});
 test('S09 confirmation executes exact stored operation once', async () => {
     const h = harness({ enableWrites: true }); const p = await h.propose(); const events = await h.decide(p.confirmation.confirmationId);
     assert.deepEqual(h.store.state.business[0].args, { name: 'Fixture Supplier' }); assert.equal(h.attempts, 1);

@@ -4,12 +4,13 @@ import os
 import re
 from agent_schemas import ARG_MODELS, ModelReply, ToolIntent, Assistant
 from agent_provider import complete, complete_groq, complete_nvidia_read, complete_with_profile, native_name, ProviderFailure
-from agent_profiles import get_read_primary_profile, get_read_fallback_profile, get_write_profile, is_retryable_failure
+from agent_profiles import get_read_primary_profile, get_write_profile
 from agent_langchain import complete_with_langchain
 
 _REAL_COMPLETE_GROQ = complete_groq
 
-WRITE_TOOLS = frozenset({"resources.create", "resources.update", "resources.addConversion", "clients.bulkImport", "clients.create", "clients.update", "clients.addInteraction", "vendors.update", "vendors.create", "vendors.bulkImport", "resources.createRateVersion", "approvals.decide", "approvals.batchDecide", "projects.create", "projects.update", "projects.assignMember", "projectParties.add", "projectParties.update", "tasks.create", "tasks.update", "tasks.deleteSelected", "tasks.assign", "tasks.createCategory", "tasks.updateCategory", "tasks.reorder", "meetings.create", "meetings.update", "directory.create", "directory.update", "summaries.create", "summaries.update", "documents.saveDraft", "documents.submitDraft", "qualityObservations.create", "qualityObservations.update", "qualityObservations.submitFix", "qualityMethodologies.create", "qualityMethodologies.update", "qualityChecklists.create", "qualityChecklists.update"})
+WRITE_TOOLS = frozenset({"resources.create", "resources.update", "resources.addConversion", "clients.bulkImport", "clients.create", "clients.update", "clients.addInteraction", "vendors.update", "vendors.create", "vendors.bulkImport", "resources.createRateVersion", "approvals.decide", "approvals.batchDecide", "projects.create", "projects.update", "projects.assignMember", "projectParties.add", "projectParties.update", "tasks.create", "tasks.update", "tasks.deleteSelected", "tasks.assign", "tasks.createCategory", "tasks.updateCategory", "tasks.reorder", "meetings.create", "meetings.update", "directory.create", "directory.update", "summaries.create", "summaries.update", "documents.saveDraft", "documents.submitDraft", "documents.requestRevision", "documents.cancelCycle", "documents.claimRevision", "qualityObservations.create", "qualityObservations.update", "qualityObservations.submitFix", "qualityMethodologies.create", "qualityMethodologies.update", "qualityChecklists.create", "qualityChecklists.update"})
+WRITE_TOOLS = WRITE_TOOLS | frozenset({"documents.archiveInstance", "documentTemplates.create", "documentTemplates.update", "adminDepartments.create", "adminDesignations.create", "adminSectors.create", "adminJobNatures.create", "permissionTemplates.create", "permissionTemplates.update", "projects.setMemberPermissions", "adminUsers.updateProfile", "adminUsers.setSystemPermissions"})
 READ_HISTORY_MESSAGES = 2
 READ_HISTORY_CHARS = 1200
 WRITE_HISTORY_MESSAGES = 1
@@ -20,11 +21,13 @@ WRITE_RESULT_CHARS = 120
 WRITE_INPUT_MAX_BYTES = 32768
 WRITE_SUPPORTING_TOOLS = frozenset({
     "clients.search", "clients.get", "vendors.search", "vendors.get", "resources.search", "resources.get", "approvals.listPending", "projects.search", "projects.get", "tasks.search",
+    "adminUsers.search", "permissionTemplates.search", "documentTemplates.search", "documentCycles.search", "documentInstances.search",
+    "adminUsers.search", "permissionTemplates.search", "documentTemplates.search",
 })
 TERMINAL_READ_TOOLS = frozenset({
     "projects.get", "projects.getExecutiveBriefing", "clients.get", "vendors.get", "resources.get", "resources.getRate",
     "resources.getRateHistory", "resources.getComposition", "resources.simulateCostImpact", "projectParties.list", "interactions.search",
-    "analytics.query", "approvals.listPending", "reports.exportExcel", "reports.getDPR", "reports.getWPR", "reports.getMPR", "transactions.search", "billing.search", "tasks.search",
+    "analytics.query", "approvals.listPending", "reports.exportExcel", "reports.getDPR", "reports.getWPR", "reports.getMPR", "transactions.search", "billing.search", "tasks.search", "adminUsers.search", "permissionTemplates.search", "documentTemplates.search", "documentCycles.search", "documentInstances.search",
 })
 ASSISTANT_RESPONSE_SCHEMA = {
     "type": "object",
@@ -82,7 +85,64 @@ def select_write_tools(request):
     allowed = set(request.allowedTools)
     selected = {tool for tool in WRITE_TOOLS if tool in allowed}
     message = request.message.lower()
-    if re.search(r"\b(?:tasks?|categor(?:y|ies)|assignee|reorder)\b", message) and not re.search(r"\bapprov(?:e|al)|\breject\b", message):
+    if re.search(r"\b(?:clients?|customers?)\b", message):
+        if re.search(r"\b(?:create|add|new)\b", message):
+            selected &= {"clients.create"}
+        elif re.search(r"\b(?:update|edit|change)\b", message):
+            selected &= {"clients.update"}
+        elif re.search(r"\b(?:log|add|record)\b.*\b(?:interaction|call|meeting|email|whatsapp)\b", message):
+            selected &= {"clients.addInteraction"}
+    elif (re.search(r"\b(?:resources?|materials?|items?)\b", message)
+          and re.search(r"\b(?:create|add|update|edit|change|set)\b", message)):
+        if re.search(r"\b(?:update|edit|change|set)\b", message):
+            selected &= {"resources.update"}
+        elif re.search(r"\b(?:conversion|convert)\b", message):
+            selected &= {"resources.addConversion"}
+        else:
+            selected &= {"resources.create"}
+    elif (re.search(r"\b(?:vendors?|suppliers?)\b", message)
+          and (re.search(r"\b(?:update|edit|change|set)\b", message)
+               or re.search(r"\b(?:create|add)\s+(?:a\s+)?(?:new\s+)?(?:vendor|supplier)\b", message))):
+        if re.search(r"\b(?:update|edit|change|set)\b", message):
+            selected &= {"vendors.update"}
+        elif re.search(r"\b(?:create|add|new)\b", message):
+            selected &= {"vendors.create"}
+    elif re.search(r"\bpermission templates?\b", message):
+        selected &= {"permissionTemplates.create", "permissionTemplates.update"}
+    elif re.search(r"\bdirectory|personnel\b", message):
+        selected &= {"directory.create", "directory.update"}
+    elif re.search(r"\b(?:user|employee)\b", message) and re.search(r"\bpermissions?\b", message):
+        selected &= {"adminUsers.setSystemPermissions"}
+    elif re.search(r"\b(?:user|employee)\b", message) and re.search(r"\b(?:profile|email|phone|name)\b", message):
+        selected &= {"adminUsers.updateProfile"}
+    elif re.search(r"\b(?:set|change|update)\b.*\b(?:member|project)\b.*\bpermissions?\b", message):
+        selected &= {"projects.setMemberPermissions"}
+    elif re.search(r"\bdepartments?\b", message):
+        selected &= {"adminDepartments.create"}
+    elif re.search(r"\bdesignations?\b", message):
+        selected &= {"adminDesignations.create"}
+    elif re.search(r"\bsectors?\b", message):
+        selected &= {"adminSectors.create"}
+    elif re.search(r"\bjob natures?\b", message):
+        selected &= {"adminJobNatures.create"}
+    elif re.search(r"\bdocument\s+templates?\b|\btemplates?\s+for\s+(?:this\s+)?(?:project\s+)?documents?\b", message):
+        selected &= {"documentTemplates.create", "documentTemplates.update"}
+    elif re.search(r"\barchiv(?:e|ing)\b", message) and re.search(r"\bdocument\b", message):
+        selected &= {"documents.archiveInstance"}
+    elif re.search(r"\b(?:draft|workflow|cycles?|documents?|revisions?)\b", message):
+        document_tools = {"documents.saveDraft", "documents.submitDraft", "documents.requestRevision", "documents.cancelCycle", "documents.claimRevision", "documents.archiveInstance"}
+        requested_operations = set()
+        for operation, pattern in (
+            ("documents.saveDraft", r"\bsave\b"),
+            ("documents.submitDraft", r"\bsubmit\b"),
+            ("documents.requestRevision", r"\b(?:request|ask for)\s+(?:a\s+)?revision\b"),
+            ("documents.cancelCycle", r"\bcancel\b"),
+            ("documents.claimRevision", r"\bclaim\b"),
+        ):
+            if re.search(pattern, message):
+                requested_operations.add(operation)
+        selected &= requested_operations or document_tools
+    elif re.search(r"\b(?:tasks?|categor(?:y|ies)|assignee|reorder)\b", message) and not re.search(r"\bapprov(?:e|al)|\breject\b", message):
         task_tools = {"tasks.create", "tasks.update", "tasks.assign", "tasks.createCategory", "tasks.updateCategory", "tasks.reorder"}
         if re.search(r"\b(?:delet(?:e|ion)|remove)\b", message):
             task_tools = {"tasks.deleteSelected"}
@@ -108,15 +168,11 @@ def select_write_tools(request):
             party_tools = {"projectParties.update"}
         selected &= party_tools
     elif re.search(r"\bmember|team member\b", message):
-        selected &= {"projects.assignMember"}
+        selected &= {"projects.assignMember", "projects.setMemberPermissions"}
     elif re.search(r"\bmeetings?|agendas?|mom|minutes\b", message):
         selected &= {"meetings.create", "meetings.update"}
-    elif re.search(r"\bdirectory|personnel\b", message):
-        selected &= {"directory.create", "directory.update"}
     elif re.search(r"\bsummar(?:y|ies)\b", message):
         selected &= {"summaries.create", "summaries.update"}
-    elif re.search(r"\bdraft|workflow|cycle|document\b", message):
-        selected &= {"documents.saveDraft", "documents.submitDraft"}
     elif re.search(r"\bobservations?|quality|checklists?|methodolog|corrective|rectif|\bfix\b", message):
         selected &= {"qualityObservations.create", "qualityObservations.update", "qualityObservations.submitFix", "qualityMethodologies.create", "qualityMethodologies.update", "qualityChecklists.create", "qualityChecklists.update"}
     elif re.search(r"\bprojects?\b", message) and not re.search(r"\bapprov(?:e|al)|\breject\b", message):
@@ -124,7 +180,9 @@ def select_write_tools(request):
         # explicit operation above (summary, meeting, quality, etc.) instead
         # of hiding its write schema from the model.
         selected &= {"projects.create", "projects.update", "projects.assignMember", "projectParties.add", "projectParties.update"}
-    if selected & {"clients.create", "clients.update", "clients.addInteraction"}:
+    # Creating a client is self-contained and duplicate-safe in the server's
+    # transaction. Existing records only need lookups for update/interaction.
+    if selected & {"clients.update", "clients.addInteraction"}:
         selected.update({"clients.search", "clients.get"})
     if "vendors.update" in selected:
         selected.update({"vendors.search", "vendors.get"})
@@ -139,10 +197,26 @@ def select_write_tools(request):
         selected.update({"resources.search", "resources.get"})
     if selected & {"approvals.decide", "approvals.batchDecide"}:
         selected.add("approvals.listPending")
-    if selected & {"projects.create", "projects.update", "projects.assignMember", "projectParties.add", "projectParties.update", "meetings.create", "meetings.update", "directory.create", "directory.update", "summaries.create", "summaries.update", "documents.saveDraft", "documents.submitDraft", "qualityObservations.create", "qualityObservations.update", "qualityObservations.submitFix", "qualityMethodologies.create", "qualityMethodologies.update", "qualityChecklists.create", "qualityChecklists.update"}:
+    if selected & {"projects.create", "projects.update", "projects.assignMember", "projects.setMemberPermissions", "projectParties.add", "projectParties.update", "meetings.create", "meetings.update", "directory.create", "directory.update", "summaries.create", "summaries.update", "documents.saveDraft", "documents.submitDraft", "documents.requestRevision", "documents.cancelCycle", "documents.claimRevision", "documents.archiveInstance", "documentTemplates.create", "documentTemplates.update", "qualityObservations.create", "qualityObservations.update", "qualityObservations.submitFix", "qualityMethodologies.create", "qualityMethodologies.update", "qualityChecklists.create", "qualityChecklists.update"}:
         selected.update({"projects.search", "projects.get"})
     if selected & {"tasks.create", "tasks.update", "tasks.deleteSelected", "tasks.assign", "tasks.createCategory", "tasks.updateCategory", "tasks.reorder"}:
         selected.update({"projects.search", "projects.get", "tasks.search"})
+    if selected & {"adminUsers.updateProfile", "adminUsers.setSystemPermissions"}:
+        selected.add("adminUsers.search")
+    if "permissionTemplates.update" in selected:
+        selected.add("permissionTemplates.search")
+    if "documentTemplates.update" in selected:
+        selected.add("documentTemplates.search")
+    if selected & {"documents.submitDraft", "documents.requestRevision", "documents.cancelCycle", "documents.claimRevision"}:
+        selected.add("documentCycles.search")
+    if "documents.archiveInstance" in selected:
+        selected.add("documentInstances.search")
+    completed_lookups = {
+        getattr(result, "tool", None)
+        for result in request.results
+        if getattr(result, "tool", None) in WRITE_SUPPORTING_TOOLS
+    }
+    selected.difference_update(completed_lookups)
     return [tool for tool in request.allowedTools if tool in selected and (tool in WRITE_TOOLS or tool in WRITE_SUPPORTING_TOOLS)]
 
 
@@ -159,15 +233,19 @@ def select_write_knowledge(request, tools):
         selected.update({"resources/index.md", "resources/rate-versioning.md"})
     if "approvals.listPending" in tools or any(tool in tools for tool in ("approvals.decide", "approvals.batchDecide")):
         selected.add("projects/index.md")
-    if any(tool in tools for tool in ("projects.create", "projects.update", "projects.assignMember", "projectParties.add", "projectParties.update", "projects.search", "tasks.create", "tasks.update", "tasks.assign", "tasks.createCategory", "tasks.updateCategory", "tasks.reorder", "meetings.create", "meetings.update", "directory.create", "directory.update", "summaries.create", "summaries.update", "documents.saveDraft", "documents.submitDraft", "qualityObservations.create", "qualityObservations.update", "qualityObservations.submitFix", "qualityMethodologies.create", "qualityMethodologies.update", "qualityChecklists.create", "qualityChecklists.update")):
+    if any(tool in tools for tool in ("projects.create", "projects.update", "projects.assignMember", "projectParties.add", "projectParties.update", "projects.search", "tasks.create", "tasks.update", "tasks.assign", "tasks.createCategory", "tasks.updateCategory", "tasks.reorder", "meetings.create", "meetings.update", "directory.create", "directory.update", "summaries.create", "summaries.update", "documents.saveDraft", "documents.submitDraft", "documents.requestRevision", "documents.cancelCycle", "documents.claimRevision", "documents.archiveInstance", "documentTemplates.create", "documentTemplates.update", "qualityObservations.create", "qualityObservations.update", "qualityObservations.submitFix", "qualityMethodologies.create", "qualityMethodologies.update", "qualityChecklists.create", "qualityChecklists.update")):
         selected.add("projects/index.md")
     return [item.model_copy(update={"content": item.content[:WRITE_KNOWLEDGE_CHARS]})
             for item in request.knowledge if item.file in selected]
 
 
-def select_write_history(request):
+def select_write_history(request, continuing_write=False):
+    # A clarification answer only makes sense alongside both the original
+    # write request and the assistant's question. Keep the normal write budget
+    # otherwise, but retain that pair for the immediate follow-up turn.
+    message_count = 2 if continuing_write else WRITE_HISTORY_MESSAGES
     return [item.model_copy(update={"text": item.text[:WRITE_HISTORY_CHARS]})
-            for item in request.history[-WRITE_HISTORY_MESSAGES:]]
+            for item in request.history[-message_count:]]
 
 
 def is_write_clarification_followup(request):
@@ -181,7 +259,7 @@ def is_write_clarification_followup(request):
         return False
     prior_message = previous_user.text.lower()
     assistant_message = previous_assistant.text.lower()
-    had_write_intent = re.search(r"\b(create|add|update|edit|change|save|submit|schedule|assign|log|attach|import|delete|remove)\b", prior_message)
+    had_write_intent = re.search(r"\b(create|add|update|edit|change|save|submit|schedule|assign|log|attach|import|delete|remove|cancel|claim)\b|\brequest\s+(?:a\s+)?revision\b", prior_message)
     assistant_asked_for_details = re.search(
         r"\b(need|what|which|provide|please share|please enter|could you provide|tell me)\b", assistant_message
     ) and assistant_message.rstrip().endswith("?")
@@ -363,7 +441,7 @@ def select_read_tools(request):
     entity_type = (getattr(request.context, "selectedEntityType", None) or "").lower()
     tab = (getattr(request.context, "activeTab", None) or "").lower()
     mod = (getattr(request.context, "module", None) or "").lower()
-    words = f"{request.message} {request.context.module} {request.context.route} {entity_type} {tab}".lower()
+    words = f"{request.message} {request.context.module} {request.context.route} {entity_type} {tab}".lower().replace("-", " ")
     selected = set()
     if entity_type == "vendor":
         selected.update({"vendors.get", "vendors.search", "interactions.search"})
@@ -389,12 +467,20 @@ def select_read_tools(request):
         selected.add("tasks.search")
     if any(word in words for word in ("client", "contact", "interaction")):
         selected.update({"clients.search", "clients.get", "interactions.search", "projectParties.list"})
+    if any(word in words for word in ("employee", "user profile", "users")):
+        selected.add("adminUsers.search")
+    if "permission template" in words:
+        selected.add("permissionTemplates.search")
+    if "document template" in words:
+        selected.add("documentTemplates.search")
     if any(word in words for word in ("vendor", "supplier", "contractor", "contract", "contracts", "agreement", "agreements")):
         selected.update({"vendors.search", "vendors.get", "interactions.search", "projectParties.list"})
     if tab == "contracts" or "contract" in mod:
         selected.update({"projectParties.list", "vendors.search", "projects.get"})
     if any(word in words for word in ("drawing", "drawings", "sheet", "revisions", "quality", "safety", "document", "documents", "snag", "inspection", "checklist")):
         selected.update({"approvals.listPending", "projects.get"})
+    if any(word in words for word in ("document cycle", "approval cycle", "revision cycle", "document instance", "archive document")):
+        selected.update({"documentCycles.search", "documentInstances.search"})
     if any(tab_match in (tab, mod) for tab_match in ("drawings", "quality", "safety", "general documents")):
         selected.update({"approvals.listPending", "projects.get"})
     if any(word in words for word in ("resource", "material", "rate", "composition", "conversion")):
@@ -428,7 +514,8 @@ def select_read_tools(request):
     if tab == "reports" or "reports" in mod or "report" in words:
         selected.update({"reports.getDPR", "reports.getWPR", "reports.getMPR"})
     if not selected:
-        selected.update(name for name in request.allowedTools if name.endswith(".search"))
+        selected.update(name for name in request.allowedTools if name.endswith(".search")
+                        and name not in {"adminUsers.search", "permissionTemplates.search", "documentTemplates.search"})
     return [name for name in request.allowedTools if name in selected]
 
 
@@ -705,6 +792,24 @@ def normalize_fuzzy_prompt(text: str) -> str:
     return normalized
 
 
+def unsupported_write_capability(message: str) -> str | None:
+    """Fail clearly for Phase 3 mutations that have no dedicated safe tool yet."""
+    clean = normalize_fuzzy_prompt(message)
+    if re.search(r"\b(?:transaction|transactions|ledger|voucher)\b", clean) and re.search(
+        r"\b(?:confirm|cancel|reverse|transfer|assign|record|post|pay|settle)\b", clean
+    ):
+        return "The agent cannot confirm, cancel, or otherwise change ledger transactions yet. Please use the Transactions page; no ERP changes were made."
+    if re.search(r"\b(?:supply request|material request|supply assignment|material supply)\b", clean) and re.search(
+        r"\b(?:assign|transfer|reassign|move)\b", clean
+    ):
+        return "The agent cannot assign or transfer material supply requests yet. Please use the project’s Material Management page; no ERP changes were made."
+    if re.search(r"\b(?:contractor|vendor|supplier)\b", clean) and re.search(
+        r"\b(?:transfer|replace|reassign)\b", clean
+    ) and re.search(r"\b(?:project|assignment|party|contract)\b", clean):
+        return "The agent cannot transfer contractor assignments yet. Please update the project party through the project’s Contracts or Parties page; no ERP changes were made."
+    return None
+
+
 def project_party_category_mismatch(request, response):
     """Reject a party proposal when verified contact category contradicts the requested role."""
     if not isinstance(response, ToolIntent) or response.tool != "projectParties.add":
@@ -725,12 +830,136 @@ def project_party_category_mismatch(request, response):
     return "I could not verify the contact's category. Please choose an existing matching contact."
 
 
+def client_create_from_message(request):
+    """Plan a fully specified client creation without a model-authored faux preview.
+
+    The server still authorizes, snapshots, and requires confirmation before
+    execution. This only converts clear user-supplied fields into its existing
+    allowlisted operation.
+    """
+    if request.results or "clients.create" not in request.allowedTools:
+        return None
+    message = request.message.strip()
+    if not re.search(r"\b(?:create|add)\b", message, re.I) or not re.search(r"\bclient\b", message, re.I):
+        return None
+    boundary = r"(?:contact(?:\s+person)?|email|e-mail|mobile|phone|address|location|remarks)"
+    name_match = re.search(r"\bclient\s+named\s+(.+?)(?=\s*,?\s*" + boundary + r"\b|[.!?]|$)", message, re.I)
+    if not name_match:
+        return None
+    name = name_match.group(1).strip(" \t,\"'")
+    if not name:
+        return None
+    arguments = {"name": name}
+    contact_match = re.search(r"\bcontact(?:\s+person)?\s*(?:is|:)?\s*(.+?)(?=\s*,\s*" + boundary + r"\b|[.!?]|$)", message, re.I)
+    if contact_match:
+        contact_person = contact_match.group(1).strip(" \t,\"'")
+        if contact_person:
+            arguments["contact_person"] = contact_person
+    email_match = re.search(r"\b(?:email|e-mail)(?:\s+address)?\s*(?:is|:)?\s*([^\s,;]+)", message, re.I)
+    if email_match:
+        arguments["email"] = email_match.group(1).strip(" \t,;.\"'")
+    phone_match = re.search(r"\b(?:mobile|phone)(?:\s+number)?\s*(?:is|:)?\s*([+()\d][\d\s()\-]{4,})", message, re.I)
+    if phone_match:
+        arguments["mobile"] = phone_match.group(1).strip()
+    return ToolIntent(kind="tool", tool="clients.create", version=1, arguments=arguments)
+
+
+def vendor_update_from_verified_result(request):
+    """Advance a named vendor update from its verified lookup to confirmation.
+
+    A search result is evidence, not a conversational preview. Requiring one
+    unambiguous name match prevents the model from guessing a record ID.
+    """
+    if "vendors.update" not in request.allowedTools or not request.results:
+        return None
+    message = request.message.strip()
+    if not re.search(r"\b(?:update|edit|change|set)\b", message, re.I) or not re.search(r"\b(?:vendor|supplier)\b", message, re.I):
+        return None
+    contact_match = re.search(r"\bcontact\s+person\s+(?:to|as)\s+(.+?)(?=[.!?]|$)", message, re.I)
+    if not contact_match:
+        return None
+    contact_person = contact_match.group(1).strip(" \t,\"'")
+    if not contact_person:
+        return None
+    matches = []
+    normalized_message = _clean_norm_name(message)
+    for result in request.results:
+        result_tool = getattr(result, "tool", None) or (result.get("tool") if isinstance(result, dict) else None)
+        if result_tool not in ("vendors.search", "vendors.get"):
+            continue
+        result_data = getattr(result, "data", None) or (result.get("data", []) if isinstance(result, dict) else [])
+        for row in result_data:
+            if not isinstance(row, dict) or not isinstance(row.get("id"), int) or not row.get("name"):
+                continue
+            normalized_name = _clean_norm_name(str(row["name"]))
+            if len(normalized_name) >= 3 and normalized_name in normalized_message:
+                matches.append(row)
+    unique = {row["id"]: row for row in matches}
+    if len(unique) != 1:
+        return None
+    vendor = next(iter(unique.values()))
+    return ToolIntent(kind="tool", tool="vendors.update", version=1,
+                      arguments={"contactId": vendor["id"], "contact_person": contact_person})
+
+
+def resource_update_from_verified_result(request):
+    """Advance a named resource-description update from a verified lookup."""
+    if "resources.update" not in request.allowedTools or not request.results:
+        return None
+    message = request.message.strip()
+    if not re.search(r"\b(?:update|edit|change|set)\b", message, re.I):
+        return None
+    description_match = re.search(r"\bdescription\s+(?:to|as)\s+(.+?)(?=[.!?]|$)", message, re.I)
+    if not description_match:
+        return None
+    description = description_match.group(1).strip(" \t,\"'")
+    if not description:
+        return None
+    matches = []
+    normalized_message = _clean_norm_name(message)
+    for result in request.results:
+        result_tool = getattr(result, "tool", None) or (result.get("tool") if isinstance(result, dict) else None)
+        if result_tool not in ("resources.search", "resources.get"):
+            continue
+        result_data = getattr(result, "data", None) or (result.get("data", []) if isinstance(result, dict) else [])
+        for row in result_data:
+            name = row.get("name") or row.get("resourceName") if isinstance(row, dict) else None
+            if not isinstance(row, dict) or not isinstance(row.get("id"), int) or not name:
+                continue
+            normalized_name = _clean_norm_name(str(name))
+            if len(normalized_name) >= 3 and normalized_name in normalized_message:
+                matches.append(row)
+    unique = {row["id"]: row for row in matches}
+    if len(unique) != 1:
+        return None
+    resource = next(iter(unique.values()))
+    return ToolIntent(kind="tool", tool="resources.update", version=1,
+                      arguments={"resourceId": resource["id"], "description": description})
+
+
 async def reason(request, provider=complete, read_provider=complete_groq):
+    if (not request.results and "documentTemplates.create" in request.allowedTools
+            and re.search(r"\b(?:create|add)\b", request.message, re.I)
+            and re.search(r"\bdocument\s+template\b", request.message, re.I)
+            and not re.search(r"\b(?:singleton|episodic)\b", request.message, re.I)):
+        return Assistant(kind="assistant", text="No changes have been made. Which document template type do you want: singleton (one document per project) or episodic (multiple document instances)?", sources=[])
+    unsupported_write = unsupported_write_capability(request.message)
+    if unsupported_write:
+        return Assistant(kind="assistant", text=unsupported_write, sources=[])
     if re.search(r"\b(random|dummy|invented|fake|made[- ]up)\b", request.message, re.I) and re.search(
             r"\b(create|add|import|update|edit|change|save)\b", request.message, re.I):
         return Assistant(kind="assistant", text="Please provide the actual details you want saved. I cannot invent business details for a write. No ERP changes were made.", sources=[])
     if re.fullmatch(r"\s*(?:please\s+)?(?:create|add)\s+(?:a\s+)?(?:new\s+)?client[.!?]*\s*", request.message, re.I):
         return Assistant(kind="assistant", text="What is the client's name? Please provide the details you want saved; I will show a confirmation preview before saving.", sources=[])
+    explicit_client_create = client_create_from_message(request)
+    if explicit_client_create is not None:
+        return explicit_client_create
+    verified_vendor_update = vendor_update_from_verified_result(request)
+    if verified_vendor_update is not None:
+        return verified_vendor_update
+    verified_resource_update = resource_update_from_verified_result(request)
+    if verified_resource_update is not None:
+        return verified_resource_update
     if (not request.results and "qualityObservations.create" in request.allowedTools
             and re.fullmatch(r"\s*(?:please\s+)?(?:create|add|log|record)\s+(?:a\s+)?"
                              r"(?:(?:quality|qa/?qc)\s+)?observation"
@@ -1092,7 +1321,8 @@ async def reason(request, provider=complete, read_provider=complete_groq):
             return ToolIntent(kind="tool", tool="reports.getMPR", version=1, arguments=mpr_args)
 
     if "projects.getExecutiveBriefing" in request.allowedTools and not request.results and not re.search(
-            r"\b(create|update|edit|change|add|assign|schedule|reschedule|meeting|agenda|mom|minutes|"
+            r"\b(create|update|edit|change|add|assign|schedule|reschedule|submit|save|cancel|claim|"
+            r"archive|delete|remove|meeting|agenda|mom|minutes|documents?|cycles?|revisions?|templates?|"
             r"directory|summar(?:y|ies)|draft|workflow|observation|quality|checklist|methodolog|"
             r"corrective|rectif|fix)\b", request.message, re.I):
         msg_lower = request.message.lower()
@@ -1263,9 +1493,11 @@ async def reason(request, provider=complete, read_provider=complete_groq):
         selection_message = f"{request.history[-2].text} {request.message}"
     msg_lower = selection_message.lower()
     write_verbs = ("create", "add", "insert", "upload", "import", "update", "edit", "change", "log",
-                   "save", "approve", "reject", "assign", "reorder", "rename", "submit", "link",
-                   "attach", "replace", "correct", "rectify", "schedule", "reschedule", "fix", "delete", "deletion", "remove")
+                   "save", "approve", "reject", "assign", "reorder", "rename", "submit", "link", "set",
+                   "attach", "replace", "correct", "rectify", "schedule", "reschedule", "fix", "delete", "deletion", "remove", "cancel", "claim")
     has_write_intent = bool(re.search(r"\b(?:" + "|".join(write_verbs) + r")\b", msg_lower))
+    has_write_intent = has_write_intent or bool(re.search(r"\barchive\s+(?:this\s+|the\s+|selected\s+)?document\b", msg_lower))
+    has_write_intent = has_write_intent or bool(re.search(r"\b(?:request|ask for)\s+(?:a\s+)?revision\b", msg_lower))
     if is_module_explanation_query(request.message) or re.match(
             r"\s*(?:what|which|who|when|where|why|how|show|list|find|search|view|explain|describe)\b",
             request.message, re.I):
@@ -1280,7 +1512,7 @@ async def reason(request, provider=complete, read_provider=complete_groq):
     elif write_profile is not None:
         model_tools = select_write_tools(request.model_copy(update={"message": selection_message}))
         knowledge = select_write_knowledge(request, model_tools)
-        history = select_write_history(request)
+        history = select_write_history(request, continuing_write=continuing_write)
         results = select_write_results(request)
     else:
         knowledge = request.knowledge
@@ -1327,12 +1559,15 @@ async def reason(request, provider=complete, read_provider=complete_groq):
         "For deletion, target only exact records verified from supplied results or explicit user selection; never interpret 'all' as an unbounded delete or silently choose the first batch. "
         "A task deletion batch is limited to 20 exact task records. Show their names and impact in the confirmation preview; never execute a deletion without the user's explicit confirmation. "
         "For project and task writes, verify a named existing project or task with a search; never guess its ID. "
+        "For administrator user, permission template, document template, and project-member edits, expectedName must be the actual current record name from verified context or a lookup; never guess it or an ID. "
+        "Permission changes require every named permission level, with no invented defaults; ask the user for any missing levels. "
         "For task creation, require the user's actual existing category name; ask if it is missing. "
         "For assigning a named existing project member to a task, use projects.get to verify the member name and ID; never ask the user for an internal ID if the project lookup can resolve it. "
         "When a spreadsheet is attached to import vendors, propose vendors.bulkImport. Ask for clarification if a target is ambiguous. "
         "Project-member assignment is restricted: never supply permissions, and only propose the exact member assignment the user requested. "
         "For a quality corrective fix, checklist, or methodology attachment, propose a write only when the supplied attachment is explicitly marked approved; use its supplied uploadId and never invent one. "
         "For document workflow submission, do not claim approval or publication: it only forwards an existing draft to the configured next approver. "
+        "For document cycles, request revisions only as the current holder, claim revisions only as the initiating reporter, and cancel only open cycles as their initiator or an administrator; cancellation requires the exact typed confirmation shown in the preview. "
         "Sources must be an exact knowledge filename or a supplied result stepId. "
         "Do not output private reasoning. For page/module explanation questions, answer for an ERP user: "
         "describe what the user can do on the visible page, the main workflows, actions, and fields in plain language. "
@@ -1363,9 +1598,13 @@ async def reason(request, provider=complete, read_provider=complete_groq):
         "(f) Site Events, Incidents, or Visits, and "
         "(g) Engineer Observations and Remarks. "
         "Interactive Power BI-style dashboards with charts, KPIs, and distributions are displayed only for analytics queries or when visual breakdowns are explicitly requested. When visual dashboards are active, highlight key totals and high-level insights without dumping repetitive plain text lists. "
-        "Tool argument schemas: " + json.dumps(schemas, separators=(",", ":"))
     )
-    instruction = "You are the MANO ERP assistant. " + response_contract + instruction_suffix
+    schema_instruction = "Tool argument schemas: " + json.dumps(schemas, separators=(",", ":"))
+    # Native functions already carry these exact schemas. Repeating them in
+    # the system prompt consumes the quota again on every planning step.
+    instruction = "You are the MANO ERP assistant. " + response_contract + instruction_suffix + (
+        "" if native_write else schema_instruction
+    )
     messages = [{"role": "system", "content": instruction},
                 {"role": "user", "content": request.model_copy(update={"knowledge": knowledge, "history": history,
                                                                          "allowedTools": model_tools,
@@ -1380,11 +1619,12 @@ async def reason(request, provider=complete, read_provider=complete_groq):
     if read_only and provider is complete:
         chosen_provider = read_provider
         primary_profile = get_read_primary_profile()
-        fallback_profile = get_read_fallback_profile()
 
         native_operations = model_tools if (native_lookup and primary_profile.native_tools) else None
         response_schema = ASSISTANT_RESPONSE_SCHEMA if (primary_profile.strict_json_schema and not native_operations and not model_tools) else None
-        tokens = 384 if native_operations else primary_profile.max_output_tokens
+        tokens = (min(primary_profile.max_output_tokens, 1024)
+                  if native_operations and primary_profile.reasoning_effort not in (None, "none")
+                  else 384 if native_operations else primary_profile.max_output_tokens)
 
         try:
             if chosen_provider is _REAL_COMPLETE_GROQ and os.getenv("GROQ_API_KEY"):
@@ -1394,6 +1634,8 @@ async def reason(request, provider=complete, read_provider=complete_groq):
                         native_operations=native_operations,
                         response_schema=response_schema,
                         max_tokens=tokens,
+                        model=primary_profile.model,
+                        profile=primary_profile.name,
                     )
                 except ProviderFailure:
                     raise
@@ -1411,14 +1653,16 @@ async def reason(request, provider=complete, read_provider=complete_groq):
                     except TypeError:
                         response, diagnostics = await chosen_provider(messages)
         except ProviderFailure as err:
-            if fallback_profile is not None and is_retryable_failure(err.category, err.http_status):
-                fb_native = model_tools if (native_lookup and fallback_profile.native_tools) else None
-                fb_schema = ASSISTANT_RESPONSE_SCHEMA if (fallback_profile.strict_json_schema and not fb_native and not model_tools) else None
+            # A malformed GPT-OSS native turn may succeed with the same model
+            # under the JSON tool contract. Never switch model or provider.
+            if chosen_provider is _REAL_COMPLETE_GROQ and err.category in {
+                "provider_output_empty", "provider_output_invalid_json", "provider_output_limit"
+            }:
                 response, diagnostics = await complete_with_profile(
-                    fallback_profile,
+                    primary_profile,
                     messages,
-                    native_operations=fb_native,
-                    response_schema=fb_schema,
+                    native_operations=None,
+                    response_schema=ASSISTANT_RESPONSE_SCHEMA if not model_tools else None,
                 )
             else:
                 raise
@@ -1427,6 +1671,14 @@ async def reason(request, provider=complete, read_provider=complete_groq):
         response_schema = ASSISTANT_RESPONSE_SCHEMA if (
             write_profile.strict_json_schema and not native_operations and not request.allowedTools
         ) else None
+        json_retry_messages = [
+            {
+                "role": "system",
+                "content": "You are the MANO ERP assistant. " + json_response_contract + instruction_suffix + schema_instruction,
+            },
+            messages[1],
+        ]
+        recovered = False
         try:
             response, diagnostics = await complete_with_profile(
                 write_profile,
@@ -1435,9 +1687,9 @@ async def reason(request, provider=complete, read_provider=complete_groq):
                 response_schema=response_schema,
             )
         except ProviderFailure as err:
-            # Groq can reject native tool generation or return malformed/empty content.
-            # Preserve the same allowlisted schemas and retry that incomplete
-            # native turn once using the JSON tool contract.
+            last_error = err
+            # A malformed native turn gets one same-profile JSON retry. Quota
+            # and transport failures do not trigger another provider call.
             if native_operations and (
                 (
                     err.category == "provider_http_failure"
@@ -1445,21 +1697,19 @@ async def reason(request, provider=complete, read_provider=complete_groq):
                 )
                 or err.category in {"provider_output_empty", "provider_output_invalid_json", "provider_output_limit"}
             ):
-                retry_messages = [
-                    {
-                        "role": "system",
-                        "content": "You are the MANO ERP assistant. " + json_response_contract + instruction_suffix,
-                    },
-                    messages[1],
-                ]
-                response, diagnostics = await complete_with_profile(
-                    write_profile,
-                    retry_messages,
-                    native_operations=None,
-                    response_schema=None,
-                )
-            else:
-                raise
+                print("Agent native write recovery: " + json.dumps(err.safe_metadata()))
+                try:
+                    response, diagnostics = await complete_with_profile(
+                        write_profile,
+                        json_retry_messages,
+                        native_operations=None,
+                        response_schema=None,
+                    )
+                    recovered = True
+                except ProviderFailure as retry_error:
+                    last_error = retry_error
+            if not recovered:
+                raise last_error
     else:
         response, diagnostics = await provider(messages)
 
@@ -1477,6 +1727,11 @@ async def reason(request, provider=complete, read_provider=complete_groq):
             redacted = "The requested record was found."
         response = response.model_copy(update={"text": redacted})
         allowed_sources = {item.file for item in request.knowledge} | {item.stepId for item in request.results}
-        if any(source not in allowed_sources for source in response.sources):
-            raise ProviderFailure("unverified_source")
+        verified_sources = [source for source in response.sources if source in allowed_sources]
+        if len(verified_sources) != len(response.sources):
+            if request.results:
+                raise ProviderFailure("unverified_source")
+            # A page explanation can proceed without a citation. Never expose
+            # an invented knowledge filename as provenance.
+            response = response.model_copy(update={"sources": verified_sources})
     return ModelReply(requestId=request.requestId, stepId=request.stepId, toolNames=list(ARG_MODELS), response=response, diagnostics=diagnostics)

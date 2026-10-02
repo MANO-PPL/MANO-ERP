@@ -1,4 +1,5 @@
 import json
+import os
 import unittest
 from unittest.mock import patch
 import agent_reasoning
@@ -18,6 +19,23 @@ def metrics():
 
 
 class Reasoning(unittest.IsolatedAsyncioTestCase):
+    async def test_document_template_type_is_not_invented(self):
+        async def provider(messages):
+            raise AssertionError("Missing template type must be clarified before provider planning")
+        req = request().model_copy(update={
+            "message": "Create a document template named QA Template, type General Document.",
+            "allowedTools": ["documentTemplates.create"],
+        })
+        result = await reason(req, provider)
+        self.assertIsInstance(result, Assistant)
+        self.assertIn("singleton", result.text)
+        self.assertIn("episodic", result.text)
+        followup = req.model_copy(update={"message": "Episodic (multiple document instances).", "history": [
+            {"role": "user", "text": req.message}, {"role": "assistant", "text": result.text},
+        ]})
+        followup = ModelRequest.model_validate(followup.model_dump())
+        self.assertTrue(agent_reasoning.is_write_clarification_followup(followup))
+
     async def test_task_assignment_looks_up_project_members_after_task_search(self):
         req = ModelRequest(
             protocol="mano-agent-v1", requestId="r-assign", stepId="r-assign_2",
@@ -41,6 +59,50 @@ class Reasoning(unittest.IsolatedAsyncioTestCase):
             result = await reason(value, provider)
             self.assertIsInstance(result, Assistant)
             self.assertIn(expected, result.text)
+
+    async def test_fully_specified_client_create_becomes_a_confirmation_backed_tool(self):
+        async def provider(messages):
+            raise AssertionError("A fully specified client create must not become a conversational preview")
+        value = request().model_copy(update={
+            "message": "Create a client named Agent Test Client, contact person Test Contact, email agent-test@example.com. Show me the details before saving.",
+            "allowedTools": ["clients.create"],
+        })
+        result = await reason(value, provider)
+        self.assertIsInstance(result, ToolIntent)
+        self.assertEqual(result.tool, "clients.create")
+        self.assertEqual(result.arguments, {
+            "name": "Agent Test Client", "contact_person": "Test Contact", "email": "agent-test@example.com",
+        })
+
+    async def test_verified_named_vendor_update_becomes_a_confirmation_backed_tool(self):
+        async def provider(messages):
+            raise AssertionError("A verified vendor update must not become a conversational question")
+        value = request().model_copy(update={
+            "message": "Find Agent QA Vendor 20260927 and update its contact person to MD.",
+            "results": [{"stepId": "r-vendor-search", "tool": "vendors.search", "data": [
+                {"id": 27, "name": "Agent QA Vendor 20260927"},
+            ]}],
+            "allowedTools": ["vendors.update", "vendors.search"],
+        })
+        result = await reason(value, provider)
+        self.assertIsInstance(result, ToolIntent)
+        self.assertEqual(result.tool, "vendors.update")
+        self.assertEqual(result.arguments, {"contactId": 27, "contact_person": "MD"})
+
+    async def test_verified_named_resource_update_becomes_a_confirmation_backed_tool(self):
+        async def provider(messages):
+            raise AssertionError("A verified resource update must not become a conversational question")
+        value = request().model_copy(update={
+            "message": "Find Agent Test Cement and change its description to Cement used for testing.",
+            "results": [{"stepId": "r-resource-search", "tool": "resources.search", "data": [
+                {"id": 39, "name": "Agent Test Cement"},
+            ]}],
+            "allowedTools": ["resources.update", "resources.search"],
+        })
+        result = await reason(value, provider)
+        self.assertIsInstance(result, ToolIntent)
+        self.assertEqual(result.tool, "resources.update")
+        self.assertEqual(result.arguments, {"resourceId": 39, "description": "Cement used for testing"})
 
     async def test_no_internal_dispatch_and_validated_response(self):
         async def provider(messages):
@@ -66,6 +128,37 @@ class Reasoning(unittest.IsolatedAsyncioTestCase):
         result = await reason(request(), read_provider=groq)
         self.assertEqual(result.response.kind, "assistant")
         self.assertEqual(len(calls), 1)
+
+    async def test_native_read_langchain_receives_groq_oss_20b_model(self):
+        seen = {}
+
+        async def langchain_provider(messages, **kwargs):
+            seen.update(kwargs)
+            return Assistant(kind="assistant", text="Read-only fixture", sources=["index.md"]), metrics()
+
+        with patch.dict(os.environ, {"GROQ_API_KEY": "fixture"}):
+            with patch("agent_reasoning.complete_with_langchain", new=langchain_provider):
+                result = await reason(request())
+
+        self.assertEqual(result.response.kind, "assistant")
+        self.assertEqual(seen["model"], "openai/gpt-oss-20b")
+        self.assertEqual(seen["profile"], "groq-oss-20b")
+        self.assertEqual(seen["native_operations"], ["vendors.search"])
+        self.assertGreaterEqual(seen["max_tokens"], 1024)
+
+    def test_langchain_truncation_and_plain_text_fail_closed(self):
+        from langchain_core.messages import AIMessage
+        from agent_langchain import parse_langchain_output
+
+        for content, finish_reason, category in [
+            ("G", "length", "provider_output_limit"),
+            ("G", "stop", "provider_output_invalid_json"),
+        ]:
+            with self.assertRaises(ProviderFailure) as observed:
+                parse_langchain_output(AIMessage(
+                    content=content, response_metadata={"finish_reason": finish_reason}
+                ))
+            self.assertEqual(observed.exception.category, category)
 
     async def test_quality_page_explanation_uses_read_profile(self):
         seen = []
@@ -260,11 +353,16 @@ class Reasoning(unittest.IsolatedAsyncioTestCase):
         }]}).results
         self.assertEqual(redact_verified_internal_ids(text, results), "The Holy Smokes project is active; is internal.")
 
-    async def test_unverified_provenance_rejected(self):
+    async def test_unverified_knowledge_source_removed_but_result_source_rejected(self):
         async def provider(messages):
             return Assistant(kind="assistant", text="A", sources=["backend/.env"]), metrics()
+        response = await reason(request(), provider)
+        self.assertEqual(response.response.sources, [])
+        with_result = ModelRequest.model_validate({**request().model_dump(), "results": [
+            {"stepId": "r1_0", "tool": "vendors.get", "data": [{"id": 1, "name": "Fixture"}]}
+        ]})
         with self.assertRaises(ProviderFailure):
-            await reason(request(), provider)
+            await reason(with_result, provider)
 
     async def test_visual_analytics_intent_planning(self):
         analytics_request = ModelRequest.model_validate({
@@ -611,6 +709,31 @@ class Reasoning(unittest.IsolatedAsyncioTestCase):
             self.assertEqual(selected & task_mutations, {expected}, message)
             self.assertIn("tasks.search", selected, message)
 
+    def test_document_cycle_write_selection_exposes_phase_three_actions(self):
+        from agent_reasoning import select_write_tools
+        document_mutations = {
+            "documents.saveDraft", "documents.submitDraft", "documents.requestRevision",
+            "documents.cancelCycle", "documents.claimRevision",
+        }
+        allowed = list(document_mutations | {"projects.search", "projects.get"})
+        for message, expected in [
+            ("Save this document draft", "documents.saveDraft"),
+            ("Submit this document draft for approval", "documents.submitDraft"),
+            ("Request a revision for this document cycle", "documents.requestRevision"),
+            ("Cancel this document cycle", "documents.cancelCycle"),
+            ("Claim this requested revision", "documents.claimRevision"),
+        ]:
+            req = ModelRequest(
+                protocol="mano-agent-v1", requestId="r-document-write", stepId="r-document-write-1",
+                message=message, context={"route": "/projects/4/documents", "module": "General Documents", "projectId": "4"},
+                generation="a" * 64, knowledge=[{"file": "projects/index.md", "content": "Projects knowledge"}],
+                results=[], allowedTools=allowed,
+            )
+            selected = set(select_write_tools(req))
+            self.assertIn(expected, selected, message)
+            self.assertEqual(selected & document_mutations, {expected}, message)
+            self.assertIn("projects.search", selected, message)
+
     def test_named_vendor_party_add_exposes_vendor_lookup(self):
         from agent_reasoning import select_write_tools
         req = ModelRequest(
@@ -688,7 +811,35 @@ class Reasoning(unittest.IsolatedAsyncioTestCase):
         self.assertIn("directory.update", seen["native_operations"])
         self.assertNotIn("projects.create", seen["native_operations"])
         self.assertEqual(seen["request"]["message"], "Tester is the name")
-        self.assertEqual(seen["request"]["history"][-1]["role"], "assistant")
+        self.assertEqual([item["role"] for item in seen["request"]["history"]], ["user", "assistant"])
+        self.assertIn("Add Employee to this project directory", seen["request"]["history"][0]["text"])
+
+    async def test_write_planner_does_not_repeat_a_completed_template_lookup(self):
+        seen = {}
+
+        async def write_provider(profile, messages, **kwargs):
+            seen["tools"] = kwargs.get("native_operations")
+            return ToolIntent(
+                kind="tool", tool="documentTemplates.update", version=1,
+                arguments={"projectId": 75, "documentId": 8, "expectedName": "Project Summary",
+                           "description": "QA preview update only"},
+            ), metrics()
+
+        req = ModelRequest(
+            protocol="mano-agent-v1", requestId="r-template-followup", stepId="r-template-followup-2",
+            message="Update the existing document template 'Project Summary' for this project. Set its description to 'QA preview update only'.",
+            context={"route": "/projects/75", "module": "General Documents", "projectId": "75"},
+            generation="a" * 64, knowledge=[{"file": "projects/index.md", "content": "Project document guidance"}],
+            results=[{"stepId": "r-template-followup-1", "tool": "documentTemplates.search",
+                      "data": [{"id": 8, "name": "Project Summary", "docType": "singleton"}]}],
+            allowedTools=["documentTemplates.update", "documentTemplates.search", "projects.search", "projects.get"],
+        )
+        with patch("agent_reasoning.complete_with_profile", new=write_provider):
+            result = await reason(req)
+
+        self.assertEqual(result.response.tool, "documentTemplates.update")
+        self.assertIn("documentTemplates.update", seen["tools"])
+        self.assertNotIn("documentTemplates.search", seen["tools"])
 
     async def test_scheduled_meeting_is_a_write_and_never_an_executive_briefing(self):
         seen = {}
@@ -714,6 +865,29 @@ class Reasoning(unittest.IsolatedAsyncioTestCase):
             result = await reason(req)
         self.assertEqual(result.response.tool, "meetings.create")
         self.assertIn("meetings.create", seen["tools"])
+        self.assertNotIn("projects.getExecutiveBriefing", seen["tools"])
+
+    async def test_cancel_document_cycle_with_phase_label_is_not_a_briefing(self):
+        seen = {}
+
+        async def write_provider(profile, messages, **kwargs):
+            seen["tools"] = kwargs.get("native_operations")
+            return Assistant(kind="assistant", text="Which document cycle should I cancel?", sources=[]), metrics()
+
+        req = ModelRequest(
+            protocol="mano-agent-v1", requestId="r-cycle", stepId="r-cycle-1",
+            message="Cancel the selected document cycle for this project. Comment: Phase 3 QA cancellation check.",
+            context={"route": "/projects/85", "module": "Projects", "projectId": "85"},
+            generation="a" * 64, knowledge=[{"file": "projects/index.md", "content": "Projects knowledge"}],
+            results=[], allowedTools=[
+                "projects.getExecutiveBriefing", "projects.search", "projects.get",
+                "documents.cancelCycle", "documentCycles.search",
+            ],
+        )
+        with patch("agent_reasoning.complete_with_profile", new=write_provider):
+            result = await reason(req)
+        self.assertEqual(result.response.kind, "assistant")
+        self.assertIn("documents.cancelCycle", seen["tools"])
         self.assertNotIn("projects.getExecutiveBriefing", seen["tools"])
 
     async def test_incomplete_native_write_retries_in_json_mode(self):
@@ -762,8 +936,106 @@ class Reasoning(unittest.IsolatedAsyncioTestCase):
             self.assertEqual(calls[0]["native_operations"], ["meetings.create"])
             self.assertIsNone(calls[1]["native_operations"])
             self.assertIn("native function call", calls[0]["messages"][0]["content"])
+            self.assertNotIn("Tool argument schemas:", calls[0]["messages"][0]["content"])
             self.assertIn("Return exactly one JSON object", calls[1]["messages"][0]["content"])
+            self.assertIn("Tool argument schemas:", calls[1]["messages"][0]["content"])
+            self.assertIn('"meetings.create"', calls[1]["messages"][0]["content"])
             self.assertNotIn("native function call", calls[1]["messages"][0]["content"])
+
+    async def test_rate_limited_write_does_not_switch_model_or_provider(self):
+        calls = []
+
+        async def provider(profile, messages, **kwargs):
+            calls.append((profile.provider, profile.model))
+            raise ProviderFailure("provider_rate_limited", provider="groq", http_status=429)
+
+        req = ModelRequest(
+            protocol="mano-agent-v1", requestId="r-write-fallback", stepId="r-write-fallback-1",
+            message="Schedule a meeting for this project titled QA review",
+            context={"route": "/projects/4", "module": "Projects", "projectId": "4"},
+            generation="a" * 64, knowledge=[{"file": "projects/index.md", "content": "Projects knowledge"}],
+            results=[], allowedTools=["meetings.create"],
+        )
+        with patch("agent_reasoning.complete_with_profile", new=provider):
+            with self.assertRaises(ProviderFailure) as observed:
+                await reason(req)
+        self.assertEqual(observed.exception.category, "provider_rate_limited")
+        self.assertEqual(calls, [("groq", "openai/gpt-oss-20b")])
+
+    async def test_invalid_json_retry_stays_on_groq_oss_20b(self):
+        calls = []
+
+        async def provider(profile, messages, **kwargs):
+            calls.append((profile.provider, profile.model, kwargs.get("native_operations")))
+            raise ProviderFailure("provider_output_invalid_json", provider="groq")
+
+        req = ModelRequest(
+            protocol="mano-agent-v1", requestId="r-write-json-fallback", stepId="r-write-json-fallback-1",
+            message="Schedule a meeting for this project titled QA review",
+            context={"route": "/projects/4", "module": "Projects", "projectId": "4"},
+            generation="a" * 64, knowledge=[{"file": "projects/index.md", "content": "Projects knowledge"}],
+            results=[], allowedTools=["meetings.create"],
+        )
+        with patch("agent_reasoning.complete_with_profile", new=provider):
+            with self.assertRaises(ProviderFailure) as observed:
+                await reason(req)
+        self.assertEqual(observed.exception.category, "provider_output_invalid_json")
+        self.assertEqual(calls, [
+            ("groq", "openai/gpt-oss-20b", ["meetings.create"]),
+            ("groq", "openai/gpt-oss-20b", None),
+        ])
+
+    def test_active_profiles_ignore_other_provider_settings(self):
+        from agent_profiles import (get_read_primary_profile, get_read_fallback_profile,
+                                    get_write_profile, get_write_fallback_profiles)
+        with patch.dict(os.environ, {
+            "AGENT_READ_PRIMARY_PROFILE": "groq-qwen",
+            "AGENT_READ_FALLBACK_PROFILE": "nvidia-gpt-oss",
+            "AGENT_WRITE_PROFILE": "nvidia-gpt-oss",
+            "AGENT_WRITE_FALLBACK_PROFILE": "nvidia-gpt-oss",
+        }):
+            self.assertEqual(get_read_primary_profile().model, "openai/gpt-oss-20b")
+            self.assertEqual(get_write_profile().model, "openai/gpt-oss-20b")
+            self.assertIsNone(get_read_fallback_profile())
+            self.assertEqual(get_write_fallback_profiles(get_write_profile()), [])
+
+    async def test_unimplemented_phase_three_mutations_are_refused_without_provider(self):
+        prompts = [
+            "Confirm the selected ledger transaction for this project.",
+            "Assign the selected project's pending material supply request to its existing contractor.",
+            "Transfer the selected project's contractor assignment to the existing replacement contractor.",
+        ]
+        for prompt in prompts:
+            req = ModelRequest.model_validate({
+                **request().model_dump(), "message": prompt,
+                "allowedTools": ["transactions.search", "billing.search", "projectParties.list"],
+            })
+            with patch("agent_reasoning.complete_with_profile", side_effect=AssertionError("provider must not invent unsupported writes")):
+                result = await reason(req)
+            self.assertIsInstance(result, Assistant)
+            self.assertIn("no ERP changes were made", result.text)
+
+    def test_document_cycle_and_archive_writes_include_scoped_lookups(self):
+        from agent_reasoning import select_write_tools
+        for prompt, write_tool, lookup in [
+            ("Submit the selected Project Summary draft for approval", "documents.submitDraft", "documentCycles.search"),
+            ("Archive the selected Project Summary document instance", "documents.archiveInstance", "documentInstances.search"),
+        ]:
+            req = ModelRequest.model_validate({
+                **request().model_dump(), "message": prompt,
+                "context": {"route": "/projects/75", "module": "General Documents", "projectId": "75"},
+                "allowedTools": [write_tool, "documentCycles.search", "documentInstances.search", "projects.search", "projects.get"],
+            })
+            selected = select_write_tools(req)
+            self.assertIn(write_tool, selected)
+            self.assertIn(lookup, selected)
+
+    def test_unimplemented_mutations_are_not_misreported_as_empty_searches(self):
+        from agent_reasoning import unsupported_write_capability
+        self.assertIn("cannot confirm", unsupported_write_capability("Confirm the selected ledger transaction"))
+        self.assertIn("cannot assign", unsupported_write_capability("Assign a material supply request to a vendor"))
+        self.assertIn("cannot transfer", unsupported_write_capability("Transfer this project contractor assignment"))
+        self.assertIsNone(unsupported_write_capability("Show this project's ledger transactions"))
 
     async def test_show_the_tasks_routes_to_tasks_search_not_briefing(self):
         req = ModelRequest(

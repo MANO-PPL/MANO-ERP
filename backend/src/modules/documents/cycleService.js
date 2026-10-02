@@ -16,6 +16,10 @@ const CONTENT_TABLES = [
     }
 ];
 
+async function inTransaction(transaction, work) {
+    return transaction ? work(transaction) : db.transaction(work);
+}
+
 
 // Helper to copy/clone existing content rows to the new cycle so drafting begins with the current data
 async function cloneContentToNewCycle(trx, instanceId, cycleId, latestApprovedVersionId, projectId) {
@@ -592,12 +596,13 @@ export async function submitDraft(orgId, cycleId, userId, { changes_summary, com
     });
 }
 
-export async function requestRevision(orgId, cycleId, userId, comments) {
-    return await db.transaction(async (trx) => {
+export async function requestRevision(orgId, cycleId, userId, comments, { transaction } = {}) {
+    return await inTransaction(transaction, async (trx) => {
         const cycle = await trx('wf_approval_cycles as approval_cycles')
             .join('wf_document_instances as document_instances', 'approval_cycles.instance_id', 'document_instances.instance_id')
             .where({ 'approval_cycles.cycle_id': cycleId, 'document_instances.org_id': orgId })
             .select('approval_cycles.*', 'document_instances.is_locked')
+            .forUpdate()
             .first();
 
         if (!cycle) throw new AppError('Cycle not found', 404);
@@ -632,12 +637,13 @@ export async function requestRevision(orgId, cycleId, userId, comments) {
     });
 }
 
-export async function rejectCycle(orgId, cycleId, userId, comments) {
-    return await db.transaction(async (trx) => {
+export async function rejectCycle(orgId, cycleId, userId, comments, { transaction } = {}) {
+    return await inTransaction(transaction, async (trx) => {
         const cycle = await trx('wf_approval_cycles as approval_cycles')
             .join('wf_document_instances as document_instances', 'approval_cycles.instance_id', 'document_instances.instance_id')
             .where({ 'approval_cycles.cycle_id': cycleId, 'document_instances.org_id': orgId })
             .select('approval_cycles.*')
+            .forUpdate()
             .first();
 
         if (!cycle) throw new AppError('Cycle not found', 404);
@@ -672,16 +678,17 @@ export async function rejectCycle(orgId, cycleId, userId, comments) {
     });
 }
 
-export async function cancelCycle(orgId, cycleId, userId, comments) {
-    return await db.transaction(async (trx) => {
+export async function cancelCycle(orgId, cycleId, userId, comments, { transaction } = {}) {
+    return await inTransaction(transaction, async (trx) => {
         const cycle = await trx('wf_approval_cycles as approval_cycles')
             .join('wf_document_instances as document_instances', 'approval_cycles.instance_id', 'document_instances.instance_id')
             .where({ 'approval_cycles.cycle_id': cycleId, 'document_instances.org_id': orgId })
             .select('approval_cycles.*')
+            .forUpdate()
             .first();
 
         if (!cycle) throw new AppError('Cycle not found', 404);
-        if (['approved', 'rejected'].includes(cycle.status)) {
+        if (['approved', 'rejected', 'cancelled'].includes(cycle.status)) {
             throw new AppError('Cannot cancel an already closed cycle', 400);
         }
 
@@ -696,7 +703,8 @@ export async function cancelCycle(orgId, cycleId, userId, comments) {
             .where({ cycle_id: cycleId })
             .update({
                 status: 'cancelled',
-                completed_at: new Date()
+                completed_at: new Date(),
+                current_holder_id: null
             });
 
         await trx('wf_document_instances')
@@ -719,12 +727,13 @@ export async function cancelCycle(orgId, cycleId, userId, comments) {
     });
 }
 
-export async function claimRevision(orgId, cycleId, userId) {
-    return await db.transaction(async (trx) => {
+export async function claimRevision(orgId, cycleId, userId, { transaction } = {}) {
+    return await inTransaction(transaction, async (trx) => {
         const cycle = await trx('wf_approval_cycles as approval_cycles')
             .join('wf_document_instances as document_instances', 'approval_cycles.instance_id', 'document_instances.instance_id')
             .where({ 'approval_cycles.cycle_id': cycleId, 'document_instances.org_id': orgId })
             .select('approval_cycles.*')
+            .forUpdate()
             .first();
 
         if (!cycle) throw new AppError('Cycle not found', 404);

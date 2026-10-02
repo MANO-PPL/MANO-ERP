@@ -309,6 +309,127 @@ class DocumentSubmitArgs(StrictModel):
     changes_summary: Annotated[str, Field(min_length=1, max_length=500)] | None = None
     comments: Annotated[str, Field(min_length=1, max_length=500)] | None = None
 
+
+class DocumentCycleCommentsArgs(StrictModel):
+    projectId: Id
+    cycleId: Id
+    comments: Annotated[str, Field(min_length=1, max_length=500)] | None = None
+
+
+class DocumentCycleArgs(StrictModel):
+    projectId: Id
+    cycleId: Id
+
+
+class DocumentArchiveArgs(StrictModel):
+    projectId: Id
+    instanceId: Id
+
+
+class DocumentTemplateCreateArgs(StrictModel):
+    projectId: Id
+    name: Name
+    docType: Literal["singleton", "episodic"]
+    description: Annotated[str, Field(min_length=1, max_length=500)] | None = None
+
+
+class DocumentTemplateSearchArgs(ListArgs):
+    projectId: Id
+
+
+class ProjectDocumentSearchArgs(ListArgs):
+    projectId: Id
+
+
+class DocumentTemplateUpdateArgs(StrictModel):
+    projectId: Id
+    documentId: Id
+    expectedName: Name
+    name: Name | None = None
+    description: Annotated[str, Field(min_length=1, max_length=500)] | None = None
+
+    @model_validator(mode="after")
+    def nonempty_update(self):
+        if not self.model_fields_set - {"projectId", "documentId", "expectedName"}:
+            raise ValueError("Empty update")
+        return self
+
+
+class AdminNameArgs(StrictModel):
+    name: Name
+
+
+class AdminUserProfileUpdateArgs(StrictModel):
+    userId: Id
+    expectedName: Name
+    user_name: Name | None = None
+    email: Annotated[str, Field(min_length=1, max_length=254, pattern=r"^[^\s@]+@[^\s@]+\.[^\s@]+$")] | None = None
+    phone_no: Annotated[str, Field(min_length=1, max_length=32)] | None = None
+
+    @model_validator(mode="after")
+    def nonempty_update(self):
+        if not self.model_fields_set - {"userId", "expectedName"}:
+            raise ValueError("Empty update")
+        return self
+
+
+class AdminUserSystemPermissionsArgs(StrictModel):
+    userId: Id
+    expectedName: Name
+    permissions: dict[str, Literal["none", "view", "edit"]]
+
+    @model_validator(mode="after")
+    def exact_permissions(self):
+        if set(self.permissions) != SYSTEM_PERMISSION_KEYS:
+            raise ValueError("Complete system permission map required")
+        return self
+
+
+PROJECT_PERMISSION_KEYS = frozenset({"Tasks", "WIP", "Reports", "General Documents", "Drawings", "Planning",
+                                     "Contracts", "Quality", "Safety", "Billing", "Material Management", "Approvals"})
+SYSTEM_PERMISSION_KEYS = frozenset({"projects", "vendors", "clients", "resources", "units", "collaboration", "admin"})
+
+
+class ProjectMemberPermissionsArgs(StrictModel):
+    projectId: Id
+    userId: Id
+    expectedName: Name
+    permissions: dict[str, Literal["none", "view", "edit"]]
+
+    @model_validator(mode="after")
+    def exact_permissions(self):
+        if set(self.permissions) != PROJECT_PERMISSION_KEYS:
+            raise ValueError("Complete project permission map required")
+        return self
+
+
+class PermissionTemplateCreateArgs(StrictModel):
+    name: Name
+    type: Literal["system", "project"]
+    permissions: dict[str, Literal[0, 1, 2]]
+
+    @model_validator(mode="after")
+    def exact_permissions(self):
+        if set(self.permissions) != (SYSTEM_PERMISSION_KEYS if self.type == "system" else PROJECT_PERMISSION_KEYS):
+            raise ValueError("Complete permission template map required")
+        return self
+
+
+class PermissionTemplateUpdateArgs(StrictModel):
+    templateId: Id
+    type: Literal["system", "project"]
+    expectedName: Name
+    name: Name | None = None
+    permissions: dict[str, Literal[0, 1, 2]] | None = None
+
+    @model_validator(mode="after")
+    def valid_update(self):
+        if not self.model_fields_set - {"templateId", "type", "expectedName"}:
+            raise ValueError("Empty update")
+        if self.permissions is not None and set(self.permissions) != (SYSTEM_PERMISSION_KEYS if self.type == "system" else PROJECT_PERMISSION_KEYS):
+            raise ValueError("Complete permission template map required")
+        return self
+
 class ContactArgs(StrictModel):
     contactId: Id
 
@@ -563,11 +684,26 @@ ARG_MODELS = {
     "tasks.create": TaskCreateArgs, "tasks.update": TaskUpdateArgs, "tasks.deleteSelected": TaskDeleteSelectedArgs,
     "projectParties.add": ProjectPartyAddArgs, "projectParties.update": ProjectPartyUpdateArgs,
     "projects.assignMember": ProjectMemberAssignArgs, "tasks.assign": TaskAssignArgs,
+    "projects.setMemberPermissions": ProjectMemberPermissionsArgs,
     "tasks.createCategory": TaskCategoryCreateArgs, "tasks.updateCategory": TaskCategoryUpdateArgs, "tasks.reorder": TaskReorderArgs,
     "meetings.create": MeetingCreateArgs, "meetings.update": MeetingUpdateArgs,
     "directory.create": DirectoryCreateArgs, "directory.update": DirectoryUpdateArgs,
     "summaries.create": SummaryCreateArgs, "summaries.update": SummaryUpdateArgs,
     "documents.saveDraft": DocumentDraftArgs, "documents.submitDraft": DocumentSubmitArgs,
+    "documents.requestRevision": DocumentCycleCommentsArgs, "documents.cancelCycle": DocumentCycleCommentsArgs,
+    "documents.claimRevision": DocumentCycleArgs,
+    "documents.archiveInstance": DocumentArchiveArgs,
+    "documentCycles.search": ProjectDocumentSearchArgs,
+    "documentInstances.search": ProjectDocumentSearchArgs,
+    "documentTemplates.create": DocumentTemplateCreateArgs, "documentTemplates.update": DocumentTemplateUpdateArgs,
+    "adminDepartments.create": AdminNameArgs, "adminDesignations.create": AdminNameArgs,
+    "adminSectors.create": AdminNameArgs, "adminJobNatures.create": AdminNameArgs,
+    "permissionTemplates.create": PermissionTemplateCreateArgs,
+    "permissionTemplates.update": PermissionTemplateUpdateArgs,
+    "adminUsers.updateProfile": AdminUserProfileUpdateArgs,
+    "adminUsers.setSystemPermissions": AdminUserSystemPermissionsArgs,
+    "adminUsers.search": ListArgs, "permissionTemplates.search": ListArgs,
+    "documentTemplates.search": DocumentTemplateSearchArgs,
     "qualityObservations.create": QualityObservationCreateArgs, "qualityObservations.update": QualityObservationUpdateArgs,
     "qualityObservations.submitFix": QualityObservationFixArgs,
     "qualityMethodologies.create": QualityDocumentCreateArgs, "qualityMethodologies.update": QualityDocumentUpdateArgs,

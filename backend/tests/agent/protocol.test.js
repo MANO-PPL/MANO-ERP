@@ -1,5 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { randomUUID } from 'node:crypto';
 import { harness, intent, answer, body } from './fixtures.js';
 import { createRuntimeLimits } from '../../src/modules/agent/agentRuntime.js';
 import { fail } from '../../src/modules/agent/agentValidation.js';
@@ -9,6 +10,18 @@ test('S20 text events are ordered and never contain an execution result', async 
     const h = harness(); const r = await h.submit();
     assert.deepEqual(r.events.map(e => e.type), ['message_started', 'text_delta', 'text_completed', 'conversation_completed']);
     assert.ok(r.events.every(e => !e.result));
+});
+test('live answer chunks have unique IDs and stay within the transport event limit', async () => {
+    const fullText = 'A'.repeat(8000);
+    const h = harness({ responses: [{ kind: 'assistant', text: fullText, sources: ['index.md'] }] });
+    const live = [];
+    const result = await h.service.submit(actor, body('Explain this page'), randomUUID(), event => live.push(event));
+    const chunks = live.filter(event => event.type === 'text_delta');
+    assert.ok(chunks.length > 1 && live.length < 512);
+    assert.equal(new Set(live.map(event => event.eventId)).size, live.length);
+    assert.equal(chunks.map(event => event.delta).join(''), fullText);
+    assert.equal(chunks[0].eventId, result.events.find(event => event.type === 'text_delta').eventId);
+    assert.deepEqual(live.slice(-2).map(event => event.type), ['text_completed', 'conversation_completed']);
 });
 test('S23 provider failure before a tool produces no ERP mutation', async () => { const h = harness({ responses: [Error('provider failed')] }); await h.submit(); assert.equal(h.reads, 0); assert.equal(h.store.state.business.length, 0); });
 test('S24 provider failure after a read never reports write success', async () => {

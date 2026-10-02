@@ -18,9 +18,7 @@ MODEL = "openai/gpt-oss-20b"
 # The catalog-listed Mistral model returned HTTP 404 on that endpoint.
 NVIDIA_READ_MODEL = MODEL
 GROQ_HOST = "https://api.groq.com/openai/v1"
-# The active Groq key exposes Qwen 3.8, which supports local tool calls and
-# JSON Schema mode without GPT-OSS reasoning-only responses.
-GROQ_MODEL = os.getenv("GROQ_AGENT_MODEL", "qwen/qwen3.8-27b")
+GROQ_MODEL = "openai/gpt-oss-20b"
 
 
 def native_name(operation):
@@ -72,7 +70,9 @@ class ProviderFailure(Exception):
     def __init__(self, category, *, provider=None, http_status=None, attempt=None,
                  model=None, response_content_length=None, provider_error_category=None,
                  profile=None, finish_reason=None, prompt_tokens=None, completion_tokens=None,
-                 total_tokens=None, content_length=None, has_reasoning_content=None):
+                 total_tokens=None, content_length=None, has_reasoning_content=None,
+                 quota_metric=None, quota_limit=None, quota_used=None, quota_requested=None,
+                 retry_after_seconds=None):
         super().__init__(category)
         self.category = category
         self.provider = provider
@@ -88,16 +88,45 @@ class ProviderFailure(Exception):
         self.total_tokens = total_tokens
         self.content_length = content_length
         self.has_reasoning_content = has_reasoning_content
+        self.quota_metric = quota_metric
+        self.quota_limit = quota_limit
+        self.quota_used = quota_used
+        self.quota_requested = quota_requested
+        self.retry_after_seconds = retry_after_seconds
 
     def safe_metadata(self):
         metadata = {"category": self.category}
         for key in ("provider", "profile", "http_status", "attempt", "model", "response_content_length",
                     "provider_error_category", "finish_reason", "prompt_tokens", "completion_tokens",
-                    "total_tokens", "content_length", "has_reasoning_content"):
+                    "total_tokens", "content_length", "has_reasoning_content", "quota_metric",
+                    "quota_limit", "quota_used", "quota_requested", "retry_after_seconds"):
             value = getattr(self, key)
             if value is not None:
                 metadata[key] = value
         return metadata
+
+
+def safe_rate_limit_metadata(content, headers):
+    """Extract only quota counts and reset delay, never the raw error or organization ID."""
+    metadata = {}
+    delay = rate_limit_delay(headers)
+    if delay is not None:
+        metadata["retry_after_seconds"] = delay
+    try:
+        payload = strict_json(content)
+        message = str(payload.get("error", {}).get("message", ""))
+        metric = re.search(r"\b(tokens|requests) per (minute|hour|day)\b", message, re.I)
+        if metric:
+            metadata["quota_metric"] = f"{metric.group(1).lower()}_per_{metric.group(2).lower()}"
+        for label in ("limit", "used", "requested"):
+            count = re.search(r"\b" + label + r"\s*:?\s*(\d+(?:\.\d+)?)", message, re.I)
+            if count:
+                value = float(count.group(1))
+                if math.isfinite(value):
+                    metadata["quota_" + label] = value
+    except (ValueError, TypeError, AttributeError):
+        pass
+    return metadata
 
 
 def safe_error_category(content):
@@ -318,7 +347,8 @@ async def complete(messages, client=None, api_key=None, provider="nvidia", reaso
             if response.status_code == 429:
                 raise ProviderFailure("provider_rate_limited", provider=provider, profile=profile,
                                       http_status=429, attempt=attempt + 1, model=model,
-                                      response_content_length=len(response.content), provider_error_category="rate_limit")
+                                      response_content_length=len(response.content), provider_error_category="rate_limit",
+                                      **safe_rate_limit_metadata(response.content, response.headers))
             if response.status_code != 200:
                 raise ProviderFailure("provider_http_failure", provider=provider, profile=profile,
                                       http_status=response.status_code, attempt=attempt + 1,
@@ -370,7 +400,8 @@ async def complete_with_profile(profile, messages, client=None, api_key=None, na
 async def complete_groq(messages, client=None, api_key=None, native_operations=None, response_schema=None, max_tokens=512):
     # Keep the free-tier reservation below the request's token-per-minute budget.
     return await complete(messages, client=client, api_key=api_key, provider="groq", max_tokens=max_tokens,
-                          native_operations=native_operations, response_schema=response_schema)
+                          reasoning_effort="low", native_operations=native_operations,
+                          response_schema=response_schema)
 
 
 async def complete_nvidia_read(messages, client=None, api_key=None):

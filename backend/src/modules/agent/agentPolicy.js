@@ -35,7 +35,9 @@ export function createPolicy(db) {
         user.user_type = String(user.user_type || 'employee').toLowerCase();
         const edit = tool.risk.includes('WRITE');
         // Project master-data mutations mirror the page's admin-only routes.
-        if (['projects.create', 'projects.update', 'projects.assignMember'].includes(tool.name) && user.user_type !== 'admin') fail('authorization_denied');
+        if ((['projects.create', 'projects.update', 'projects.assignMember', 'projects.setMemberPermissions'].includes(tool.name)
+            || tool.name.startsWith('admin') || tool.name.startsWith('documentTemplates.')
+            || tool.name.startsWith('permissionTemplates.')) && user.user_type !== 'admin') fail('authorization_denied');
         const scope = { orgId: actor.orgId, userId: actor.userId, projectId: null, userType: user.user_type };
         let projectId = args.projectId;
         if (['tasks.update', 'tasks.assign'].includes(tool.name)) {
@@ -57,6 +59,23 @@ export function createPolicy(db) {
             const category = String(contact.category || '').toLowerCase();
             system(user, ['client', 'pmc'].includes(category) ? 'clients' : 'vendors', edit);
             scope.contact = contact;
+        }
+        if (args.cycleId !== undefined && tool.name.startsWith('documents.')) {
+            const cycleQuery = connection('wf_approval_cycles as ac')
+                .join('wf_document_instances as di', 'ac.instance_id', 'di.instance_id')
+                .where({ 'ac.cycle_id': args.cycleId, 'di.org_id': actor.orgId, 'di.project_id': args.projectId });
+            if (lock) cycleQuery.forUpdate();
+            const cycle = await cycleQuery.first('ac.cycle_id', 'ac.instance_id');
+            if (!cycle) fail('authorization_denied');
+            scope.documentCycle = { cycleId: Number(cycle.cycle_id), instanceId: Number(cycle.instance_id) };
+        }
+        if (tool.name === 'documents.archiveInstance') {
+            const instance = await one('wf_document_instances', { instance_id: args.instanceId, org_id: actor.orgId, project_id: args.projectId });
+            if (!instance) fail('authorization_denied');
+        }
+        if (tool.name === 'documentTemplates.update') {
+            const template = await one('wf_documents', { document_id: args.documentId, org_id: actor.orgId, project_id: args.projectId });
+            if (!template) fail('authorization_denied');
         }
         if (args.contactId !== undefined) {
             const contact = await one('crm_contacts', { id: args.contactId, org_id: actor.orgId });

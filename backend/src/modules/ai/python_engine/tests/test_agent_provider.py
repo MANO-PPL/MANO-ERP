@@ -13,6 +13,23 @@ def payload():
 
 
 class Provider(unittest.IsolatedAsyncioTestCase):
+    async def test_rate_limit_diagnostics_report_quota_without_private_error_body(self):
+        def handler(request):
+            return httpx.Response(429, headers={"retry-after": "60"}, json={"error": {
+                "message": "Rate limit reached in organization PRIVATE_ORG on tokens per minute (TPM): Limit 8000, Used 6000, Requested 4259. PRIVATE_KEY",
+            }})
+
+        async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as client:
+            with self.assertRaises(ProviderFailure) as failure:
+                await complete_groq([], client=client, api_key="fixture")
+        metadata = failure.exception.safe_metadata()
+        self.assertEqual(metadata["quota_metric"], "tokens_per_minute")
+        self.assertEqual(metadata["quota_limit"], 8000)
+        self.assertEqual(metadata["quota_used"], 6000)
+        self.assertEqual(metadata["quota_requested"], 4259)
+        self.assertEqual(metadata["retry_after_seconds"], 60)
+        self.assertNotIn("PRIVATE_", json.dumps(metadata))
+
     async def test_reasoning_native_tool_budget_allows_visible_output(self):
         with patch('agent_provider.complete', new=AsyncMock(return_value=(None, None))) as mocked:
             await complete_with_profile(get_profile('groq-oss-20b'), [], native_operations=['tasks.search'])
@@ -162,7 +179,7 @@ class Provider(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(request_body["model"], GROQ_MODEL)
         self.assertEqual(request_body["max_tokens"], 512)
         self.assertEqual(request_body["response_format"], {"type": "json_object"})
-        self.assertEqual(request_body["reasoning_effort"], "none")
+        self.assertEqual(request_body["reasoning_effort"], "low")
 
     async def test_groq_final_assistant_request_uses_strict_json_schema(self):
         requests = []
