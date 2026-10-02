@@ -1294,6 +1294,25 @@ export async function createResource(orgId, {
 // Update
 // ─────────────────────────────────────────────────────────────────────────────
 
+export async function createAgentResource(orgId, data, { transaction } = {}) {
+    if (!transaction?.isTransaction) throw new AppError('Caller transaction required', 400);
+    if (Object.keys(data).some(key => !['name', 'type', 'base_unit_code', 'code', 'description', 'remarks'].includes(key))
+        || !data.name || !['material', 'labour', 'item'].includes(data.type)) throw new AppError('Invalid resource fields', 400);
+    getUnit(data.base_unit_code);
+    const [id] = await transaction('res_resources').insert({ org_id: orgId, project_id: null, parent_id: null,
+        name: data.name, type: data.type, base_unit_code: data.base_unit_code, code: data.code || null,
+        description: data.description || null, remarks: data.remarks || null });
+    return id;
+}
+
+export async function updateAgentResource(orgId, resourceId, data, { transaction } = {}) {
+    if (!transaction?.isTransaction) throw new AppError('Caller transaction required', 400);
+    if (!Object.keys(data).length || Object.keys(data).some(key => !['name', 'code', 'description', 'remarks'].includes(key))) throw new AppError('Invalid resource fields', 400);
+    await ensureResourceExists(orgId, resourceId, transaction);
+    await transaction('res_resources').where({ id: resourceId, org_id: orgId }).update(data);
+    return resourceId;
+}
+
 export async function updateResource(orgId, id, {
     name,
     code,
@@ -1810,8 +1829,9 @@ export async function getCompositionHistory(orgId, resourceId, projectId = null)
 /**
  * Add a named unit conversion to a resource (e.g. 1 Bag = 50 kg).
  */
-export async function addConversion(orgId, resourceId, { name, quantity, unit_code }) {
-    const resource = await ensureResourceExists(orgId, resourceId);
+export async function addConversion(orgId, resourceId, { name, quantity, unit_code }, options = {}) {
+    const connection = options.transaction || db;
+    const resource = await ensureResourceExists(orgId, resourceId, connection);
     if (!name || !quantity || !unit_code) {
         throw new AppError('name, quantity, and unit_code are required for a conversion', 400);
     }
@@ -1829,7 +1849,8 @@ export async function addConversion(orgId, resourceId, { name, quantity, unit_co
         throw new AppError(`Incompatible unit category: Conversion target unit "${unit_code}" (${targetUnit.type}) must match resource base unit "${resource.base_unit_code}" (${resourceBaseUnit.type})`, 400);
     }
 
-    const [insertId] = await db('res_conversions').insert({
+    if (!Number.isFinite(Number(quantity)) || Number(quantity) <= 0) throw new AppError('Conversion quantity must be positive', 400);
+    const [insertId] = await connection('res_conversions').insert({
         org_id: orgId,
         resource_id: resourceId,
         name,

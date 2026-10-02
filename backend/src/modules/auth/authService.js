@@ -63,6 +63,7 @@ export async function authenticateUser(userInput, password, req, rememberMe = fa
         .first();
 
     if (!user) throw new AppError('User not found', 401);
+    if (!user.user_password) throw new AppError('Invalid credentials', 401);
 
     const isMatch = await bcrypt.compare(password, user.user_password);
     if (!isMatch) throw new AppError('Incorrect Password', 401);
@@ -109,6 +110,7 @@ export async function authenticateUser(userInput, password, req, rememberMe = fa
  * Retrieve user profile including system permissions
  */
 export async function getUserProfile(userId) {
+    if (!userId) throw new AppError('User not found', 404);
     const user = await db('iam_users as users')
         .leftJoin('iam_departments as departments', 'users.dept_id', 'departments.id')
         .leftJoin('iam_designations as designations', 'users.desg_id', 'designations.id')
@@ -166,7 +168,7 @@ export async function refreshAccessToken(refreshToken, req) {
     if (!refreshToken) throw new AppError('Refresh token required', 401);
 
     const result = await TokenService.verifyRefreshToken(refreshToken);
-    if (!result || result.error) throw new AppError('Invalid or expired refresh token', 403);
+    if (!result || result.error || !result.user) throw new AppError('Invalid or expired refresh token', 403);
 
     const user = result.user;
     const payload = {

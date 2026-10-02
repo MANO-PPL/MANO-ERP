@@ -256,6 +256,7 @@ const Reports = ({ setExtraBreadcrumbs, canWrite, project }) => {
                                 view={subView}
                                 setView={setSubView}
                                 canWrite={canWrite}
+                                project={project}
                             />
                         )}
                         {activeTab === 'monthly' && (

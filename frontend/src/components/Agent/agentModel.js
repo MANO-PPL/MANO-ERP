@@ -9,7 +9,7 @@
  * @typedef {{label: string, value?: string|number, before?: string|number,
  * after?: string|number}} AgentField
  * @typedef {{actionType: string, title: string,
- * description?: string, fields: AgentField[], riskLevel: 'READ'|'WRITE'|'DESTRUCTIVE'|'BULK_WRITE',
+ * description?: string, confirmationPhrase?: string, fields: AgentField[], riskLevel: 'READ'|'WRITE'|'DESTRUCTIVE'|'BULK_WRITE',
  * affectedRecords?: number, simulation?: boolean}} AgentAction
  * @typedef {(AgentAction & {confirmationId: string, expiresAt?: string})} AgentConfirmation
  * @typedef {{label: string, tool?: string, entityId?: string, timestamp?: string}} AgentProvenance
@@ -71,6 +71,10 @@ export const isUserVisibleConversationMessage = (message, debugMode = false) => 
 export const ERROR_COPY = {
     backend_unavailable: 'The ERP agent backend is not connected yet.',
     provider_unavailable: 'The AI provider could not complete this request. No answer is available; please try again later.',
+    provider_rate_limited: 'The AI service is temporarily rate-limited. Please wait before trying again. Previously saved changes are unaffected.',
+    provider_invalid_output: 'The AI service returned an unusable response. This failed step did not execute an ERP action. Previously saved changes are unaffected.',
+    conversion_quantity_invalid: 'Conversion quantity must be greater than zero. No action was executed for this failed step.',
+    tool_arguments_invalid: 'The assistant proposed invalid or incomplete action details. Please clarify the details and try again. No action was executed for this failed step.',
     model_unavailable: 'The configured AI model is no longer available. An administrator needs to update the Agent model.',
     network_failure: 'The connection was interrupted. The action outcome is unknown.',
     request_rejected: 'The request was rejected.',
@@ -91,6 +95,7 @@ export function isAction(action, confirmation = false) {
     return !!action && isText(action.title) && isText(action.actionType) && RISKS.includes(action.riskLevel)
         && fieldsValid(action.fields) && (!confirmation || isText(action.confirmationId))
         && (action.description === undefined || typeof action.description === 'string')
+        && (action.confirmationPhrase === undefined || isText(action.confirmationPhrase))
         && (action.affectedRecords === undefined || (Number.isInteger(action.affectedRecords) && action.affectedRecords >= 0))
         && (action.expiresAt === undefined || typeof action.expiresAt === 'string');
 }
@@ -152,9 +157,10 @@ export function isPreviewEvent(event) {
         && event.result === undefined;
 }
 
-export function createDecision(confirmationId, decision) {
+export function createDecision(confirmationId, decision, confirmationText) {
     if (!isText(confirmationId) || !['confirm', 'cancel'].includes(decision)) throw new Error('Invalid confirmation decision');
-    return { confirmationId, decision };
+    if (confirmationText !== undefined && (typeof confirmationText !== 'string' || confirmationText.length > 80)) throw new Error('Invalid confirmation text');
+    return { confirmationId, decision, ...(confirmationText !== undefined ? { confirmationText } : {}) };
 }
 
 export function safeError(error = {}) {

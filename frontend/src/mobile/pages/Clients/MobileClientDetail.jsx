@@ -1,0 +1,30 @@
+import React, { useMemo, useState } from 'react';
+import { Mail, MapPin, Phone } from 'lucide-react';
+import MobileBottomSheet from '../../components/MobileBottomSheet';
+import MobileCard from '../../components/MobileCard';
+import MobileDatePicker from '../../components/MobileDatePicker';
+import MobileEmptyState from '../../components/MobileEmptyState';
+import MobileSelect from '../../components/MobileSelect';
+import { buildInteractionPayload, CLIENT_INTERACTION_TYPES } from './clientModel.js';
+
+const today = () => new Date().toISOString().slice(0, 10);
+
+export default function MobileClientDetail({ client, open, onClose, canWrite, onEdit, onDelete, onAddInteraction, pending = false }) {
+    const [typeFilter, setTypeFilter] = useState('All'); const [logging, setLogging] = useState(false); const [error, setError] = useState('');
+    const [form, setForm] = useState({ type: 'Call', interaction_date: today(), follow_up_date: '', remarks: '' });
+    const history = useMemo(() => (client?.interactions || []).filter((item) => typeFilter === 'All' || String(item.type).toLowerCase() === typeFilter.toLowerCase()), [client, typeFilter]);
+    if (!client) return null;
+    const submit = async (event) => { event.preventDefault(); setError(''); const success = await onAddInteraction(buildInteractionPayload(form)); if (success) { setLogging(false); setForm({ type: 'Call', interaction_date: today(), follow_up_date: '', remarks: '' }); } else setError('The interaction was not saved.'); };
+    return <MobileBottomSheet open={open} onClose={onClose} title={client.name} description={client.sector || 'Client'} footer={canWrite && <div className="flex gap-2"><button onClick={() => onDelete(client)} className="min-h-9 flex-1 rounded-lg border border-red-200 text-xs font-semibold text-red-600">Delete</button><button onClick={() => onEdit(client)} className="min-h-9 flex-1 rounded-lg bg-blue-600 text-xs font-semibold text-white">Edit</button></div>}>
+        <div className="space-y-2" data-mobile-detail="client">
+            <MobileCard className="space-y-1.5 p-2.5 sm:p-3">{client.contactNumber && <a className="flex min-h-8 items-center gap-2 text-xs font-normal text-blue-600 dark:text-blue-400" href={`tel:${client.contactNumber}`}><Phone size={15} />{client.contactNumber}</a>}{client.email && <a className="flex min-h-8 items-center gap-2 text-xs font-normal text-blue-600 dark:text-blue-400" href={`mailto:${client.email}`}><Mail size={15} />{client.email}</a>}{client.location && <p className="flex items-center gap-2 text-xs font-normal text-gray-700 dark:text-gh-muted"><MapPin size={15} />{client.location}</p>}</MobileCard>
+            <MobileCard className="grid grid-cols-2 gap-2 p-2.5 sm:p-3">{[['Job nature', client.jobNature], ['Sector', client.sector], ['Contact', client.contact_person], ['Designation', client.designation], ['Responsibility', client.responsibility], ['Reference', client.reference]].map(([label, value]) => <div key={label}><p className="text-[10px] font-normal text-gray-500">{label}</p><p className="mt-0.5 break-words text-xs font-medium text-gray-900 dark:text-gh-text">{value || '-'}</p></div>)}</MobileCard>
+            <MobileCard className="p-2.5 sm:p-3"><div className="flex items-center gap-2"><h3 className="min-w-0 flex-1 text-xs font-semibold text-gray-900 dark:text-gh-text">Interactions</h3>{canWrite && <button onClick={() => setLogging((value) => !value)} className="min-h-8 px-2 text-xs font-semibold text-blue-600">{logging ? 'Cancel' : 'Log interaction'}</button>}</div>
+                {error && <p role="alert" className="mt-1.5 text-xs font-normal text-red-600">{error}</p>}
+                {logging && canWrite && <form onSubmit={submit} className="mt-2 space-y-2 rounded-lg bg-gray-50 p-2.5 dark:bg-gh-bg"><MobileSelect label="Type" value={form.type} onChange={(event) => setForm((current) => ({ ...current, type: event.target.value }))} options={CLIENT_INTERACTION_TYPES.map((item) => ({ value: item, label: item }))} /><MobileDatePicker label="Interaction date" required value={form.interaction_date} onChange={(event) => setForm((current) => ({ ...current, interaction_date: event.target.value }))} /><MobileDatePicker label="Follow-up date" value={form.follow_up_date} onChange={(event) => setForm((current) => ({ ...current, follow_up_date: event.target.value }))} /><label className="block text-xs font-medium text-gray-700 dark:text-gh-text">Remarks<textarea value={form.remarks} onChange={(event) => setForm((current) => ({ ...current, remarks: event.target.value }))} className="mt-1 min-h-16 w-full rounded-lg border border-gray-200 bg-white p-2 text-xs font-normal dark:border-gh-border dark:bg-gh-input" /></label><button disabled={pending} className="min-h-9 w-full rounded-lg bg-blue-600 text-xs font-semibold text-white disabled:opacity-50">{pending ? 'Saving…' : 'Save interaction'}</button></form>}
+                <div className="mt-2"><MobileSelect label="History type" value={typeFilter} onChange={(event) => setTypeFilter(event.target.value)} options={['All', ...CLIENT_INTERACTION_TYPES].map((item) => ({ value: item, label: item }))} /></div>
+                <div className="mt-2 space-y-1.5">{history.length === 0 ? <MobileEmptyState title="No interactions found" /> : history.map((item, index) => <div key={item.id || index} className="rounded-lg border border-gray-100 p-2 dark:border-gh-border"><div className="flex justify-between gap-2"><span className="text-xs font-semibold text-blue-600">{item.type}</span><span className="text-[11px] font-normal text-gray-500">{item.interaction_date ? new Date(item.interaction_date).toLocaleDateString() : '-'}</span></div><p className="mt-1 text-xs font-normal text-gray-700 dark:text-gh-muted">{item.remarks || 'No remarks recorded.'}</p>{item.follow_up_date && <p className="mt-1 text-[11px] font-normal text-gray-500">Follow up: {new Date(item.follow_up_date).toLocaleDateString()}</p>}</div>)}</div>
+            </MobileCard>
+        </div>
+    </MobileBottomSheet>;
+}

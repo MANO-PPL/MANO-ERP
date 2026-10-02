@@ -7,6 +7,28 @@ import { harness, answer } from './fixtures.js';
 
 const secret = 'fixture-secret-'.repeat(4);
 const request = { requestId: 'r1', stepId: 'r1_1' };
+test('signed invalid-argument errors retain their safe categories', async () => {
+    for (const category of ['conversion_quantity_invalid', 'tool_arguments_invalid']) {
+        const reason = createPythonClient({ secret, fetchImpl: async (url, options) => {
+            const data = JSON.stringify({ error: category });
+            return new Response(data, { status: 503, headers: {
+                'X-Agent-Signature': signature(secret, `${options.headers['X-Agent-Nonce']}\n503\n${sha256(data)}`)
+            } });
+        } });
+        await assert.rejects(reason(request), { code: category });
+    }
+});
+test('signed rate limit retains its public category; unsigned errors remain rejected', async () => {
+    const reason = createPythonClient({ secret, fetchImpl: async (url, options) => {
+        const data = JSON.stringify({ error: 'provider_rate_limited' });
+        return new Response(data, { status: 503, headers: {
+            'X-Agent-Signature': signature(secret, `${options.headers['X-Agent-Nonce']}\n503\n${sha256(data)}`)
+        } });
+    } });
+    await assert.rejects(reason(request), { code: 'provider_rate_limited' });
+    const unsigned = createPythonClient({ secret, fetchImpl: async () => new Response('{"error":"provider_rate_limited"}', { status: 503 }) });
+    await assert.rejects(unsigned(request), { code: 'protocol_error' });
+});
 function responseFor(headers, response = answer, mutate = {}) {
     const data = JSON.stringify({ protocol: CONTRACT_VERSION, requestId: request.requestId, stepId: request.stepId, toolNames: Object.keys(TOOLS), response,
         diagnostics: { provider: 'nvidia', finishReason: 'stop', promptTokens: 10, completionTokens: 20, totalTokens: 30, hasReasoningContent: false }, ...mutate });

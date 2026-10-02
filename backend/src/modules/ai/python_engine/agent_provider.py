@@ -2,7 +2,11 @@
 import asyncio
 import os
 import re
+import math
+from datetime import datetime, timezone
+from email.utils import parsedate_to_datetime
 import httpx
+from pydantic import ValidationError
 from dotenv import load_dotenv
 from agent_schemas import ARG_MODELS, Diagnostics, ResponseModel, ToolIntent, strict_json
 
@@ -32,17 +36,43 @@ def native_tool_definitions(operations):
             continue
         definitions.append({"type": "function", "function": {
             "name": native_name(operation),
-            "description": f"MANO ERP read operation {operation}",
+            "description": f"MANO ERP operation {operation}. Writes are proposals requiring server authorization and user confirmation.",
             "parameters": ARG_MODELS[operation].model_json_schema(),
         }})
     return definitions
+
+
+def rate_limit_delay(headers):
+    """Use the longest valid provider delay; never shorten a quota reset."""
+    delays = []
+    for key in ("retry-after", "x-ratelimit-reset-tokens", "x-ratelimit-reset-requests"):
+        value = headers.get(key)
+        if not value:
+            continue
+        try:
+            try:
+                delay = float(value)
+            except ValueError:
+                parts = re.findall(r"(\d+(?:\.\d+)?)(ms|s|m|h)", value)
+                if parts and "".join(n + unit for n, unit in parts) == value:
+                    delay = sum(float(n) * {"ms": .001, "s": 1, "m": 60, "h": 3600}[unit] for n, unit in parts)
+                elif key == "retry-after":
+                    delay = (parsedate_to_datetime(value) - datetime.now(timezone.utc)).total_seconds()
+                else:
+                    continue
+            if math.isfinite(delay) and delay >= 0:
+                delays.append(delay)
+        except (ValueError, TypeError, OverflowError):
+            continue
+    return max(delays) if delays else None
 
 
 class ProviderFailure(Exception):
     """A sanitized failure category plus log-safe provider transport metadata."""
     def __init__(self, category, *, provider=None, http_status=None, attempt=None,
                  model=None, response_content_length=None, provider_error_category=None,
-                 profile=None):
+                 profile=None, finish_reason=None, prompt_tokens=None, completion_tokens=None,
+                 total_tokens=None, content_length=None, has_reasoning_content=None):
         super().__init__(category)
         self.category = category
         self.provider = provider
@@ -52,11 +82,18 @@ class ProviderFailure(Exception):
         self.response_content_length = response_content_length
         self.provider_error_category = provider_error_category
         self.profile = profile
+        self.finish_reason = finish_reason
+        self.prompt_tokens = prompt_tokens
+        self.completion_tokens = completion_tokens
+        self.total_tokens = total_tokens
+        self.content_length = content_length
+        self.has_reasoning_content = has_reasoning_content
 
     def safe_metadata(self):
         metadata = {"category": self.category}
         for key in ("provider", "profile", "http_status", "attempt", "model", "response_content_length",
-                    "provider_error_category"):
+                    "provider_error_category", "finish_reason", "prompt_tokens", "completion_tokens",
+                    "total_tokens", "content_length", "has_reasoning_content"):
             value = getattr(self, key)
             if value is not None:
                 metadata[key] = value
@@ -71,6 +108,8 @@ def safe_error_category(content):
         signal = " ".join(str(error.get(key, "")) for key in ("type", "code", "message")).lower()
     except Exception:
         return "unparseable"
+    if any(term in signal for term in ("tool_use_failed", "tool call validation", "failed to call a function", "failed to call a tool", "tool call failed", "failed_generation")):
+        return "tool_generation_failure"
     if any(term in signal for term in ("context", "input too long", "maximum context")):
         return "context_limit"
     if any(term in signal for term in ("rate limit", "quota", "tokens per", "rate_limit")):
@@ -108,6 +147,18 @@ def normalize(payload, provider="nvidia", *, model=None, attempt=None, response_
         choice = payload["choices"][0]
         message = choice["message"]
         finish_reason = choice.get("finish_reason")
+        if finish_reason in {"stop", "length", "tool_calls", "content_filter"}:
+            metadata["finish_reason"] = finish_reason
+        usage = payload.get("usage", {})
+        if isinstance(usage, dict):
+            for key in ("prompt_tokens", "completion_tokens", "total_tokens"):
+                value = usage.get(key)
+                if type(value) is int and 0 <= value <= 2000000:
+                    metadata[key] = value
+        if isinstance(message, dict):
+            content = message.get("content")
+            metadata["content_length"] = len(content) if isinstance(content, str) else 0
+            metadata["has_reasoning_content"] = bool(message.get("reasoning_content"))
         if finish_reason == "length":
             raise ProviderFailure("provider_output_limit", **metadata)
         tool_calls = message.get("tool_calls")
@@ -128,8 +179,24 @@ def normalize(payload, provider="nvidia", *, model=None, attempt=None, response_
             if operation is None or len(function["arguments"].encode()) > 65536:
                 raise ProviderFailure("invalid_provider_output", **metadata)
             try:
+                arguments = strict_json(function["arguments"])
+            except Exception:
+                raise ProviderFailure("provider_output_invalid_json", **metadata) from None
+            try:
+                ARG_MODELS[operation].model_validate(arguments)
+            except ValidationError as error:
+                # Inspect only trusted schema locations and a zero literal. Never
+                # retain Pydantic messages, input values, or model-generated text.
+                zero_quantity = (operation == "resources.addConversion"
+                                 and isinstance(arguments, dict)
+                                 and isinstance(arguments.get("quantity"), str)
+                                 and re.fullmatch(r"0(?:\.0{1,6})?", arguments["quantity"]) is not None
+                                 and any(item["loc"] == ("quantity",) for item in error.errors(include_input=False)))
+                category = "conversion_quantity_invalid" if zero_quantity else "tool_arguments_invalid"
+                raise ProviderFailure(category, **metadata) from None
+            try:
                 response = ToolIntent(kind="tool", tool=operation, version=1,
-                                      arguments=strict_json(function["arguments"]))
+                                      arguments=arguments)
             except Exception:
                 raise ProviderFailure("provider_output_schema_invalid", **metadata) from None
             return response, diagnostics
@@ -203,7 +270,15 @@ async def complete(messages, client=None, api_key=None, provider="nvidia", reaso
                         raise ProviderFailure("provider_transport_failure", provider=provider, model=model, profile=profile) from None
                     await asyncio.sleep(0.25)
                     continue
-                if response.status_code in (413, 429) or 500 <= response.status_code <= 599:
+                if response.status_code == 429:
+                    delay = rate_limit_delay(response.headers)
+                    # Retry only when the full advertised delay fits a short request.
+                    # Missing or longer delays return immediately, rather than hammering quota.
+                    if attempt == 0 and delay is not None and delay <= 2.5:
+                        await asyncio.sleep(max(delay, 0.5))
+                        continue
+                    break
+                if response.status_code == 413 or 500 <= response.status_code <= 599:
                     if attempt == 0:
                         retry_after = 1.0
                         try:
@@ -240,6 +315,10 @@ async def complete(messages, client=None, api_key=None, provider="nvidia", reaso
                                       http_status=response.status_code, attempt=attempt + 1,
                                       model=model, response_content_length=len(response.content),
                                       provider_error_category=safe_error_category(response.content))
+            if response.status_code == 429:
+                raise ProviderFailure("provider_rate_limited", provider=provider, profile=profile,
+                                      http_status=429, attempt=attempt + 1, model=model,
+                                      response_content_length=len(response.content), provider_error_category="rate_limit")
             if response.status_code != 200:
                 raise ProviderFailure("provider_http_failure", provider=provider, profile=profile,
                                       http_status=response.status_code, attempt=attempt + 1,
@@ -265,7 +344,9 @@ async def complete_with_profile(profile, messages, client=None, api_key=None, na
     model = profile.model
     eff_native = native_operations if (profile.native_tools and native_operations) else None
     eff_schema = response_schema if (profile.strict_json_schema and response_schema) else None
-    tokens = 384 if eff_native else profile.max_output_tokens
+    # GPT-OSS uses completion tokens for private reasoning before it emits a
+    # tool call. A 384-token cap can end the turn with no visible output.
+    tokens = min(profile.max_output_tokens, 1024) if eff_native and profile.reasoning_effort not in (None, "none") else (384 if eff_native else profile.max_output_tokens)
     effort = profile.reasoning_effort if profile.supports_reasoning else None
     try:
         return await complete(

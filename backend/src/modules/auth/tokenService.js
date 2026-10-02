@@ -86,6 +86,9 @@ export async function verifyRefreshToken(token) {
 
     // Token is valid, return user details
     const user = await db('iam_users').where('id', refreshTokenRecord.user_id).first();
+    if (!user) {
+        return null;
+    }
     return { user, refreshTokenRecord };
 }
 

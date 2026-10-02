@@ -78,18 +78,20 @@ def _build_registry() -> Dict[str, ModelProfile]:
             reasoning_effort=None,
             max_retries=1,
         ),
-        # Alternative Groq profile for synthesis or lower context usage
+        # Dedicated Groq GPT-OSS profile for write planning. It supports local
+        # tool calls and strict JSON mode, while avoiding the Qwen request-size
+        # rejection observed on write-capable prompts.
         "groq-oss-20b": ModelProfile(
             name="groq-oss-20b",
             provider="groq",
             model="openai/gpt-oss-20b",
-            supported_modes=frozenset({"synthesis"}),
-            native_tools=False,
-            strict_json_schema=False,
-            max_input_tokens=8000,
+            supported_modes=frozenset({"planning", "synthesis"}),
+            native_tools=True,
+            strict_json_schema=True,
+            max_input_tokens=16000,
             max_output_tokens=2048,
-            supports_reasoning=False,
-            reasoning_effort=None,
+            supports_reasoning=True,
+            reasoning_effort="low",
             max_retries=1,
         ),
         # NVIDIA NIM profile: default for write operations and NVIDIA environments
@@ -136,7 +138,9 @@ def get_read_fallback_profile() -> Optional[ModelProfile]:
 
 def get_write_profile() -> ModelProfile:
     """Return the dedicated write profile (isolated from read profiles)."""
-    default_profile = "groq-qwen" if not os.getenv("NVIDIA_API_KEY") else "nvidia-gpt-oss"
+    # Node still owns authorization, confirmation, and execution of every
+    # proposed write. GPT-OSS 20B is isolated from the Qwen read profile.
+    default_profile = "groq-oss-20b"
     profile_name = os.getenv("AGENT_WRITE_PROFILE", default_profile)
     return PROFILES.get(profile_name, PROFILES["groq-qwen"])
 

@@ -51,8 +51,53 @@ class Schemas(unittest.TestCase):
             with self.assertRaises(ValidationError):
                 ToolIntent.model_validate(dict(kind="tool", tool="vendors.create", version=1, arguments={"name": "A"}, **{key: "allow"}))
 
-    def test_exact_fifteen_tool_contract(self):
-        self.assertEqual(len(ARG_MODELS), 29)
+    def test_registered_tool_contract(self):
+        # Keep the Python contract in lockstep with the complete Node tool
+        # registry, including the Phase 2 write operations and read helpers.
+        self.assertEqual(len(ARG_MODELS), 64)
+        self.assertIn("projects.create", ARG_MODELS)
+        self.assertIn("projects.update", ARG_MODELS)
+        self.assertIn("tasks.create", ARG_MODELS)
+        self.assertIn("tasks.assign", ARG_MODELS)
+        self.assertIn("meetings.create", ARG_MODELS)
+        self.assertIn("qualityObservations.create", ARG_MODELS)
+        self.assertIn("projectParties.update", ARG_MODELS)
+        self.assertIn("projects.assignMember", ARG_MODELS)
+        self.assertIn("documents.saveDraft", ARG_MODELS)
+        self.assertIn("documents.submitDraft", ARG_MODELS)
+        self.assertIn("qualityObservations.submitFix", ARG_MODELS)
+        self.assertIn("qualityMethodologies.create", ARG_MODELS)
+        self.assertIn("qualityChecklists.update", ARG_MODELS)
+        self.assertIn("tasks.update", ARG_MODELS)
+        self.assertIn("tasks.deleteSelected", ARG_MODELS)
+        ARG_MODELS["tasks.deleteSelected"].model_validate({"projectId": 4, "taskIds": [8, 9]})
+        with self.assertRaises(ValidationError):
+            ARG_MODELS["tasks.deleteSelected"].model_validate({"projectId": 4, "taskIds": [8, 8]})
+        with self.assertRaises(ValidationError):
+            ARG_MODELS["tasks.deleteSelected"].model_validate({"projectId": 4, "taskIds": list(range(1, 22))})
+        ARG_MODELS["projects.create"].model_validate({"name": "Bridge", "start_date": "2026-09-01"})
+        with self.assertRaises(ValidationError):
+            ARG_MODELS["projects.create"].model_validate({"name": "Bridge", "org_id": 8})
+        with self.assertRaises(ValidationError):
+            ARG_MODELS["projects.update"].model_validate({"projectId": 4})
+        with self.assertRaises(ValidationError):
+            ARG_MODELS["projects.update"].model_validate({"projectId": 4, "status": "closed"})
+        ARG_MODELS["tasks.create"].model_validate({"projectId": 4, "categoryName": "Planning", "name": "Survey"})
+        ARG_MODELS["tasks.assign"].model_validate({"projectId": 4, "taskId": 9, "assigneeIds": [8]})
+        ARG_MODELS["meetings.create"].model_validate({"projectId": 4, "subject": "Kickoff", "agendaPoints": ["Review scope"]})
+        ARG_MODELS["projectParties.update"].model_validate({"projectId": 4, "projectPartyId": 8, "email": "party@example.com"})
+        ARG_MODELS["projects.assignMember"].model_validate({"projectId": 4, "userId": 8})
+        ARG_MODELS["documents.saveDraft"].model_validate({"projectId": 4, "cycleId": 8, "content": {"title": "Inspection"}})
+        ARG_MODELS["qualityObservations.submitFix"].model_validate({"projectId": 4, "observationId": 8, "uploadId": "123e4567-e89b-12d3-a456-426614174000"})
+        ARG_MODELS["qualityMethodologies.create"].model_validate({"projectId": 4, "title": "Concrete", "uploadId": "123e4567-e89b-12d3-a456-426614174000"})
+        with self.assertRaises(ValidationError):
+            ARG_MODELS["tasks.create"].model_validate({"projectId": 4, "name": "Survey"})
+        with self.assertRaises(ValidationError):
+            ARG_MODELS["tasks.update"].model_validate({"projectId": 4, "taskId": 9})
+        with self.assertRaises(ValidationError):
+            ARG_MODELS["projects.assignMember"].model_validate({"projectId": 4, "userId": 8, "permissions": {"Tasks": "admin"}})
+        with self.assertRaises(ValidationError):
+            ARG_MODELS["documents.saveDraft"].model_validate({"projectId": 4, "cycleId": 8, "content": ["not an object"]})
         self.assertIn("transactions.search", ARG_MODELS)
         self.assertIn("billing.search", ARG_MODELS)
         self.assertIn("tasks.search", ARG_MODELS)

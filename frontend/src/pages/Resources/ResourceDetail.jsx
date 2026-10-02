@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import {
     X, Plus, Trash2, Package, Layers, Users, ArrowRight, RefreshCw, RotateCcw,
     Copy, Check, DollarSign, ArrowLeftRight, Save, ChevronDown, Edit3, Sparkles, AlertCircle, Calendar,

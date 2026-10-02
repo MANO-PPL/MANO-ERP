@@ -197,7 +197,8 @@ export async function getClientById(orgId, id, options = {}) {
     };
 }
 
-export async function createClient(orgId, data) {
+export async function createClient(orgId, data, options = {}) {
+    const connection = options.transaction || db;
     if (!data.name) {
         throw new AppError('Client name is required', 400);
     }
@@ -232,12 +233,13 @@ export async function createClient(orgId, data) {
         insertData.job_nature_id = await findOrCreateJobNature(orgId, data.job_nature || data.job_nature_name || data.job_name);
     }
 
-    const [newId] = await db('crm_contacts').insert(insertData);
+    const [newId] = await connection('crm_contacts').insert(insertData);
     return newId;
 }
 
-export async function updateClient(orgId, id, data) {
-    const client = await db('crm_contacts')
+export async function updateClient(orgId, id, data, options = {}) {
+    const connection = options.transaction || db;
+    const client = await connection('crm_contacts')
         .where({ id, org_id: orgId })
         .whereRaw('LOWER(??) = ?', ['category', 'client'])
         .first();
@@ -281,9 +283,9 @@ export async function updateClient(orgId, id, data) {
         updateData.sector_id = await findOrCreateSector(orgId, data.sector || data.sector_name);
     }
 
-    updateData.updated_at = db.fn.now();
+    updateData.updated_at = connection.fn.now();
 
-    await db('crm_contacts').where({ id, org_id: orgId }).update(updateData);
+    await connection('crm_contacts').where({ id, org_id: orgId }).update(updateData);
     return true;
 }
 
@@ -437,14 +439,15 @@ export async function bulkValidateClients(orgId, clients) {
     return response;
 }
 
-export async function createInteraction(orgId, data) {
+export async function createInteraction(orgId, data, options = {}) {
+    const connection = options.transaction || db;
     const { contact_id, type, interaction_date, follow_up_date, remarks, interacted_by } = data;
 
     if (!contact_id || !type || !interaction_date) {
         throw new AppError('Missing required interaction fields', 400);
     }
 
-    const [newId] = await db('crm_interactions').insert({
+    const [newId] = await connection('crm_interactions').insert({
         org_id: orgId,
         contact_id,
         type,
@@ -452,8 +455,8 @@ export async function createInteraction(orgId, data) {
         follow_up_date: follow_up_date || null,
         remarks: remarks || null,
         interacted_by: interacted_by || null,
-        created_at: db.fn.now(),
-        updated_at: db.fn.now()
+        created_at: connection.fn.now(),
+        updated_at: connection.fn.now()
     });
 
     return newId;

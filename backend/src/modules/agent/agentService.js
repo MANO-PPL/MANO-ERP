@@ -1,6 +1,6 @@
 import { randomUUID } from 'node:crypto';
-import { AgentError, fail, fingerprint, identity, requestKey, safeError, validateRequest, validateDecision } from './agentValidation.js';
-import { CONTRACT_VERSION, TOOLS, LIVE_WRITE_ENABLEMENT, validateIntent, validateModelResponse } from './agentTools.js';
+import { AgentError, fail, fingerprint, identity, requestKey, safeError, validateRequest, validateDecision, requestsInventedWriteData } from './agentValidation.js';
+import { CONTRACT_VERSION, TOOLS, LIVE_WRITE_ENABLEMENT, validateIntent, validateModelResponse, allowedToolsForRequest } from './agentTools.js';
 import { actionFor, provenance, resultCard } from './agentEvents.js';
 import knowledgeGraphService from '../knowledge/knowledgeGraphService.js';
 
@@ -113,7 +113,7 @@ export function createAgentService({ store, authorize, read, writes, reason, okf
                 const stepId = `${request.request_id}_${step}`;
                 const response = validateModelResponse(await reason({ protocol: CONTRACT_VERSION, requestId: request.request_id, stepId,
                     message: body.message, history: history.messages, context: { ...body.context, ...(body.attachment ? { attachment: body.attachment } : {}) }, generation: knowledge.generation, knowledge: knowledge.markdown,
-                    results, allowedTools: Object.values(TOOLS).filter(t => t.risk === 'READ' || writeEnablement[t.name] === true).map(t => t.name) }, { deadline: Number(request.lease_ms) }));
+                    results, allowedTools: allowedToolsForRequest(body.context, body.message, writeEnablement) }, { deadline: Number(request.lease_ms) }));
 
                 if (response.kind === 'assistant') {
                     const references = new Set([...knowledge.markdown.map(k => k.file), ...results.map(r => r.stepId)]);
@@ -148,7 +148,9 @@ export function createAgentService({ store, authorize, read, writes, reason, okf
                 }
 
                 const { tool, args } = validateIntent(response);
+                if (!allowedToolsForRequest(body.context, body.message, writeEnablement).includes(tool.name)) fail('authorization_denied', 'tool_not_available_in_context');
                 if (tool.risk.includes('WRITE') && writeEnablement[tool.name] !== true) fail('request_rejected', 'write_integration_gate_closed');
+                if (tool.risk.includes('WRITE') && requestsInventedWriteData(body.message)) fail('validation_error', 'invented_write_data_not_allowed');
                 const scope = await authorize(actor, tool, args);
                 recordAuthorization(tool, args);
                 const execution = { execution_id: randomUUID(), request_id: request.request_id, step_index: step, tool: tool.name, tool_version: tool.version,
@@ -168,7 +170,7 @@ export function createAgentService({ store, authorize, read, writes, reason, okf
                         await session.insertExecution(execution);
                         const action = actionFor(tool, args, execution.preconditions_json);
                         proposedEvent = await session.append('tool_proposed', { actionId: execution.execution_id, action }, execution.execution_id);
-                        confirmEvent = await session.append('confirmation_required', { confirmation: { ...action, confirmationId: execution.confirmation_id,
+                        confirmEvent = await session.append('confirmation_required', { actionId: execution.execution_id, confirmation: { ...action, confirmationId: execution.confirmation_id,
                             expiresAt: new Date(execution.confirmation_expires_ms).toISOString() } }, execution.execution_id);
                         await session.updateRequest({ status: 'AWAITING_CONFIRMATION', step_index: step });
                         await session.updateRequest({ context_json: { ...body.context, ...(body.attachment ? { attachment: body.attachment } : {}), authorizationRefs: [...authority.values()] } });
@@ -230,6 +232,11 @@ export function createAgentService({ store, authorize, read, writes, reason, okf
             if (found.execution.credential_hash !== actor.credentialHash) fail('authorization_denied', 'credential_binding_changed');
             // Replays do not call Python, load a new operation, or dispatch a tool.
             if (found.execution.status !== 'PENDING_CONFIRMATION') return authorizedEvents(actor, found.request.request_id);
+            if (decision.decision === 'confirm' && found.execution.tool === 'tasks.deleteSelected') {
+                const count = Array.isArray(found.execution.args_json?.taskIds) ? found.execution.args_json.taskIds.length : 0;
+                const expected = `DELETE ${count} TASK${count === 1 ? '' : 'S'}`;
+                if (decision.confirmationText !== expected) fail('validation_error', 'typed_confirmation_mismatch');
+            }
             let generation;
             if (decision.decision === 'confirm') generation = (await okf.acquire()).generation;
             try {
@@ -256,7 +263,13 @@ export function createAgentService({ store, authorize, read, writes, reason, okf
                     await session.updateExecution(execution.execution_id, { status: 'SUCCEEDED', result_json: result, completed_ms: now() });
                     await session.append('confirmation_resolved', { ...decision }, execution.execution_id);
                     await session.append('tool_started', { actionId: execution.execution_id }, execution.execution_id);
-                    const outcomeText = tool.name === 'vendors.bulkImport'
+                    const deliveryWrites = { 'projects.create': 'Project created', 'projects.update': 'Project updated',
+                        'tasks.create': 'Task created', 'tasks.update': 'Task updated' };
+                    const outcomeText = deliveryWrites[tool.name]
+                        ? `${deliveryWrites[tool.name]} successfully.`
+                        : tool.name === 'tasks.deleteSelected'
+                            ? `Deleted ${result.deletedCount} selected project task${result.deletedCount === 1 ? '' : 's'}.`
+                        : tool.name === 'vendors.bulkImport'
                         ? `Successfully imported ${result.count} vendors into your organization.`
                         : tool.name === 'approvals.batchDecide'
                             ? `Successfully processed ${result.processedCount ?? 0} pending items.`
@@ -264,7 +277,7 @@ export function createAgentService({ store, authorize, read, writes, reason, okf
                                 ? `Successfully recorded decision '${result.action}' for ${result.itemType} #${result.id}.`
                                 : `Committed record ${result.id}.`;
                     await session.append('tool_completed', { actionId: execution.execution_id,
-                        result: { kind: 'execution', title: tool.name === 'vendors.bulkImport' ? 'Bulk Vendor Import' : tool.name === 'approvals.batchDecide' ? 'Batch Approval Decision' : tool.name === 'approvals.decide' ? 'Approval Decision' : tool.name, outcome: 'success', text: outcomeText },
+                        result: { kind: 'execution', title: deliveryWrites[tool.name] || (tool.name === 'tasks.deleteSelected' ? 'Delete Project Tasks' : tool.name === 'vendors.bulkImport' ? 'Bulk Vendor Import' : tool.name === 'approvals.batchDecide' ? 'Batch Approval Decision' : tool.name === 'approvals.decide' ? 'Approval Decision' : tool.name), outcome: 'success', text: outcomeText },
                         provenance: provenance(tool, scope, now()) }, execution.execution_id);
                     await session.updateRequest({ status: 'COMPLETE' }); await session.append('conversation_completed');
                 });

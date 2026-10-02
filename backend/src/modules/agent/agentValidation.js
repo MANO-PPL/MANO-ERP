@@ -4,6 +4,8 @@ export class AgentError extends Error {
     constructor(code = 'validation_error', category = code) { super(category); this.code = code; this.category = category; }
 }
 export const fail = (code, category) => { throw new AgentError(code, category); };
+export const requestsInventedWriteData = message => /\b(random|dummy|invented|fake|made[- ]up)\b/i.test(message)
+    && /\b(create|add|import|update|edit|change|save)\b/i.test(message);
 export function object(value, keys) {
     if (!value || typeof value !== 'object' || Array.isArray(value)
         || ![Object.prototype, null].includes(Object.getPrototypeOf(value))) fail('validation_error', 'object_required');
@@ -66,34 +68,38 @@ export function validateRequest(value) {
 
     let attachment = null;
     if (value.attachment !== undefined && value.attachment !== null) {
-        object(value.attachment, ['uploadId', 'filename', 'sheetName', 'totalRows', 'headers', 'preview']);
+        object(value.attachment, ['uploadId', 'filename', 'kind', 'sheetName', 'totalRows', 'headers', 'preview', 'mimeType', 'size', 'approvedForAgentWrite']);
         uuid(value.attachment.uploadId);
         text(value.attachment.filename, 255);
-        if (value.attachment.sheetName !== undefined) text(value.attachment.sheetName, 100);
-        integer(value.attachment.totalRows, 1, 100000);
-        if (!Array.isArray(value.attachment.headers) || value.attachment.headers.length > 200) {
-            fail('validation_error', 'invalid_attachment_headers');
-        }
-        for (const h of value.attachment.headers) text(h, 120);
-        attachment = {
-            uploadId: value.attachment.uploadId,
-            filename: value.attachment.filename,
-            sheetName: value.attachment.sheetName || 'Sheet1',
-            totalRows: value.attachment.totalRows,
-            headers: value.attachment.headers,
-            preview: Array.isArray(value.attachment.preview) ? value.attachment.preview.slice(0, 5) : []
-        };
+        const kind = value.attachment.kind || 'spreadsheet';
+        if (kind === 'spreadsheet') {
+            if (value.attachment.sheetName !== undefined) text(value.attachment.sheetName, 100);
+            integer(value.attachment.totalRows, 1, 100000);
+            if (!Array.isArray(value.attachment.headers) || value.attachment.headers.length > 200) fail('validation_error', 'invalid_attachment_headers');
+            for (const h of value.attachment.headers) text(h, 120);
+            attachment = { uploadId: value.attachment.uploadId, filename: value.attachment.filename, kind,
+                sheetName: value.attachment.sheetName || 'Sheet1', totalRows: value.attachment.totalRows,
+                headers: value.attachment.headers, preview: Array.isArray(value.attachment.preview) ? value.attachment.preview.slice(0, 5) : [] };
+        } else if (kind === 'attachment') {
+            text(value.attachment.mimeType, 120);
+            integer(value.attachment.size, 1, 15 * 1024 * 1024);
+            if (typeof value.attachment.approvedForAgentWrite !== 'boolean') fail('validation_error', 'invalid_attachment_approval');
+            attachment = { uploadId: value.attachment.uploadId, filename: value.attachment.filename, kind,
+                mimeType: value.attachment.mimeType, size: value.attachment.size,
+                approvedForAgentWrite: value.attachment.approvedForAgentWrite };
+        } else fail('validation_error', 'invalid_attachment_kind');
     }
 
     // organizationId is intentionally not forwarded, persisted, or used for authorization.
     return { conversationId: value.conversationId, message: value.message, context, ...(attachment ? { attachment } : {}) };
 }
 export function validateDecision(value) {
-    object(value, ['confirmationId', 'decision']); identity(value.confirmationId);
+    object(value, ['confirmationId', 'decision', 'confirmationText']); identity(value.confirmationId);
     if (!['confirm', 'cancel'].includes(value.decision)) fail('validation_error', 'invalid_decision');
+    if (value.confirmationText !== undefined && (typeof value.confirmationText !== 'string' || value.confirmationText.length > 80)) fail('validation_error', 'invalid_confirmation_text');
     return value;
 }
 export function safeError(error) {
-    const allowed = ['backend_unavailable', 'provider_unavailable', 'model_unavailable', 'network_failure', 'request_rejected', 'authorization_denied', 'confirmation_expired', 'validation_error', 'execution_failure', 'protocol_error'];
+    const allowed = ['backend_unavailable', 'provider_unavailable', 'provider_rate_limited', 'provider_invalid_output', 'conversion_quantity_invalid', 'tool_arguments_invalid', 'model_unavailable', 'network_failure', 'request_rejected', 'authorization_denied', 'confirmation_expired', 'validation_error', 'execution_failure', 'protocol_error'];
     return { code: allowed.includes(error?.code) ? error.code : 'execution_failure', retryable: false };
 }

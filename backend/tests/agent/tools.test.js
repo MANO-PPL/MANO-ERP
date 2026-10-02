@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs/promises';
-import { TOOLS, LIVE_WRITE_ENABLEMENT, validateIntent } from '../../src/modules/agent/agentTools.js';
+import { TOOLS, LIVE_WRITE_ENABLEMENT, RUNTIME_WRITE_ENABLEMENT, validateIntent } from '../../src/modules/agent/agentTools.js';
 import { createReadService } from '../../src/modules/agent/agentReadService.js';
 import { createWriteService } from '../../src/modules/agent/agentWriteService.js';
 import { actor, harness, intent, answer } from './fixtures.js';
@@ -16,6 +16,15 @@ test('S02 resource search uses deterministic row and field bounds', async () => 
 test('S03 rate service boundary returns safe provenance', async () => {
     const h = harness({ responses: [intent('resources.getRate', { resourceId: 1 }), answer] }); const r = await h.submit();
     assert.equal(r.events.find(e => e.type === 'tool_completed').provenance[0].tool, 'resources.getRate');
+});
+test('project detail lookup exposes only bounded member identity for task assignment', async () => {
+    const projects = {
+        getProjectById: async () => ({ id: 85, name: 'QA Project', secret: 'hidden' }),
+        getProjectMembers: async () => [{ id: 7, user_name: 'Mano Manager', email: 'hidden@example.com' }],
+    };
+    const read = createReadService({ projects });
+    const rows = await read(actor, TOOLS['projects.get'], { projectId: 85 }, { orgId: 2, userId: 7, userType: 'admin' });
+    assert.deepEqual(rows, [{ id: 85, name: 'QA Project', members: [{ id: 7, name: 'Mano Manager' }] }]);
 });
 test('S04 composition traverses bounded authorized reads, never a write service', async () => {
     let authorized = 0; const read = createReadService({ authorize: async () => { authorized++; }, resources: {
@@ -374,6 +383,12 @@ test('registry tool definitions and disabled baseline live writes', () => {
     assert.equal(TOOLS['reports.getDPR']?.risk, 'READ');
     assert.equal(TOOLS['reports.getWPR']?.risk, 'READ');
     assert.equal(TOOLS['reports.getMPR']?.risk, 'READ');
-    assert.equal(Object.values(TOOLS).filter(t => t.risk === 'WRITE').length, 4);
+    assert.equal(Object.values(TOOLS).filter(t => t.risk === 'WRITE').length, 37);
+    assert.equal(TOOLS['tasks.deleteSelected']?.risk, 'BULK_WRITE');
+    assert.equal(RUNTIME_WRITE_ENABLEMENT['tasks.deleteSelected'], true);
+    for (const name of ['projectParties.add', 'projectParties.update', 'projects.assignMember', 'tasks.assign', 'tasks.createCategory', 'tasks.updateCategory', 'tasks.reorder', 'meetings.create', 'meetings.update', 'directory.create', 'directory.update', 'summaries.create', 'summaries.update', 'documents.saveDraft', 'documents.submitDraft', 'qualityObservations.create', 'qualityObservations.update', 'qualityObservations.submitFix', 'qualityMethodologies.create', 'qualityMethodologies.update', 'qualityChecklists.create', 'qualityChecklists.update']) {
+        assert.equal(TOOLS[name]?.risk, 'WRITE');
+        assert.equal(RUNTIME_WRITE_ENABLEMENT[name], true);
+    }
     assert.deepEqual(Object.values(LIVE_WRITE_ENABLEMENT), [false, false, false, false]);
 });

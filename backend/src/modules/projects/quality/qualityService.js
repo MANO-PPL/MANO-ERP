@@ -109,6 +109,12 @@ async function uploadQualityFile(file, folder, filename) {
     }
 }
 
+// Used by the confirmation-gated agent writer. The caller owns the database
+// transaction; this helper deliberately performs storage only.
+export async function storeQualityAttachment(file, folder, filename) {
+    return uploadQualityFile(file, folder, filename);
+}
+
 /**
  * Helper to delete a file (works for both S3 and local files)
  */

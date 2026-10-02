@@ -3,7 +3,46 @@ import { object, text, integer, dateOnly, uuid, fail } from './agentValidation.j
 export const CONTRACT_VERSION = 'mano-agent-v1';
 const list = { query: 'query?', limit: 'limit?', offset: 'offset?' };
 const resource = { resourceId: 'id', projectId: 'id?', asOfDate: 'date?' };
+const contactEdit = { name: 'name?', contact_person: 'name?', mobile: 'phone?', email: 'email?', address: 'address?', location: 'name?', remarks: 'remarks?' };
 const definitions = {
+    'resources.create': { args: { name: 'name', type: 'type', base_unit_code: 'unit', code: 'name?', description: 'remarks?', remarks: 'remarks?' }, module: 'materials', risk: 'WRITE' },
+    'resources.update': { args: { resourceId: 'id', projectId: 'id?', name: 'name?', code: 'name?', description: 'remarks?', remarks: 'remarks?' }, module: 'materials', risk: 'WRITE' },
+    'resources.addConversion': { args: { resourceId: 'id', projectId: 'id?', name: 'name', quantity: 'quantity', unit_code: 'unit' }, module: 'materials', risk: 'WRITE' },
+    'clients.bulkImport': { args: { uploadId: 'uuid', mapping: 'mapping?' }, module: 'clients', risk: 'BULK_WRITE' },
+    'clients.create': { args: { ...contactEdit, name: 'name' }, module: 'clients', risk: 'WRITE' },
+    'clients.update': { args: { contactId: 'id', ...contactEdit }, module: 'clients', risk: 'WRITE' },
+    'vendors.update': { args: { contactId: 'id', ...contactEdit }, module: 'vendors', risk: 'WRITE' },
+    'clients.addInteraction': { args: { contactId: 'id', type: 'interactionType', interaction_date: 'date', follow_up_date: 'date?', remarks: 'remarks?' }, module: 'clients', risk: 'WRITE' },
+    'projects.create': { args: { name: 'name', location: 'name?', project_code: 'name?', start_date: 'date?', end_date: 'date?' }, module: 'projects', risk: 'WRITE' },
+    'projects.update': { args: { projectId: 'id', name: 'name?', location: 'name?', project_code: 'name?', start_date: 'date?', end_date: 'date?' }, module: 'projects', risk: 'WRITE' },
+    'tasks.create': { args: { projectId: 'id', categoryName: 'name', name: 'name', description: 'remarks?', status: 'taskStatus?', priority: 'taskPriority?', start_date: 'date?', due_date: 'date?' }, module: 'projects', risk: 'WRITE' },
+    'tasks.update': { args: { projectId: 'id', taskId: 'id', name: 'name?', description: 'remarks?', status: 'taskStatus?', priority: 'taskPriority?', start_date: 'date?', due_date: 'date?' }, module: 'projects', risk: 'WRITE' },
+    'tasks.deleteSelected': { args: { projectId: 'id', taskIds: 'idList' }, module: 'projects', risk: 'BULK_WRITE' },
+    // Phase 2 project-delivery operations. These deliberately operate only on
+    // existing, in-scope records. The member operation is admin-only and does
+    // not accept a permission payload, so it cannot grant arbitrary access.
+    'projectParties.add': { args: { projectId: 'id', contactId: 'id' }, module: 'parties', risk: 'WRITE' },
+    'projectParties.update': { args: { projectId: 'id', projectPartyId: 'id', ...contactEdit }, module: 'parties', risk: 'WRITE' },
+    'projects.assignMember': { args: { projectId: 'id', userId: 'id' }, module: 'projects', risk: 'WRITE' },
+    'tasks.assign': { args: { projectId: 'id', taskId: 'id', assigneeIds: 'idList' }, module: 'projects', risk: 'WRITE' },
+    'tasks.createCategory': { args: { projectId: 'id', name: 'name' }, module: 'projects', risk: 'WRITE' },
+    'tasks.updateCategory': { args: { projectId: 'id', categoryId: 'id', name: 'name' }, module: 'projects', risk: 'WRITE' },
+    'tasks.reorder': { args: { projectId: 'id', type: 'reorderType', items: 'orderItems' }, module: 'projects', risk: 'WRITE' },
+    'meetings.create': { args: { projectId: 'id', subject: 'name', venue: 'name?', date: 'date?', time: 'time?', status: 'meetingStatus?', agendaPoints: 'points?', momPoints: 'points?' }, module: 'documents', risk: 'WRITE' },
+    'meetings.update': { args: { projectId: 'id', meetingId: 'id', subject: 'name?', venue: 'name?', date: 'date?', time: 'time?', status: 'meetingStatus?', agendaPoints: 'points?', momPoints: 'points?' }, module: 'documents', risk: 'WRITE' },
+    'directory.create': { args: { projectId: 'id', partyId: 'id?', contact_person: 'name', designation: 'name?', responsibilities: 'remarks?', mobile_no: 'phone?', email: 'email?', address_line: 'address?' }, module: 'documents', risk: 'WRITE' },
+    'directory.update': { args: { projectId: 'id', directoryId: 'id', partyId: 'id?', contact_person: 'name?', designation: 'name?', responsibilities: 'remarks?', mobile_no: 'phone?', email: 'email?', address_line: 'address?' }, module: 'documents', risk: 'WRITE' },
+    'summaries.create': { args: { projectId: 'id', title: 'name', details: 'remarks', status: 'summaryStatus?', date: 'date?' }, module: 'documents', risk: 'WRITE' },
+    'summaries.update': { args: { projectId: 'id', summaryId: 'id', title: 'name?', details: 'remarks?', status: 'summaryStatus?', date: 'date?' }, module: 'documents', risk: 'WRITE' },
+    'documents.saveDraft': { args: { projectId: 'id', cycleId: 'id', content: 'json' }, module: 'documents', risk: 'WRITE' },
+    'documents.submitDraft': { args: { projectId: 'id', cycleId: 'id', changes_summary: 'remarks?', comments: 'remarks?' }, module: 'documents', risk: 'WRITE' },
+    'qualityObservations.create': { args: { projectId: 'id', location: 'name', note: 'remarks' }, module: 'quality', risk: 'WRITE' },
+    'qualityObservations.update': { args: { projectId: 'id', observationId: 'id', location: 'name?', note: 'remarks?' }, module: 'quality', risk: 'WRITE' },
+    'qualityObservations.submitFix': { args: { projectId: 'id', observationId: 'id', uploadId: 'uuid', note: 'remarks?' }, module: 'quality', risk: 'WRITE' },
+    'qualityMethodologies.create': { args: { projectId: 'id', title: 'name', uploadId: 'uuid' }, module: 'quality', risk: 'WRITE' },
+    'qualityMethodologies.update': { args: { projectId: 'id', documentId: 'id', title: 'name?', uploadId: 'uuid' }, module: 'quality', risk: 'WRITE' },
+    'qualityChecklists.create': { args: { projectId: 'id', title: 'name', uploadId: 'uuid' }, module: 'quality', risk: 'WRITE' },
+    'qualityChecklists.update': { args: { projectId: 'id', documentId: 'id', title: 'name?', uploadId: 'uuid' }, module: 'quality', risk: 'WRITE' },
     'projects.search': { args: list, module: 'projects' },
     'projects.get': { args: { projectId: 'id' }, module: 'projects' },
     'projects.getExecutiveBriefing': { args: { projectId: 'id' }, module: 'projects' },
@@ -38,7 +77,23 @@ export const TOOLS = Object.freeze(Object.fromEntries(Object.entries(definitions
     Object.freeze({ name, version: 1, risk: d.risk || 'READ', module: d.module, args: Object.freeze(d.args) })])));
 // Deliberately not environment-configurable baseline. Runtime enables writes via agentRuntime configuration.
 export const LIVE_WRITE_ENABLEMENT = Object.freeze({ 'vendors.create': false, 'resources.createRateVersion': false, 'approvals.decide': false, 'approvals.batchDecide': false });
-export const RUNTIME_WRITE_ENABLEMENT = Object.freeze({ 'vendors.create': true, 'vendors.bulkImport': true, 'resources.createRateVersion': true, 'approvals.decide': true, 'approvals.batchDecide': true });
+export const RUNTIME_WRITE_ENABLEMENT = Object.freeze({ 'resources.create': true, 'resources.update': true, 'resources.addConversion': true, 'clients.bulkImport': true, 'clients.create': true, 'clients.update': true, 'clients.addInteraction': true, 'vendors.update': true, 'vendors.create': true, 'vendors.bulkImport': true, 'resources.createRateVersion': true, 'approvals.decide': true, 'approvals.batchDecide': true, 'projects.create': true, 'projects.update': true, 'projectParties.add': true, 'projectParties.update': true, 'projects.assignMember': true, 'tasks.create': true, 'tasks.update': true, 'tasks.deleteSelected': true, 'tasks.assign': true, 'tasks.createCategory': true, 'tasks.updateCategory': true, 'tasks.reorder': true, 'meetings.create': true, 'meetings.update': true, 'directory.create': true, 'directory.update': true, 'summaries.create': true, 'summaries.update': true, 'documents.saveDraft': true, 'documents.submitDraft': true, 'qualityObservations.create': true, 'qualityObservations.update': true, 'qualityObservations.submitFix': true, 'qualityMethodologies.create': true, 'qualityMethodologies.update': true, 'qualityChecklists.create': true, 'qualityChecklists.update': true });
+export function allowedToolsForRequest(context, message, enablement) {
+    const modules = new Set();
+    const page = `${context?.module || ''} ${context?.route || ''}`.toLowerCase();
+    const explicit = String(message || '').toLowerCase();
+    for (const [module, pattern] of [['clients', /\bclients?\b/], ['vendors', /\b(vendors?|suppliers?|contractors?)\b/], ['materials', /\b(resources?|materials?|rates?)\b/], ['projects', /\b(projects?|tasks?|approvals?|approve|reject|members?)\b/], ['parties', /\b(part(?:y|ies)|stakeholders?|contractors?)\b/], ['documents', /\b(meetings?|agendas?|mom|minutes|directory|summar(?:y|ies)|documents?|drafts?|workflows?|cycles?)\b/], ['quality', /\b(observations?|quality|checklists?|methodolog(?:y|ies)|corrective|rectif)\b/]]) {
+        if (pattern.test(page) || pattern.test(explicit)) modules.add(module);
+    }
+    const available = Object.values(TOOLS).filter(tool => tool.risk === 'READ' || (enablement[tool.name] === true && modules.has(tool.module)));
+    // The Python protocol caps allowed tools at 50. A multi-domain request can
+    // otherwise cross that bound after adding Phase 2 operations; keep every
+    // enabled write and only module-relevant reads in that exceptional case.
+    const bounded = available.length > 50
+        ? available.filter(tool => tool.risk !== 'READ' || modules.has(tool.module))
+        : available;
+    return bounded.slice(0, 50).map(tool => tool.name);
+}
 export function validateIntent(intent) {
     object(intent, ['kind', 'tool', 'version', 'arguments']);
     if (intent.kind !== 'tool') fail('validation_error', 'invalid_intent');
@@ -54,6 +109,50 @@ export function validateIntent(intent) {
         else if (type === 'exportLimit') integer(value, 1, 500);
         else if (type === 'offset') integer(value, 0, 10000);
         else if (type === 'date') dateOnly(value);
+        else if (type === 'interactionType') {
+            if (!['email', 'whatsapp', 'call', 'site visit', 'meeting'].includes(value)) fail('validation_error', 'invalid_interaction_type');
+        }
+        else if (type === 'taskStatus') {
+            if (!['open', 'in progress', 'on hold', 'completed', 'cancelled'].includes(value)) fail('validation_error', 'invalid_task_status');
+        }
+        else if (type === 'taskPriority') {
+            if (!['Urgent', 'High', 'Medium', 'Low', 'None'].includes(value)) fail('validation_error', 'invalid_task_priority');
+        }
+        else if (type === 'idList') {
+            if (!Array.isArray(value) || value.length < 1 || value.length > 20) fail('validation_error', 'invalid_id_list');
+            for (const id of value) integer(id);
+            if (new Set(value).size !== value.length) fail('validation_error', 'duplicate_id');
+        } else if (type === 'orderItems') {
+            if (!Array.isArray(value) || value.length < 1 || value.length > 50) fail('validation_error', 'invalid_order_items');
+            const ids = new Set();
+            for (const item of value) {
+                object(item, ['id', 'sortOrder']); integer(item.id); integer(item.sortOrder, 0, 1000000);
+                if (ids.has(item.id)) fail('validation_error', 'duplicate_order_item');
+                ids.add(item.id);
+            }
+        } else if (type === 'reorderType') {
+            if (!['task', 'category'].includes(value)) fail('validation_error', 'invalid_reorder_type');
+        } else if (type === 'points') {
+            if (!Array.isArray(value) || value.length > 30) fail('validation_error', 'invalid_points');
+            for (const point of value) text(point, 500);
+        } else if (type === 'time') {
+            if (typeof value !== 'string' || !/^([01]\d|2[0-3]):[0-5]\d$/.test(value)) fail('validation_error', 'invalid_time');
+        } else if (type === 'meetingStatus') {
+            if (!['scheduled', 'postponed', 'cancelled', 'completed'].includes(value)) fail('validation_error', 'invalid_meeting_status');
+        } else if (type === 'summaryStatus') {
+            if (!['pending', 'in progress', 'completed', 'on hold'].includes(value)) fail('validation_error', 'invalid_summary_status');
+        } else if (type === 'json') {
+            if (!value || typeof value !== 'object' || Array.isArray(value)) fail('validation_error', 'invalid_json_content');
+            const inspect = (item, depth = 0) => {
+                if (depth > 12 || item === null || ['boolean', 'number'].includes(typeof item)) return;
+                if (typeof item === 'string') { text(item, 8000); return; }
+                if (Array.isArray(item)) { if (item.length > 100) fail('validation_error', 'invalid_json_content'); item.forEach(entry => inspect(entry, depth + 1)); return; }
+                if (!item || typeof item !== 'object' || Object.keys(item).length > 100) fail('validation_error', 'invalid_json_content');
+                for (const [key, entry] of Object.entries(item)) { text(key, 100); inspect(entry, depth + 1); }
+            };
+            inspect(value);
+            if (Buffer.byteLength(JSON.stringify(value), 'utf8') > 32000) fail('validation_error', 'json_content_too_large');
+        }
         else if (type === 'exportEntity') {
             text(value, 40);
             if (!['vendors', 'projects', 'clients', 'resources', 'materials', 'approvals', 'transactions', 'billing'].includes(value.toLowerCase())) {
@@ -87,6 +186,8 @@ export function validateIntent(intent) {
                     text(v, 120);
                 }
             }
+        } else if (type === 'quantity') {
+            if (typeof value !== 'string' || !/^(0|[1-9]\d{0,8})(\.\d{1,6})?$/.test(value) || Number(value) <= 0) fail('validation_error', 'invalid_quantity');
         } else if (type === 'rate') {
             if (typeof value !== 'string' || !/^(0|[1-9]\d{0,8})(\.\d{1,2})?$/.test(value)) fail('validation_error', 'invalid_rate');
         } else if (type === 'signedRate') {
@@ -110,6 +211,18 @@ export function validateIntent(intent) {
             if (type === 'email' && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value)) fail('validation_error', 'invalid_email');
         }
     }
+    if (['clients.update', 'vendors.update'].includes(tool.name) && Object.keys(args).every(key => key === 'contactId')) fail('validation_error', 'empty_update');
+    if (tool.name === 'resources.update' && !['name', 'code', 'description', 'remarks'].some(key => args[key] !== undefined)) fail('validation_error', 'empty_update');
+    if (tool.name === 'projects.update' && !['name', 'location', 'project_code', 'start_date', 'end_date'].some(key => args[key] !== undefined)) fail('validation_error', 'empty_update');
+    if (tool.name.startsWith('projects.') && tool.risk === 'WRITE' && args.start_date && args.end_date && args.end_date < args.start_date) fail('validation_error', 'invalid_project_dates');
+    if (tool.name === 'tasks.update' && !['name', 'description', 'status', 'priority', 'start_date', 'due_date'].some(key => args[key] !== undefined)) fail('validation_error', 'empty_update');
+    if (tool.name === 'meetings.update' && !['subject', 'venue', 'date', 'time', 'status', 'agendaPoints', 'momPoints'].some(key => args[key] !== undefined)) fail('validation_error', 'empty_update');
+    if (tool.name === 'directory.update' && !['partyId', 'contact_person', 'designation', 'responsibilities', 'mobile_no', 'email', 'address_line'].some(key => args[key] !== undefined)) fail('validation_error', 'empty_update');
+    if (tool.name === 'summaries.update' && !['title', 'details', 'status', 'date'].some(key => args[key] !== undefined)) fail('validation_error', 'empty_update');
+    if (tool.name === 'qualityObservations.update' && !['location', 'note'].some(key => args[key] !== undefined)) fail('validation_error', 'empty_update');
+    if (tool.name === 'projectParties.update' && !['name', 'contact_person', 'mobile', 'email', 'address', 'location', 'remarks'].some(key => args[key] !== undefined)) fail('validation_error', 'empty_update');
+    if (tool.name.startsWith('tasks.') && tool.risk === 'WRITE' && args.start_date && args.due_date && args.due_date < args.start_date) fail('validation_error', 'invalid_task_dates');
+    if (args.follow_up_date && args.follow_up_date < args.interaction_date) fail('validation_error', 'invalid_follow_up_date');
     return { tool, args: structuredClone(args) };
 }
 export function validateModelResponse(value) {

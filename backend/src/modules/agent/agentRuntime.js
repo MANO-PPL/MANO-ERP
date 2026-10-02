@@ -41,7 +41,7 @@ export async function initializeAgentRuntime() {
     const exportService = createExportService({ db, approvalService });
     service = createAgentService({ store, authorize, okf, reason: createPythonClient({ secret: agentInternalSecret }),
         read: createReadService({ db, projects, clients, vendors, resources, parties, approvalService, exportService, costSimulationService: null, authorize }),
-        writes: createWriteService({ db, vendors, resources, approvalService }),
+        writes: createWriteService({ db, clients, vendors, resources, approvalService }),
         writeEnablement: RUNTIME_WRITE_ENABLEMENT });
     cleanup = setInterval(() => store.cleanup().catch(() => { /* No request data or database diagnostics are logged. */ }), 60000);
     cleanup.unref();

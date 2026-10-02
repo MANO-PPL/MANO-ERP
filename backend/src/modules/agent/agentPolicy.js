@@ -34,20 +34,39 @@ export function createPolicy(db) {
         if (!user) fail('authorization_denied');
         user.user_type = String(user.user_type || 'employee').toLowerCase();
         const edit = tool.risk.includes('WRITE');
+        // Project master-data mutations mirror the page's admin-only routes.
+        if (['projects.create', 'projects.update', 'projects.assignMember'].includes(tool.name) && user.user_type !== 'admin') fail('authorization_denied');
         const scope = { orgId: actor.orgId, userId: actor.userId, projectId: null, userType: user.user_type };
         let projectId = args.projectId;
+        if (['tasks.update', 'tasks.assign'].includes(tool.name)) {
+            const task = await one('proj_tasks', { id: args.taskId, project_id: args.projectId });
+            if (!task) fail('authorization_denied');
+            scope.task = task;
+        }
         if (args.resourceId !== undefined) {
             const resource = await one('res_resources', { id: args.resourceId, org_id: actor.orgId });
             if (!resource || (projectId !== undefined && Number(resource.project_id) !== projectId)) fail('authorization_denied');
             projectId = resource.project_id ? Number(resource.project_id) : undefined;
             scope.resource = resource;
         }
+        if (args.projectPartyId !== undefined) {
+            const party = await one('proj_parties', { id: args.projectPartyId, project_id: args.projectId });
+            if (!party) fail('authorization_denied');
+            const contact = await one('crm_contacts', { id: party.contact_id, org_id: actor.orgId });
+            if (!contact) fail('authorization_denied');
+            const category = String(contact.category || '').toLowerCase();
+            system(user, ['client', 'pmc'].includes(category) ? 'clients' : 'vendors', edit);
+            scope.contact = contact;
+        }
         if (args.contactId !== undefined) {
             const contact = await one('crm_contacts', { id: args.contactId, org_id: actor.orgId });
             if (!contact) fail('authorization_denied');
             const category = String(contact.category || '').toLowerCase();
             if ((tool.module === 'clients' && category !== 'client') || (tool.module === 'vendors' && ['client', 'pmc'].includes(category))) fail('authorization_denied');
-            system(user, tool.module === 'contacts' ? (['client', 'pmc'].includes(category) ? 'clients' : 'vendors') : tool.module, edit);
+            const contactModule = ['contacts', 'parties'].includes(tool.module)
+                ? (['client', 'pmc'].includes(category) ? 'clients' : 'vendors')
+                : tool.module;
+            system(user, contactModule, edit);
             // Project-local contacts need a live project association as well as CRM permission.
             if (contact.scope === 'project') {
                 const links = await connection('pdoc_parties').where({ party_id: contact.id }).whereNull('deleted_at').select('project_id').limit(2);
@@ -63,8 +82,10 @@ export function createPolicy(db) {
             if (user.user_type !== 'admin') {
                 const member = await one('proj_members', { project_id: projectId, user_id: actor.userId, org_id: actor.orgId });
                 if (!member || (edit && user.user_type === 'client')) fail('authorization_denied');
-                const module = tool.module === 'materials' ? 'Material Management' : 'General Documents';
+                const module = tool.name.startsWith('tasks.') ? 'Tasks'
+                    : (({ materials: 'Material Management', tasks: 'Tasks', quality: 'Quality', documents: 'General Documents', parties: 'General Documents' })[tool.module] || 'General Documents');
                 const p = permissions(member.project_permissions);
+                if (tool.name.startsWith('tasks.') && edit && !hasLevel(p.Tasks ?? p.tasks, true)) fail('authorization_denied');
                 if (tool.module !== 'projects' && user.user_type !== 'client'
                     && !hasLevel(p[module] ?? p[module.toLowerCase()] ?? p[tool.module], edit)) fail('authorization_denied');
             }

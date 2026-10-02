@@ -1,0 +1,18 @@
+import React, { useEffect, useState } from 'react';
+import { Edit2, Trash2, Upload } from 'lucide-react';
+import MobileBottomSheet from '../../../components/MobileBottomSheet';
+import MobileDrawingRevisionHistory from './MobileDrawingRevisionHistory';
+
+export default function MobileDrawingDetail({ open, onClose, drawing, canWrite, onUpdate, onDelete, onUploadRevision, pending = false }) {
+    const [editing, setEditing] = useState(false);
+    const [title, setTitle] = useState('');
+    const [description, setDescription] = useState('');
+    useEffect(() => { setEditing(false); setTitle(drawing?.title || ''); setDescription(drawing?.latestDescription || ''); }, [drawing?.id, open]);
+    const openCad = (url) => window.open(`/drawing-viewer?url=${encodeURIComponent(url)}&name=${encodeURIComponent(drawing?.title || 'Drawing')}`, '_blank', 'noopener,noreferrer');
+    return <MobileBottomSheet open={open} onClose={pending ? undefined : onClose} closeDisabled={pending} title={drawing?.title || 'Drawing detail'} description={drawing ? `Latest revision R${drawing.latestRevision || 1}` : undefined}>
+        {drawing && <div data-mobile-drawing-detail className="space-y-4">
+            {editing ? <div className="space-y-3"><div><label htmlFor="mobile-drawing-edit-title" className="mb-1 block text-xs font-bold">Title</label><input id="mobile-drawing-edit-title" value={title} onChange={(event) => setTitle(event.target.value)} className="min-h-11 w-full rounded-xl border border-gray-200 px-3 text-sm dark:border-gh-border dark:bg-gh-input" /></div><div><label htmlFor="mobile-drawing-edit-description" className="mb-1 block text-xs font-bold">Remarks</label><textarea id="mobile-drawing-edit-description" value={description} onChange={(event) => setDescription(event.target.value)} rows={3} className="w-full rounded-xl border border-gray-200 px-3 py-2 text-sm dark:border-gh-border dark:bg-gh-input" /></div><div className="flex gap-2"><button type="button" onClick={() => setEditing(false)} className="min-h-11 flex-1 rounded-xl border border-gray-200 text-sm font-semibold dark:border-gh-border">Cancel</button><button type="button" disabled={pending || !title.trim()} onClick={async () => { const ok = await onUpdate?.({ title: title.trim(), description: description.trim() }); if (ok) setEditing(false); }} className="min-h-11 flex-1 rounded-xl bg-blue-600 text-sm font-bold text-white disabled:opacity-50">Save</button></div></div> : <><div className="rounded-xl bg-gray-50 p-3 dark:bg-gh-input"><p className="text-xs font-bold uppercase text-gray-500">Latest remarks</p><p className="mt-1 text-sm leading-6 text-gray-700 dark:text-gh-text">{drawing.latestDescription || 'No remarks recorded.'}</p></div>{canWrite && <div className="grid grid-cols-3 gap-2"><button type="button" onClick={() => setEditing(true)} className="inline-flex min-h-11 items-center justify-center gap-1 rounded-xl border border-gray-200 text-xs font-bold dark:border-gh-border"><Edit2 size={16} />Edit</button><button type="button" onClick={onUploadRevision} className="inline-flex min-h-11 items-center justify-center gap-1 rounded-xl border border-gray-200 text-xs font-bold dark:border-gh-border"><Upload size={16} />Revision</button><button type="button" onClick={onDelete} className="inline-flex min-h-11 items-center justify-center gap-1 rounded-xl border border-red-200 text-xs font-bold text-red-700 dark:border-red-900 dark:text-red-300"><Trash2 size={16} />Delete</button></div>}</>}
+            <div><h3 className="mb-2 text-xs font-bold uppercase tracking-wide text-gray-500 dark:text-gh-muted">Revision history</h3><MobileDrawingRevisionHistory revisions={drawing.revisions || []} onOpenCad={openCad} /></div>
+        </div>}
+    </MobileBottomSheet>;
+}

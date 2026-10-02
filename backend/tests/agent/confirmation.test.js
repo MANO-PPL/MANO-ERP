@@ -1,10 +1,40 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { actor, harness } from './fixtures.js';
+import { actor, body, harness, intent } from './fixtures.js';
 
 test('S08 writes are gated live; test-enabled proposals still require confirmation', async () => {
     const live = harness(); const rejected = await live.propose(); assert.equal(rejected.confirmation, undefined); assert.equal(live.attempts, 0);
     const h = harness({ enableWrites: true }); const p = await h.propose(); assert.ok(p.confirmation); assert.equal(h.store.state.business.length, 0);
+});
+test('selected bulk task deletion has no effect until the explicit confirmation decision', async () => {
+    const h = harness({ enableWrites: true, writeEnablement: { 'tasks.deleteSelected': true },
+        responses: [intent('tasks.deleteSelected', { projectId: 4, taskIds: [9, 10] })],
+        preconditions: (tool, args) => ({ tasks: args.taskIds.map(id => ({ id, name: `Task ${id}` })) }) });
+    const requestBody = { ...body('Delete these selected tasks from this project'),
+        context: { route: '/projects/4/tasks', module: 'Tasks', projectId: '4' } };
+    const proposed = await h.submit(requestBody);
+    const confirmation = proposed.events.find(event => event.type === 'confirmation_required')?.confirmation;
+    assert.ok(confirmation);
+    assert.equal(confirmation.riskLevel, 'DESTRUCTIVE');
+    assert.equal(confirmation.confirmationPhrase, 'DELETE 2 TASKS');
+    assert.equal(h.attempts, 0);
+    await h.decide(confirmation.confirmationId, 'cancel');
+    assert.equal(h.attempts, 0);
+});
+test('selected task deletion rejects missing or incorrect typed confirmation and accepts the exact phrase', async () => {
+    const h = harness({ enableWrites: true, writeEnablement: { 'tasks.deleteSelected': true },
+        responses: [intent('tasks.deleteSelected', { projectId: 4, taskIds: [9, 10] })],
+        preconditions: (tool, args) => ({ tasks: args.taskIds.map(id => ({ id, name: `Task ${id}` })) }) });
+    const requestBody = { ...body('Delete these selected tasks from this project'),
+        context: { route: '/projects/4/tasks', module: 'Tasks', projectId: '4' } };
+    const proposed = await h.submit(requestBody);
+    const confirmationId = proposed.events.find(event => event.type === 'confirmation_required').confirmation.confirmationId;
+    for (const confirmationText of [undefined, 'DELETE ALL TASKS']) {
+        await assert.rejects(h.service.decide(actor, { confirmationId, decision: 'confirm', ...(confirmationText ? { confirmationText } : {}) }, requestBody.conversationId), /typed_confirmation_mismatch/);
+        assert.equal(h.attempts, 0);
+    }
+    await h.service.decide(actor, { confirmationId, decision: 'confirm', confirmationText: 'DELETE 2 TASKS' }, requestBody.conversationId);
+    assert.equal(h.attempts, 1);
 });
 test('S09 confirmation executes exact stored operation once', async () => {
     const h = harness({ enableWrites: true }); const p = await h.propose(); const events = await h.decide(p.confirmation.confirmationId);

@@ -21,6 +21,7 @@ import logging
 if not os.getenv("GROQ_API_KEY"):
     logging.warning(f"Failed to find GROQ_API_KEY at {env_path}. Make sure it is set!")
 client = Groq(api_key=os.getenv("GROQ_API_KEY", "fallback_to_prevent_crash_during_init"))
+GROQ_ANALYSIS_MODEL = os.getenv("GROQ_AGENT_MODEL", "openai/gpt-oss-20b")
 
 # ─── Pydantic Models for Output ─────────────────────────
 
@@ -170,7 +171,7 @@ Schema Constraints:
     try:
         chat_completion = client.chat.completions.create(
             messages=[{"role": "user", "content": prompt}],
-            model="llama-3.1-8b-instant",
+            model=GROQ_ANALYSIS_MODEL,
             temperature=0.0,
             seed=42,
             response_format={"type": "json_object"},
@@ -294,7 +295,7 @@ Schema Constraints:
     try:
         chat_completion = client.chat.completions.create(
             messages=[{"role": "user", "content": prompt}],
-            model="llama-3.1-8b-instant",
+            model=GROQ_ANALYSIS_MODEL,
             temperature=0.0,
             seed=42,
             response_format={"type": "json_object"}

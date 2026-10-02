@@ -1,6 +1,6 @@
 import React, { createContext, useState, useEffect, useContext } from 'react';
 import { authApi } from '../services/authApi';
-import { setAccessToken } from '../services/api';
+import { setAccessToken, refreshAccessToken } from '../services/api';
 
 const AuthContext = createContext(null);
 
@@ -23,8 +23,15 @@ export const AuthProvider = ({ children }) => {
 
     const refreshUser = async () => {
         const hasUserTypeCookie = document.cookie.split(';').some((item) => item.trim().startsWith('userType='));
-        const hasStoredToken = Boolean(localStorage.getItem('mano_access_token'));
-        if (!hasUserTypeCookie && !hasStoredToken) {
+        let storedToken = localStorage.getItem('mano_access_token');
+
+        // If no stored access token in memory/localStorage, but user has an active session cookie,
+        // proactively refresh the access token first to avoid an unnecessary 401 roundtrip
+        if (!storedToken && hasUserTypeCookie) {
+            storedToken = await refreshAccessToken();
+        }
+
+        if (!storedToken && !hasUserTypeCookie) {
             setUser(null);
             setAccessToken(null);
             setLoading(false);
@@ -33,7 +40,7 @@ export const AuthProvider = ({ children }) => {
 
         try {
             const data = await authApi.getMe();
-            if (data.success && data.user) {
+            if (data?.success && data?.user) {
                 setUser(data.user);
             } else {
                 // Clear state if failed
@@ -42,10 +49,14 @@ export const AuthProvider = ({ children }) => {
             }
         } catch (err) {
             console.error('Failed to retrieve user profile:', err);
-            // If the error is auth-related, clear token
-            if (err.response?.status === 401 || err.response?.status === 403) {
+            // If the error is auth-related or unrecoverable, clear stale credentials
+            if (err.response?.status === 401 || err.response?.status === 403 || err.response?.status === 500) {
                 setUser(null);
                 setAccessToken(null);
+                try {
+                    localStorage.removeItem('mano_access_token');
+                    document.cookie = 'userType=; path=/; expires=Thu, 01 Jan 1970 00:00:00 GMT; max-age=0';
+                } catch (e) {}
             }
         } finally {
             setLoading(false);

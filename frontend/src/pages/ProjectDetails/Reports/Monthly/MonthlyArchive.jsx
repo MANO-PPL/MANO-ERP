@@ -74,7 +74,7 @@ const DonutChart = ({ data, title, totalLabel }) => {
 import AISummaryDrawer from '../AISummaryDrawer';
 import PPTEditor from './PPTEditor';
 
-const MonthlyArchive = ({ filters, setSubBreadcrumb, view, setView }) => {
+const MonthlyArchive = ({ filters, setSubBreadcrumb, view, setView, project }) => {
     const [selectedReport, setSelectedReport] = React.useState(null);
     const [showDrawer, setShowDrawer] = React.useState(false);
     const [selectedAuditReport, setSelectedAuditReport] = React.useState(null);
@@ -85,7 +85,14 @@ const MonthlyArchive = ({ filters, setSubBreadcrumb, view, setView }) => {
     const [isPptMode, setIsPptMode] = React.useState(false);
 
     // Mock data generation for February 2026 - Synchronized with Weekly/Daily Phase Logic
-    const generateMonthlyData = () => {
+    const generateMonthlyData = (monthOffset = 0) => {
+        let seed = monthOffset + String(project?.id || project?.dbId || 'demo').split('').reduce((sum, char) => sum + char.charCodeAt(0), 23);
+        const random = () => { seed = (seed * 9301 + 49297) % 233280; return seed / 233280; };
+        const monthDate = new Date(2026, 1 + monthOffset, 1);
+        const monthName = monthDate.toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
+        const monthShort = monthDate.toLocaleDateString('en-US', { month: 'short' });
+        const daysInMonth = new Date(monthDate.getFullYear(), monthDate.getMonth() + 1, 0).getDate();
+        const weeksInMonth = Math.ceil(daysInMonth / 7);
         const tasks = [
             { id: 1, name: 'Excavation for footings', unit: 'cum', totalQty: 5000, plannedMonthly: 1200 },
             { id: 2, name: 'PCC for footings', unit: 'cum', totalQty: 1200, plannedMonthly: 400 },
@@ -95,33 +102,33 @@ const MonthlyArchive = ({ filters, setSubBreadcrumb, view, setView }) => {
 
         // Generate 4 weeks for February with detailed financial audits
         const weeks = [];
-        for (let w = 0; w < 4; w++) {
+        for (let w = 0; w < weeksInMonth; w++) {
             const weekNum = w + 5;
-            const startDate = new Date('2026-02-01');
-            startDate.setDate(startDate.getDate() + w * 7);
+            const startDate = new Date(monthDate);
+            startDate.setDate(Math.min(1 + w * 7, daysInMonth));
             const endDate = new Date(startDate);
-            endDate.setDate(endDate.getDate() + 6);
+            endDate.setDate(Math.min(endDate.getDate() + 6, daysInMonth));
 
             // Generate weekly financial breakdown - Detailed for Pie Chart distribution
             const weeklyLabour = [
-                { trade: '"U" Know Urban (Labour)', predicted: 145000, actual: 142000 + (Math.random() * 5000), color: '#3b82f6' },
-                { trade: 'T Apple (Masons)', predicted: 95000, actual: 98000 + (Math.random() * 4000), color: '#6366f1' },
-                { trade: 'SW Design Studio (Tech)', predicted: 55000, actual: 52000 + (Math.random() * 3000), color: '#8b5cf6' },
-                { trade: 'Site Supervision', predicted: 40000, actual: 42000 + (Math.random() * 1000), color: '#ec4899' }
+                { trade: 'Demo Workforce (Labour)', predicted: 145000, actual: 142000 + (random() * 5000), color: '#3b82f6' },
+                { trade: 'Demo Masons', predicted: 95000, actual: 98000 + (random() * 4000), color: '#6366f1' },
+                { trade: 'Demo Technical Crew', predicted: 55000, actual: 52000 + (random() * 3000), color: '#8b5cf6' },
+                { trade: 'Demo Site Supervision', predicted: 40000, actual: 42000 + (random() * 1000), color: '#ec4899' }
             ];
 
             const weeklyMaterials = [
-                { item: 'OPC Cement', predicted: 180000, actual: 175000 + (Math.random() * 8000), color: '#f59e0b' },
-                { item: 'TMT Steel', predicted: 240000, actual: 255000 + (Math.random() * 10000), color: '#ef4444' },
-                { item: 'River Sand', predicted: 95000, actual: 92000 + (Math.random() * 4000), color: '#10b981' },
-                { item: 'Gravel / Aggregates', predicted: 110000, actual: 108000 + (Math.random() * 5000), color: '#06b6d4' }
+                { item: 'OPC Cement (Demo)', predicted: 180000, actual: 175000 + (random() * 8000), color: '#f59e0b' },
+                { item: 'TMT Steel (Demo)', predicted: 240000, actual: 255000 + (random() * 10000), color: '#ef4444' },
+                { item: 'River Sand (Demo)', predicted: 95000, actual: 92000 + (random() * 4000), color: '#10b981' },
+                { item: 'Aggregates (Demo)', predicted: 110000, actual: 108000 + (random() * 5000), color: '#06b6d4' }
             ];
 
             weeks.push({
                 week: `Week ${weekNum}`,
                 dateRange: `${startDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}-${endDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}`,
-                completion: 35 + (w * 15) + Math.floor(Math.random() * 10),
-                weather: ['Sunny', 'Cloudy', 'Rainy', 'Windy'][Math.floor(Math.random() * 4)],
+                completion: 35 + (w * 15) + Math.floor(random() * 10),
+                weather: ['Sunny', 'Cloudy', 'Rainy', 'Windy'][Math.floor(random() * 4)],
                 labour: weeklyLabour,
                 materials: weeklyMaterials
             });
@@ -129,13 +136,13 @@ const MonthlyArchive = ({ filters, setSubBreadcrumb, view, setView }) => {
 
         const items = tasks.map((task, idx) => {
             const plannedTotal = task.plannedMonthly;
-            const weeklyBreakdown = Array.from({ length: 4 }, () => Math.round((plannedTotal / 4) * (0.8 + Math.random() * 0.4)));
+            const weeklyBreakdown = Array.from({ length: weeksInMonth }, () => Math.round((plannedTotal / weeksInMonth) * (0.8 + random() * 0.4)));
             const executedTotal = weeklyBreakdown.reduce((s, i) => s + i, 0);
             
             const startDay = (idx * 3) + 1;
-            const endDay = Math.min(28, startDay + 22 + Math.floor(Math.random() * 4));
-            const actualStartOffset = Math.floor(Math.random() * 2);
-            const actualEndOffset = Math.floor(Math.random() * 3) - 2;
+            const endDay = Math.min(daysInMonth, startDay + 22 + Math.floor(random() * 4));
+            const actualStartOffset = Math.floor(random() * 2);
+            const actualEndOffset = Math.floor(random() * 3) - 2;
 
             return {
                 task: task.name,
@@ -147,10 +154,10 @@ const MonthlyArchive = ({ filters, setSubBreadcrumb, view, setView }) => {
                 variance: (((executedTotal - plannedTotal) / plannedTotal) * 100).toFixed(1),
                 duration: `${20 + idx * 2} Working Days`,
                 completionPercentage: Math.min(100, Math.round((executedTotal / plannedTotal) * 100)),
-                plannedStart: `Feb ${startDay < 10 ? '0' + startDay : startDay}, 2026`,
-                actualStart: `Feb ${(startDay + actualStartOffset) < 10 ? '0' + (startDay + actualStartOffset) : (startDay + actualStartOffset)}, 2026`,
-                plannedEnd: `Feb ${endDay < 10 ? '0' + endDay : endDay}, 2026`,
-                actualEnd: `Feb ${(endDay + actualEndOffset) < 10 ? '0' + (endDay + actualEndOffset) : (endDay + actualEndOffset)}, 2026`
+                plannedStart: `${monthShort} ${startDay < 10 ? '0' + startDay : startDay}, 2026`,
+                actualStart: `${monthShort} ${Math.min(daysInMonth, startDay + actualStartOffset) < 10 ? '0' + Math.min(daysInMonth, startDay + actualStartOffset) : Math.min(daysInMonth, startDay + actualStartOffset)}, 2026`,
+                plannedEnd: `${monthShort} ${endDay < 10 ? '0' + endDay : endDay}, 2026`,
+                actualEnd: `${monthShort} ${Math.max(1, Math.min(daysInMonth, endDay + actualEndOffset)) < 10 ? '0' + Math.max(1, Math.min(daysInMonth, endDay + actualEndOffset)) : Math.max(1, Math.min(daysInMonth, endDay + actualEndOffset))}, 2026`
             };
         });
 
@@ -168,15 +175,17 @@ const MonthlyArchive = ({ filters, setSubBreadcrumb, view, setView }) => {
         const totalMonthlyPersonnel = 450 + Math.floor((totalExecutedQty / totalPlannedQty) * 50);
 
         const inspectionsConducted = Math.floor(totalExecutedQty / 50) + 20;
-        const failedInspections = Math.floor(Math.random() * 4) + 1;
+        const failedInspections = Math.floor(random() * 4) + 1;
         const passedInspections = inspectionsConducted - failedInspections;
-        const ncrRaised = failedInspections + Math.floor(Math.random() * 2);
-        const ncrResolved = Math.max(0, ncrRaised - Math.floor(Math.random() * 2));
+        const ncrRaised = failedInspections + Math.floor(random() * 2);
+        const ncrResolved = Math.max(0, ncrRaised - Math.floor(random() * 2));
 
         return {
-            month: 'February 2026',
-            projectName: 'New Airport Terminal - Phase 1',
-            client: 'Airports Authority of India',
+            month: monthName,
+            projectName: project?.name || project?.project_name || `Project ${project?.id || project?.dbId || ''}`,
+            isSynthetic: true,
+            dataSource: 'SYNTHETIC_DEMO',
+            client: 'Synthetic demo client',
             overallProgress: avgProgress,
             budgetUsed: `₹${(totalActualCost / 100000).toFixed(1)}L`,
             resources: 12,
@@ -190,7 +199,7 @@ const MonthlyArchive = ({ filters, setSubBreadcrumb, view, setView }) => {
                 totalPlumbers: Math.round(totalMonthlyPersonnel * 0.09),
                 totalPainters: Math.round(totalMonthlyPersonnel * 0.06),
                 dominantWeather: 'Mostly Sunny',
-                reportCount: 28,
+                reportCount: daysInMonth,
                 strategicPlans: [
                     'Complete Level 5 Slab Casting by mid-March',
                     'Initiate Level 6 Reinforcement procurement',
@@ -200,7 +209,7 @@ const MonthlyArchive = ({ filters, setSubBreadcrumb, view, setView }) => {
             audit: {
                 createdAt: '2026-03-01T10:00:00Z',
                 createdBy: 'Mano Bharthii',
-                approval: { status: 'Approved', by: 'Finance Director' }
+                approval: { status: 'Synthetic', by: 'Demo only' }
             },
             qaqc: {
                 inspectionsConducted,
@@ -218,7 +227,7 @@ const MonthlyArchive = ({ filters, setSubBreadcrumb, view, setView }) => {
         };
     };
 
-    const monthlyArchiveData = React.useMemo(() => [generateMonthlyData()], []);
+    const monthlyArchiveData = React.useMemo(() => Array.from({ length: 9 }, (_, index) => generateMonthlyData(index)).reverse(), [project?.id, project?.dbId, project?.name, project?.project_name]);
 
     // Tooltip Helpers (similar to WeeklySummary)
 
@@ -337,6 +346,9 @@ const MonthlyArchive = ({ filters, setSubBreadcrumb, view, setView }) => {
 
     return (
         <div className="space-y-6 anim-fade-in text-left w-full relative overflow-visible">
+            <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-xs text-amber-800 dark:border-amber-900/50 dark:bg-amber-950/20 dark:text-amber-200">
+                Synthetic monthly demo archives from Feb through 31 Oct 2026. Figures and QA observations are illustrative, project-scoped previews and are not ERP records.
+            </div>
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 items-start">
                 {filteredData.map((m, i) => (
                     <div
@@ -1024,6 +1036,7 @@ const MonthlyArchive = ({ filters, setSubBreadcrumb, view, setView }) => {
                 onClose={() => setSelectedAiReport(null)}
                 reportData={selectedAiReport}
                 reportType="Monthly Archive"
+                project={project}
             />
 
             {/* PPT Editor Overlay */}

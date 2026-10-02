@@ -16,7 +16,7 @@ export const previewTransport = Object.freeze({
     emit({ type: 'conversation_completed' });
   },
   async decide(payload, { conversationId, requestId, signal, onEvent }) {
-    createDecision(payload.confirmationId, payload.decision);
+    createDecision(payload.confirmationId, payload.decision, payload.confirmationText);
     if (!signal.aborted) onEvent({ type: 'agent_error', eventId: `${requestId}-unavailable`, conversationId, requestId, error: { code: 'backend_unavailable', retryable: false } });
   },
 });

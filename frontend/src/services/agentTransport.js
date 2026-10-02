@@ -68,11 +68,14 @@ export function createConnectedTransport({ fetchImpl = (...args) => fetch(...arg
             if (!logicalKeys.has(request)) logicalKeys.set(request, randomKey());
             return exchange('/api/agent/requests', request, options, logicalKeys.get(request));
         },
-        async uploadFile(file) {
-            const token = typeof getAccessToken === 'function' ? getAccessToken() : null;
+        async uploadFile(file, { approvedForAgentWrite = false } = {}) {
             const formData = new FormData();
             formData.append('file', file);
-            const response = await fetchImpl('/api/agent/upload', {
+            formData.append('approvedForAgentWrite', String(approvedForAgentWrite === true));
+            let response;
+            for (let attempt = 0; attempt < 2; attempt++) {
+            const token = typeof getAccessToken === 'function' ? getAccessToken() : null;
+            response = await fetchImpl('/api/agent/upload', {
                 method: 'POST',
                 credentials: 'include',
                 headers: {
@@ -81,9 +84,13 @@ export function createConnectedTransport({ fetchImpl = (...args) => fetch(...arg
                 },
                 body: formData
             });
+            if (response.status !== 401 || attempt !== 0 || typeof refreshAuth !== 'function') break;
+            if (!await refreshAuth().catch(() => null)) break;
+            }
             if (!response.ok) {
                 const err = await response.json().catch(() => ({}));
-                throw new Error(err.error?.code || 'upload_failed');
+                throw new Error([401, 403].includes(response.status) ? 'authorization_denied'
+                    : response.status === 413 ? 'file_size_exceeded' : err.error?.code || 'upload_failed');
             }
             return await response.json();
         },

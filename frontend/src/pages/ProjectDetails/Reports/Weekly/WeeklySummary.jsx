@@ -2,7 +2,7 @@ import React from 'react';
 import { ArrowUpRight, Target, Info, Sparkles, ShieldCheck, ChevronRight, X, AlignLeft, Calendar, Clock, Cloud, Users } from 'lucide-react';
 import AISummaryDrawer from '../AISummaryDrawer';
 
-const WeeklySummary = ({ filters, setSubBreadcrumb, view, setView }) => {
+const WeeklySummary = ({ filters, setSubBreadcrumb, view, setView, project }) => {
     const [selectedReport, setSelectedReport] = React.useState(null);
     const [showDrawer, setShowDrawer] = React.useState(false);
     const [selectedAuditReport, setSelectedAuditReport] = React.useState(null);
@@ -12,7 +12,9 @@ const WeeklySummary = ({ filters, setSubBreadcrumb, view, setView }) => {
     const generateWeeklyData = () => {
         const reports = [];
         const startDate = new Date('2026-02-28');
-        const endDate = new Date('2026-04-28');
+        const endDate = new Date('2026-10-31');
+        let seed = String(project?.id || project?.dbId || 'demo').split('').reduce((sum, char) => sum + char.charCodeAt(0), 17);
+        const random = () => { seed = (seed * 9301 + 49297) % 233280; return seed / 233280; };
 
         const phases = {
             'Feb-Mar': {
@@ -47,11 +49,11 @@ const WeeklySummary = ({ filters, setSubBreadcrumb, view, setView }) => {
             const dateStr = d.toISOString().split('T')[0];
             const dayOfWeek = d.getDay();
 
-            if (dayOfWeek === 0 && Math.random() > 0.3) continue;
-            if (dayOfWeek === 6 && Math.random() > 0.4) continue;
+            if (dayOfWeek === 0 && random() > 0.3) continue;
+            if (dayOfWeek === 6 && random() > 0.4) continue;
 
-            const supervisor = supervisors[Math.floor(Math.random() * supervisors.length)];
-            const approver = approvers[Math.floor(Math.random() * approvers.length)];
+            const supervisor = supervisors[Math.floor(random() * supervisors.length)];
+            const approver = approvers[Math.floor(random() * approvers.length)];
 
             let phase = phases['Feb-Mar'];
             if (d > new Date('2026-03-15')) phase = phases['Mar-Apr'];
@@ -61,21 +63,22 @@ const WeeklySummary = ({ filters, setSubBreadcrumb, view, setView }) => {
             const currentTaskIdx = Math.floor((reports.length % taskSet.length));
             const task = taskSet[currentTaskIdx];
 
-            const progressQty = Math.floor(task.baseQty * (0.6 + Math.random() * 0.8));
-            const planQty = Math.floor(task.baseQty * (0.7 + Math.random() * 0.6));
+            const progressQty = Math.floor(task.baseQty * (0.6 + random() * 0.8));
+            const planQty = Math.floor(task.baseQty * (0.7 + random() * 0.6));
 
             const weatherOptions = ['sunny', 'cloudy', 'rainy', 'windy'];
-            const weatherType = weatherOptions[Math.floor(Math.random() * weatherOptions.length)];
-            const personnel = dayOfWeek === 0 ? Math.floor(Math.random() * 10) + 5 : dayOfWeek === 6 ? Math.floor(Math.random() * 15) + 20 : Math.floor(Math.random() * 30) + 40;
-            const completion = dayOfWeek === 0 ? Math.floor(Math.random() * 60) + 30 : Math.floor(Math.random() * 25) + 70;
+            const weatherType = weatherOptions[Math.floor(random() * weatherOptions.length)];
+            const personnel = dayOfWeek === 0 ? Math.floor(random() * 10) + 5 : dayOfWeek === 6 ? Math.floor(random() * 15) + 20 : Math.floor(random() * 30) + 40;
+            const completion = dayOfWeek === 0 ? Math.floor(random() * 60) + 30 : Math.floor(random() * 25) + 70;
             const nextTask = taskSet[(currentTaskIdx + 1) % taskSet.length];
 
             const labourAgencies = [
               { ...task, trades: task.trades },
-              { name: 'Support Agency', trades: { mason: Math.floor(Math.random() * 8) + 3, carpenter: Math.floor(Math.random() * 7) + 2, plumber: Math.floor(Math.random() * 4) + 1, painter: Math.floor(Math.random() * 5) + 2 } }
+              { name: 'Support Agency (Demo)', trades: { mason: Math.floor(random() * 8) + 3, carpenter: Math.floor(random() * 7) + 2, plumber: Math.floor(random() * 4) + 1, painter: Math.floor(random() * 5) + 2 } }
             ];
 
             reports.push({
+                isSynthetic: true,
                 date: dateStr,
                 dayOfWeek,
                 task: task.name,
@@ -86,7 +89,7 @@ const WeeklySummary = ({ filters, setSubBreadcrumb, view, setView }) => {
                 agency: task.agency,
                 personnel,
                 completion,
-                summary: `${task.name} executed ${progressQty} ${task.unit} today.`,
+                summary: `[SYNTHETIC DEMO] ${task.name} executed ${progressQty} ${task.unit} today.`,
                 tomorrowPlan: [{ item: nextTask.name, qty: planQty, unit: nextTask.unit }],
                 weather: weatherType,
                 labourData: labourAgencies.map((ag, idx) => ({
@@ -100,7 +103,7 @@ const WeeklySummary = ({ filters, setSubBreadcrumb, view, setView }) => {
                 audit: {
                     createdAt: new Date(d.getTime() + 17 * 3600000).toISOString(),
                     createdBy: supervisor,
-                    approval: { status: Math.random() > 0.15 ? 'Approved' : 'Pending', by: approver }
+                    approval: { status: 'Synthetic', by: approver }
                 }
             });
         }
@@ -205,6 +208,8 @@ const WeeklySummary = ({ filters, setSubBreadcrumb, view, setView }) => {
         const uniquePlans = Array.from(nextWeekPlans).slice(0, 3); // Top 3 strategic targets
 
         return {
+            isSynthetic: true,
+            dataSource: 'SYNTHETIC_DEMO',
             week: weekKey,
             items,
             dailyReports: weekReports,
@@ -227,7 +232,7 @@ const WeeklySummary = ({ filters, setSubBreadcrumb, view, setView }) => {
             audit: {
                 createdAt: weekReports[0]?.audit.createdAt,
                 createdBy: weekReports[0]?.audit.createdBy,
-                approval: { status: 'Approved', by: weekReports[0]?.audit.approval.by }
+                approval: { status: 'Synthetic', by: weekReports[0]?.audit.approval.by }
             }
         };
     });
@@ -337,6 +342,9 @@ const WeeklySummary = ({ filters, setSubBreadcrumb, view, setView }) => {
 
     return (
         <div className="space-y-6 anim-fade-in text-left">
+            <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-xs text-amber-800 dark:border-amber-900/50 dark:bg-amber-950/20 dark:text-amber-200">
+                Synthetic weekly demo summaries through 31 Oct 2026. Values are illustrative and are not persisted ERP records.
+            </div>
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
                 {filteredData.map((weekData, idx) => (
                     <div
@@ -666,6 +674,7 @@ const WeeklySummary = ({ filters, setSubBreadcrumb, view, setView }) => {
                 onClose={() => setSelectedAiReport(null)}
                 reportData={selectedAiReport}
                 reportType="Weekly Summary"
+                project={project}
             />
         </div>
     );

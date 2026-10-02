@@ -1,5 +1,5 @@
 import React, { useRef, useState } from 'react';
-import { ArrowUp, Square, Paperclip, FileSpreadsheet, X, Loader2 } from 'lucide-react';
+import { ArrowUp, Square, Paperclip, FileSpreadsheet, File, X, Loader2 } from 'lucide-react';
 
 /**
  * Prompt input composer supporting file attachments, question submission, and cancellation.
@@ -14,12 +14,14 @@ export default function AgentComposer({
     onStop,
     preview,
     attachment,
+    attachmentError,
     onAttachFile,
     onRemoveAttachment,
     uploading
 }) {
     const fileInputRef = useRef(null);
     const [isDragging, setIsDragging] = useState(false);
+    const [approvedForAgentWrite, setApprovedForAgentWrite] = useState(false);
 
     const handleDragOver = (e) => {
         e.preventDefault();
@@ -40,7 +42,7 @@ export default function AgentComposer({
         if (blocked || uploading) return;
         const droppedFile = e.dataTransfer.files?.[0];
         if (droppedFile && onAttachFile) {
-            onAttachFile(droppedFile);
+            onAttachFile(droppedFile, { approvedForAgentWrite });
         }
     };
 
@@ -54,11 +56,11 @@ export default function AgentComposer({
             <input
                 ref={fileInputRef}
                 type="file"
-                accept=".xlsx,.xls,.csv"
+                accept=".xlsx,.xls,.csv,.pdf,.doc,.docx,.jpg,.jpeg,.png,.webp"
                 className="hidden"
                 onChange={e => {
                     if (e.target.files?.[0] && onAttachFile) {
-                        onAttachFile(e.target.files[0]);
+                        onAttachFile(e.target.files[0], { approvedForAgentWrite });
                     }
                     e.target.value = '';
                 }}
@@ -71,11 +73,12 @@ export default function AgentComposer({
                 ? 'border-blue-500 bg-blue-50/40 dark:bg-blue-950/20 ring-2 ring-blue-500/20'
                 : 'border-gray-300/80 bg-gray-50/60 focus-within:border-blue-500 focus-within:bg-white focus-within:ring-2 focus-within:ring-blue-500/20 dark:border-gh-border dark:bg-gh-input dark:focus-within:border-blue-500 dark:focus-within:bg-gh-subtle'}`}>
 
+                {attachmentError && <p role="alert" className="mx-2.5 mt-2 text-xs text-red-600 dark:text-red-400">{attachmentError}</p>}
                 {/* Uploading progress indicator */}
                 {uploading && (
                     <div className="mx-2.5 mt-2 flex items-center gap-2 rounded-lg border border-blue-200 bg-blue-50/70 px-2.5 py-1.5 text-xs text-blue-800 dark:border-blue-900/60 dark:bg-blue-950/40 dark:text-blue-300">
                         <Loader2 size={13} className="animate-spin text-blue-600 dark:text-blue-400" />
-                        <span>Parsing spreadsheet and extracting columns…</span>
+                        <span>Preparing the attachment…</span>
                     </div>
                 )}
 
@@ -83,11 +86,18 @@ export default function AgentComposer({
                 {attachment && !uploading && (
                     <div className="mx-2.5 mt-2 flex items-center justify-between gap-2 rounded-lg border border-blue-200/90 bg-blue-50/80 px-2.5 py-1.5 text-xs text-blue-900 dark:border-blue-800/80 dark:bg-blue-950/40 dark:text-blue-200">
                         <div className="flex items-center gap-2 overflow-hidden min-w-0">
-                            <FileSpreadsheet size={15} className="shrink-0 text-blue-600 dark:text-blue-400" />
+                            {attachment.uploadInfo?.kind === 'attachment' ? <File size={15} className="shrink-0 text-blue-600 dark:text-blue-400" /> : <FileSpreadsheet size={15} className="shrink-0 text-blue-600 dark:text-blue-400" />}
                             <span className="truncate font-semibold">{attachment.uploadInfo?.filename || attachment.file?.name}</span>
                             {attachment.uploadInfo?.totalRows && (
                                 <span className="shrink-0 rounded bg-blue-200/80 px-1.5 py-0.5 text-[10px] font-bold text-blue-800 dark:bg-blue-900 dark:text-blue-300">
                                     {attachment.uploadInfo.totalRows} rows
+                                </span>
+                            )}
+                            {attachment.uploadInfo?.kind === 'attachment' && (
+                                <span className={`shrink-0 rounded px-1.5 py-0.5 text-[10px] font-bold ${attachment.uploadInfo.approvedForAgentWrite
+                                    ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950/70 dark:text-emerald-300'
+                                    : 'bg-amber-100 text-amber-800 dark:bg-amber-950/70 dark:text-amber-300'}`}>
+                                    {attachment.uploadInfo.approvedForAgentWrite ? 'Approved' : 'Not approved'}
                                 </span>
                             )}
                         </div>
@@ -112,12 +122,16 @@ export default function AgentComposer({
                 
                 <div className="flex items-center justify-between gap-2 px-2.5 pb-2 pt-1 border-t border-gray-200/40 dark:border-gh-border/40">
                     <div className="flex items-center gap-2">
-                        {/* Attach Excel file button */}
+                        <label className="flex items-center gap-1 text-[10px] text-gray-500 dark:text-gh-muted">
+                            <input type="checkbox" checked={approvedForAgentWrite} onChange={event => setApprovedForAgentWrite(event.target.checked)}
+                                className="h-3 w-3 rounded border-gray-300 text-blue-600 focus:ring-blue-500" />
+                            Approved quality file
+                        </label>
                         <button type="button" onClick={() => fileInputRef.current?.click()} disabled={blocked || uploading}
                             className="flex items-center gap-1 rounded-md px-2 py-1 text-[11px] font-medium text-gray-500 hover:bg-gray-200/60 hover:text-gray-800 dark:text-gh-muted dark:hover:bg-gh-hover dark:hover:text-gh-text transition-colors disabled:opacity-50"
-                            title="Attach Excel (.xlsx, .xls) or CSV spreadsheet">
+                            title="Attach a spreadsheet, approved quality document, or resolution image">
                             <Paperclip size={13} />
-                            <span>Attach Excel</span>
+                            <span>Attach file</span>
                         </button>
                     </div>
 

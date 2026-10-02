@@ -6,7 +6,93 @@ export function makeEvent(request, type, payload = {}) {
     if (Buffer.byteLength(JSON.stringify(event)) > 65536) fail('execution_failure', 'event_too_large');
     return event;
 }
+function displayFieldValue(value) {
+    if (value === null || value === undefined) return '';
+    if (typeof value === 'string' || typeof value === 'number') return value;
+    if (Array.isArray(value)) return value.map(item =>
+        typeof item === 'string' || typeof item === 'number' ? String(item) : JSON.stringify(item)
+    ).join('; ');
+    return JSON.stringify(value);
+}
 export function actionFor(tool, args, preconditions = null) {
+    if (tool.name === 'tasks.deleteSelected') {
+        const tasks = preconditions?.tasks || [];
+        const names = tasks.map(task => `${task.name}${task.task_code ? ` (${task.task_code})` : ''}`).join(', ');
+        const assignedPeople = [...new Set((preconditions?.assignees || []).map(user => user.user_name).filter(Boolean))].join(', ');
+        return { actionType: tool.name, title: `Delete ${tasks.length} project task${tasks.length === 1 ? '' : 's'}`,
+            riskLevel: 'DESTRUCTIVE', affectedRecords: tasks.length,
+            description: `Permanently delete ${tasks.length} specifically selected task${tasks.length === 1 ? '' : 's'} from this project. This cannot be undone. Confirm to continue.`,
+            confirmationPhrase: `DELETE ${tasks.length} TASK${tasks.length === 1 ? '' : 'S'}`,
+            fields: [
+                { label: 'Project', value: tasks[0]?.projectName || 'Selected project' },
+                { label: 'Selected tasks', value: names || args.taskIds.join(', ') },
+                { label: 'Assigned people', value: assignedPeople || 'None' },
+                { label: 'Task assignments removed', value: String(preconditions?.assigneeLinksRemoved || 0) },
+                { label: 'Approval-linked tasks', value: 'None (tasks awaiting approval are not eligible)' },
+                { label: 'Maximum batch size', value: '20 tasks' }
+            ] };
+    }
+    if (tool.name === 'projectParties.add' && preconditions?.contact) {
+        return { actionType: tool.name, title: 'Add project party', riskLevel: 'WRITE', affectedRecords: 1,
+            description: `Add ${preconditions.contact.name} to this project. Confirm the details before saving.`,
+            fields: [
+                { label: 'Contact', value: preconditions.contact.name },
+                { label: 'Category', value: preconditions.contact.category || 'Unknown' },
+            ] };
+    }
+    if (['projects.create', 'projects.update'].includes(tool.name)) {
+        const title = tool.name === 'projects.create' ? 'Create project' : 'Update project';
+        return { actionType: tool.name, title, riskLevel: 'WRITE', affectedRecords: 1,
+            description: `${title}${preconditions?.current?.name ? `: ${preconditions.current.name}` : args.name ? `: ${args.name}` : ''}. Confirm the details before saving.`,
+            fields: Object.entries(args).filter(([label]) => label !== 'projectId').map(([label, value]) => ({ label, value })) };
+    }
+    if (['tasks.create', 'tasks.update'].includes(tool.name)) {
+        const title = tool.name === 'tasks.create' ? 'Create task' : 'Update task';
+        return { actionType: tool.name, title, riskLevel: 'WRITE', affectedRecords: 1,
+            description: `${title}${preconditions?.current?.name ? `: ${preconditions.current.name}` : args.name ? `: ${args.name}` : ''}. Confirm the details before saving.`,
+            fields: Object.entries(args).filter(([label]) => !['projectId', 'taskId'].includes(label)).map(([label, value]) => ({ label, value })) };
+    }
+    if (tool.name === 'tasks.assign' && preconditions?.task && preconditions?.members) {
+        return { actionType: tool.name, title: 'Assign task members', riskLevel: 'WRITE', affectedRecords: 1,
+            description: `Assign members to ${preconditions.task.name}. Confirm the details before saving.`,
+            fields: [
+                { label: 'Task', value: preconditions.task.name },
+                { label: 'Members', value: preconditions.members.map(member => member.name).join(', ') },
+            ] };
+    }
+    if (tool.risk === 'WRITE' && (tool.name.startsWith('tasks.') || tool.name.startsWith('projectParties.') || tool.name === 'projects.assignMember')) {
+        const titles = { 'projectParties.add': 'Add project party', 'projectParties.update': 'Update project party', 'projects.assignMember': 'Assign project member (restricted)', 'tasks.assign': 'Assign task members', 'tasks.createCategory': 'Create task category', 'tasks.updateCategory': 'Rename task category', 'tasks.reorder': 'Reorder tasks' };
+        const title = titles[tool.name] || tool.name;
+        return { actionType: tool.name, title, riskLevel: 'WRITE', affectedRecords: 1,
+            description: `${title}. Confirm the details before saving.`,
+            fields: Object.entries(args).filter(([label, value]) => label !== 'projectId' && !(Array.isArray(value) && value.length === 0))
+                .map(([label, value]) => ({ label, value: displayFieldValue(value) })) };
+    }
+    if (tool.name.startsWith('meetings.') || tool.name.startsWith('directory.') || tool.name.startsWith('summaries.') || tool.name.startsWith('documents.') || tool.name.startsWith('quality')) {
+        const titles = { 'meetings.create': 'Create meeting', 'meetings.update': 'Update meeting', 'directory.create': 'Add directory entry', 'directory.update': 'Update directory entry', 'summaries.create': 'Create project summary', 'summaries.update': 'Update project summary', 'documents.saveDraft': 'Save document draft', 'documents.submitDraft': 'Submit document draft for approval', 'qualityObservations.create': 'Create quality observation', 'qualityObservations.update': 'Update quality observation', 'qualityObservations.submitFix': 'Submit corrective fix', 'qualityMethodologies.create': 'Add quality methodology', 'qualityMethodologies.update': 'Update quality methodology', 'qualityChecklists.create': 'Add quality checklist', 'qualityChecklists.update': 'Update quality checklist' };
+        const title = titles[tool.name] || tool.name;
+        return { actionType: tool.name, title, riskLevel: 'WRITE', affectedRecords: 1,
+            description: `${title}. Confirm the details before saving.`,
+            fields: Object.entries(args).filter(([label, value]) => label !== 'projectId' && !(Array.isArray(value) && value.length === 0)).map(([label, value]) => ({ label,
+                value: label === 'content' ? `${Object.keys(value || {}).length} draft field(s)` : displayFieldValue(value) })) };
+    }
+    if (['clients.create', 'clients.update', 'vendors.update', 'clients.addInteraction'].includes(tool.name)) {
+        const titles = { 'clients.create': 'Create client', 'clients.update': 'Update client', 'vendors.update': 'Update vendor', 'clients.addInteraction': 'Log client interaction' };
+        return { actionType: tool.name, title: titles[tool.name], riskLevel: 'WRITE', affectedRecords: 1,
+            description: `${titles[tool.name]}${preconditions?.contact?.name ? `: ${preconditions.contact.name}` : ''}. Confirm the details before saving.`,
+            fields: Object.entries(args).map(([label, value]) => ({ label, value })) };
+    }
+    if (tool.name === 'clients.bulkImport') {
+        return { actionType: tool.name, title: 'Import clients', riskLevel: 'BULK_WRITE', affectedRecords: preconditions?.validCount || 0,
+            description: `Import ${preconditions?.validCount || 0} clients after confirmation.`, fields: [
+                { label: 'Spreadsheet rows', value: String(preconditions?.totalRows || 0) },
+                { label: 'Ready to import', value: String(preconditions?.validCount || 0) },
+                { label: 'Duplicates skipped', value: String(preconditions?.duplicateCount || 0) },
+                { label: 'Invalid rows skipped', value: String(preconditions?.invalidCount || 0) },
+                { label: 'Sample clients', value: (preconditions?.sampleValid || []).map(row => row.name).join(', ') },
+                { label: 'Issues', value: (preconditions?.issues || []).join('; ') }
+            ] };
+    }
     if (tool.name === 'vendors.bulkImport') {
         const count = preconditions?.validCount ?? 0;
         const total = preconditions?.totalRows ?? 0;

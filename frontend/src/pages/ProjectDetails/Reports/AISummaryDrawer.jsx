@@ -11,7 +11,7 @@ const POINT_COLORS = [
     { text: 'text-purple-500', bg: 'bg-purple-500/10', border: 'border-purple-500/20', ring: 'ring-purple-500/20' },
 ];
 
-const AISummaryDrawer = ({ isOpen, onClose, reportData, reportType }) => {
+const AISummaryDrawer = ({ isOpen, onClose, reportData, reportType, project }) => {
     const [isLoading, setIsLoading] = useState(false);
     const [summaryData, setSummaryData] = useState(null);
     const [error, setError] = useState(null);
@@ -31,27 +31,14 @@ const AISummaryDrawer = ({ isOpen, onClose, reportData, reportType }) => {
         setIsLoading(true);
         setError(null);
         try {
-            // Enrich report with project context so the LLM can summarize it
-            const reportDate = new Date(reportData.date || new Date());
-            const projectStartDate = new Date('2026-02-01');
-            const projectEndDate = new Date('2027-01-31');
-            const totalDuration = Math.floor((projectEndDate - projectStartDate) / (1000 * 60 * 60 * 24)) + 1;
-            const daysElapsed = Math.max(0, Math.floor((reportDate - projectStartDate) / (1000 * 60 * 60 * 24)));
-            const daysRemaining = Math.max(0, totalDuration - daysElapsed);
-
             const enrichedData = {
                 ...reportData,
-                projectName: 'New Airport Terminal - Phase 1',
-                employer: 'Airports Authority of India',
-                contractNo: 'AAI/ENGG/2026/089',
-                location: 'Chennai, Tamil Nadu',
-                startDate: '2026-02-01',
-                endDate: '2027-01-31',
-                description: 'Construction of the new International terminal with glass facade and steel roof structure.',
-                metrics: {
-                    totalDays: totalDuration,
-                    daysElapsed,
-                    daysRemaining,
+                reportType,
+                project: {
+                    id: project?.id ?? project?.dbId ?? null,
+                    name: project?.name || project?.project_name || null,
+                    code: project?.project_code || project?.code || null,
+                    location: project?.location || project?.metadata?.location || null,
                 },
             };
 
@@ -69,6 +56,8 @@ const AISummaryDrawer = ({ isOpen, onClose, reportData, reportType }) => {
 
     const title = `${reportType} AI Analysis`;
     const confidenceScore = summaryData?.confidenceScore || 0;
+    const isSynthetic = reportData.isSynthetic || reportData.dataSource === 'SYNTHETIC_DEMO';
+    const showSyntheticLabel = isSynthetic && !reportType.toLowerCase().includes('daily');
 
     return (
         <div className="fixed inset-0 z-[3000] flex justify-end overflow-hidden anim-fade-in group/ai-drawer">
@@ -91,7 +80,7 @@ const AISummaryDrawer = ({ isOpen, onClose, reportData, reportType }) => {
                         <div className="p-3 bg-indigo-500 rounded-2xl shadow-lg shadow-indigo-500/20 text-white flex items-center justify-center">
                             <Sparkles size={24} />
                         </div>
-                        <span className="text-[10px] font-bold text-indigo-500 tracking-[0.2em] uppercase">AI Summarization</span>
+                        <span className="text-[10px] font-bold text-indigo-500 tracking-[0.2em] uppercase">{showSyntheticLabel ? 'Synthetic demo analysis' : 'AI Summarization'}</span>
                     </div>
 
                     <h2 className="text-3xl font-bold text-gray-900 dark:text-white tracking-tight">{title}</h2>
@@ -112,7 +101,7 @@ const AISummaryDrawer = ({ isOpen, onClose, reportData, reportType }) => {
                             </div>
                             <div className="text-center space-y-2">
                                 <p className="text-sm font-bold text-gray-900 dark:text-white">Analyzing Report Data</p>
-                                <p className="text-xs text-gray-500">AI is processing the daily progress report...</p>
+                                <p className="text-xs text-gray-500">AI is reviewing the {reportType.toLowerCase()} data provided.</p>
                             </div>
                         </div>
                     )}

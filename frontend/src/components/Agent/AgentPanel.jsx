@@ -7,7 +7,7 @@ import { canSend } from './agentReducer.js';
 
 export default function AgentPanel({ open, onClose, launcherRef, inputRef, context, projectName, state, draft,
     onDraft, onSend, onNew, onDecision, onRetry, transport, onStop,
-    attachment, onAttachFile, onRemoveAttachment, uploading, onClearEntityContext }) {
+    attachment, attachmentError, onAttachFile, onRemoveAttachment, uploading, onClearEntityContext }) {
     const dialogRef = useRef(null);
     const closeRef = useRef(null);
     const pointerDownTargetRef = useRef(null);
@@ -138,7 +138,7 @@ export default function AgentPanel({ open, onClose, launcherRef, inputRef, conte
         {/* Bottom Composer */}
         <AgentComposer draft={draft} onDraft={onDraft} onSend={onSend} blocked={!canSend(state)} inputRef={inputRef}
             preview={preview}
-            attachment={attachment} onAttachFile={onAttachFile} onRemoveAttachment={onRemoveAttachment} uploading={uploading}
+            attachment={attachment} attachmentError={attachmentError} onAttachFile={onAttachFile} onRemoveAttachment={onRemoveAttachment} uploading={uploading}
             canStop={transport.supportsStop && !!state.activeRequestId && !state.pending && state.status !== 'executing'} onStop={onStop} />
     </dialog>, document.body);
 }

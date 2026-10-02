@@ -1,7 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import { getAgentService, createRuntimeLimits } from './agentRuntime.js';
 import { fail, identity, integer, safeError, sha256 } from './agentValidation.js';
-import { parseSpreadsheet } from './agentUploadService.js';
+import { parseSpreadsheet, stageAttachment } from './agentUploadService.js';
 import { getExportedDataset } from './agentExportService.js';
 
 const limit = createRuntimeLimits();
@@ -44,7 +44,11 @@ export function createController(resolve = getAgentService, limiter = limit) {
             try {
                 const actor = actorFromRequest(req);
                 if (!req.file) fail('validation_error', 'no_file_uploaded');
-                const result = await parseSpreadsheet(req.file.buffer, req.file.originalname, actor.orgId);
+                const ext = String(req.file.originalname || '').toLowerCase().split('.').pop();
+                const result = ['xlsx', 'xls', 'csv'].includes(ext)
+                    ? await parseSpreadsheet(req.file.buffer, req.file.originalname, actor.orgId)
+                    : stageAttachment(req.file.buffer, req.file.originalname, req.file.mimetype, actor.orgId,
+                        req.body?.approvedForAgentWrite === 'true');
                 return res.status(200).json(result);
             } catch (error) {
                 return res.status(error?.code === 'authorization_denied' ? 403 : 400).json({ error: safeError(error) });
@@ -77,16 +81,16 @@ export function createController(resolve = getAgentService, limiter = limit) {
                     // For idempotent retries (non-fresh), the callback is ignored inside
                     // submit() since the inflight promise has already resolved, and we fall
                     // back to the batch event array returned below.
-                    let liveStreamUsed = false;
+                    const streamedEventIds = new Set();
                     const onStreamEvent = event => {
-                        liveStreamUsed = true;
                         writeEvent(event);
+                        streamedEventIds.add(event.eventId);
                     };
                     const result = await service.submit(actor, req.body, req.headers['x-agent-client-request-key'], onStreamEvent);
                     res.locals.agentRequestId = result.requestId;
-                    // If events were already streamed live, return an empty array to avoid
-                    // writing duplicates. For non-fresh idempotent replays, return the full list.
-                    return liveStreamUsed ? [] : result.events;
+                    // Flush persisted events not already streamed, including terminal errors.
+                    // Idempotent replays still return the complete event list.
+                    return result.events.filter(event => !streamedEventIds.has(event.eventId));
                 }
                 if (operation === 'decision') return service.decide(actor, req.body, conversationId);
                 const after = req.query.after === undefined ? 0 : Number(req.query.after);
