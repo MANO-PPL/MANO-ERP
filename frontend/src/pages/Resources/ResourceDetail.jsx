@@ -232,6 +232,19 @@ const ResourceDetail = ({
         .sort()
         .pop(), [compositionHistory]);
 
+    // Available component resources for composite recipes (Materials and Labours)
+    const { materialResources, labourResources } = useMemo(() => {
+        const materials = [];
+        const labours = [];
+        (allResourcesList || []).forEach(r => {
+            if (String(r.id) === String(resourceId)) return;
+            const t = String(r.type || '').toLowerCase();
+            if (t === 'material') materials.push(r);
+            else if (t === 'labour') labours.push(r);
+        });
+        return { materialResources: materials, labourResources: labours };
+    }, [allResourcesList, resourceId]);
+
     const handleCopy = () => {
         if (!formData) return;
         const detailsText = `RESOURCE DETAILS: ${formData.name}
@@ -376,6 +389,7 @@ Remarks       : ${formData.remarks || '-'}
             component_resource_id: Number(compForm.component_resource_id),
             component_name: compRes ? compRes.name : `Component #${compForm.component_resource_id}`,
             component_code: compRes ? compRes.code : '',
+            component_type: compRes ? compRes.type : undefined,
             quantity: parseFloat(compForm.quantity),
             unit_code: compForm.unit_code || (compRes ? compRes.base_unit_code : 'kg')
         };
@@ -385,7 +399,7 @@ Remarks       : ${formData.remarks || '-'}
             compositions: [...prev.compositions, newComp]
         }));
 
-        setCompForm({ component_resource_id: '', quantity: '1', unit_code: formData.base_unit_code || 'kg' });
+        setCompForm({ component_resource_id: '', quantity: '1', unit_code: 'kg' });
         setIsAddingComp(false);
         if (showToast) showToast('sparkle', 'Ingredient Added', `Added component "${newComp.component_name}". Click "Save Changes" to commit.`);
     };
@@ -802,16 +816,39 @@ Remarks       : ${formData.remarks || '-'}
                                             <select
                                                 required
                                                 value={compForm.component_resource_id}
-                                                onChange={e => setCompForm({ ...compForm, component_resource_id: e.target.value })}
+                                                onChange={e => {
+                                                    const selectedId = e.target.value;
+                                                    const compRes = allResourcesList.find(r => String(r.id) === String(selectedId));
+                                                    setCompForm(prev => ({
+                                                        ...prev,
+                                                        component_resource_id: selectedId,
+                                                        unit_code: compRes?.base_unit_code || prev.unit_code || 'kg'
+                                                    }));
+                                                }}
                                                 className="bg-white dark:bg-[#0d1117] border border-gray-200 dark:border-white/10 rounded-lg px-2 py-1 text-xs font-semibold focus:outline-none"
                                             >
                                                 <option value="">Select component resource...</option>
-                                                {allResourcesList
-                                                    .filter(r => String(r.id) !== String(resourceId))
-                                                    .map(r => (
-                                                        <option key={r.id} value={r.id}>{r.name} ({r.base_unit_code})</option>
-                                                    ))
-                                                }
+                                                {materialResources.length > 0 && (
+                                                    <optgroup label={`Materials (${materialResources.length})`}>
+                                                        {materialResources.map(r => (
+                                                            <option key={r.id} value={r.id}>
+                                                                {r.name} {r.code ? `(#${r.code})` : ''} — {r.base_unit_code}
+                                                            </option>
+                                                        ))}
+                                                    </optgroup>
+                                                )}
+                                                {labourResources.length > 0 && (
+                                                    <optgroup label={`Labour (${labourResources.length})`}>
+                                                        {labourResources.map(r => (
+                                                            <option key={r.id} value={r.id}>
+                                                                {r.name} {r.code ? `(#${r.code})` : ''} — {r.base_unit_code}
+                                                            </option>
+                                                        ))}
+                                                    </optgroup>
+                                                )}
+                                                {materialResources.length === 0 && labourResources.length === 0 && (
+                                                    <option disabled value="">No materials or labour resources available</option>
+                                                )}
                                             </select>
                                             <input
                                                 required
@@ -858,27 +895,47 @@ Remarks       : ${formData.remarks || '-'}
                                             </tr>
                                         </thead>
                                         <tbody className="divide-y divide-gray-100 dark:divide-white/5">
-                                            {formData.compositions.map((comp, idx) => (
-                                                <tr key={comp.id || idx} className="hover:bg-purple-50/30 dark:hover:bg-purple-900/10">
-                                                    <td className="px-3.5 py-2.5 font-semibold text-gray-900 dark:text-white">
-                                                        {comp.component_name || `Component #${comp.component_resource_id}`}
-                                                    </td>
-                                                    <td className="px-3.5 py-2.5 text-right font-mono font-bold text-purple-600 dark:text-purple-400">
-                                                        {comp.quantity} {comp.unit_code}
-                                                    </td>
-                                                    <td className="px-3 py-2.5 text-center">
-                                                        {canWrite && (
-                                                            <button
-                                                                onClick={() => handleDeleteComposition(comp.id, comp.component_name)}
-                                                                className="p-1 text-gray-400 hover:text-red-500 rounded transition"
-                                                                title="Remove ingredient"
-                                                            >
-                                                                <Trash2 size={13} />
-                                                            </button>
-                                                        )}
-                                                    </td>
-                                                </tr>
-                                            ))}
+                                            {formData.compositions.map((comp, idx) => {
+                                                const compRes = allResourcesList.find(r => String(r.id) === String(comp.component_resource_id));
+                                                const compType = comp.component_type || compRes?.type;
+                                                return (
+                                                    <tr key={comp.id || idx} className="hover:bg-purple-50/30 dark:hover:bg-purple-900/10">
+                                                        <td className="px-3.5 py-2.5 font-semibold text-gray-900 dark:text-white">
+                                                            <div className="flex items-center gap-2">
+                                                                {compType && (
+                                                                    <span className={`text-[9px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded border ${
+                                                                        compType === 'labour'
+                                                                            ? 'bg-blue-50 text-blue-600 border-blue-200 dark:bg-blue-900/20 dark:text-blue-400 dark:border-blue-500/20'
+                                                                            : 'bg-amber-50 text-amber-600 border-amber-200 dark:bg-amber-900/20 dark:text-amber-400 dark:border-amber-500/20'
+                                                                    }`}>
+                                                                        {compType}
+                                                                    </span>
+                                                                )}
+                                                                <span>{comp.component_name || `Component #${comp.component_resource_id}`}</span>
+                                                                {(comp.component_code || compRes?.code) && (
+                                                                    <span className="text-[10px] font-mono text-gray-400">
+                                                                        #{comp.component_code || compRes?.code}
+                                                                    </span>
+                                                                )}
+                                                            </div>
+                                                        </td>
+                                                        <td className="px-3.5 py-2.5 text-right font-mono font-bold text-purple-600 dark:text-purple-400">
+                                                            {comp.quantity} {comp.unit_code}
+                                                        </td>
+                                                        <td className="px-3 py-2.5 text-center">
+                                                            {canWrite && (
+                                                                <button
+                                                                    onClick={() => handleDeleteComposition(comp.id, comp.component_name)}
+                                                                    className="p-1 text-gray-400 hover:text-red-500 rounded transition"
+                                                                    title="Remove ingredient"
+                                                                >
+                                                                    <Trash2 size={13} />
+                                                                </button>
+                                                            )}
+                                                        </td>
+                                                    </tr>
+                                                );
+                                            })}
                                         </tbody>
                                     </table>
                                 </div>

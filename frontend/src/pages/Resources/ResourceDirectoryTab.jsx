@@ -352,6 +352,7 @@ export const ResourceDirectoryTab = ({
                 <ResourceDetail
                     resourceId={viewingResource.id || viewingResource.resource_id}
                     resource={viewingResource}
+                    resources={resources}
                     isOpen={Boolean(viewingResource)}
                     onClose={() => setViewingResource(null)}
                     onEdit={(r) => {
