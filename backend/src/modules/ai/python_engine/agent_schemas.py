@@ -119,6 +119,21 @@ class TaskDeleteSelectedArgs(StrictModel):
             raise ValueError("Duplicate task IDs")
         return self
 
+
+class NamedDeleteTarget(StrictModel):
+    id: Id
+    expectedName: Name
+
+
+class NamedDeleteArgs(StrictModel):
+    targets: list[NamedDeleteTarget] = Field(min_length=1, max_length=20)
+
+    @model_validator(mode="after")
+    def unique_targets(self):
+        if len({target.id for target in self.targets}) != len(self.targets):
+            raise ValueError("Duplicate delete target IDs")
+        return self
+
 class ProjectPartyAddArgs(StrictModel):
     projectId: Id
     contactId: Id
@@ -385,9 +400,11 @@ class AdminUserSystemPermissionsArgs(StrictModel):
         return self
 
 
-PROJECT_PERMISSION_KEYS = frozenset({"Tasks", "WIP", "Reports", "General Documents", "Drawings", "Planning",
-                                     "Contracts", "Quality", "Safety", "Billing", "Material Management", "Approvals"})
-SYSTEM_PERMISSION_KEYS = frozenset({"projects", "vendors", "clients", "resources", "units", "collaboration", "admin"})
+PROJECT_PERMISSION_KEYS = frozenset({"Tasks", "WIP", "Reports", "General Documents", "Spreadsheets", "Drawings",
+                                     "Planning", "Phases", "Contracts", "Quality", "Safety", "Billing",
+                                     "Material Management", "Transactions", "Approvals"})
+SYSTEM_PERMISSION_KEYS = frozenset({"projects", "vendors", "clients", "resources", "spreadsheets", "units",
+                                  "collaboration", "collaboration.chat", "collaboration.calendar", "admin"})
 
 
 class ProjectMemberPermissionsArgs(StrictModel):
@@ -677,8 +694,9 @@ class MprArgs(StrictModel):
 
 ARG_MODELS = {
     "resources.create": ResourceCreateArgs, "resources.update": ResourceEditArgs, "resources.addConversion": ConversionAddArgs,
-    "clients.create": ClientCreateArgs, "clients.update": ContactEditArgs,
-    "vendors.update": ContactEditArgs, "clients.addInteraction": ClientInteractionArgs,
+    "resources.deleteSelected": NamedDeleteArgs,
+    "clients.create": ClientCreateArgs, "clients.update": ContactEditArgs, "clients.deleteSelected": NamedDeleteArgs,
+    "vendors.update": ContactEditArgs, "vendors.deleteSelected": NamedDeleteArgs, "clients.addInteraction": ClientInteractionArgs,
     "projects.search": ListArgs, "projects.get": ProjectArgs, "projects.getExecutiveBriefing": ProjectArgs,
     "projects.create": ProjectCreateArgs, "projects.update": ProjectUpdateArgs, "clients.search": ListArgs, "clients.get": ContactArgs,
     "tasks.create": TaskCreateArgs, "tasks.update": TaskUpdateArgs, "tasks.deleteSelected": TaskDeleteSelectedArgs,

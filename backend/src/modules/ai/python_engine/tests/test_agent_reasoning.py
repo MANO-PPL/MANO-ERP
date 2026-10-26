@@ -19,6 +19,160 @@ def metrics():
 
 
 class Reasoning(unittest.IsolatedAsyncioTestCase):
+    async def test_named_master_delete_requires_exact_verified_result(self):
+        async def provider(messages):
+            raise AssertionError("Named deletion must not ask the provider to invent a record ID")
+
+        for entity, page in (("client", "Clients"), ("vendor", "Vendors"), ("resource", "Resources")):
+            with self.subTest(entity=entity):
+                tool = f"{entity}s.deleteSelected"
+                search = f"{entity}s.search"
+                base = ModelRequest.model_validate({**request().model_dump(),
+                    "message": f"Delete the {entity} named QA Sample. Show the confirmation preview only.",
+                    "context": {"route": f"/{entity}s", "module": page},
+                    "allowedTools": [search, tool],
+                })
+                lookup = await reason(base, provider)
+                self.assertEqual(lookup.tool, search)
+                self.assertEqual(lookup.arguments, {"query": "QA Sample", "limit": 20})
+                verified = ModelRequest.model_validate({**base.model_dump(), "results": [
+                    {"stepId": "lookup", "tool": search, "data": [{"id": 42, "name": "QA Sample"}]}]})
+                proposal = await reason(verified, provider)
+                self.assertEqual(proposal.tool, tool)
+                self.assertEqual(proposal.arguments, {"targets": [{"id": 42, "expectedName": "QA Sample"}]})
+                ambiguous = ModelRequest.model_validate({**base.model_dump(), "results": [
+                    {"stepId": "lookup", "tool": search, "data": [
+                        {"id": 42, "name": "QA Sample"}, {"id": 43, "name": "QA Sample"}]}]})
+                self.assertIsInstance(await reason(ambiguous, provider), Assistant)
+
+    async def test_admin_user_uniform_no_access_uses_exact_verified_employee(self):
+        async def provider(messages):
+            raise AssertionError("Explicit uniform access should not need provider arguments")
+
+        base = ModelRequest.model_validate({**request().model_dump(),
+            "message": "Update employee Test User One’s system permissions to no access for every system permission. Show preview only.",
+            "context": {"route": "/admin", "module": "Admin"},
+            "allowedTools": ["adminUsers.search", "adminUsers.setSystemPermissions"],
+        })
+        lookup = await reason(base, provider)
+        self.assertEqual(lookup.tool, "adminUsers.search")
+        self.assertEqual(lookup.arguments["query"], "Test User One")
+        verified = ModelRequest.model_validate({**base.model_dump(),
+            "results": [{"stepId": "user-lookup", "tool": "adminUsers.search", "data": [
+                {"id": 12, "name": "Test User One", "user_type": "employee"}]}],
+        })
+        proposal = await reason(verified, provider)
+        self.assertEqual(proposal.tool, "adminUsers.setSystemPermissions")
+        self.assertEqual(proposal.arguments["userId"], 12)
+        self.assertEqual(set(proposal.arguments["permissions"]), agent_reasoning.SYSTEM_PERMISSION_KEYS)
+        self.assertEqual(set(proposal.arguments["permissions"].values()), {"none"})
+
+    async def test_named_document_cycle_cancel_uses_verified_scoped_cycle(self):
+        async def provider(messages):
+            raise AssertionError("A named cycle should use a verified lookup, not model-generated IDs")
+
+        base = ModelRequest.model_validate({**request().model_dump(),
+            "message": "Cancel the Project Directory document cycle for KhalejaMonday Pvt LTD. Show preview only.",
+            "context": {"route": "/projects/76", "module": "General Documents", "projectId": "76"},
+            "allowedTools": ["documents.cancelCycle", "documentCycles.search"],
+        })
+        lookup = await reason(base, provider)
+        self.assertEqual(lookup.tool, "documentCycles.search")
+        self.assertEqual(lookup.arguments, {"projectId": 76, "query": "Project Directory", "limit": 10})
+        verified = ModelRequest.model_validate({**base.model_dump(),
+            "results": [{"stepId": "cycle-lookup", "tool": "documentCycles.search", "data": [
+                {"id": 20, "title": "Project Directory", "projectName": "KhalejaMonday Pvt LTD", "status": "drafting"}]}],
+        })
+        proposal = await reason(verified, provider)
+        self.assertEqual(proposal.tool, "documents.cancelCycle")
+        self.assertEqual(proposal.arguments, {"projectId": 76, "cycleId": 20})
+        wrong_project = ModelRequest.model_validate({**base.model_dump(),
+            "results": [{"stepId": "cycle-lookup", "tool": "documentCycles.search", "data": [
+                {"id": 20, "title": "Project Directory", "projectName": "Another Project"}]}],
+        })
+        self.assertIsInstance(await reason(wrong_project, provider), Assistant)
+
+    async def test_named_document_archive_uses_verified_scoped_instance(self):
+        async def provider(messages):
+            raise AssertionError("A named instance should use a verified lookup")
+
+        base = ModelRequest.model_validate({**request().model_dump(),
+            "message": "Archive the Project Summary document instance for KhalejaMonday Pvt LTD. Show preview only.",
+            "context": {"route": "/projects/76", "module": "General Documents", "projectId": "76"},
+            "allowedTools": ["documents.archiveInstance", "documentInstances.search"],
+        })
+        lookup = await reason(base, provider)
+        self.assertEqual(lookup.tool, "documentInstances.search")
+        self.assertEqual(lookup.arguments, {"projectId": 76, "query": "Project Summary", "limit": 10})
+        verified = ModelRequest.model_validate({**base.model_dump(),
+            "results": [{"stepId": "instance-lookup", "tool": "documentInstances.search", "data": [
+                {"id": 17, "title": "Project Summary", "projectName": "KhalejaMonday Pvt LTD", "status": "active"}]}],
+        })
+        proposal = await reason(verified, provider)
+        self.assertEqual(proposal.tool, "documents.archiveInstance")
+        self.assertEqual(proposal.arguments, {"projectId": 76, "instanceId": 17})
+
+    async def test_admin_contact_update_never_reaches_provider(self):
+        async def provider(messages):
+            raise AssertionError("Private contact details must not reach the provider")
+
+        base = ModelRequest.model_validate({**request().model_dump(),
+            "message": "Update employee Asha's email to asha.qa@example.com. Show preview only.",
+            "allowedTools": ["adminUsers.search", "adminUsers.updateProfile"],
+        })
+        lookup = await reason(base, provider)
+        self.assertEqual(lookup.tool, "adminUsers.search")
+        self.assertEqual(lookup.arguments["query"], "Asha")
+        verified = ModelRequest.model_validate({**base.model_dump(),
+            "results": [{"stepId": "user-lookup", "tool": "adminUsers.search", "data": [
+                {"id": 8, "name": "Asha", "user_type": "employee"}]}],
+        })
+        proposal = await reason(verified, provider)
+        self.assertEqual(proposal.tool, "adminUsers.updateProfile")
+        self.assertEqual(proposal.arguments, {"userId": 8, "expectedName": "Asha",
+                                              "email": "asha.qa@example.com"})
+        wrong_user = ModelRequest.model_validate({**base.model_dump(),
+            "results": [{"stepId": "user-lookup", "tool": "adminUsers.search", "data": [
+                {"id": 8, "name": "Asha R", "user_type": "employee"}]}],
+        })
+        self.assertIsInstance(await reason(wrong_user, provider), Assistant)
+        two_changes = ModelRequest.model_validate({**base.model_dump(),
+            "message": "Update employee Asha's email to asha.qa@example.com and phone to 9876543210.",
+        })
+        self.assertIsInstance(await reason(two_changes, provider), Assistant)
+
+        phone_request = ModelRequest.model_validate({**base.model_dump(),
+            "message": "Change employee Asha's phone number to 9876543210. Show preview only.",
+        })
+        self.assertEqual((await reason(phone_request, provider)).tool, "adminUsers.search")
+        phone_verified = ModelRequest.model_validate({**phone_request.model_dump(),
+            "results": [{"stepId": "user-lookup", "tool": "adminUsers.search", "data": [
+                {"id": 8, "name": "Asha", "user_type": "employee"}]}],
+        })
+        self.assertEqual((await reason(phone_verified, provider)).arguments["phone_no"], "9876543210")
+
+    async def test_admin_access_planning_strips_prior_private_contact_context(self):
+        async def provider(messages):
+            payload = messages[1]["content"]
+            self.assertNotIn("private@example.com", payload)
+            self.assertNotIn("9876543210", payload)
+            return Assistant(kind="assistant", text="Please specify the desired access levels.", sources=[]), metrics()
+
+        req = ModelRequest.model_validate({**request().model_dump(),
+            "message": "Set employee Asha's system permissions to view only.",
+            "allowedTools": ["adminUsers.search", "adminUsers.setSystemPermissions"],
+            "context": {"route": "/admin", "module": "Admin", "viewSummary": "phone 9876543210",
+                        "selectedEntityName": "private@example.com"},
+            "history": [{"role": "user", "text": "private@example.com"}],
+        })
+        await reason(req, provider)
+        private_target = ModelRequest.model_validate({**req.model_dump(),
+            "message": "Set employee private@example.com system permissions to view only.",
+        })
+        refusal = await reason(private_target, provider)
+        self.assertIsInstance(refusal, Assistant)
+        self.assertIn("privacy", refusal.text)
+
     async def test_document_template_type_is_not_invented(self):
         async def provider(messages):
             raise AssertionError("Missing template type must be clarified before provider planning")
@@ -103,6 +257,85 @@ class Reasoning(unittest.IsolatedAsyncioTestCase):
         self.assertIsInstance(result, ToolIntent)
         self.assertEqual(result.tool, "resources.update")
         self.assertEqual(result.arguments, {"resourceId": 39, "description": "Cement used for testing"})
+
+    async def test_permission_template_rename_uses_only_a_verified_search_record(self):
+        async def provider(messages):
+            raise AssertionError("A verified permission-template rename should not rely on model-generated IDs")
+
+        value = ModelRequest.model_validate({
+            **request().model_dump(),
+            "message": "Rename the existing system permission template Test to Phase 3 QA Permission Template Preview Only. Do not change its permissions. Show the confirmation preview only; do not submit or confirm.",
+            "results": [{"stepId": "r-template-search", "tool": "permissionTemplates.search", "data": [
+                {"id": 52, "name": "Test system", "type": "system", "permissions": {"admin": 2}},
+            ]}],
+            "allowedTools": ["permissionTemplates.update", "permissionTemplates.search"],
+        })
+        result = await reason(value, provider)
+        self.assertIsInstance(result, ToolIntent)
+        self.assertEqual(result.tool, "permissionTemplates.update")
+        self.assertEqual(result.arguments, {
+            "templateId": 52, "type": "system", "expectedName": "Test system",
+            "name": "Phase 3 QA Permission Template Preview Only",
+        })
+
+    async def test_permission_template_rename_does_not_guess_ambiguous_matches(self):
+        value = ModelRequest.model_validate({
+            **request().model_dump(),
+            "message": "Rename the existing permission template Test to QA Renamed Template.",
+            "results": [{"stepId": "r-template-search", "tool": "permissionTemplates.search", "data": [
+                {"id": 52, "name": "Test system", "type": "system"},
+                {"id": 53, "name": "Test project", "type": "project"},
+            ]}],
+            "allowedTools": ["permissionTemplates.update", "permissionTemplates.search"],
+        })
+        result = await reason(value)
+        self.assertIsInstance(result, Assistant)
+        self.assertIn("unambiguous", result.text)
+        self.assertEqual(result.sources, ["r-template-search"])
+
+    async def test_permission_template_create_uses_explicit_uniform_no_access_level(self):
+        self.assertEqual(agent_reasoning.SYSTEM_PERMISSION_KEYS, frozenset({
+            "projects", "vendors", "clients", "resources", "spreadsheets", "units",
+            "collaboration", "collaboration.chat", "collaboration.calendar", "admin",
+        }))
+        self.assertEqual(agent_reasoning.PROJECT_PERMISSION_KEYS, frozenset({
+            "Tasks", "WIP", "Reports", "General Documents", "Spreadsheets", "Drawings", "Planning", "Phases",
+            "Contracts", "Quality", "Safety", "Billing", "Material Management", "Transactions", "Approvals",
+        }))
+        async def provider(messages):
+            raise AssertionError("An explicit uniform permission map should not be guessed by the model")
+
+        value = request().model_copy(update={
+            "message": "Create a system permission template named Phase 3 QA Preview Read Only with every system permission set to None (numeric level 0, no access). Show the confirmation preview only; do not submit or confirm.",
+            "allowedTools": ["permissionTemplates.create"],
+        })
+        result = await reason(value, provider)
+        self.assertIsInstance(result, ToolIntent)
+        self.assertEqual(result.tool, "permissionTemplates.create")
+        self.assertEqual(result.arguments, {
+            "name": "Phase 3 QA Preview Read Only", "type": "system",
+            "permissions": {key: 0 for key in sorted(agent_reasoning.SYSTEM_PERMISSION_KEYS)},
+        })
+
+    async def test_permission_template_permission_update_uses_verified_target_and_explicit_level(self):
+        async def provider(messages):
+            raise AssertionError("An explicit uniform permission update should use its verified lookup row")
+
+        value = ModelRequest.model_validate({
+            **request().model_dump(),
+            "message": "Update the existing system permission template Test so every system permission has numeric level 0 (None/no access). Show preview only.",
+            "results": [{"stepId": "r-template-search", "tool": "permissionTemplates.search", "data": [
+                {"id": 52, "name": "Test", "type": "system", "permissions": {"admin": 2}},
+            ]}],
+            "allowedTools": ["permissionTemplates.update", "permissionTemplates.search"],
+        })
+        result = await reason(value, provider)
+        self.assertIsInstance(result, ToolIntent)
+        self.assertEqual(result.tool, "permissionTemplates.update")
+        self.assertEqual(result.arguments, {
+            "templateId": 52, "type": "system", "expectedName": "Test",
+            "permissions": {key: 0 for key in sorted(agent_reasoning.SYSTEM_PERMISSION_KEYS)},
+        })
 
     async def test_no_internal_dispatch_and_validated_response(self):
         async def provider(messages):
@@ -1036,6 +1269,86 @@ class Reasoning(unittest.IsolatedAsyncioTestCase):
         self.assertIn("cannot assign", unsupported_write_capability("Assign a material supply request to a vendor"))
         self.assertIn("cannot transfer", unsupported_write_capability("Transfer this project contractor assignment"))
         self.assertIsNone(unsupported_write_capability("Show this project's ledger transactions"))
+        self.assertIsNone(unsupported_write_capability(
+            "Update project member Mano's access to no access for every project permission: Tasks, WIP, Reports, General Documents, Spreadsheets, Drawings, Planning, Phases, Contracts, Quality, Safety, Billing, Material Management, Transactions, and Approvals. Show a confirmation preview only; do not confirm or submit."
+        ))
+
+    def test_permission_map_update_does_not_select_ledger_search(self):
+        message = (
+            "Update project member Mano's access on Phase 2 QA Project Sep 28 (project 85) to no access for every "
+            "project permission: Tasks, WIP, Reports, General Documents, Spreadsheets, Drawings, Planning, Phases, "
+            "Contracts, Quality, Safety, Billing, Material Management, Transactions, and Approvals. "
+            "Show a confirmation preview only; do not confirm or submit."
+        )
+        req = ModelRequest.model_validate({
+            **request().model_dump(),
+            "message": message,
+            "context": {
+                "route": "/projects/85?tab=Approvals", "module": "Approvals", "activeTab": "Approvals",
+                "projectId": "85", "selectedEntityType": "project", "selectedEntityName": "Phase 2 QA Project Sep 28",
+            },
+            "allowedTools": ["transactions.search", "projects.search", "projects.get", "projects.setMemberPermissions"],
+        })
+
+        self.assertTrue(agent_reasoning.is_permission_map_update(message))
+        self.assertNotIn("transactions.search", agent_reasoning.select_read_tools(req))
+        write_tools = agent_reasoning.select_write_tools(req)
+        self.assertIn("projects.setMemberPermissions", write_tools)
+        self.assertNotIn("transactions.search", write_tools)
+        template_prompt = "Update the existing project permission template Test so every project permission has level 0."
+        template_req = ModelRequest.model_validate({
+            **request().model_dump(), "message": template_prompt,
+            "allowedTools": ["permissionTemplates.update", "permissionTemplates.search", "projects.setMemberPermissions"],
+        })
+        self.assertFalse(agent_reasoning.is_permission_map_update(template_prompt))
+        self.assertIn("permissionTemplates.update", agent_reasoning.select_write_tools(template_req))
+
+    async def test_permission_map_prompt_does_not_fast_route_to_transactions(self):
+        message = (
+            "Update project member Mano's access on Phase 2 QA Project Sep 28 (project 85) to no access for every "
+            "project permission: Tasks, WIP, Reports, General Documents, Spreadsheets, Drawings, Planning, Phases, "
+            "Contracts, Quality, Safety, Billing, Material Management, Transactions, and Approvals. "
+            "Show a confirmation preview only; do not confirm or submit."
+        )
+        req = ModelRequest.model_validate({
+            **request().model_dump(),
+            "message": message,
+            "context": {
+                "route": "/projects/85?tab=Approvals", "module": "Approvals", "activeTab": "Approvals",
+                "projectId": "85", "selectedEntityType": "project", "selectedEntityName": "Phase 2 QA Project Sep 28",
+            },
+            "allowedTools": ["transactions.search", "projects.search", "projects.get", "projects.setMemberPermissions"],
+        })
+        async def provider(messages):
+            raise AssertionError("An explicit uniform access change must use a verified lookup, not provider planning")
+
+        lookup = await reason(req, provider)
+        self.assertIsInstance(lookup, ToolIntent)
+        self.assertEqual(lookup.tool, "projects.get")
+        self.assertEqual(lookup.arguments, {"projectId": 85})
+
+        verified = ModelRequest.model_validate({**req.model_dump(),
+            "results": [{"stepId": "r1_1", "tool": "projects.get", "data": [{
+                "id": 85, "name": "Phase 2 QA Project Sep 28",
+                "members": [{"id": 7, "name": "Mano"}, {"id": 8, "name": "Other Member"}],
+            }]}],
+        })
+        proposal = await reason(verified, provider)
+        self.assertIsInstance(proposal, ToolIntent)
+        self.assertEqual(proposal.tool, "projects.setMemberPermissions")
+        self.assertEqual(proposal.arguments["userId"], 7)
+        self.assertEqual(proposal.arguments["expectedName"], "Mano")
+        self.assertEqual(set(proposal.arguments["permissions"]), agent_reasoning.PROJECT_PERMISSION_KEYS)
+        self.assertEqual(set(proposal.arguments["permissions"].values()), {"none"})
+
+        mismatched = ModelRequest.model_validate({**req.model_dump(),
+            "results": [{"stepId": "r1_1", "tool": "projects.get", "data": [{
+                "id": 85, "name": "A different project", "members": [{"id": 7, "name": "Mano"}],
+            }]}],
+        })
+        refusal = await reason(mismatched, provider)
+        self.assertIsInstance(refusal, Assistant)
+        self.assertIn("could not verify", refusal.text)
 
     async def test_show_the_tasks_routes_to_tasks_search_not_briefing(self):
         req = ModelRequest(

@@ -1,5 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import { fail } from './agentValidation.js';
+import { isGuardedDelete, deleteLabel } from './agentDeleteService.js';
 
 export function makeEvent(request, type, payload = {}) {
     const event = { ...payload, type, eventId: randomUUID(), conversationId: request.conversation_id, requestId: request.request_id };
@@ -15,6 +16,24 @@ function displayFieldValue(value) {
     return JSON.stringify(value);
 }
 export function actionFor(tool, args, preconditions = null) {
+    if (isGuardedDelete(tool.name)) {
+        const targets = preconditions?.targets || [];
+        const label = deleteLabel(tool.name);
+        const count = targets.length;
+        const countedLabel = count === 1 ? label.slice(0, -1) : label;
+        return { actionType: tool.name, title: `Delete ${count} ${countedLabel}`, riskLevel: 'DESTRUCTIVE',
+            affectedRecords: count,
+            description: `Permanently delete only the ${count} named ${countedLabel} shown below, plus the listed owned records. This cannot be undone.`,
+            confirmationPhrase: `DELETE ${count} ${countedLabel.toUpperCase()}`,
+            fields: [
+                { label: 'Selected records', value: targets.map(target => target.name).join(', ') },
+                ...(preconditions?.dependencies || []).filter(ref => ref.count).map(ref => ({
+                    label: ref.label, value: `${ref.count} linked record${ref.count === 1 ? '' : 's'} removed`
+                })),
+                { label: 'Total linked records removed', value: String(preconditions?.linkedRecordsRemoved || 0) },
+                { label: 'Maximum batch size', value: '20 records' }
+            ] };
+    }
     if (tool.name === 'documents.archiveInstance') {
         return { actionType: tool.name, title: 'Archive document', riskLevel: 'WRITE', affectedRecords: 1,
             description: 'Archive this document instance. Its completed approval history remains available; no active cycle may remain.',
@@ -27,28 +46,68 @@ export function actionFor(tool, args, preconditions = null) {
             ] };
     }
     if (tool.risk === 'WRITE' && (tool.name === 'projects.setMemberPermissions'
-        || tool.name === 'adminUsers.setSystemPermissions' || tool.name.startsWith('permissionTemplates.'))) {
+        || tool.name === 'adminUsers.setSystemPermissions' || tool.name === 'permissionTemplates.create'
+        || (tool.name === 'permissionTemplates.update' && args.permissions))) {
         const target = preconditions?.member?.user_name || preconditions?.user?.user_name
             || preconditions?.template?.name || args.name || 'Selected access template';
-        return { actionType: tool.name, title: 'Change access permissions', riskLevel: 'WRITE', affectedRecords: 1,
-            description: `Administrator-only access change for ${target}. Confirm the complete before-and-after permissions.`,
+        const title = tool.name === 'permissionTemplates.create' ? 'Create permission template'
+            : tool.name === 'permissionTemplates.update' ? 'Update permission template permissions' : 'Change access permissions';
+        const description = tool.name === 'permissionTemplates.create'
+            ? `Administrator-only creation of permission template "${target}". Review the requested permissions before confirming.`
+            : tool.name === 'permissionTemplates.update'
+                ? `Administrator-only permissions update for template "${target}". Confirm the complete before-and-after permissions.`
+                : `Administrator-only access change for ${target}. Confirm the complete before-and-after permissions.`;
+        return { actionType: tool.name, title, riskLevel: 'WRITE', affectedRecords: 1,
+            description,
             confirmationPhrase: 'CONFIRM ACCESS CHANGE', fields: [
                 { label: 'Target', value: target },
                 ...(preconditions?.template?.type || args.type ? [{ label: 'Template type', value: preconditions?.template?.type || args.type }] : []),
                 { label: 'Current permissions', value: displayFieldValue(preconditions?.member?.project_permissions
                     || preconditions?.user?.system_permissions || preconditions?.template?.permissions || 'None') },
-                { label: 'Requested permissions', value: args.permissions ? JSON.stringify(args.permissions) : 'Unchanged' },
+                ...(args.permissions ? [{ label: 'Requested permissions', value: JSON.stringify(
+                    preconditions?.requestedPermissions || args.permissions
+                ) }] : []),
                 ...(args.name && preconditions?.template ? [{ label: 'New template name', value: args.name }] : [])
             ] };
     }
+    if (tool.name === 'permissionTemplates.update' && !args.permissions) {
+        const current = preconditions?.template;
+        const target = current?.name || args.expectedName || 'Selected permission template';
+        return { actionType: tool.name, title: 'Rename permission template', riskLevel: 'WRITE', affectedRecords: 1,
+            description: `Administrator-only rename of permission template "${target}". Its permissions will remain unchanged. Review the new name before confirming.`,
+            confirmationPhrase: 'CONFIRM ADMIN CHANGE', fields: [
+                { label: 'Target', value: target },
+                ...(current?.type || args.type ? [{ label: 'Template type', value: current?.type || args.type }] : []),
+                { label: 'New template name', value: args.name },
+                { label: 'Permissions', value: 'Unchanged' }
+            ] };
+    }
     if (tool.risk === 'WRITE' && (tool.name.startsWith('admin') || tool.name.startsWith('documentTemplates.'))) {
-        const isTemplate = tool.name.startsWith('documentTemplates.');
         const current = preconditions?.template;
         const currentUser = preconditions?.user;
-        return { actionType: tool.name, title: isTemplate ? 'Change document template'
-            : currentUser ? 'Update user profile' : 'Create organization setting',
+        const titles = {
+            'documentTemplates.create': 'Create document template',
+            'documentTemplates.update': 'Update document template',
+            'adminUsers.updateProfile': 'Update user profile',
+            'adminDepartments.create': 'Create department',
+            'adminDesignations.create': 'Create designation',
+            'adminSectors.create': 'Create sector',
+            'adminJobNatures.create': 'Create job nature',
+        };
+        const title = titles[tool.name] || 'Update organization setting';
+        const target = current?.name || currentUser?.user_name || args.name;
+        const description = tool.name === 'documentTemplates.create'
+            ? `Administrator-only creation of document template${target ? ` "${target}"` : ''}. Review its details before confirming.`
+            : tool.name === 'documentTemplates.update'
+                ? `Administrator-only update to document template${target ? ` "${target}"` : ''}. Review its impact before confirming.`
+                : tool.name === 'adminUsers.updateProfile'
+                    ? `Administrator-only profile update${target ? ` for ${target}` : ''}. Review the changed fields before confirming.`
+                    : tool.name.startsWith('admin') && tool.name !== 'adminUsers.setSystemPermissions'
+                        ? `Administrator-only creation of ${title.replace(/^Create /, '').toLowerCase()}${target ? ` "${target}"` : ''}. Review its details before confirming.`
+                        : `Administrator-only change${target ? ` to ${target}` : ''}. Review its impact before confirming.`;
+        return { actionType: tool.name, title,
             riskLevel: 'WRITE', affectedRecords: 1,
-            description: `Administrator-only change${current ? ` to ${current.name}` : ''}. Review its impact before confirming.`,
+            description,
             confirmationPhrase: 'CONFIRM ADMIN CHANGE',
             fields: [
                 ...(current ? [{ label: 'Current template', value: current.name },

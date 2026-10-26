@@ -1,9 +1,10 @@
 import { fail, fingerprint } from './agentValidation.js';
-import { validateIntent } from './agentTools.js';
+import { PROJECT_PERMISSION_KEYS, SYSTEM_PERMISSION_KEYS, validateIntent } from './agentTools.js';
 import { getUploadedDataset, getUploadedAttachment, cleanupUpload } from './agentUploadService.js';
 import { findOrCreateSector } from '../shared/sectorService.js';
 import { findOrCreateJobNature } from '../shared/jobNatureService.js';
 import { storeQualityAttachment } from '../projects/quality/qualityService.js';
+import { inspectDelete, executeDelete, isGuardedDelete } from './agentDeleteService.js';
 
 const VALID_CATEGORIES = ['Contractor', 'Supplier', 'Consultant', 'Manufacturer', 'Service Provider'];
 const ADMIN_NAMED_TABLES = Object.freeze({
@@ -13,6 +14,27 @@ const ADMIN_NAMED_TABLES = Object.freeze({
     'adminJobNatures.create': ['crm_job_nature', 'job_name']
 });
 const sameName = (actual, expected) => String(actual || '').trim().toLowerCase() === expected.trim().toLowerCase();
+function permissionMap(value) {
+    if (value === null || value === undefined || value === '') return {};
+    if (typeof value === 'string') {
+        try { value = JSON.parse(value); } catch { fail('validation_error', 'invalid_permission_map'); }
+    }
+    if (!value || typeof value !== 'object' || Array.isArray(value)) fail('validation_error', 'invalid_permission_map');
+    return value;
+}
+const preserveUnmodeledPermissions = (current, requested, knownKeys) => ({
+    ...Object.fromEntries(Object.entries(permissionMap(current)).filter(([key]) => !knownKeys.includes(key))),
+    ...requested
+});
+const requestedSystemPermissions = (current, requested) => {
+    const existing = permissionMap(current);
+    // A complete no-access request must also revoke legacy and project-scoped
+    // keys. Preserving them would make the confirmation preview misleading.
+    if (Object.values(requested).every(level => level === 'none')) {
+        return { ...Object.fromEntries(Object.keys(existing).map(key => [key, 'none'])), ...requested };
+    }
+    return preserveUnmodeledPermissions(existing, requested, SYSTEM_PERMISSION_KEYS);
+};
 
 function cleanCategory(cat) {
     if (!cat) return 'Supplier';
@@ -121,6 +143,7 @@ export function createWriteService({ db, clients, vendors, resources, approvalSe
     }
     return {
         async preconditions(tool, args, scope, connection = db, lock = false) {
+            if (isGuardedDelete(tool.name)) return inspectDelete(tool, args, scope, connection, lock);
             if (['adminUsers.updateProfile', 'adminUsers.setSystemPermissions'].includes(tool.name)) {
                 const query = connection('iam_users').where({ id: args.userId, org_id: scope.orgId });
                 if (lock) query.forUpdate();
@@ -134,7 +157,9 @@ export function createWriteService({ db, clients, vendors, resources, approvalSe
                     if (lock) duplicate.forUpdate();
                     if (await duplicate.first('id')) fail('validation_error', 'duplicate_user_contact');
                 }
-                return { operation: tool.name, user: JSON.parse(JSON.stringify(user)) };
+                const requestedPermissions = tool.name === 'adminUsers.setSystemPermissions'
+                    ? requestedSystemPermissions(user.system_permissions, args.permissions) : null;
+                return { operation: tool.name, user: JSON.parse(JSON.stringify(user)), requestedPermissions };
             }
             if (tool.name === 'projects.setMemberPermissions') {
                 const query = connection('proj_members as m').join('iam_users as u', 'm.user_id', 'u.id')
@@ -145,7 +170,7 @@ export function createWriteService({ db, clients, vendors, resources, approvalSe
                 if (!member) fail('authorization_denied');
                 if (!sameName(member.user_name, args.expectedName)) fail('validation_error', 'member_name_mismatch');
                 return { projectId: args.projectId, operation: tool.name, member: JSON.parse(JSON.stringify(member)),
-                    requestedPermissions: args.permissions };
+                    requestedPermissions: preserveUnmodeledPermissions(member.project_permissions, args.permissions, PROJECT_PERMISSION_KEYS) };
             }
             if (tool.name.startsWith('permissionTemplates.')) {
                 if (tool.name === 'permissionTemplates.create') {
@@ -170,7 +195,8 @@ export function createWriteService({ db, clients, vendors, resources, approvalSe
                     if (await duplicate.first('id')) fail('validation_error', 'duplicate_permission_template');
                 }
                 return { operation: tool.name, template: JSON.parse(JSON.stringify(template)),
-                    requestedPermissions: args.permissions || null };
+                    requestedPermissions: args.permissions ? preserveUnmodeledPermissions(template.permissions, args.permissions,
+                        args.type === 'system' ? SYSTEM_PERMISSION_KEYS : PROJECT_PERMISSION_KEYS) : null };
             }
             if (ADMIN_NAMED_TABLES[tool.name]) {
                 const [table, column] = ADMIN_NAMED_TABLES[tool.name];
@@ -312,7 +338,7 @@ export function createWriteService({ db, clients, vendors, resources, approvalSe
                     .where({ 'ac.cycle_id': args.cycleId, 'di.org_id': scope.orgId, 'di.project_id': args.projectId });
                 if (lock) cycleQuery.forUpdate();
                 const cycle = await cycleQuery.first('ac.cycle_id', 'ac.instance_id', 'ac.status', 'ac.current_level',
-                    'ac.current_holder_id', 'ac.initiated_by', 'ac.version_number', 'di.is_locked', 'd.title as documentName',
+                    'ac.current_holder_id', 'ac.initiated_by', 'ac.version_number', 'di.is_locked', 'd.name as documentName',
                     'p.name as projectName', 'holder.user_name as holderName', 'initiator.user_name as initiatorName');
                 if (!cycle) fail('authorization_denied');
                 if (tool.name === 'documents.requestRevision'
@@ -575,11 +601,15 @@ export function createWriteService({ db, clients, vendors, resources, approvalSe
             return JSON.parse(JSON.stringify({ resource, rates }));
         },
 
-        async execute(tool, args, scope, trx) {
+        async execute(tool, args, scope, trx, preconditions = null) {
             if (!trx?.isTransaction) fail('execution_failure', 'caller_transaction_required');
+            if (isGuardedDelete(tool.name)) return executeDelete(tool, args, scope, trx, preconditions);
             if (tool.name === 'adminUsers.setSystemPermissions') {
+                const user = await trx('iam_users').where({ id: args.userId, org_id: scope.orgId }).forUpdate().first('system_permissions');
+                if (!user) fail('request_rejected', 'user_permissions_changed');
                 const changed = await trx('iam_users').where({ id: args.userId, org_id: scope.orgId })
-                    .update({ system_permissions: JSON.stringify(args.permissions) });
+                    .update({ system_permissions: JSON.stringify(requestedSystemPermissions(user.system_permissions,
+                        args.permissions)) });
                 if (changed !== 1) fail('request_rejected', 'user_permissions_changed');
                 return { id: args.userId };
             }
@@ -591,8 +621,12 @@ export function createWriteService({ db, clients, vendors, resources, approvalSe
                 return { id: args.userId };
             }
             if (tool.name === 'projects.setMemberPermissions') {
+                const member = await trx('proj_members').where({ project_id: args.projectId, user_id: args.userId,
+                    org_id: scope.orgId }).forUpdate().first('project_permissions');
+                if (!member) fail('request_rejected', 'project_member_changed');
                 const changed = await trx('proj_members').where({ project_id: args.projectId, user_id: args.userId,
-                    org_id: scope.orgId }).update({ project_permissions: JSON.stringify(args.permissions) });
+                    org_id: scope.orgId }).update({ project_permissions: JSON.stringify(preserveUnmodeledPermissions(
+                        member.project_permissions, args.permissions, PROJECT_PERMISSION_KEYS)) });
                 if (changed !== 1) fail('request_rejected', 'project_member_changed');
                 return { id: args.userId };
             }
@@ -605,7 +639,13 @@ export function createWriteService({ db, clients, vendors, resources, approvalSe
             if (tool.name === 'permissionTemplates.update') {
                 const updates = {};
                 if (args.name !== undefined) updates.name = args.name.trim();
-                if (args.permissions !== undefined) updates.permissions = JSON.stringify(args.permissions);
+                if (args.permissions !== undefined) {
+                    const template = await trx('iam_permission_templates').where({ id: args.templateId,
+                        org_id: scope.orgId, type: args.type }).forUpdate().first('permissions');
+                    if (!template) fail('request_rejected', 'permission_template_changed');
+                    updates.permissions = JSON.stringify(preserveUnmodeledPermissions(template.permissions, args.permissions,
+                        args.type === 'system' ? SYSTEM_PERMISSION_KEYS : PROJECT_PERMISSION_KEYS));
+                }
                 const changed = await trx('iam_permission_templates').where({ id: args.templateId,
                     org_id: scope.orgId, type: args.type }).update(updates);
                 if (changed !== 1) fail('request_rejected', 'permission_template_changed');

@@ -586,7 +586,10 @@ export function createReadService({ db, projects, clients, vendors, resources, p
                 }
                 result = await query.orderBy('u.user_name').limit(paging.limit).offset(paging.offset)
                     .select('u.id', 'u.user_name as name', 'd.desg_name as designation', 'dep.dept_name as department',
-                        'u.email', 'u.phone_no', 'u.user_type');
+                        'u.user_type');
+                result = result.map(({ id, name, designation, department, user_type }) => ({
+                    id, name, designation, department, user_type
+                }));
                 break;
             }
             case 'permissionTemplates.search': {

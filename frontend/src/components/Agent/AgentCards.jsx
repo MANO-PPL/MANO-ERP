@@ -102,7 +102,7 @@ export function AgentConfirmationCard({ message, pending, busy, onDecision, prev
                     <button type="button" className={`${buttonClass} ${confirmation.riskLevel === 'DESTRUCTIVE' ? 'border-red-400 text-red-700 dark:text-red-300' : confirmation.riskLevel === 'BULK_WRITE' ? 'bg-blue-600 text-white hover:bg-blue-700 border-blue-600 shadow-sm' : 'text-blue-700 dark:text-blue-300'}`}
                         disabled={inactive || expired || !typedConfirmationMatches} onClick={() => onDecision(confirmation.confirmationId, 'confirm', typedConfirmationRequired ? confirmationText : undefined)}>
                         {busy ? 'Sending decision…' : preview ? 'Confirm preview' : confirmation.riskLevel === 'DESTRUCTIVE'
-                            ? `Confirm Deletion (${confirmation.affectedRecords ?? 0} task${confirmation.affectedRecords === 1 ? '' : 's'})`
+                            ? `Confirm Deletion (${confirmation.affectedRecords ?? 0} record${confirmation.affectedRecords === 1 ? '' : 's'})`
                             : confirmation.riskLevel === 'BULK_WRITE' ? `Confirm Import (${confirmation.affectedRecords ?? ''} records)` : 'Confirm'}
                     </button>
                 </div>}

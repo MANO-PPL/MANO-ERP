@@ -54,7 +54,14 @@ class Schemas(unittest.TestCase):
     def test_registered_tool_contract(self):
         # Keep the Python contract in lockstep with the complete Node tool
         # registry, including the Phase 2 write operations and read helpers.
-        self.assertEqual(len(ARG_MODELS), 84)
+        self.assertEqual(len(ARG_MODELS), 87)
+        for tool in ("clients.deleteSelected", "vendors.deleteSelected", "resources.deleteSelected"):
+            self.assertIn(tool, ARG_MODELS)
+            ARG_MODELS[tool].model_validate({"targets": [{"id": 1, "expectedName": "Verified name"}]})
+            with self.assertRaises(ValidationError):
+                ARG_MODELS[tool].model_validate({"targets": [{"id": 1, "expectedName": "A"},
+                                                          {"id": 1, "expectedName": "B"}]})
+        self.assertNotIn("projects.deleteSelected", ARG_MODELS)
         self.assertIn("projects.create", ARG_MODELS)
         self.assertIn("projects.update", ARG_MODELS)
         self.assertIn("tasks.create", ARG_MODELS)

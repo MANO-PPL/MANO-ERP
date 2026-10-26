@@ -1,17 +1,28 @@
 import { object, text, integer, dateOnly, uuid, fail } from './agentValidation.js';
 
 export const CONTRACT_VERSION = 'mano-agent-v1';
+export const SYSTEM_PERMISSION_KEYS = Object.freeze([
+    'projects', 'vendors', 'clients', 'resources', 'spreadsheets', 'units',
+    'collaboration', 'collaboration.chat', 'collaboration.calendar', 'admin'
+]);
+export const PROJECT_PERMISSION_KEYS = Object.freeze([
+    'Tasks', 'WIP', 'Reports', 'General Documents', 'Spreadsheets', 'Drawings', 'Planning', 'Phases',
+    'Contracts', 'Quality', 'Safety', 'Billing', 'Material Management', 'Transactions', 'Approvals'
+]);
 const list = { query: 'query?', limit: 'limit?', offset: 'offset?' };
 const resource = { resourceId: 'id', projectId: 'id?', asOfDate: 'date?' };
 const contactEdit = { name: 'name?', contact_person: 'name?', mobile: 'phone?', email: 'email?', address: 'address?', location: 'name?', remarks: 'remarks?' };
 const definitions = {
     'resources.create': { args: { name: 'name', type: 'type', base_unit_code: 'unit', code: 'name?', description: 'remarks?', remarks: 'remarks?' }, module: 'materials', risk: 'WRITE' },
     'resources.update': { args: { resourceId: 'id', projectId: 'id?', name: 'name?', code: 'name?', description: 'remarks?', remarks: 'remarks?' }, module: 'materials', risk: 'WRITE' },
+    'resources.deleteSelected': { args: { targets: 'namedTargets' }, module: 'materials', risk: 'BULK_WRITE' },
     'resources.addConversion': { args: { resourceId: 'id', projectId: 'id?', name: 'name', quantity: 'quantity', unit_code: 'unit' }, module: 'materials', risk: 'WRITE' },
     'clients.bulkImport': { args: { uploadId: 'uuid', mapping: 'mapping?' }, module: 'clients', risk: 'BULK_WRITE' },
     'clients.create': { args: { ...contactEdit, name: 'name' }, module: 'clients', risk: 'WRITE' },
     'clients.update': { args: { contactId: 'id', ...contactEdit }, module: 'clients', risk: 'WRITE' },
+    'clients.deleteSelected': { args: { targets: 'namedTargets' }, module: 'clients', risk: 'BULK_WRITE' },
     'vendors.update': { args: { contactId: 'id', ...contactEdit }, module: 'vendors', risk: 'WRITE' },
+    'vendors.deleteSelected': { args: { targets: 'namedTargets' }, module: 'vendors', risk: 'BULK_WRITE' },
     'clients.addInteraction': { args: { contactId: 'id', type: 'interactionType', interaction_date: 'date', follow_up_date: 'date?', remarks: 'remarks?' }, module: 'clients', risk: 'WRITE' },
     'projects.create': { args: { name: 'name', location: 'name?', project_code: 'name?', start_date: 'date?', end_date: 'date?' }, module: 'projects', risk: 'WRITE' },
     'projects.update': { args: { projectId: 'id', name: 'name?', location: 'name?', project_code: 'name?', start_date: 'date?', end_date: 'date?' }, module: 'projects', risk: 'WRITE' },
@@ -97,7 +108,7 @@ export const TOOLS = Object.freeze(Object.fromEntries(Object.entries(definitions
     Object.freeze({ name, version: 1, risk: d.risk || 'READ', module: d.module, args: Object.freeze(d.args) })])));
 // Deliberately not environment-configurable baseline. Runtime enables writes via agentRuntime configuration.
 export const LIVE_WRITE_ENABLEMENT = Object.freeze({ 'vendors.create': false, 'resources.createRateVersion': false, 'approvals.decide': false, 'approvals.batchDecide': false });
-export const RUNTIME_WRITE_ENABLEMENT = Object.freeze({ 'resources.create': true, 'resources.update': true, 'resources.addConversion': true, 'clients.bulkImport': true, 'clients.create': true, 'clients.update': true, 'clients.addInteraction': true, 'vendors.update': true, 'vendors.create': true, 'vendors.bulkImport': true, 'resources.createRateVersion': true, 'approvals.decide': true, 'approvals.batchDecide': true, 'projects.create': true, 'projects.update': true, 'projectParties.add': true, 'projectParties.update': true, 'projects.assignMember': true, 'projects.setMemberPermissions': true, 'tasks.create': true, 'tasks.update': true, 'tasks.deleteSelected': true, 'tasks.assign': true, 'tasks.createCategory': true, 'tasks.updateCategory': true, 'tasks.reorder': true, 'meetings.create': true, 'meetings.update': true, 'directory.create': true, 'directory.update': true, 'summaries.create': true, 'summaries.update': true, 'documents.saveDraft': true, 'documents.submitDraft': true, 'documents.requestRevision': true, 'documents.cancelCycle': true, 'documents.claimRevision': true, 'documents.archiveInstance': true, 'documentTemplates.create': true, 'documentTemplates.update': true, 'adminDepartments.create': true, 'adminDesignations.create': true, 'adminSectors.create': true, 'adminJobNatures.create': true, 'permissionTemplates.create': true, 'permissionTemplates.update': true, 'adminUsers.updateProfile': true, 'adminUsers.setSystemPermissions': true, 'qualityObservations.create': true, 'qualityObservations.update': true, 'qualityObservations.submitFix': true, 'qualityMethodologies.create': true, 'qualityMethodologies.update': true, 'qualityChecklists.create': true, 'qualityChecklists.update': true });
+export const RUNTIME_WRITE_ENABLEMENT = Object.freeze({ 'resources.create': true, 'resources.update': true, 'resources.deleteSelected': true, 'resources.addConversion': true, 'clients.bulkImport': true, 'clients.create': true, 'clients.update': true, 'clients.deleteSelected': true, 'clients.addInteraction': true, 'vendors.update': true, 'vendors.deleteSelected': true, 'vendors.create': true, 'vendors.bulkImport': true, 'resources.createRateVersion': true, 'approvals.decide': true, 'approvals.batchDecide': true, 'projects.create': true, 'projects.update': true, 'projectParties.add': true, 'projectParties.update': true, 'projects.assignMember': true, 'projects.setMemberPermissions': true, 'tasks.create': true, 'tasks.update': true, 'tasks.deleteSelected': true, 'tasks.assign': true, 'tasks.createCategory': true, 'tasks.updateCategory': true, 'tasks.reorder': true, 'meetings.create': true, 'meetings.update': true, 'directory.create': true, 'directory.update': true, 'summaries.create': true, 'summaries.update': true, 'documents.saveDraft': true, 'documents.submitDraft': true, 'documents.requestRevision': true, 'documents.cancelCycle': true, 'documents.claimRevision': true, 'documents.archiveInstance': true, 'documentTemplates.create': true, 'documentTemplates.update': true, 'adminDepartments.create': true, 'adminDesignations.create': true, 'adminSectors.create': true, 'adminJobNatures.create': true, 'permissionTemplates.create': true, 'permissionTemplates.update': true, 'adminUsers.updateProfile': true, 'adminUsers.setSystemPermissions': true, 'qualityObservations.create': true, 'qualityObservations.update': true, 'qualityObservations.submitFix': true, 'qualityMethodologies.create': true, 'qualityMethodologies.update': true, 'qualityChecklists.create': true, 'qualityChecklists.update': true });
 export function allowedToolsForRequest(context, message, enablement) {
     const modules = new Set();
     const page = `${context?.module || ''} ${context?.route || ''}`.toLowerCase();
@@ -147,9 +158,8 @@ export function validateIntent(intent) {
         }
         else if (type === 'projectPermissions' || type === 'templatePermissions') {
             if (!value || typeof value !== 'object' || Array.isArray(value)) fail('validation_error', 'invalid_permission_map');
-            const projectKeys = ['Tasks', 'WIP', 'Reports', 'General Documents', 'Drawings', 'Planning', 'Contracts', 'Quality', 'Safety', 'Billing', 'Material Management', 'Approvals'];
-            const systemKeys = ['projects', 'vendors', 'clients', 'resources', 'units', 'collaboration', 'admin'];
-            const keys = type === 'projectPermissions' || args.type === 'project' ? projectKeys : systemKeys;
+            const systemKeys = SYSTEM_PERMISSION_KEYS;
+            const keys = type === 'projectPermissions' || args.type === 'project' ? PROJECT_PERMISSION_KEYS : systemKeys;
             if (Object.keys(value).length !== keys.length || keys.some(key => !Object.hasOwn(value, key))) fail('validation_error', 'invalid_permission_map');
             if (type === 'projectPermissions') {
                 if (Object.values(value).some(level => !['none', 'view', 'edit'].includes(level))) fail('validation_error', 'invalid_permission_map');
@@ -159,7 +169,7 @@ export function validateIntent(intent) {
         }
         else if (type === 'systemPermissions') {
             if (!value || typeof value !== 'object' || Array.isArray(value)) fail('validation_error', 'invalid_permission_map');
-            const keys = ['projects', 'vendors', 'clients', 'resources', 'units', 'collaboration', 'admin'];
+            const keys = SYSTEM_PERMISSION_KEYS;
             if (Object.keys(value).length !== keys.length || keys.some(key => !Object.hasOwn(value, key))
                 || Object.values(value).some(level => !['none', 'view', 'edit'].includes(level))) fail('validation_error', 'invalid_permission_map');
         }
@@ -167,6 +177,14 @@ export function validateIntent(intent) {
             if (!Array.isArray(value) || value.length < 1 || value.length > 20) fail('validation_error', 'invalid_id_list');
             for (const id of value) integer(id);
             if (new Set(value).size !== value.length) fail('validation_error', 'duplicate_id');
+        } else if (type === 'namedTargets') {
+            if (!Array.isArray(value) || value.length < 1 || value.length > 20) fail('validation_error', 'invalid_delete_targets');
+            const ids = new Set();
+            for (const target of value) {
+                object(target, ['id', 'expectedName']); integer(target.id); text(target.expectedName, 120);
+                if (ids.has(target.id)) fail('validation_error', 'duplicate_id');
+                ids.add(target.id);
+            }
         } else if (type === 'orderItems') {
             if (!Array.isArray(value) || value.length < 1 || value.length > 50) fail('validation_error', 'invalid_order_items');
             const ids = new Set();

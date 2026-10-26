@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs/promises';
-import { TOOLS, LIVE_WRITE_ENABLEMENT, RUNTIME_WRITE_ENABLEMENT, validateIntent } from '../../src/modules/agent/agentTools.js';
+import { TOOLS, LIVE_WRITE_ENABLEMENT, RUNTIME_WRITE_ENABLEMENT, PROJECT_PERMISSION_KEYS, SYSTEM_PERMISSION_KEYS, validateIntent } from '../../src/modules/agent/agentTools.js';
 import { createReadService } from '../../src/modules/agent/agentReadService.js';
 import { createWriteService } from '../../src/modules/agent/agentWriteService.js';
 import { actor, harness, intent, answer } from './fixtures.js';
@@ -402,19 +402,22 @@ test('registry tool definitions and disabled baseline live writes', () => {
 });
 
 test('Phase 3 access maps and administrator tools reject unbounded arguments', () => {
-    const projectPermissions = Object.fromEntries(['Tasks', 'WIP', 'Reports', 'General Documents', 'Drawings',
-        'Planning', 'Contracts', 'Quality', 'Safety', 'Billing', 'Material Management', 'Approvals']
-        .map(key => [key, 'view']));
-    const systemPermissions = Object.fromEntries(['projects', 'vendors', 'clients', 'resources', 'units',
-        'collaboration', 'admin'].map(key => [key, 0]));
+    const projectPermissions = Object.fromEntries(PROJECT_PERMISSION_KEYS.map(key => [key, 'view']));
+    const systemPermissions = Object.fromEntries(SYSTEM_PERMISSION_KEYS.map(key => [key, 0]));
     assert.equal(validateIntent(intent('projects.setMemberPermissions', { projectId: 4, userId: 8, expectedName: 'Asha',
         permissions: projectPermissions })).tool.name, 'projects.setMemberPermissions');
     assert.throws(() => validateIntent(intent('projects.setMemberPermissions', { projectId: 4, userId: 8, expectedName: 'Asha',
         permissions: { ...projectPermissions, Secret: 'edit' } })));
+    assert.throws(() => validateIntent(intent('projects.setMemberPermissions', { projectId: 4, userId: 8, expectedName: 'Asha',
+        permissions: { Tasks: 'view', WIP: 'view', Reports: 'view', 'General Documents': 'view', Drawings: 'view',
+            Planning: 'view', Contracts: 'view', Quality: 'view', Safety: 'view', Billing: 'view',
+            'Material Management': 'view', Approvals: 'view' } })));
     assert.equal(validateIntent(intent('permissionTemplates.create', { name: 'Read only', type: 'system',
         permissions: systemPermissions })).tool.name, 'permissionTemplates.create');
     assert.throws(() => validateIntent(intent('permissionTemplates.create', { name: 'Admin', type: 'system',
         permissions: { ...systemPermissions, admin: 3 } })));
+    assert.throws(() => validateIntent(intent('permissionTemplates.create', { name: 'Legacy map', type: 'system',
+        permissions: { projects: 0, vendors: 0, clients: 0, resources: 0, units: 0, collaboration: 0, admin: 0 } })));
     const userPermissions = Object.fromEntries(Object.keys(systemPermissions).map(key => [key, 'view']));
     assert.equal(validateIntent(intent('adminUsers.setSystemPermissions', { userId: 8, expectedName: 'Asha',
         permissions: userPermissions })).tool.name, 'adminUsers.setSystemPermissions');
@@ -422,6 +425,84 @@ test('Phase 3 access maps and administrator tools reject unbounded arguments', (
         permissions: { ...userPermissions, admin: 'owner' } })));
     assert.throws(() => validateIntent(intent('documentTemplates.update', { projectId: 4, documentId: 8, expectedName: 'Inspection' })));
     assert.throws(() => validateIntent(intent('documents.archiveInstance', { projectId: 4, instanceId: 8, force: true })));
+});
+
+test('permission-template updates preserve legacy permission keys in preview and execution', async () => {
+    const rows = [{ id: 5, org_id: 2, type: 'system', name: 'Test',
+        permissions: JSON.stringify({ admin: 2, dashboard: 2 }) },
+    { id: 6, org_id: 2, type: 'project', name: 'Legacy Project',
+        permissions: JSON.stringify({ Tasks: 'edit', 'Legacy Phase': 'view' }) }];
+    const connection = () => {
+        let criteria = {};
+        return {
+            where(value, fieldValue) {
+                criteria = typeof value === 'string' ? { ...criteria, [value]: fieldValue } : { ...criteria, ...value };
+                return this;
+            },
+            whereRaw() { return this; },
+            whereNot() { return this; },
+            forUpdate() { return this; },
+            async first() { return rows.find(row => Object.entries(criteria).every(([key, value]) => row[key] === value)); },
+            async update(values) {
+                const row = rows.find(item => Object.entries(criteria).every(([key, value]) => item[key] === value));
+                if (!row) return 0;
+                Object.assign(row, values);
+                return 1;
+            },
+        };
+    };
+    const trx = () => connection();
+    trx.isTransaction = true;
+    const service = createWriteService({ db: connection });
+    const permissions = Object.fromEntries(SYSTEM_PERMISSION_KEYS.map(key => [key, 0]));
+    const tool = TOOLS['permissionTemplates.update'];
+    const args = { templateId: 5, type: 'system', expectedName: 'Test', permissions };
+
+    const preview = await service.preconditions(tool, args, { orgId: 2 });
+    assert.equal(preview.requestedPermissions.dashboard, 2);
+    assert.equal(preview.requestedPermissions.spreadsheets, 0);
+    const updated = await service.execute(tool, args, { orgId: 2 }, trx);
+    assert.equal(updated.id, 5);
+    const saved = JSON.parse(rows[0].permissions);
+    assert.equal(saved.dashboard, 2);
+    assert.equal(saved.spreadsheets, 0);
+    assert.equal(Object.keys(saved).length, SYSTEM_PERMISSION_KEYS.length + 1);
+
+    const projectPermissions = Object.fromEntries(PROJECT_PERMISSION_KEYS.map(key => [key, 'none']));
+    const projectArgs = { templateId: 6, type: 'project', expectedName: 'Legacy Project', permissions: projectPermissions };
+    const projectPreview = await service.preconditions(tool, projectArgs, { orgId: 2 });
+    assert.equal(projectPreview.requestedPermissions['Legacy Phase'], 'view');
+    const projectUpdated = await service.execute(tool, projectArgs, { orgId: 2 }, trx);
+    assert.equal(projectUpdated.id, 6);
+    const savedProject = JSON.parse(rows[1].permissions);
+    assert.equal(savedProject['Legacy Phase'], 'view');
+    assert.equal(savedProject.Spreadsheets, 'none');
+});
+
+test('all-none employee access preview and execution revoke legacy scoped permissions', async () => {
+    const row = { id: 8, org_id: 2, user_name: 'Asha',
+        system_permissions: JSON.stringify({ admin: 'edit', dashboard: 'edit', project_1: 'view' }) };
+    const connection = () => {
+        let criteria = {};
+        return {
+            where(value) { criteria = { ...criteria, ...value }; return this; },
+            forUpdate() { return this; },
+            async first() { return Object.entries(criteria).every(([key, value]) => row[key] === value) ? row : undefined; },
+            async update(values) { Object.assign(row, values); return 1; },
+        };
+    };
+    const trx = () => connection();
+    trx.isTransaction = true;
+    const service = createWriteService({ db: connection });
+    const tool = TOOLS['adminUsers.setSystemPermissions'];
+    const args = { userId: 8, expectedName: 'Asha',
+        permissions: Object.fromEntries(SYSTEM_PERMISSION_KEYS.map(key => [key, 'none'])) };
+    const preview = await service.preconditions(tool, args, { orgId: 2 });
+    assert.ok(Object.values(preview.requestedPermissions).every(value => value === 'none'));
+    assert.equal(preview.requestedPermissions.dashboard, 'none');
+    assert.equal(preview.requestedPermissions.project_1, 'none');
+    await service.execute(tool, args, { orgId: 2 }, trx);
+    assert.deepEqual(JSON.parse(row.system_permissions), preview.requestedPermissions);
 });
 
 test('document archive snapshots relationship impact and refuses active cycles', async () => {
@@ -468,8 +549,8 @@ test('administrator lookup tools return bounded, organization-scoped targets', a
         where(...args) { calls.push({ table, where: args }); return this; },
         leftJoin() { return this; }, join() { return this; }, orWhere() { return this; },
         orderBy() { return this; }, limit() { return this; }, offset() { return this; },
-        async select() { return table.startsWith('iam_users')
-            ? [{ id: 8, name: 'Asha', email: 'asha@example.com', user_type: 'employee' }]
+        async select(...columns) { if (table.startsWith('iam_users')) calls.push({ table, columns }); return table.startsWith('iam_users')
+            ? [{ id: 8, name: 'Asha', email: 'asha@example.com', phone_no: 'not-for-provider', user_type: 'employee' }]
             : table.startsWith('wf_approval_cycles')
                 ? [{ id: 19, title: 'Project Summary', status: 'revision_requested' }]
                 : table.startsWith('wf_document_instances')
@@ -483,6 +564,10 @@ test('administrator lookup tools return bounded, organization-scoped targets', a
     const cycles = await read(actor, TOOLS['documentCycles.search'], { projectId: 4, query: 'Project Summary' }, scope);
     const instances = await read(actor, TOOLS['documentInstances.search'], { projectId: 4, query: 'Project Summary' }, scope);
     assert.equal(users[0].name, 'Asha');
+    assert.equal(Object.hasOwn(users[0], 'email'), false);
+    assert.equal(Object.hasOwn(users[0], 'phone_no'), false);
+    assert.ok(!calls.some(call => call.table === 'iam_users as u' && call.columns?.some(column =>
+        /u\.(?:email|phone_no)\b/.test(column))));
     assert.equal(templates[0].name, 'Inspection');
     assert.equal(cycles[0].id, 19);
     assert.equal(instances[0].id, 11);

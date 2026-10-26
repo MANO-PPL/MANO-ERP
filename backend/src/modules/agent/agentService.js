@@ -2,6 +2,7 @@ import { randomUUID } from 'node:crypto';
 import { AgentError, fail, fingerprint, identity, requestKey, safeError, validateRequest, validateDecision, requestsInventedWriteData } from './agentValidation.js';
 import { CONTRACT_VERSION, TOOLS, LIVE_WRITE_ENABLEMENT, validateIntent, validateModelResponse, allowedToolsForRequest } from './agentTools.js';
 import { actionFor, provenance, resultCard } from './agentEvents.js';
+import { isGuardedDelete, deleteLabel } from './agentDeleteService.js';
 import knowledgeGraphService from '../knowledge/knowledgeGraphService.js';
 
 const scopeRecord = scope => ({ orgId: scope.orgId, userId: scope.userId, projectId: scope.projectId || null,
@@ -9,17 +10,24 @@ const scopeRecord = scope => ({ orgId: scope.orgId, userId: scope.userId, projec
 const operationDigest = (request, execution) => fingerprint({ requestId: request.request_id, generation: request.generation,
     executionId: execution.execution_id, tool: execution.tool, version: execution.tool_version, args: execution.args_json,
     scope: execution.scope_json, preconditions: execution.preconditions_json, credential: execution.credential_hash });
+const writeIntent = message => /\b(create|add|update|edit|change|save|submit|schedule|assign|log|attach|import|delete|remove|cancel|claim|rename|reorder|replace|set|approve|reject|archive)\b|\brequest\s+(?:a\s+)?revision\b/i.test(message);
+const asksForClarification = message => (/\?/.test(message)
+    && /\b(what|which|need|provide|share|tell me|would you like me to proceed|shall I proceed|can I proceed)\b/i.test(message))
+    || /\bplease\s+(?:provide|specify|share|enter)\b/i.test(message);
+const declinesClarification = message => /^(?:no|nope|cancel|stop|not now|do not proceed|don't proceed)[.!]?$/i.test(message.trim());
+const startsNewRequest = message => /^(?:show|list|find|search|what|how|why|open)\b|^(?:create|add|update|edit|change|save|submit|schedule|assign|delete|remove|approve|reject|archive)\s+(?:(?:a|an|the|new|selected)\s+)?(?:client|vendor|supplier|resource|project|task|meeting|directory|summary|document|quality|department|designation|sector|user|employee)\b/i.test(message.trim());
 
 export function createAgentService({ store, authorize, read, writes, reason, okf, now = Date.now, writeEnablement = LIVE_WRITE_ENABLEMENT }) {
     const inflight = new Map();
     const memory = new Map();
     const memoryKey = (actor, conversationId) => `${actor.orgId}:${actor.userId}:${conversationId}`;
-    function remember(actor, body, request, text) {
+    function remember(actor, body, request, text, plannedMessage = body.message) {
         for (const [key, value] of memory) if (value.expires <= now()) memory.delete(key);
         const key = memoryKey(actor, body.conversationId);
         const existing = memory.get(key)?.entries || [];
         const entries = [...existing.filter(e => e.requestId !== request.request_id), { requestId: request.request_id, user: body.message, assistant: text.slice(0, 8000) }].slice(-4);
-        memory.set(key, { expires: now() + 1800000, entries });
+        const pending = writeIntent(plannedMessage) && asksForClarification(text) ? plannedMessage : null;
+        memory.set(key, { expires: now() + 1800000, entries, pending });
         if (memory.size > 1000) memory.delete(memory.keys().next().value);
     }
     async function checkReplayAuthority(actor, requestId) {
@@ -47,7 +55,8 @@ export function createAgentService({ store, authorize, read, writes, reason, okf
             for (const entry of cached.entries) for (const reference of await checkReplayAuthority(actor, entry.requestId)) references.set(fingerprint(reference), reference);
             if (references.size > 256) fail('authorization_denied');
         } catch { memory.delete(key); return { messages: [], references: [] }; }
-        return { messages: cached.entries.flatMap(entry => [{ role: 'user', text: entry.user }, { role: 'assistant', text: entry.assistant }]), references: [...references.values()] };
+        return { messages: cached.entries.flatMap(entry => [{ role: 'user', text: entry.user }, { role: 'assistant', text: entry.assistant }]),
+            references: [...references.values()], pending: cached.pending || null };
     }
     function current(session, request) {
         if (session.request.status !== 'RUNNING' || session.request.reasoning_epoch !== request.reasoning_epoch
@@ -93,6 +102,11 @@ export function createAgentService({ store, authorize, read, writes, reason, okf
         const results = []; const messageId = randomUUID();
         try {
             const history = await historyFor(actor, body.conversationId);
+            const declining = history.pending && declinesClarification(body.message);
+            const continuing = history.pending && !declining && !startsNewRequest(body.message);
+            const plannedMessage = continuing
+                ? `${history.pending}\nAdditional details from the user: ${body.message}` : body.message;
+            const clarificationTooLong = plannedMessage.length > 4000;
             const authority = new Map(history.references.map(ref => [fingerprint(ref), ref]));
             const recordAuthorization = (tool, args) => {
                 const reference = { kind: 'tool', tool: tool.name, version: tool.version, arguments: args };
@@ -112,9 +126,11 @@ export function createAgentService({ store, authorize, read, writes, reason, okf
             for (let step = 1; step <= 4; step++) {
                 if (now() >= Number(request.lease_ms)) fail('backend_unavailable', 'request_deadline');
                 const stepId = `${request.request_id}_${step}`;
-                const response = validateModelResponse(await reason({ protocol: CONTRACT_VERSION, requestId: request.request_id, stepId,
-                    message: body.message, history: history.messages, context: { ...body.context, ...(body.attachment ? { attachment: body.attachment } : {}) }, generation: knowledge.generation, knowledge: knowledge.markdown,
-                    results, allowedTools: allowedToolsForRequest(body.context, body.message, writeEnablement) }, { deadline: Number(request.lease_ms) }));
+                const response = declining ? { kind: 'assistant', text: 'Okay, I will not proceed. No ERP changes were made.', sources: [] }
+                    : clarificationTooLong ? { kind: 'assistant', text: 'The combined request is too long. Start a new message with the complete details; no ERP changes were made.', sources: [] }
+                    : validateModelResponse(await reason({ protocol: CONTRACT_VERSION, requestId: request.request_id, stepId,
+                        message: plannedMessage, history: history.messages, context: { ...body.context, ...(body.attachment ? { attachment: body.attachment } : {}) }, generation: knowledge.generation, knowledge: knowledge.markdown,
+                        results, allowedTools: allowedToolsForRequest(body.context, plannedMessage, writeEnablement) }, { deadline: Number(request.lease_ms) }));
 
                 if (response.kind === 'assistant') {
                     const references = new Set([...knowledge.markdown.map(k => k.file), ...results.map(r => r.stepId)]);
@@ -144,14 +160,22 @@ export function createAgentService({ store, authorize, read, writes, reason, okf
                     emitLive(onStreamEvent, completedEvent);
                     emitLive(onStreamEvent, doneEvent);
 
-                    remember(actor, body, request, text);
+                    remember(actor, body, request, text, clarificationTooLong ? '' : plannedMessage);
                     return;
                 }
 
                 const { tool, args } = validateIntent(response);
-                if (!allowedToolsForRequest(body.context, body.message, writeEnablement).includes(tool.name)) fail('authorization_denied', 'tool_not_available_in_context');
+                if (!allowedToolsForRequest(body.context, plannedMessage, writeEnablement).includes(tool.name)) fail('authorization_denied', 'tool_not_available_in_context');
                 if (tool.risk.includes('WRITE') && writeEnablement[tool.name] !== true) fail('request_rejected', 'write_integration_gate_closed');
-                if (tool.risk.includes('WRITE') && requestsInventedWriteData(body.message)) fail('validation_error', 'invented_write_data_not_allowed');
+                if (tool.risk.includes('WRITE') && requestsInventedWriteData(plannedMessage)) fail('validation_error', 'invented_write_data_not_allowed');
+                if (isGuardedDelete(tool.name)) {
+                    const searchName = tool.name.replace('deleteSelected', 'search');
+                    const matches = results.filter(result => result.tool === searchName).flatMap(result => result.data || []);
+                    if (!args.targets.every(target => matches.some(row => Number(row.id) === target.id
+                        && String(row.name || '').trim().toLowerCase() === target.expectedName.trim().toLowerCase()))) {
+                        fail('request_rejected', 'delete_target_not_verified_by_search');
+                    }
+                }
                 const scope = await authorize(actor, tool, args);
                 recordAuthorization(tool, args);
                 const execution = { execution_id: randomUUID(), request_id: request.request_id, step_index: step, tool: tool.name, tool_version: tool.version,
@@ -235,7 +259,11 @@ export function createAgentService({ store, authorize, read, writes, reason, okf
             if (found.execution.status !== 'PENDING_CONFIRMATION') return authorizedEvents(actor, found.request.request_id);
             if (decision.decision === 'confirm') {
                 let expected = null;
-                if (found.execution.tool === 'tasks.deleteSelected') {
+                if (isGuardedDelete(found.execution.tool)) {
+                    const count = Array.isArray(found.execution.args_json?.targets) ? found.execution.args_json.targets.length : 0;
+                    const label = deleteLabel(found.execution.tool);
+                    expected = `DELETE ${count} ${(count === 1 ? label.slice(0, -1) : label).toUpperCase()}`;
+                } else if (found.execution.tool === 'tasks.deleteSelected') {
                     const count = Array.isArray(found.execution.args_json?.taskIds) ? found.execution.args_json.taskIds.length : 0;
                     expected = `DELETE ${count} TASK${count === 1 ? '' : 'S'}`;
                 } else if (found.execution.tool === 'documents.cancelCycle') {
@@ -244,8 +272,11 @@ export function createAgentService({ store, authorize, read, writes, reason, okf
                     expected = 'ARCHIVE DOCUMENT';
                 } else if (found.execution.tool === 'projects.setMemberPermissions'
                     || found.execution.tool === 'adminUsers.setSystemPermissions'
-                    || found.execution.tool.startsWith('permissionTemplates.')) {
+                    || found.execution.tool === 'permissionTemplates.create'
+                    || (found.execution.tool === 'permissionTemplates.update' && found.execution.args_json?.permissions)) {
                     expected = 'CONFIRM ACCESS CHANGE';
+                } else if (found.execution.tool === 'permissionTemplates.update') {
+                    expected = 'CONFIRM ADMIN CHANGE';
                 } else if (found.execution.tool.startsWith('admin') || found.execution.tool.startsWith('documentTemplates.')) {
                     expected = 'CONFIRM ADMIN CHANGE';
                 }
@@ -273,7 +304,7 @@ export function createAgentService({ store, authorize, read, writes, reason, okf
                     if (fingerprint(scopeRecord(scope)) !== fingerprint(execution.scope_json)) fail('authorization_denied', 'scope_changed');
                     const preconditions = await writes.preconditions(tool, args, scope, session.trx, true);
                     if (fingerprint(preconditions) !== fingerprint(execution.preconditions_json)) fail('request_rejected', 'stale_preconditions');
-                    const result = await writes.execute(tool, args, scope, session.trx);
+                    const result = await writes.execute(tool, args, scope, session.trx, preconditions);
                     await session.updateExecution(execution.execution_id, { status: 'SUCCEEDED', result_json: result, completed_ms: now() });
                     await session.append('confirmation_resolved', { ...decision }, execution.execution_id);
                     await session.append('tool_started', { actionId: execution.execution_id }, execution.execution_id);
@@ -294,7 +325,9 @@ export function createAgentService({ store, authorize, read, writes, reason, okf
                         'projects.setMemberPermissions': 'Project member permissions updated',
                         'adminUsers.updateProfile': 'User profile updated',
                         'adminUsers.setSystemPermissions': 'User system permissions updated' };
-                    const outcomeText = deliveryWrites[tool.name]
+                    const outcomeText = isGuardedDelete(tool.name)
+                        ? `Deleted ${result.deletedCount} selected ${deleteLabel(tool.name)} and ${result.linkedRecordsRemoved} linked records.`
+                        : deliveryWrites[tool.name]
                         ? `${deliveryWrites[tool.name]} successfully.`
                         : tool.name === 'tasks.deleteSelected'
                             ? `Deleted ${result.deletedCount} selected project task${result.deletedCount === 1 ? '' : 's'}.`
@@ -306,7 +339,7 @@ export function createAgentService({ store, authorize, read, writes, reason, okf
                                 ? `Successfully recorded decision '${result.action}' for ${result.itemType} #${result.id}.`
                                 : `Committed record ${result.id}.`;
                     await session.append('tool_completed', { actionId: execution.execution_id,
-                        result: { kind: 'execution', title: deliveryWrites[tool.name] || (tool.name === 'tasks.deleteSelected' ? 'Delete Project Tasks' : tool.name === 'vendors.bulkImport' ? 'Bulk Vendor Import' : tool.name === 'approvals.batchDecide' ? 'Batch Approval Decision' : tool.name === 'approvals.decide' ? 'Approval Decision' : tool.name), outcome: 'success', text: outcomeText },
+                        result: { kind: 'execution', title: isGuardedDelete(tool.name) ? `Delete ${deleteLabel(tool.name)}` : deliveryWrites[tool.name] || (tool.name === 'tasks.deleteSelected' ? 'Delete Project Tasks' : tool.name === 'vendors.bulkImport' ? 'Bulk Vendor Import' : tool.name === 'approvals.batchDecide' ? 'Batch Approval Decision' : tool.name === 'approvals.decide' ? 'Approval Decision' : tool.name), outcome: 'success', text: outcomeText },
                         provenance: provenance(tool, scope, now()) }, execution.execution_id);
                     await session.updateRequest({ status: 'COMPLETE' }); await session.append('conversation_completed');
                 });
