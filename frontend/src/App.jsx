@@ -1,4 +1,4 @@
-
+﻿
 import React, { Suspense, lazy } from 'react';
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
 import MainLayout from './components/layout/MainLayout';
@@ -12,6 +12,7 @@ import { customToast } from './utils/toast';
 import { toast as reactToastify, ToastContainer } from 'react-toastify';
 import MobilePilotLayout from './mobile/routing/MobilePilotLayout';
 import ResponsiveRoute from './mobile/routing/ResponsiveRoute';
+import DevRoute from './components/DevRoute';
 import { loadMobileProjects } from './mobile/hooks/useMobileProjects';
 import 'react-toastify/dist/ReactToastify.css';
 
@@ -24,7 +25,7 @@ if (reactToastify) {
   reactToastify.info = (msg, opts) => customToast.info(msg, typeof opts === 'string' ? opts : 'Info');
 }
 
-// ─── Lazy-loaded pages with resilient chunk retries & navigation structure ──
+// â”€â”€â”€ Lazy-loaded pages with resilient chunk retries & navigation structure â”€â”€
 const Dashboard = lazyWithRetry(() => import('./pages/Dashboard'), 'dashboard');
 const Projects = lazyWithRetry(() => import('./pages/Projects'), 'projects');
 const CreateProject = lazyWithRetry(() => import('./pages/Projects/CreateProject'), 'create_project');
@@ -42,7 +43,8 @@ const AdminPage = lazyWithRetry(() => import('./pages/Admin/AdminPage'), 'admin'
 const Login = lazyWithRetry(() => import('./pages/Auth/Login'), 'login');
 const DrawingTest = lazyWithRetry(() => import('./pages/DrawingTest/DrawingTest'), 'drawing_test');
 const SpreadsheetPage = lazyWithRetry(() => import('./pages/Spreadsheets/SpreadsheetPage'), 'spreadsheets');
-// ─── Lazy-loaded pages ────────────────────────────────────────────────────
+const LocationLab = lazyWithRetry(() => import('./pages/Dev/LocationLab'), 'location_lab');
+// â”€â”€â”€ Lazy-loaded pages â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 const MobileMainLayout = lazy(() => import('./mobile/layout/MobileMainLayout'));
 const MobileLogin = lazy(() => import('./mobile/pages/Auth/MobileLogin'));
 const MobileDashboard = lazy(() => import('./mobile/pages/MobileDashboard'));
@@ -62,7 +64,7 @@ const MobileGlobalSpreadsheets = lazy(() => import('./mobile/pages/Spreadsheets/
 
 import './index.css';
 
-// ─── Protected Route Wrapper ────────────────────────────────────────────────
+// â”€â”€â”€ Protected Route Wrapper â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 const ProtectedRoute = ({ children, pageId, requiredLevel = 1 }) => {
   const { user, loading, hasPermission } = useAuth();
 
@@ -228,6 +230,13 @@ function App() {
                   <ResponsiveRoute mobile={<MobileCadViewer />} desktop={<DrawingTest />} />
                 </Suspense>
               </ProtectedRoute>
+            } />
+            <Route path="/dev/location-lab" element={
+              <DevRoute>
+                <Suspense fallback={<PageSkeleton variant="table" />}>
+                  <LocationLab />
+                </Suspense>
+              </DevRoute>
             } />
           </Routes>
         </Router>

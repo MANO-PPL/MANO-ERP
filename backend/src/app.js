@@ -38,7 +38,7 @@ app.use(cors({
 // Middleware
 // ============================================================
 app.use(cookieParser());
-app.use(express.json());
+app.use(express.json({ strict: false }));
 app.use('/uploads', express.static(path.join(process.cwd(), 'uploads')));
 
 // ============================================================

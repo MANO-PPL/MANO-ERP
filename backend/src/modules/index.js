@@ -16,10 +16,13 @@ import kgRoutes from './knowledge/kgRoutes.js';
 import agentRoutes from './agent/agentRoutes.js';
 import drawingsTestRoutes from './projects/drawings/testDrawings.js';
 import ledgerRoutes from './ledger/ledgerRoutes.js';
+import locationRoutes from './locations/locationRoutes.js';
+import locationLabRoutes from './locations/locationLabRoutes.js';
+import { isDevLabEnabled } from '../middleware/devLabGuard.js';
 
 const router = express.Router();
 
-// NEW route imports
+// Core production route imports
 router.use('/auth', authRoutes);
 router.use('/admin', adminRoutes);
 router.use('/projects', projectRoutes);
@@ -36,5 +39,12 @@ router.use('/agent/knowledge-graph', kgRoutes);
 router.use('/agent', agentRoutes);
 router.use('/drawings-test', drawingsTestRoutes);
 router.use('/ledger', ledgerRoutes);
+router.use('/locations', locationRoutes);
+
+// Modular Dev Lab routes (Only active if ENABLE_DEV_LAB=true in .env / .env.lab)
+if (isDevLabEnabled()) {
+    console.log('🧪 Mounting Location Dev Lab routes on /api/dev/locations');
+    router.use('/dev/locations', locationLabRoutes);
+}
 
 export default router;
