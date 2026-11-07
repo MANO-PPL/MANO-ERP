@@ -24,6 +24,9 @@ router.post('/ensure-path', labController.ensurePath);
 router.get('/integrity', labController.checkIntegrity);
 router.post('/rebuild-paths', labController.rebuildPaths);
 
+// Automated Integration Test Runner (25 Test Cases)
+router.post('/run-tests', labController.runTests);
+
 // Node-Level Operations
 router.get('/:id', labController.getLocation);
 router.put('/:id', labController.updateLocation);

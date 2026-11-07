@@ -1,26 +1,7 @@
 import assert from 'assert';
-import db from '../config/database.js';
-import * as locationService from '../modules/locations/locationService.js';
-import { LocationError, LocationErrorCodes } from '../modules/locations/locationErrors.js';
-
-console.log('====================================================');
-console.log('🧪 RUNNING MODULE 1: LOCATION SPEC TEST SUITE (25 CASES)');
-console.log('====================================================');
-
-let passedCount = 0;
-let failedCount = 0;
-
-async function runTestCase(num, name, fn) {
-    try {
-        await fn();
-        console.log(`✅ [PASS] Case ${num}: ${name}`);
-        passedCount++;
-    } catch (err) {
-        console.error(`❌ [FAIL] Case ${num}: ${name}`);
-        console.error(err);
-        failedCount++;
-    }
-}
+import db from '../../config/database.js';
+import * as locationService from './locationService.js';
+import { LocationError, LocationErrorCodes } from './locationErrors.js';
 
 // Helper to isolate test data
 const TEST_ORG_1 = 9991;
@@ -29,18 +10,81 @@ const TEST_PROJECT_1 = 8881;
 const TEST_PROJECT_2 = 8882;
 
 async function cleanupTestData() {
+    locationService.clearUsageChecks();
     try {
-        locationService.clearUsageChecks();
-        // Delete locations first due to FK constraints
-        await db('loc_location').whereIn('project_id', [TEST_PROJECT_1, TEST_PROJECT_2]).delete();
-        await db('loc_location').whereIn('org_id', [TEST_ORG_1, TEST_ORG_2]).delete();
-        await db('loc_type').whereIn('org_id', [TEST_ORG_1, TEST_ORG_2]).delete();
-    } catch (e) {
-        // Ignored during cleanup
+        await db.raw('SET FOREIGN_KEY_CHECKS = 0');
+        await db('loc_location')
+            .whereIn('project_id', [TEST_PROJECT_1, TEST_PROJECT_2])
+            .delete();
+        await db('loc_type')
+            .whereIn('org_id', [TEST_ORG_1, TEST_ORG_2])
+            .delete();
+    } catch (err) {
+        console.error('Error during cleanupTestData:', err);
+    } finally {
+        try {
+            await db.raw('SET FOREIGN_KEY_CHECKS = 1');
+        } catch (_) {}
     }
 }
 
-async function main() {
+/**
+ * Runs the Location Spec test suite.
+ * Can run all 25 cases together, or an individual test case.
+ * Can be invoked via CLI or imported by the Location Dev Lab.
+ */
+export async function runLocationTestSuite({ targetCase = null, closeDb = false } = {}) {
+    const targetNum = targetCase && targetCase !== 'all' ? Number(targetCase) : null;
+    const headerTitle = targetNum 
+        ? `RUNNING MODULE 1: LOCATION SPEC TEST (CASE ${targetNum})` 
+        : `RUNNING MODULE 1: LOCATION SPEC TEST SUITE (25 CASES)`;
+
+    console.log('====================================================');
+    console.log(`🧪 ${headerTitle}`);
+    console.log('====================================================');
+
+    const suiteStartTime = Date.now();
+    let passedCount = 0;
+    let failedCount = 0;
+    const testResults = [];
+
+    async function runTestCase(num, name, fn) {
+        if (targetNum && num !== targetNum) {
+            return;
+        }
+
+        const caseStart = Date.now();
+        try {
+            await fn();
+            const durationMs = Date.now() - caseStart;
+            console.log(`✅ [PASS] Case ${num}: ${name} (${durationMs}ms)`);
+            passedCount++;
+            testResults.push({
+                num,
+                name,
+                status: 'PASS',
+                durationMs,
+                error: null
+            });
+        } catch (err) {
+            const durationMs = Date.now() - caseStart;
+            console.error(`❌ [FAIL] Case ${num}: ${name} (${durationMs}ms)`);
+            console.error(err);
+            failedCount++;
+            testResults.push({
+                num,
+                name,
+                status: 'FAIL',
+                durationMs,
+                error: {
+                    message: err.message || String(err),
+                    code: err.code || 'ASSERTION_ERROR',
+                    stack: err.stack
+                }
+            });
+        }
+    }
+
     try {
         await cleanupTestData();
 
@@ -48,17 +92,63 @@ async function main() {
         const types = await locationService.seedDefaultTypes(TEST_ORG_1);
         const typeMap = new Map(types.map(t => [t.code, t.id]));
 
-        // Seed an extra type for TEST_ORG_2 to test cross-org validation
-        const org2Type = await locationService.createType({
-            orgId: TEST_ORG_2,
-            code: 'org2_tower',
-            name: 'Org 2 Tower'
-        });
+        // Seed an extra type for TEST_ORG_2 to test cross-org validation (idempotent)
+        let org2Type = await db('loc_type').where({ org_id: TEST_ORG_2, code: 'org2_tower' }).first();
+        if (!org2Type) {
+            org2Type = await locationService.createType({
+                orgId: TEST_ORG_2,
+                code: 'org2_tower',
+                name: 'Org 2 Tower'
+            });
+        }
+
+        // Fixtures for standalone case execution
+        let rootTowerA = null;
+        let floor1 = null;
+
+        async function ensureRootTowerA() {
+            if (rootTowerA) {
+                const existing = await locationService.getLocation(rootTowerA.id);
+                if (existing) return existing;
+            }
+            const found = await db('loc_location').where({ project_id: TEST_PROJECT_1, name: 'Tower A', parent_id: null }).first();
+            if (found) {
+                rootTowerA = found;
+                return found;
+            }
+            rootTowerA = await locationService.createLocation({
+                orgId: TEST_ORG_1,
+                projectId: TEST_PROJECT_1,
+                typeId: typeMap.get('tower'),
+                name: 'Tower A'
+            });
+            return rootTowerA;
+        }
+
+        async function ensureFloor1() {
+            if (floor1) {
+                const existing = await locationService.getLocation(floor1.id);
+                if (existing) return existing;
+            }
+            const root = await ensureRootTowerA();
+            const found = await db('loc_location').where({ project_id: TEST_PROJECT_1, name: 'Floor 1', parent_id: root.id }).first();
+            if (found) {
+                floor1 = found;
+                return found;
+            }
+            floor1 = await locationService.createLocation({
+                orgId: TEST_ORG_1,
+                projectId: TEST_PROJECT_1,
+                parentId: root.id,
+                typeId: typeMap.get('floor'),
+                name: 'Floor 1'
+            });
+            return floor1;
+        }
 
         // -------------------------------------------------------------
         // Case 1: Create a root -> path /id/, depth 1
         // -------------------------------------------------------------
-        let rootTowerA;
         await runTestCase(1, 'Create a root', async () => {
             rootTowerA = await locationService.createLocation({
                 orgId: TEST_ORG_1,
@@ -74,25 +164,25 @@ async function main() {
         // -------------------------------------------------------------
         // Case 2: Create a child under a root -> path and depth derived from parent
         // -------------------------------------------------------------
-        let floor1;
         await runTestCase(2, 'Create a child under a root', async () => {
+            const root = await ensureRootTowerA();
             floor1 = await locationService.createLocation({
                 orgId: TEST_ORG_1,
                 projectId: TEST_PROJECT_1,
-                parentId: rootTowerA.id,
+                parentId: root.id,
                 typeId: typeMap.get('floor'),
                 name: 'Floor 1'
             });
             assert.strictEqual(floor1.depth, 2);
-            assert.strictEqual(floor1.path, `/${rootTowerA.id}/${floor1.id}/`);
-            assert.strictEqual(floor1.parent_id, rootTowerA.id);
+            assert.strictEqual(floor1.path, `/${root.id}/${floor1.id}/`);
+            assert.strictEqual(floor1.parent_id, root.id);
         });
 
         // -------------------------------------------------------------
         // Case 3: Create a location 8 levels deep, then a 9th -> fails with LOC_MAX_DEPTH
         // -------------------------------------------------------------
         await runTestCase(3, 'Create a location 8 levels deep, then a 9th', async () => {
-            let currentParent = floor1;
+            let currentParent = await ensureFloor1();
             // floor1 is depth 2. Create up to depth 8.
             for (let d = 3; d <= 8; d++) {
                 currentParent = await locationService.createLocation({
@@ -123,6 +213,7 @@ async function main() {
         // Case 4: Two roots with the same name -> LOC_DUPLICATE_NAME
         // -------------------------------------------------------------
         await runTestCase(4, 'Two roots with the same name', async () => {
+            await ensureRootTowerA();
             await assert.rejects(
                 async () => {
                     await locationService.createLocation({
@@ -140,12 +231,14 @@ async function main() {
         // Case 5: Same name differing only in case, same parent -> LOC_DUPLICATE_NAME
         // -------------------------------------------------------------
         await runTestCase(5, 'Same name differing only in case, same parent', async () => {
+            const root = await ensureRootTowerA();
+            await ensureFloor1();
             await assert.rejects(
                 async () => {
                     await locationService.createLocation({
                         orgId: TEST_ORG_1,
                         projectId: TEST_PROJECT_1,
-                        parentId: rootTowerA.id,
+                        parentId: root.id,
                         typeId: typeMap.get('floor'),
                         name: 'floor 1' // lowercase of 'Floor 1'
                     });
@@ -179,12 +272,13 @@ async function main() {
         // Case 7: Parent from another project -> LOC_CROSS_PROJECT
         // -------------------------------------------------------------
         await runTestCase(7, 'Parent from another project', async () => {
+            const root = await ensureRootTowerA();
             await assert.rejects(
                 async () => {
                     await locationService.createLocation({
                         orgId: TEST_ORG_1,
                         projectId: TEST_PROJECT_2, // different project!
-                        parentId: rootTowerA.id,   // belongs to TEST_PROJECT_1
+                        parentId: root.id,         // belongs to TEST_PROJECT_1
                         typeId: typeMap.get('floor'),
                         name: 'Cross Project Floor'
                     });
@@ -291,9 +385,10 @@ async function main() {
         // Case 11: Move a location under itself -> LOC_CYCLE
         // -------------------------------------------------------------
         await runTestCase(11, 'Move a location under itself', async () => {
+            const root = await ensureRootTowerA();
             await assert.rejects(
                 async () => {
-                    await locationService.moveLocation(rootTowerA.id, rootTowerA.id);
+                    await locationService.moveLocation(root.id, root.id);
                 },
                 err => err instanceof LocationError && err.code === LocationErrorCodes.LOC_CYCLE
             );
@@ -303,17 +398,19 @@ async function main() {
         // Case 12: Move a location under its own grandchild -> LOC_CYCLE
         // -------------------------------------------------------------
         await runTestCase(12, 'Move a location under its own grandchild', async () => {
+            const root = await ensureRootTowerA();
+            const fl = await ensureFloor1();
             const grandchild = await locationService.createLocation({
                 orgId: TEST_ORG_1,
                 projectId: TEST_PROJECT_1,
-                parentId: floor1.id,
+                parentId: fl.id,
                 typeId: typeMap.get('unit'),
                 name: 'Grandchild Unit'
             });
 
             await assert.rejects(
                 async () => {
-                    await locationService.moveLocation(rootTowerA.id, grandchild.id);
+                    await locationService.moveLocation(root.id, grandchild.id);
                 },
                 err => err instanceof LocationError && err.code === LocationErrorCodes.LOC_CYCLE
             );
@@ -323,8 +420,22 @@ async function main() {
         // Case 13: Move to a parent that makes tree too deep -> LOC_MAX_DEPTH, nothing changed
         // -------------------------------------------------------------
         await runTestCase(13, 'Move to a parent that makes the tree too deep', async () => {
-            // Find a deep node from Case 3 (at depth 7 or 8)
-            const deepParent = await db('loc_location').where({ project_id: TEST_PROJECT_1, depth: 7 }).first();
+            // Find a deep node from Case 3 (at depth 7 or 8) or create chain if running standalone
+            let deepParent = await db('loc_location').where({ project_id: TEST_PROJECT_1, depth: 7 }).first();
+            if (!deepParent) {
+                let curr = await ensureFloor1();
+                for (let d = 3; d <= 7; d++) {
+                    curr = await locationService.createLocation({
+                        orgId: TEST_ORG_1,
+                        projectId: TEST_PROJECT_1,
+                        parentId: curr.id,
+                        typeId: typeMap.get('unit'),
+                        name: `Depth_Chain_${d}`
+                    });
+                }
+                deepParent = curr;
+            }
+
             // A subtree of height 2
             const subRoot = await locationService.createLocation({
                 orgId: TEST_ORG_1,
@@ -406,27 +517,26 @@ async function main() {
                 orgId: TEST_ORG_1,
                 projectId: TEST_PROJECT_1,
                 typeId: typeMap.get('tower'),
-                name: 'Node X'
+                name: 'Cycle Node X'
             });
             const nodeY = await locationService.createLocation({
                 orgId: TEST_ORG_1,
                 projectId: TEST_PROJECT_1,
-                parentId: nodeX.id,
-                typeId: typeMap.get('floor'),
-                name: 'Node Y'
+                typeId: typeMap.get('tower'),
+                name: 'Cycle Node Y'
             });
 
-            // Simulate race: try moving nodeX under nodeY while nodeY moves under nodeX
+            // Simulate race: try moving nodeX under nodeY while nodeY tries to move under nodeX
             const results = await Promise.allSettled([
                 locationService.moveLocation(nodeX.id, nodeY.id),
-                locationService.moveLocation(nodeY.id, null)
+                locationService.moveLocation(nodeY.id, nodeX.id)
             ]);
 
             const fulfilled = results.filter(r => r.status === 'fulfilled');
             const rejected = results.filter(r => r.status === 'rejected');
 
-            // At least one rejected because X cannot move under Y while Y is descendant of X
-            assert.ok(rejected.length >= 1);
+            // At least one must be rejected (either LOC_CYCLE or deadlock rollback)
+            assert.ok(rejected.length >= 1, 'At least one simultaneous mutual move must be rejected');
 
             const violations = await locationService.checkIntegrity(TEST_PROJECT_1);
             assert.strictEqual(violations.length, 0);
@@ -467,9 +577,11 @@ async function main() {
         // Case 17: Delete a location with children -> LOC_HAS_CHILDREN
         // -------------------------------------------------------------
         await runTestCase(17, 'Delete a location with children', async () => {
+            const root = await ensureRootTowerA();
+            await ensureFloor1();
             await assert.rejects(
                 async () => {
-                    await locationService.deleteLocation(rootTowerA.id);
+                    await locationService.deleteLocation(root.id);
                 },
                 err => err instanceof LocationError && err.code === LocationErrorCodes.LOC_HAS_CHILDREN
             );
@@ -524,6 +636,7 @@ async function main() {
         // -------------------------------------------------------------
         await runTestCase(20, 'Delete a type that is in use', async () => {
             const towerTypeId = typeMap.get('tower');
+            await ensureRootTowerA();
             await assert.rejects(
                 async () => {
                     await locationService.deleteType(towerTypeId);
@@ -666,24 +779,46 @@ async function main() {
         });
 
         console.log('====================================================');
-        console.log(`📊 TEST RESULTS: ${passedCount}/25 PASSED, ${failedCount} FAILED`);
+        console.log(`📊 TEST RESULTS: ${passedCount}/${targetNum ? 1 : 25} PASSED, ${failedCount} FAILED`);
         console.log('====================================================');
 
         await cleanupTestData();
-        await db.destroy();
 
-        if (failedCount > 0) {
-            process.exit(1);
-        } else {
-            process.exit(0);
+        if (closeDb) {
+            await db.destroy();
         }
+
+        return {
+            total: targetNum ? 1 : 25,
+            passed: passedCount,
+            failed: failedCount,
+            targetCase: targetNum || 'all',
+            durationMs: Date.now() - suiteStartTime,
+            results: testResults
+        };
     } catch (err) {
         console.error('Fatal test runner error:', err);
         await cleanupTestData();
-        await db.destroy();
-        process.exit(1);
+        if (closeDb) {
+            await db.destroy();
+        }
+        throw err;
     }
 }
 
-main();
+// Direct CLI Execution
+if (process.argv[1] && process.argv[1].endsWith('locationTests.js')) {
+    const rawArg = process.argv[2] ? process.argv[2].replace(/^--case=/, '') : null;
+    const targetCase = rawArg && !isNaN(Number(rawArg)) ? Number(rawArg) : null;
+
+    runLocationTestSuite({ targetCase, closeDb: true })
+        .then(report => {
+            if (report.failed > 0) process.exit(1);
+            else process.exit(0);
+        })
+        .catch(err => {
+            console.error('CLI Test Execution Error:', err);
+            process.exit(1);
+        });
+}
 

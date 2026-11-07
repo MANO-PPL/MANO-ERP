@@ -28,11 +28,42 @@ import {
     BookOpen,
     ShieldCheck,
     Terminal,
-    Lock
+    Lock,
+    Play,
+    CheckCircle2,
+    XCircle
 } from 'lucide-react';
 
 // Isolated Dev Lab API Base
 const API_BASE = '/dev/locations';
+
+const LOCATION_SPEC_CASES = [
+    { num: 1, name: 'Create a root' },
+    { num: 2, name: 'Create a child under a root' },
+    { num: 3, name: 'Create a location 8 levels deep, then a 9th' },
+    { num: 4, name: 'Two roots with the same name' },
+    { num: 5, name: 'Same name differing only in case, same parent' },
+    { num: 6, name: 'Same name under two different parents' },
+    { num: 7, name: 'Parent from another project' },
+    { num: 8, name: 'Type from another organization' },
+    { num: 9, name: 'Create under an archived parent' },
+    { num: 10, name: 'Move a floor with 20 descendants to another tower' },
+    { num: 11, name: 'Move a location under itself' },
+    { num: 12, name: 'Move a location under its own grandchild' },
+    { num: 13, name: 'Move to a parent that makes the tree too deep' },
+    { num: 14, name: 'Move creating a sibling name clash' },
+    { num: 15, name: 'Two simultaneous moves forming cycle' },
+    { num: 16, name: 'Archive then restore' },
+    { num: 17, name: 'Delete a location with children' },
+    { num: 18, name: 'Delete a location reported in use by usage check' },
+    { num: 19, name: 'Delete a free leaf' },
+    { num: 20, name: 'Delete a type that is in use' },
+    { num: 21, name: 'getSubtree and getDescendantIds prefix exactness' },
+    { num: 22, name: 'getAncestors of a deep unit' },
+    { num: 23, name: 'ensurePath idempotency' },
+    { num: 24, name: 'Corrupt paths, checkIntegrity, and rebuildPaths' },
+    { num: 25, name: 'Rename a location' }
+];
 
 export default function LocationLab() {
     const { user } = useAuth();
@@ -68,6 +99,12 @@ export default function LocationLab() {
     // In-Use Simulator set of location IDs
     const [simulatedInUseIds, setSimulatedInUseIds] = useState(new Set());
 
+    // Integration Test Suite State
+    const [testReport, setTestReport] = useState(null);
+    const [resultsByCase, setResultsByCase] = useState({});
+    const [testFilter, setTestFilter] = useState('all'); // 'all' | 'pass' | 'fail'
+    const [expandedFailures, setExpandedFailures] = useState(new Set());
+
     // Helper for granular button loading
     const isKeyLoading = (key) => loadingKeys.has(key);
     const setKeyLoading = (key, isLoading) => {
@@ -77,6 +114,49 @@ export default function LocationLab() {
             else next.delete(key);
             return next;
         });
+    };
+
+    const handleRunTestSuite = async (caseNum = null) => {
+        const isSingle = caseNum !== null && caseNum !== undefined && caseNum !== 'all';
+        const loadingKey = isSingle ? `test_case_${caseNum}` : 'test_suite';
+        if (isKeyLoading(loadingKey) || isKeyLoading('test_suite')) return;
+        setKeyLoading(loadingKey, true);
+        setActiveModal('test_suite');
+        try {
+            const payload = isSingle ? { caseNum: Number(caseNum) } : {};
+            const res = await callApi('post', `${API_BASE}/run-tests`, payload);
+            const report = res.data;
+            if (report) {
+                if (isSingle) {
+                    const single = report.results?.[0];
+                    if (single) {
+                        setResultsByCase(prev => {
+                            const next = { ...prev, [single.num]: single };
+                            const executed = Object.values(next);
+                            const passed = executed.filter(x => x.status === 'PASS').length;
+                            const failed = executed.filter(x => x.status === 'FAIL').length;
+                            setTestReport(r => ({
+                                total: 25,
+                                passed,
+                                failed,
+                                durationMs: (r?.durationMs || 0) + single.durationMs,
+                                results: LOCATION_SPEC_CASES.map(c => next[c.num]).filter(Boolean)
+                            }));
+                            return next;
+                        });
+                    }
+                } else {
+                    const map = {};
+                    (report.results || []).forEach(r => { map[r.num] = r; });
+                    setResultsByCase(map);
+                    setTestReport(report);
+                }
+            }
+        } catch (err) {
+            console.error('Failed to run test suite:', err);
+        } finally {
+            setKeyLoading(loadingKey, false);
+        }
     };
 
     // -------------------------------------------------------------
@@ -723,6 +803,21 @@ export default function LocationLab() {
                             <Layers size={14} />
                         )}
                         <span>{isKeyLoading('seed_types') ? 'Seeding Types...' : 'Seed Default Types'}</span>
+                    </button>
+
+                    {/* Run Automated Test Suite (25 Cases) */}
+                    <button
+                        disabled={isKeyLoading('test_suite')}
+                        onClick={handleRunTestSuite}
+                        className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700 text-white rounded-lg text-xs font-semibold shadow-sm transition-all disabled:opacity-50"
+                        title="Execute the full 25-case Location Spec integration test suite"
+                    >
+                        {isKeyLoading('test_suite') ? (
+                            <Loader2 size={14} className="animate-spin" />
+                        ) : (
+                            <Play size={14} className="fill-current" />
+                        )}
+                        <span>{isKeyLoading('test_suite') ? 'Running 25 Tests...' : 'Run Test Suite (25)'}</span>
                     </button>
                 </div>
 
@@ -1545,6 +1640,218 @@ export default function LocationLab() {
                                 type="button"
                                 onClick={() => setActiveModal(null)}
                                 className="px-4 py-2 rounded-lg text-xs font-semibold bg-gray-200 dark:bg-gray-700 hover:bg-gray-300"
+                            >
+                                Close
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {/* 6. Integration Test Suite Runner Modal ('test_suite') */}
+            {activeModal === 'test_suite' && (
+                <div className="fixed inset-0 z-50 bg-black/70 backdrop-blur-sm flex items-center justify-center p-4">
+                    <div className="bg-gray-900 text-gray-100 rounded-2xl max-w-3xl w-full p-6 shadow-2xl border border-gray-700 max-h-[88vh] flex flex-col font-sans">
+                        {/* Modal Header */}
+                        <div className="flex items-center justify-between pb-4 border-b border-gray-800">
+                            <div className="flex items-center gap-2.5">
+                                <div className="p-2 bg-emerald-500/10 rounded-xl text-emerald-400 border border-emerald-500/20">
+                                    <Terminal size={20} />
+                                </div>
+                                <div>
+                                    <h2 className="text-base font-bold text-white flex items-center gap-2">
+                                        Location Spec Test Suite
+                                        <span className="text-[11px] font-mono font-medium px-2 py-0.5 rounded-full bg-emerald-950 text-emerald-400 border border-emerald-800">
+                                            25 Cases
+                                        </span>
+                                    </h2>
+                                    <p className="text-xs text-gray-400 mt-0.5">
+                                        Automated verification of hierarchy invariants, atomic subtree moves & delete hooks
+                                    </p>
+                                </div>
+                            </div>
+                            <div className="flex items-center gap-2">
+                                <button
+                                    onClick={() => handleRunTestSuite()}
+                                    disabled={isKeyLoading('test_suite')}
+                                    className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-xs font-semibold shadow-sm transition-all disabled:opacity-50"
+                                >
+                                    {isKeyLoading('test_suite') ? (
+                                        <Loader2 size={13} className="animate-spin" />
+                                    ) : (
+                                        <Play size={13} className="fill-current" />
+                                    )}
+                                    <span>{isKeyLoading('test_suite') ? 'Running All...' : 'Run All (25)'}</span>
+                                </button>
+                                <button
+                                    onClick={() => setActiveModal(null)}
+                                    className="p-1.5 text-gray-400 hover:text-white rounded-lg hover:bg-gray-800 transition-colors"
+                                >
+                                    <X size={18} />
+                                </button>
+                            </div>
+                        </div>
+
+                        {/* Summary / Stats Header */}
+                        <div className="grid grid-cols-4 gap-3 py-3.5 border-b border-gray-800 text-xs">
+                            <div className="bg-gray-800/60 rounded-lg p-2.5 border border-gray-700/50">
+                                <span className="text-gray-400 block text-[11px]">Executed</span>
+                                <span className="text-lg font-bold text-white font-mono">{Object.keys(resultsByCase).length} / 25</span>
+                            </div>
+                            <div className="bg-emerald-950/40 rounded-lg p-2.5 border border-emerald-800/40">
+                                <span className="text-emerald-400 block text-[11px]">Passed</span>
+                                <span className="text-lg font-bold text-emerald-300 font-mono">{Object.values(resultsByCase).filter(r => r.status === 'PASS').length}</span>
+                            </div>
+                            <div className={`rounded-lg p-2.5 border ${Object.values(resultsByCase).filter(r => r.status === 'FAIL').length > 0 ? 'bg-red-950/40 border-red-800/50' : 'bg-gray-800/40 border-gray-700/50'}`}>
+                                <span className={`${Object.values(resultsByCase).filter(r => r.status === 'FAIL').length > 0 ? 'text-red-400' : 'text-gray-400'} block text-[11px]`}>Failed</span>
+                                <span className={`text-lg font-bold font-mono ${Object.values(resultsByCase).filter(r => r.status === 'FAIL').length > 0 ? 'text-red-400' : 'text-gray-400'}`}>{Object.values(resultsByCase).filter(r => r.status === 'FAIL').length}</span>
+                            </div>
+                            <div className="bg-gray-800/60 rounded-lg p-2.5 border border-gray-700/50">
+                                <span className="text-gray-400 block text-[11px]">Execution Time</span>
+                                <span className="text-lg font-bold text-indigo-300 font-mono">{testReport?.durationMs || Object.values(resultsByCase).reduce((a, b) => a + (b.durationMs || 0), 0)}ms</span>
+                            </div>
+                        </div>
+
+                        {/* Filter Tabs & Quick Info */}
+                        <div className="flex items-center justify-between pt-3 pb-2 text-xs">
+                            <div className="flex items-center gap-2">
+                                <button
+                                    onClick={() => setTestFilter('all')}
+                                    className={`px-2.5 py-1 rounded-md font-semibold ${testFilter === 'all' ? 'bg-blue-600 text-white' : 'text-gray-400 hover:bg-gray-800'}`}
+                                >
+                                    All (25)
+                                </button>
+                                <button
+                                    onClick={() => setTestFilter('pass')}
+                                    className={`px-2.5 py-1 rounded-md font-semibold ${testFilter === 'pass' ? 'bg-emerald-600 text-white' : 'text-gray-400 hover:bg-gray-800'}`}
+                                >
+                                    Passed ({Object.values(resultsByCase).filter(r => r.status === 'PASS').length})
+                                </button>
+                                {Object.values(resultsByCase).filter(r => r.status === 'FAIL').length > 0 && (
+                                    <button
+                                        onClick={() => setTestFilter('fail')}
+                                        className={`px-2.5 py-1 rounded-md font-semibold ${testFilter === 'fail' ? 'bg-red-600 text-white' : 'text-gray-400 hover:bg-gray-800'}`}
+                                    >
+                                        Failed ({Object.values(resultsByCase).filter(r => r.status === 'FAIL').length})
+                                    </button>
+                                )}
+                            </div>
+                            <span className="text-[11px] text-gray-500">
+                                Click "Run" on any case to test individually
+                            </span>
+                        </div>
+
+                        {/* Interactive Console Stream */}
+                        <div className="flex-1 overflow-y-auto mt-2 bg-black/60 rounded-xl p-3 border border-gray-800 font-mono text-xs space-y-1.5 min-h-[320px]">
+                            {isKeyLoading('test_suite') && (
+                                <div className="flex items-center justify-center p-3 mb-2 bg-emerald-950/40 border border-emerald-800/50 rounded-lg text-emerald-300 gap-2">
+                                    <Loader2 size={16} className="animate-spin text-emerald-400" />
+                                    <span className="text-xs">Running all 25 live database test cases...</span>
+                                </div>
+                            )}
+
+                            {LOCATION_SPEC_CASES.map(c => {
+                                const executed = resultsByCase[c.num];
+                                return executed ? { ...c, ...executed } : { ...c, status: 'IDLE', durationMs: null, error: null };
+                            })
+                            .filter(t => testFilter === 'all' || (testFilter === 'pass' && t.status === 'PASS') || (testFilter === 'fail' && t.status === 'FAIL'))
+                            .map(t => {
+                                const isPass = t.status === 'PASS';
+                                const isFail = t.status === 'FAIL';
+                                const isCaseLoading = isKeyLoading(`test_case_${t.num}`);
+                                const isExpanded = expandedFailures.has(t.num);
+                                return (
+                                    <div
+                                        key={t.num}
+                                        className={`p-2 rounded-lg border transition-colors ${
+                                            isPass
+                                                ? 'bg-gray-900/60 border-gray-800/80 hover:bg-gray-900'
+                                                : isFail
+                                                ? 'bg-red-950/30 border-red-900/60 hover:bg-red-950/50'
+                                                : 'bg-gray-900/30 border-gray-800/40 hover:bg-gray-900/60 text-gray-400'
+                                        }`}
+                                    >
+                                        <div className="flex items-center justify-between">
+                                            <div className="flex items-center gap-2 truncate pr-2">
+                                                {isPass ? (
+                                                    <CheckCircle2 size={15} className="text-emerald-400 shrink-0" />
+                                                ) : isFail ? (
+                                                    <XCircle size={15} className="text-red-400 shrink-0" />
+                                                ) : (
+                                                    <span className="w-3.5 h-3.5 rounded-full border border-gray-600 inline-block shrink-0" />
+                                                )}
+                                                <span className="text-gray-400 text-[11px] font-bold shrink-0">
+                                                    Case {t.num}:
+                                                </span>
+                                                <span className={`text-[12px] truncate ${isPass ? 'text-gray-200' : isFail ? 'text-red-200 font-semibold' : 'text-gray-400'}`}>
+                                                    {t.name}
+                                                </span>
+                                            </div>
+                                            <div className="flex items-center gap-2 shrink-0 text-[11px] text-gray-400">
+                                                {t.durationMs !== null && (
+                                                    <span className="font-mono text-gray-500">{t.durationMs}ms</span>
+                                                )}
+                                                <span className={`px-1.5 py-0.2 rounded text-[10px] font-bold ${
+                                                    isPass
+                                                        ? 'bg-emerald-950 text-emerald-400 border border-emerald-800'
+                                                        : isFail
+                                                        ? 'bg-red-950 text-red-400 border border-red-800'
+                                                        : 'bg-gray-800 text-gray-500 border border-gray-700'
+                                                }`}>
+                                                    {t.status}
+                                                </span>
+                                                {isFail && (
+                                                    <button
+                                                        onClick={() => {
+                                                            setExpandedFailures(prev => {
+                                                                const next = new Set(prev);
+                                                                if (next.has(t.num)) next.delete(t.num);
+                                                                else next.add(t.num);
+                                                                return next;
+                                                            });
+                                                        }}
+                                                        className="text-blue-400 underline text-[10px]"
+                                                    >
+                                                        {isExpanded ? 'Hide' : 'Inspect'}
+                                                    </button>
+                                                )}
+                                                <button
+                                                    title={`Run Case ${t.num} individually`}
+                                                    disabled={isCaseLoading || isKeyLoading('test_suite')}
+                                                    onClick={() => handleRunTestSuite(t.num)}
+                                                    className="flex items-center gap-1 px-2 py-0.5 rounded bg-gray-800 hover:bg-gray-700 text-gray-300 hover:text-white border border-gray-700 text-[11px] font-medium transition-colors disabled:opacity-50"
+                                                >
+                                                    {isCaseLoading ? (
+                                                        <Loader2 size={11} className="animate-spin text-blue-400" />
+                                                    ) : (
+                                                        <Play size={10} className="fill-current text-blue-400" />
+                                                    )}
+                                                    <span>{isCaseLoading ? 'Testing...' : 'Run'}</span>
+                                                </button>
+                                            </div>
+                                        </div>
+
+                                        {/* Expanded Failure Stack */}
+                                        {isFail && isExpanded && t.error && (
+                                            <div className="mt-2 p-2.5 bg-black/70 rounded border border-red-900/80 text-[11px] text-red-300 font-mono whitespace-pre-wrap">
+                                                <div className="font-bold text-red-400 mb-1">{t.error.message}</div>
+                                                <div className="text-[10px] text-gray-400 overflow-x-auto">{t.error.stack}</div>
+                                            </div>
+                                        )}
+                                    </div>
+                                );
+                            })}
+                        </div>
+
+                        {/* Modal Footer */}
+                        <div className="flex items-center justify-between pt-3.5 border-t border-gray-800 mt-3 text-xs text-gray-400">
+                            <span className="text-[11px]">
+                                Tests run in isolated test tenant (#9991, #9992) and clean up automatically.
+                            </span>
+                            <button
+                                type="button"
+                                onClick={() => setActiveModal(null)}
+                                className="px-4 py-1.5 rounded-lg text-xs font-semibold bg-gray-800 hover:bg-gray-700 text-white transition-colors"
                             >
                                 Close
                             </button>

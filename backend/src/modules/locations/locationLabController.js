@@ -1,6 +1,7 @@
 import * as locationService from './locationService.js';
 import { LocationError } from './locationErrors.js';
 import db from '../../config/database.js';
+import { runLocationTestSuite } from './locationTests.js';
 
 function handleError(res, err) {
     if (err instanceof LocationError) {
@@ -274,6 +275,17 @@ export async function rebuildPaths(req, res) {
 
         const result = await locationService.rebuildPaths(projectId);
         res.json({ success: true, data: result });
+    } catch (err) {
+        handleError(res, err);
+    }
+}
+
+export async function runTests(req, res) {
+    try {
+        const targetCase = req.body?.caseNum || req.query?.caseNum || null;
+        console.log(`[LocationLab] 🧪 Integration test suite triggered by user #${req.user?.id} (${req.user?.email}) [Target: ${targetCase || 'all'}]`);
+        const report = await runLocationTestSuite({ targetCase, closeDb: false });
+        res.json({ success: true, data: report });
     } catch (err) {
         handleError(res, err);
     }
