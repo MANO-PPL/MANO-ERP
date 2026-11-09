@@ -413,6 +413,17 @@ export const ClientsList = () => {
                     setIsAddModalOpen(true);
                     setViewingClient(null);
                 }}
+                onUpdate={async () => {
+                    if (viewingClient?.id) {
+                        try {
+                            const res = await clientApi.getClientById(viewingClient.id);
+                            if (res?.client) setViewingClient(res.client);
+                        } catch (err) {
+                            console.error('Failed to refresh viewing client:', err);
+                        }
+                    }
+                    fetchClients();
+                }}
             />
 
             {/* ─── Add / Edit Client Modal ─── */}
