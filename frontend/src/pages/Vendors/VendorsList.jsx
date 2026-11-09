@@ -1,10 +1,12 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
+import { createPortal } from 'react-dom';
 import {
     Building2,
     Plus,
     SlidersHorizontal,
     CopyCheck,
-    ChevronDown
+    ChevronDown,
+    Check
 } from 'lucide-react';
 import api from '../../services/api';
 import vendorApi from '../../services/vendorApi';
@@ -43,6 +45,170 @@ const COLUMN_ALIASES = {
     address: ['address', 'office address', 'site address', 'full address', 'street'],
     location: ['location', 'city', 'state', 'area', 'branch'],
     remarks: ['remarks', 'notes', 'comments', 'description', 'remark', 'note']
+};
+
+/**
+ * Interactive dropdown menu cell for Vendor Category in ExcelGrid
+ */
+const VendorCategoryDropdownCell = ({ value, onChange, disabled = false }) => {
+    const [isOpen, setIsOpen] = useState(false);
+    const buttonRef = useRef(null);
+    const menuRef = useRef(null);
+    const [coords, setCoords] = useState({ top: 0, bottom: 'auto', left: 0, width: 0, openUpward: false });
+
+    const updateCoords = () => {
+        if (!buttonRef.current) return;
+        const rect = buttonRef.current.getBoundingClientRect();
+        const spaceBelow = window.innerHeight - rect.bottom;
+        const openUpward = spaceBelow < 220 && rect.top > 220;
+        const width = Math.max(rect.width, 160);
+        let left = rect.left;
+        if (left + width > window.innerWidth - 12) {
+            left = Math.max(12, window.innerWidth - width - 12);
+        }
+        setCoords({
+            top: openUpward ? rect.top - 4 : rect.bottom + 4,
+            bottom: openUpward ? window.innerHeight - rect.top + 4 : 'auto',
+            left,
+            width,
+            openUpward
+        });
+    };
+
+    const handleToggle = (e) => {
+        e.stopPropagation();
+        e.preventDefault();
+        if (disabled) return;
+        if (!isOpen) updateCoords();
+        setIsOpen(!isOpen);
+    };
+
+    useEffect(() => {
+        if (!isOpen) return;
+        const handleOutsideClick = (e) => {
+            if (
+                buttonRef.current && !buttonRef.current.contains(e.target) &&
+                menuRef.current && !menuRef.current.contains(e.target)
+            ) {
+                setIsOpen(false);
+            }
+        };
+        const handleKeyDown = (e) => {
+            if (e.key === 'Escape') setIsOpen(false);
+        };
+        const handleScroll = () => {
+            setIsOpen(false);
+        };
+
+        window.addEventListener('mousedown', handleOutsideClick, true);
+        window.addEventListener('keydown', handleKeyDown);
+        window.addEventListener('scroll', handleScroll, true);
+        return () => {
+            window.removeEventListener('mousedown', handleOutsideClick, true);
+            window.removeEventListener('keydown', handleKeyDown);
+            window.removeEventListener('scroll', handleScroll, true);
+        };
+    }, [isOpen]);
+
+    const handleSelect = (categoryVal, e) => {
+        e.stopPropagation();
+        e.preventDefault();
+        onChange?.(categoryVal);
+        setIsOpen(false);
+    };
+
+    const badgeStyle = value ? (CATEGORY_BADGE_STYLES[value] || 'bg-gray-100 text-gray-700 border-gray-200 dark:bg-white/5 dark:text-gray-400 dark:border-white/10') : '';
+
+    return (
+        <div
+            className="w-full h-full flex items-center justify-between"
+            onClick={(e) => e.stopPropagation()}
+            onMouseDown={(e) => e.stopPropagation()}
+        >
+            <button
+                ref={buttonRef}
+                type="button"
+                disabled={disabled}
+                onClick={handleToggle}
+                className={`w-full h-7 flex items-center justify-between gap-1.5 px-2 py-0.5 rounded-md text-left transition-all ${
+                    disabled ? 'opacity-70 cursor-default' : 'hover:bg-gray-100/80 dark:hover:bg-white/5 cursor-pointer'
+                } ${isOpen ? 'ring-2 ring-blue-500/40 bg-blue-50/50 dark:bg-blue-900/20' : ''}`}
+                title={value ? `Category: ${value}` : 'Select category'}
+            >
+                <div className="truncate flex-1 min-w-0">
+                    {value ? (
+                        <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold border truncate ${badgeStyle}`}>
+                            {value}
+                        </span>
+                    ) : (
+                        <span className="text-gray-400 font-normal italic text-[11px]">Select category...</span>
+                    )}
+                </div>
+                {!disabled && (
+                    <ChevronDown
+                        size={12}
+                        className={`text-gray-400 shrink-0 transition-transform duration-200 ${isOpen ? 'rotate-180 text-blue-500' : ''}`}
+                    />
+                )}
+            </button>
+
+            {isOpen && typeof document !== 'undefined' && createPortal(
+                <div
+                    ref={menuRef}
+                    style={{
+                        position: 'fixed',
+                        top: coords.openUpward ? 'auto' : `${coords.top}px`,
+                        bottom: coords.openUpward ? `${coords.bottom}px` : 'auto',
+                        left: `${coords.left}px`,
+                        width: `${coords.width}px`,
+                        zIndex: 99999
+                    }}
+                    className="bg-white dark:bg-[#161b22] border border-gray-200 dark:border-white/10 rounded-xl shadow-2xl p-1.5 space-y-0.5 select-none animate-in fade-in zoom-in-95 font-sans"
+                    onClick={(e) => e.stopPropagation()}
+                    onMouseDown={(e) => e.stopPropagation()}
+                >
+                    <div className="px-2 py-1 text-[10px] font-bold text-gray-400 uppercase tracking-wider border-b border-gray-100 dark:border-white/5 mb-1 flex items-center justify-between">
+                        <span>Select Category</span>
+                    </div>
+
+                    {CATEGORY_OPTIONS.map((cat) => {
+                        const isSelected = value === cat;
+                        const itemBadgeStyle = CATEGORY_BADGE_STYLES[cat] || '';
+                        return (
+                            <button
+                                key={cat}
+                                type="button"
+                                onClick={(e) => handleSelect(cat, e)}
+                                className={`w-full flex items-center justify-between px-2.5 py-1.5 rounded-lg text-xs transition-colors cursor-pointer text-left ${
+                                    isSelected
+                                        ? 'bg-blue-50 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400 font-semibold'
+                                        : 'hover:bg-gray-100 dark:hover:bg-white/5 text-gray-700 dark:text-gray-200'
+                                }`}
+                            >
+                                <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold border truncate ${itemBadgeStyle}`}>
+                                    {cat}
+                                </span>
+                                {isSelected && <Check size={13} className="text-blue-600 dark:text-blue-400 shrink-0 ml-1.5" />}
+                            </button>
+                        );
+                    })}
+
+                    {value && (
+                        <div className="pt-1 mt-1 border-t border-gray-100 dark:border-white/5">
+                            <button
+                                type="button"
+                                onClick={(e) => handleSelect('', e)}
+                                className="w-full px-2.5 py-1 text-[11px] text-gray-400 hover:text-red-500 hover:bg-red-50/50 dark:hover:bg-red-950/20 rounded-md transition-colors text-left cursor-pointer italic"
+                            >
+                                Clear selection
+                            </button>
+                        </div>
+                    )}
+                </div>,
+                document.body
+            )}
+        </div>
+    );
 };
 
 export const VendorsList = () => {
@@ -162,24 +328,26 @@ export const VendorsList = () => {
                 type: 'select',
                 options: CATEGORY_OPTIONS,
                 defaultValue: '',
-                width: '160px',
-                minWidth: '150px',
+                width: '165px',
+                minWidth: '155px',
                 aliases: COLUMN_ALIASES.category,
-                renderCell: (val) => {
-                    if (!val) {
-                        return <span className="text-gray-400 font-normal italic text-[11px]">Select category...</span>;
-                    }
-                    const badgeStyle =
-                        CATEGORY_BADGE_STYLES[val] ||
-                        'bg-gray-100 text-gray-700 border-gray-200 dark:bg-white/5 dark:text-gray-400 dark:border-white/10';
-                    return (
-                        <span
-                            className={`inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold border truncate ${badgeStyle}`}
-                        >
-                            {val}
-                        </span>
-                    );
-                }
+                renderCell: (val, row, column, onChange) => (
+                    <VendorCategoryDropdownCell
+                        value={val}
+                        onChange={onChange}
+                        disabled={!canWrite}
+                    />
+                ),
+                renderEditor: (val, row, column, onChange, onBlur) => (
+                    <VendorCategoryDropdownCell
+                        value={val}
+                        onChange={(newVal) => {
+                            onChange(newVal);
+                            if (onBlur) onBlur(newVal);
+                        }}
+                        disabled={!canWrite}
+                    />
+                )
             },
             {
                 key: 'job_name',
@@ -241,7 +409,7 @@ export const VendorsList = () => {
                 aliases: COLUMN_ALIASES.remarks
             }
         ];
-    }, [jobOptions]);
+    }, [jobOptions, canWrite]);
 
     // Batch Save Handler
     const handleSaveGridBatch = async (payload) => {
