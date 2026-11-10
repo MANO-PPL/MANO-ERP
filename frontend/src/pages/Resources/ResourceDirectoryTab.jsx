@@ -225,19 +225,13 @@ export const ResourceDirectoryTab = ({
     };
 
     // Save from Modal
-    const handleSaveResourceFromModal = async (formData) => {
-        try {
-            if (editingResource) {
-                await resourceApi.updateResource(editingResource.id, formData);
-            } else {
-                await resourceApi.createResource(formData);
-            }
-            setIsAddModalOpen(false);
-            setEditingResource(null);
-            if (fetchResources) fetchResources();
-        } catch (err) {
-            console.error('Failed to save resource from modal:', err);
-        }
+    const handleSaveResourceFromModal = async () => {
+        // ResourceForm owns validation and the create/update request. This
+        // callback only closes the modal and refreshes the directory after the
+        // request succeeds; sending another request here would duplicate writes.
+        setIsAddModalOpen(false);
+        setEditingResource(null);
+        if (fetchResources) await fetchResources();
     };
 
     // Duplicate Resolver Delete

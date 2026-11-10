@@ -63,6 +63,9 @@ export function createAgentService({ store, authorize, read, writes, reason, okf
             || Number(session.request.lease_ms) <= now()) fail('request_rejected', 'stale_reasoning_attempt');
     }
     async function terminalError(actor, request, error) {
+        console.warn('ERP agent request failed:', { requestId: request.request_id,
+            code: error instanceof AgentError ? error.code : 'internal_failure',
+            category: error instanceof AgentError ? error.category : 'internal_failure' });
         await store.transaction(request.request_id, actor, async session => {
             if (session.request.status !== 'RUNNING') return;
             await session.updateRequest({ status: 'FAILED', error_category: error instanceof AgentError ? error.category : 'internal_failure' });
@@ -308,8 +311,22 @@ export function createAgentService({ store, authorize, read, writes, reason, okf
                     await session.updateExecution(execution.execution_id, { status: 'SUCCEEDED', result_json: result, completed_ms: now() });
                     await session.append('confirmation_resolved', { ...decision }, execution.execution_id);
                     await session.append('tool_started', { actionId: execution.execution_id }, execution.execution_id);
-                    const deliveryWrites = { 'projects.create': 'Project created', 'projects.update': 'Project updated',
+                    const deliveryWrites = { 'resources.createRateVersion': 'Resource rate version created',
+                        'projects.create': 'Project created', 'projects.update': 'Project updated',
                         'tasks.create': 'Task created', 'tasks.update': 'Task updated',
+                        'tasks.assign': 'Task members assigned',
+                        'tasks.createCategory': 'Task category created', 'tasks.updateCategory': 'Task category renamed',
+                        'tasks.reorder': 'Task order updated',
+                        'projectParties.add': 'Project party added', 'projectParties.update': 'Project party updated',
+                        'projects.assignMember': 'Project member assigned',
+                        'meetings.create': 'Meeting created', 'meetings.update': 'Meeting updated',
+                        'directory.create': 'Directory entry created', 'directory.update': 'Directory entry updated',
+                        'summaries.create': 'Project summary created', 'summaries.update': 'Project summary updated',
+                        'documents.saveDraft': 'Document draft saved', 'documents.submitDraft': 'Document draft submitted',
+                        'qualityObservations.create': 'Quality observation created', 'qualityObservations.update': 'Quality observation updated',
+                        'qualityObservations.submitFix': 'Corrective fix submitted',
+                        'qualityMethodologies.create': 'Quality methodology created', 'qualityMethodologies.update': 'Quality methodology updated',
+                        'qualityChecklists.create': 'Quality checklist created', 'qualityChecklists.update': 'Quality checklist updated',
                         'documents.requestRevision': 'Document revision requested',
                         'documents.cancelCycle': 'Document cycle cancelled',
                         'documents.claimRevision': 'Document revision claimed',

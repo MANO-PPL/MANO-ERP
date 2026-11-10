@@ -356,6 +356,10 @@ class ProjectDocumentSearchArgs(ListArgs):
     projectId: Id
 
 
+class QualityDocumentSearchArgs(ProjectDocumentSearchArgs):
+    documentType: Literal["checklist", "methodology"]
+
+
 class DocumentTemplateUpdateArgs(StrictModel):
     projectId: Id
     documentId: Id
@@ -726,12 +730,16 @@ ARG_MODELS = {
     "qualityObservations.submitFix": QualityObservationFixArgs,
     "qualityMethodologies.create": QualityDocumentCreateArgs, "qualityMethodologies.update": QualityDocumentUpdateArgs,
     "qualityChecklists.create": QualityDocumentCreateArgs, "qualityChecklists.update": QualityDocumentUpdateArgs,
+    "qualityDocuments.search": QualityDocumentSearchArgs,
     "vendors.search": ListArgs, "vendors.get": ContactArgs, "resources.search": ResourceSearchArgs,
     "resources.get": ResourceArgs, "resources.getRate": ResourceArgs, "resources.getRateHistory": RateHistoryArgs,
     "resources.getComposition": ResourceArgs, "resources.simulateCostImpact": CostSimulationArgs,
     "projectParties.list": PartiesArgs, "interactions.search": InteractionsArgs,
     "transactions.search": TransactionsSearchArgs,
     "tasks.search": TasksSearchArgs,
+    "tasks.listCategories": ProjectDocumentSearchArgs,
+    "directory.search": ProjectDocumentSearchArgs,
+    "summaries.search": ProjectDocumentSearchArgs,
     "billing.search": BillingSearchArgs,
     "analytics.query": AnalyticsArgs,
     "reports.exportExcel": ReportExportArgs,

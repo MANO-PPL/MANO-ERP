@@ -302,7 +302,9 @@ export function createWriteService({ db, clients, vendors, resources, approvalSe
                 if (tool.name === 'tasks.updateCategory') {
                     const categoryQuery = connection('proj_task_categories').where({ id: args.categoryId, project_id: args.projectId });
                     if (lock) categoryQuery.forUpdate();
-                    if (!await categoryQuery.first('id')) fail('authorization_denied');
+                    const category = await categoryQuery.first('id', 'name', 'sort_order');
+                    if (!category) fail('authorization_denied');
+                    return { projectId: args.projectId, operation: tool.name, category: JSON.parse(JSON.stringify(category)) };
                 }
                 if (tool.name === 'tasks.assign') {
                     const membersQuery = connection('proj_members as pm').join('iam_users as u', 'pm.user_id', 'u.id')
@@ -318,7 +320,12 @@ export function createWriteService({ db, clients, vendors, resources, approvalSe
                     const table = args.type === 'task' ? 'proj_tasks' : 'proj_task_categories';
                     const query = connection(table).where({ project_id: args.projectId }).whereIn('id', args.items.map(item => item.id));
                     if (lock) query.forUpdate();
-                    if ((await query.select('id')).length !== args.items.length) fail('validation_error', 'reorder_item_out_of_scope');
+                    const rows = await query.select('id', 'name', 'sort_order');
+                    if (rows.length !== args.items.length) fail('validation_error', 'reorder_item_out_of_scope');
+                    const byId = new Map(rows.map(row => [Number(row.id), row]));
+                    return { projectId: args.projectId, operation: tool.name, type: args.type,
+                        items: args.items.map(item => ({ id: item.id, name: byId.get(item.id).name,
+                            currentOrder: byId.get(item.id).sort_order, requestedOrder: item.sortOrder })) };
                 }
                 return { projectId: args.projectId, operation: tool.name };
             }
@@ -365,7 +372,9 @@ export function createWriteService({ db, clients, vendors, resources, approvalSe
                 if (tool.name === 'meetings.update') {
                     const query = connection('proj_meetings').where({ id: args.meetingId, project_id: args.projectId });
                     if (lock) query.forUpdate();
-                    if (!await query.first('id')) fail('authorization_denied');
+                    const meeting = await query.first('id', 'subject', 'venue', 'date', 'status', 'content');
+                    if (!meeting) fail('authorization_denied');
+                    return { projectId: args.projectId, operation: tool.name, current: JSON.parse(JSON.stringify(meeting)) };
                 }
                 return { projectId: args.projectId, operation: tool.name };
             }
@@ -415,23 +424,32 @@ export function createWriteService({ db, clients, vendors, resources, approvalSe
                 if (tool.name !== 'qualityObservations.create') {
                     const query = connection('proj_qaqc_observations').where({ id: args.observationId, project_id: args.projectId });
                     if (lock) query.forUpdate();
-                    const observation = await query.first('id', 'status', 'reported_by');
+                    const observation = await query.first('id', 'status', 'reported_by', 'location', 'before_note');
                     if (!observation) fail('authorization_denied');
                     if (String(observation.status).toUpperCase() !== 'PENDING') fail('validation_error', 'observation_not_pending');
                     if (tool.name === 'qualityObservations.update' && Number(observation.reported_by) !== Number(scope.userId)) fail('authorization_denied');
-                    if (tool.name === 'qualityObservations.submitFix') stagedQualityAttachment(args, scope, true);
+                    const attachment = tool.name === 'qualityObservations.submitFix'
+                        ? stagedQualityAttachment(args, scope, true) : null;
+                    return { projectId: args.projectId, operation: tool.name,
+                        observation: { id: observation.id, location: observation.location, before_note: observation.before_note, status: observation.status },
+                        attachment: attachment ? { filename: attachment.filename, mimeType: attachment.mimeType,
+                            size: attachment.size, approvedForAgentWrite: attachment.approvedForAgentWrite } : null };
                 }
                 return { projectId: args.projectId, operation: tool.name };
             }
             if (tool.name.startsWith('qualityMethodologies.') || tool.name.startsWith('qualityChecklists.')) {
                 const spec = qualityDocumentTable(tool.name);
+                let current = null;
                 if (tool.name.endsWith('.update')) {
                     const query = connection(spec.table).where({ id: args.documentId, project_id: args.projectId });
                     if (lock) query.forUpdate();
-                    if (!await query.first('id')) fail('authorization_denied');
+                    current = await query.first('id', 'title', 'file_type', 'file_size');
+                    if (!current) fail('authorization_denied');
                 }
-                if (args.uploadId) stagedQualityAttachment(args, scope);
-                return { projectId: args.projectId, operation: tool.name };
+                const attachment = args.uploadId ? stagedQualityAttachment(args, scope) : null;
+                return { projectId: args.projectId, operation: tool.name, current,
+                    attachment: attachment ? { filename: attachment.filename, mimeType: attachment.mimeType,
+                        size: attachment.size, approvedForAgentWrite: attachment.approvedForAgentWrite } : null };
             }
             if (['tasks.create', 'tasks.update'].includes(tool.name)) {
                 let task = null;
@@ -517,15 +535,23 @@ export function createWriteService({ db, clients, vendors, resources, approvalSe
                     itemType: args.itemType,
                     itemId: args.itemId,
                     action: args.action,
-                    comments: args.comments || null
+                    comments: args.comments || null,
+                    item: await approvalService.inspectPendingApproval(scope.orgId, args, connection, lock)
                 };
             }
 
             if (tool.name === 'approvals.batchDecide') {
+                const pending = await approvalService.listPendingApprovals(scope.orgId, { itemType: args.itemType || 'all', limit: 100 }, connection);
+                if (!pending.totalPending) fail('validation_error', 'no_pending_approvals');
+                if (pending.totalPending > 20) fail('validation_error', 'batch_approval_limit_exceeded');
+                const items = [];
+                for (const item of pending.items) items.push(await approvalService.inspectPendingApproval(scope.orgId,
+                    { itemType: item.itemType, itemId: item.id }, connection, lock));
                 return {
                     itemType: args.itemType || 'all',
                     action: args.action,
-                    comments: args.comments || null
+                    comments: args.comments || null,
+                    affectedCount: items.length, items
                 };
             }
 
@@ -1034,7 +1060,7 @@ export function createWriteService({ db, clients, vendors, resources, approvalSe
             }
 
             if (tool.name === 'approvals.batchDecide') {
-                const res = await approvalService.batchDecideApprovals(scope.orgId, scope.userId, args, { trx });
+                const res = await approvalService.batchDecideApprovals(scope.orgId, scope.userId, args, { trx, targets: preconditions?.items });
                 return { id: res.id || 1, ...res };
             }
 

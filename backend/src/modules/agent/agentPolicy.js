@@ -37,7 +37,8 @@ export function createPolicy(db) {
         // Project master-data mutations mirror the page's admin-only routes.
         if ((['projects.create', 'projects.update', 'projects.assignMember', 'projects.setMemberPermissions'].includes(tool.name)
             || tool.name.startsWith('admin') || tool.name.startsWith('documentTemplates.')
-            || tool.name.startsWith('permissionTemplates.')) && user.user_type !== 'admin') fail('authorization_denied');
+            || tool.name.startsWith('permissionTemplates.') || ['approvals.decide', 'approvals.batchDecide'].includes(tool.name))
+            && user.user_type !== 'admin') fail('authorization_denied');
         if (['clients.deleteSelected', 'vendors.deleteSelected', 'resources.deleteSelected']
             .includes(tool.name) && user.user_type !== 'admin') fail('authorization_denied');
         const scope = { orgId: actor.orgId, userId: actor.userId, projectId: null, userType: user.user_type };

@@ -84,7 +84,11 @@ export const ResourceList = () => {
             {/* Tab 3: Rate History */}
             {activeTab === 'rates' && (
                 <div className="flex-1 overflow-auto">
-                    <ResourceRatesTab canWrite={canWrite} />
+                    <ResourceRatesTab
+                        resources={resources}
+                        canWrite={canWrite}
+                        onRefreshResources={fetchResources}
+                    />
                 </div>
             )}
 

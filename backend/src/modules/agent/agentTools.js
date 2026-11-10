@@ -46,6 +46,7 @@ const definitions = {
     'directory.update': { args: { projectId: 'id', directoryId: 'id', partyId: 'id?', contact_person: 'name?', designation: 'name?', responsibilities: 'remarks?', mobile_no: 'phone?', email: 'email?', address_line: 'address?' }, module: 'documents', risk: 'WRITE' },
     'summaries.create': { args: { projectId: 'id', title: 'name', details: 'remarks', status: 'summaryStatus?', date: 'date?' }, module: 'documents', risk: 'WRITE' },
     'summaries.update': { args: { projectId: 'id', summaryId: 'id', title: 'name?', details: 'remarks?', status: 'summaryStatus?', date: 'date?' }, module: 'documents', risk: 'WRITE' },
+    'summaries.search': { args: { projectId: 'id', ...list }, module: 'documents' },
     'documents.saveDraft': { args: { projectId: 'id', cycleId: 'id', content: 'json' }, module: 'documents', risk: 'WRITE' },
     'documents.submitDraft': { args: { projectId: 'id', cycleId: 'id', changes_summary: 'remarks?', comments: 'remarks?' }, module: 'documents', risk: 'WRITE' },
     'documents.requestRevision': { args: { projectId: 'id', cycleId: 'id', comments: 'remarks?' }, module: 'documents', risk: 'WRITE' },
@@ -71,6 +72,7 @@ const definitions = {
     'qualityMethodologies.update': { args: { projectId: 'id', documentId: 'id', title: 'name?', uploadId: 'uuid' }, module: 'quality', risk: 'WRITE' },
     'qualityChecklists.create': { args: { projectId: 'id', title: 'name', uploadId: 'uuid' }, module: 'quality', risk: 'WRITE' },
     'qualityChecklists.update': { args: { projectId: 'id', documentId: 'id', title: 'name?', uploadId: 'uuid' }, module: 'quality', risk: 'WRITE' },
+    'qualityDocuments.search': { args: { projectId: 'id', documentType: 'qualityDocumentType', ...list }, module: 'quality' },
     'projects.search': { args: list, module: 'projects' },
     'adminUsers.search': { args: list, module: 'admin' },
     'permissionTemplates.search': { args: list, module: 'admin' },
@@ -78,6 +80,8 @@ const definitions = {
     'projects.get': { args: { projectId: 'id' }, module: 'projects' },
     'projects.getExecutiveBriefing': { args: { projectId: 'id' }, module: 'projects' },
     'tasks.search': { args: { ...list, projectId: 'id?' }, module: 'projects' },
+    'tasks.listCategories': { args: { ...list, projectId: 'id' }, module: 'projects' },
+    'directory.search': { args: { projectId: 'id', ...list }, module: 'documents' },
     'clients.search': { args: list, module: 'clients' },
     'clients.get': { args: { contactId: 'id' }, module: 'clients' },
     'vendors.search': { args: list, module: 'vendors' },
@@ -113,7 +117,7 @@ export function allowedToolsForRequest(context, message, enablement) {
     const modules = new Set();
     const page = `${context?.module || ''} ${context?.route || ''}`.toLowerCase();
     const explicit = String(message || '').toLowerCase();
-    for (const [module, pattern] of [['clients', /\bclients?\b/], ['vendors', /\b(vendors?|suppliers?|contractors?)\b/], ['materials', /\b(resources?|materials?|rates?)\b/], ['projects', /\b(projects?|tasks?|approvals?|approve|reject|members?)\b/], ['parties', /\b(part(?:y|ies)|stakeholders?|contractors?)\b/], ['documents', /\b(meetings?|agendas?|mom|minutes|directory|summar(?:y|ies)|documents?|drafts?|workflows?|cycles?|revisions?|archiv(?:e|ing))\b/], ['quality', /\b(observations?|quality|checklists?|methodolog(?:y|ies)|corrective|rectif)\b/], ['admin', /\b(admin|departments?|designations?|sectors?|job natures?|permission templates?|users?|employees?)\b/]]) {
+    for (const [module, pattern] of [['clients', /\bclients?\b/], ['vendors', /\b(vendors?|suppliers?|contractors?)\b/], ['materials', /\b(resources?|materials?|rates?)\b/], ['projects', /\b(projects?|tasks?|approvals?|approve|reject|members?)\b/], ['parties', /\b(part(?:y|ies)|stakeholders?|contractors?|suppliers?)\b/], ['documents', /\b(meetings?|agendas?|mom|minutes|directory|summar(?:y|ies)|documents?|drafts?|workflows?|cycles?|revisions?|archiv(?:e|ing))\b/], ['quality', /\b(observations?|quality|checklists?|methodolog(?:y|ies)|corrective|rectif)\b/], ['admin', /\b(admin|departments?|designations?|sectors?|job natures?|permission templates?|users?|employees?)\b/]]) {
         if (pattern.test(page) || pattern.test(explicit)) modules.add(module);
     }
     if (/\bdocument\s+templates?\b/.test(explicit)) modules.add('documents');
@@ -124,7 +128,35 @@ export function allowedToolsForRequest(context, message, enablement) {
     const bounded = available.length > 50
         ? available.filter(tool => tool.risk !== 'READ' || modules.has(tool.module))
         : available;
-    return bounded.slice(0, 50).map(tool => tool.name);
+    // Explicit operations must survive the protocol's 50-tool cap. Otherwise
+    // a broad project/document/quality page can hide approvals at the end of
+    // the registry and leave the planner with an unrelated quality write.
+    const preferred = [];
+    if (/\b(?:approv\w*|reject|sign[ -]?off)\b/.test(explicit)) preferred.push('approvals.');
+    if (/\bdocument\s+templates?\b/.test(explicit)) preferred.push('documentTemplates.');
+    if (/\b(?:documents?|drafts?|cycles?|revisions?)\b/.test(explicit)) preferred.push('documents.', 'documentCycles.', 'documentInstances.');
+    const names = bounded.sort((a, b) => Number(preferred.some(prefix => b.name.startsWith(prefix)))
+        - Number(preferred.some(prefix => a.name.startsWith(prefix)))).slice(0, 50).map(tool => tool.name);
+    if (enablement['projects.assignMember'] === true && modules.has('projects')
+        && /\bassign\b.*\b(?:project|member|employee|user)\b/.test(explicit)
+        && names.length < 50 && !names.includes('adminUsers.search')) {
+        names.push('adminUsers.search');
+    }
+    if (enablement['tasks.assign'] === true && modules.has('projects')
+        && /\bassign\b.*\bselected\s+task\b/.test(explicit)
+        && names.length < 50 && !names.includes('adminUsers.search')) {
+        names.push('adminUsers.search');
+    }
+    if (enablement['summaries.update'] === true && modules.has('documents')
+        && /\b(?:update|edit|change)\b.*\bsummary\b|\bsummary\b.*\b(?:update|edit|change)\b/.test(explicit)
+        && !names.includes('summaries.search')) {
+        if (names.length >= 50) {
+            const removable = names.map((name, index) => TOOLS[name].risk === 'READ' ? index : -1).filter(index => index >= 0).pop();
+            if (removable !== undefined) names.splice(removable, 1);
+        }
+        if (names.length < 50) names.push('summaries.search');
+    }
+    return names;
 }
 export function validateIntent(intent) {
     object(intent, ['kind', 'tool', 'version', 'arguments']);
@@ -152,6 +184,9 @@ export function validateIntent(intent) {
         }
         else if (type === 'docType') {
             if (!['singleton', 'episodic'].includes(value)) fail('validation_error', 'invalid_document_type');
+        }
+        else if (type === 'qualityDocumentType') {
+            if (!['checklist', 'methodology'].includes(value)) fail('validation_error', 'invalid_quality_document_type');
         }
         else if (type === 'permissionType') {
             if (!['system', 'project'].includes(value)) fail('validation_error', 'invalid_permission_type');

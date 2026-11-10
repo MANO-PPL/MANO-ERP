@@ -254,6 +254,18 @@ const QAQCModule = ({ onBack, canWrite, project, currentUser }) => {
         }
     }, [project?.id]);
 
+    useEffect(() => {
+        window.dispatchEvent(new CustomEvent('active-entity-updated', {
+            detail: selectedObs ? {
+                selectedEntityType: 'qualityObservation',
+                selectedEntityId: selectedObs.id,
+                selectedEntityName: selectedObs.location,
+                activeTab: 'Quality',
+            } : null,
+        }));
+        return () => window.dispatchEvent(new CustomEvent('active-entity-updated', { detail: null }));
+    }, [selectedObs]);
+
     const openDrawer = (mode, item = null) => {
         setDrawerOpen(mode);
         setSelectedObs(item);

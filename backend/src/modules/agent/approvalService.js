@@ -1,14 +1,39 @@
-import { fail } from './agentValidation.js';
+import { fail, fingerprint } from './agentValidation.js';
 
 export function createApprovalService({ db }) {
     return {
-        async listPendingApprovals(orgId, { projectId, limit = 20, offset = 0 } = {}, conn = db) {
+        async inspectPendingApproval(orgId, { itemType, itemId }, conn = db, lock = false) {
+            let query;
+            if (itemType === 'qaqc_observation') {
+                query = conn('proj_qaqc_observations as obs').join('proj_projects as p', 'obs.project_id', 'p.id')
+                    .where({ 'obs.id': itemId, 'p.org_id': orgId }).where('obs.status', 'FIXED')
+                    .select('obs.id', 'obs.location as title', 'obs.status', 'obs.updated_at', 'obs.before_note', 'obs.after_note',
+                        'obs.before_photos', 'obs.after_photos', 'p.name as projectName');
+            } else if (itemType === 'document_cycle') {
+                query = conn('wf_approval_cycles as ac').join('wf_document_instances as di', 'ac.instance_id', 'di.instance_id')
+                    .join('proj_projects as p', 'di.project_id', 'p.id')
+                    .where({ 'ac.cycle_id': itemId, 'di.org_id': orgId, 'p.org_id': orgId }).whereIn('ac.status', ['in_review', 'pending'])
+                    .select('ac.cycle_id as id', 'di.title', 'ac.status', 'ac.updated_at', 'ac.current_level',
+                        'ac.current_holder_id', 'ac.version_number', 'ac.draft_content', 'p.name as projectName');
+            } else if (itemType === 'milestone_task') {
+                query = conn('proj_tasks as t').join('proj_projects as p', 't.project_id', 'p.id')
+                    .where({ 't.id': itemId, 'p.org_id': orgId }).whereIn('t.status', ['in_review', 'pending_approval', 'review'])
+                    .select('t.id', 't.name as title', 't.status', 't.updated_at', 't.description', 'p.name as projectName');
+            } else fail('validation_error', 'unsupported_approval_item_type');
+            if (lock) query.forUpdate();
+            const row = await query.first();
+            if (!row) fail('validation_error', 'approval_target_not_pending');
+            return { id: itemId, itemType, title: row.title || 'Pending item', projectName: row.projectName,
+                status: row.status, recordDigest: fingerprint(row) };
+        },
+
+        async listPendingApprovals(orgId, { projectId, itemType = 'all', limit = 20, offset = 0 } = {}, conn = db) {
             const allItems = [];
 
             // 1. Quality & QAQC Observations awaiting sign-off (status = 'FIXED')
             try {
                 const hasQaqc = await conn.schema.hasTable('proj_qaqc_observations');
-                if (hasQaqc) {
+                if (hasQaqc && ['all', 'qaqc_observation'].includes(itemType)) {
                     let qaqcQuery = conn('proj_qaqc_observations as obs')
                         .join('proj_projects as p', 'obs.project_id', 'p.id')
                         .leftJoin('iam_users as reporter', 'obs.reported_by', 'reporter.id')
@@ -17,9 +42,8 @@ export function createApprovalService({ db }) {
                         .select(
                             'obs.id',
                             'obs.project_id',
-                            'obs.title',
-                            'obs.description',
-                            'obs.severity',
+                            'obs.location as title',
+                            'obs.before_note as description',
                             'obs.location',
                             'obs.status',
                             'obs.created_at',
@@ -33,7 +57,7 @@ export function createApprovalService({ db }) {
                         qaqcQuery = qaqcQuery.where('obs.project_id', projectId);
                     }
 
-                    const qaqcRows = await qaqcQuery.limit(50);
+                    const qaqcRows = await qaqcQuery.limit(101);
                     for (const row of qaqcRows) {
                         allItems.push({
                             id: row.id,
@@ -43,7 +67,7 @@ export function createApprovalService({ db }) {
                             projectId: Number(row.project_id),
                             projectName: row.project_name || 'Project',
                             status: 'FIXED',
-                            severity: row.severity || 'Medium',
+                            severity: null,
                             location: row.location || null,
                             submittedBy: row.reporter_name || 'Site Engineer',
                             submittedAt: row.updated_at ? new Date(row.updated_at).toISOString() : (row.created_at ? new Date(row.created_at).toISOString() : null),
@@ -52,13 +76,13 @@ export function createApprovalService({ db }) {
                     }
                 }
             } catch {
-                // Table might not exist or error, continue gracefully
+                fail('execution_failure', 'approval_queue_unavailable');
             }
 
             // 2. Document Workflow Cycles (status IN ('in_review', 'pending'))
             try {
                 const hasCycles = await conn.schema.hasTable('wf_approval_cycles');
-                if (hasCycles) {
+                if (hasCycles && ['all', 'document_cycle'].includes(itemType)) {
                     let cycleQuery = conn('wf_approval_cycles as ac')
                         .join('wf_document_instances as di', 'ac.instance_id', 'di.instance_id')
                         .leftJoin('wf_documents as doc', 'di.document_id', 'doc.document_id')
@@ -73,7 +97,7 @@ export function createApprovalService({ db }) {
                             'ac.current_level',
                             'ac.created_at',
                             'di.project_id',
-                            'doc.title as doc_title',
+                            'di.title as doc_title',
                             'p.name as project_name',
                             'user.user_name as initiator_name'
                         )
@@ -83,7 +107,7 @@ export function createApprovalService({ db }) {
                         cycleQuery = cycleQuery.where('di.project_id', projectId);
                     }
 
-                    const cycleRows = await cycleQuery.limit(50);
+                    const cycleRows = await cycleQuery.limit(101);
                     for (const row of cycleRows) {
                         allItems.push({
                             id: row.cycle_id,
@@ -102,13 +126,13 @@ export function createApprovalService({ db }) {
                     }
                 }
             } catch {
-                // Ignore table missing errors
+                fail('execution_failure', 'approval_queue_unavailable');
             }
 
             // 3. Milestone Tasks in review / pending completion sign-off
             try {
                 const hasTasks = await conn.schema.hasTable('proj_tasks');
-                if (hasTasks) {
+                if (hasTasks && ['all', 'milestone_task'].includes(itemType)) {
                     let taskQuery = conn('proj_tasks as t')
                         .join('proj_projects as p', 't.project_id', 'p.id')
                         .where('p.org_id', orgId)
@@ -130,7 +154,7 @@ export function createApprovalService({ db }) {
                         taskQuery = taskQuery.where('t.project_id', projectId);
                     }
 
-                    const taskRows = await taskQuery.limit(50);
+                    const taskRows = await taskQuery.limit(101);
                     for (const row of taskRows) {
                         allItems.push({
                             id: row.id,
@@ -149,7 +173,7 @@ export function createApprovalService({ db }) {
                     }
                 }
             } catch {
-                // Ignore table missing errors
+                fail('execution_failure', 'approval_queue_unavailable');
             }
 
             // Sort all by submittedAt desc
@@ -186,6 +210,7 @@ export function createApprovalService({ db }) {
                     .join('proj_projects as p', 'obs.project_id', 'p.id')
                     .where({ 'obs.id': itemId, 'p.org_id': orgId })
                     .select('obs.*', 'p.name as project_name')
+                    .forUpdate()
                     .first();
 
                 if (!obs) fail('validation_error', 'approval_target_not_found');
@@ -206,7 +231,7 @@ export function createApprovalService({ db }) {
                 return {
                     id: itemId,
                     itemType: 'qaqc_observation',
-                    title: obs.title || obs.description?.slice(0, 50) || `Observation #${itemId}`,
+                    title: obs.location || obs.before_note?.slice(0, 50) || 'Quality Observation',
                     projectName: obs.project_name,
                     action: cleanAction,
                     previousStatus: 'FIXED',
@@ -221,7 +246,8 @@ export function createApprovalService({ db }) {
                     .leftJoin('wf_documents as doc', 'di.document_id', 'doc.document_id')
                     .leftJoin('proj_projects as p', 'di.project_id', 'p.id')
                     .where({ 'ac.cycle_id': itemId, 'di.org_id': orgId })
-                    .select('ac.*', 'di.instance_id', 'doc.title as doc_title', 'p.name as project_name')
+                    .select('ac.*', 'di.instance_id', 'di.title as doc_title', 'p.name as project_name')
+                    .forUpdate()
                     .first();
 
                 if (!cycle) fail('validation_error', 'approval_target_not_found');
@@ -240,20 +266,14 @@ export function createApprovalService({ db }) {
                     locked_at: null
                 });
 
-                try {
-                    const hasLogs = await trx.schema.hasTable('wf_approval_logs');
-                    if (hasLogs) {
-                        await trx('wf_approval_logs').insert({
+                if (!await trx.schema.hasTable('wf_approval_logs')) fail('execution_failure', 'approval_audit_unavailable');
+                await trx('wf_approval_logs').insert({
                             cycle_id: itemId,
                             action: newStatus,
                             level_order: cycle.current_level,
                             acted_by: userId,
                             comments: comments || `Decision ${cleanAction} recorded via AI Assistant`
-                        });
-                    }
-                } catch {
-                    // Ignore logging failure
-                }
+                });
 
                 return {
                     id: itemId,
@@ -272,9 +292,11 @@ export function createApprovalService({ db }) {
                     .join('proj_projects as p', 't.project_id', 'p.id')
                     .where({ 't.id': itemId, 'p.org_id': orgId })
                     .select('t.*', 'p.name as project_name')
+                    .forUpdate()
                     .first();
 
                 if (!task) fail('validation_error', 'approval_target_not_found');
+                if (!['in_review', 'pending_approval', 'review'].includes(task.status)) fail('validation_error', 'task_not_pending_approval');
 
                 const newStatus = cleanAction === 'approve' ? 'completed' : 'open';
                 await trx('proj_tasks').where('id', itemId).update({
@@ -297,14 +319,12 @@ export function createApprovalService({ db }) {
             fail('validation_error', 'unsupported_approval_item_type');
         },
 
-        async batchDecideApprovals(orgId, userId, { itemType = 'all', action = 'approve', comments }, { trx } = {}) {
+        async batchDecideApprovals(orgId, userId, { itemType = 'all', action = 'approve', comments }, { trx, targets } = {}) {
             if (!trx?.isTransaction) fail('execution_failure', 'caller_transaction_required');
 
-            const pending = await this.listPendingApprovals(orgId, { limit: 100 }, trx);
-            let candidates = pending.items;
-            if (itemType && itemType !== 'all') {
-                candidates = candidates.filter(item => item.itemType === itemType);
-            }
+            if (!Array.isArray(targets) || targets.length < 1 || targets.length > 20
+                || targets.some(item => itemType !== 'all' && item.itemType !== itemType)) fail('validation_error', 'approval_snapshot_required');
+            const candidates = targets;
 
             if (candidates.length === 0) {
                 return {

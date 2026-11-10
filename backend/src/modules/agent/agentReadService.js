@@ -648,6 +648,56 @@ export function createReadService({ db, projects, clients, vendors, resources, p
                 break;
             }
             case 'projects.getExecutiveBriefing': result = await projects.getProjectExecutiveBriefing(orgId, args.projectId); break;
+            case 'tasks.listCategories': {
+                let query = db('proj_task_categories as c').join('proj_projects as p', 'c.project_id', 'p.id')
+                    .where({ 'p.org_id': orgId, 'c.project_id': args.projectId });
+                if (args.query?.trim()) query = query.whereILike('c.name', `%${args.query.trim()}%`);
+                result = await query.select('c.id', 'c.name').orderBy('c.sort_order', 'asc').orderBy('c.id', 'asc')
+                    .limit(paging.limit).offset(paging.offset);
+                break;
+            }
+            case 'qualityDocuments.search': {
+                const table = args.documentType === 'methodology' ? 'proj_quality_methodologies' : 'proj_quality_checklists';
+                let query = db(`${table} as q`).join('proj_projects as p', 'q.project_id', 'p.id')
+                    .where({ 'p.org_id': orgId, 'q.project_id': args.projectId });
+                if (args.query?.trim()) query = query.whereILike('q.title', `%${args.query.trim()}%`);
+                result = await query.select('q.id', 'q.title', 'q.project_id as projectId', 'p.name as projectName',
+                    'q.file_type as fileType', 'q.file_size as fileSize', 'q.uploaded_at as uploadedAt')
+                    .orderBy('q.id', 'desc').limit(paging.limit).offset(paging.offset);
+                result = result.map(row => ({ ...row, documentType: args.documentType }));
+                break;
+            }
+            case 'directory.search': {
+                const query = db('proj_directory as pd')
+                    .join('proj_projects as p', 'pd.project_id', 'p.id')
+                    .leftJoin('proj_parties as pp', 'pd.party_id', 'pp.id')
+                    .leftJoin('crm_contacts as c', 'pp.contact_id', 'c.id')
+                    .where({ 'p.org_id': orgId, 'pd.project_id': args.projectId });
+                if (args.query && String(args.query).trim()) {
+                    const pattern = `%${String(args.query).trim()}%`;
+                    query.where(function matchDirectoryEntry() {
+                        this.whereILike('pd.contact_person', pattern)
+                            .orWhereILike('pd.designation', pattern)
+                            .orWhereILike('c.name', pattern);
+                    });
+                }
+                result = await query.select('pd.id', 'pd.contact_person', 'pd.designation',
+                    'c.name as companyName', 'c.category')
+                    .orderBy('pd.id', 'desc').limit(paging.limit).offset(paging.offset);
+                break;
+            }
+            case 'summaries.search': {
+                let query = db('proj_summary as s')
+                    .join('proj_projects as p', 's.project_id', 'p.id')
+                    .where({ 'p.org_id': orgId, 's.project_id': args.projectId });
+                if (args.query && String(args.query).trim()) {
+                    query = query.whereILike('s.title', `%${String(args.query).trim()}%`);
+                }
+                result = await query.select('s.id', 's.title', 's.details', 's.status', 's.date')
+                    .orderBy('s.date', 'desc').orderBy('s.id', 'desc')
+                    .limit(paging.limit).offset(paging.offset);
+                break;
+            }
             case 'tasks.search': {
                 let q = db('proj_tasks as t')
                     .join('proj_projects as p', 't.project_id', 'p.id')

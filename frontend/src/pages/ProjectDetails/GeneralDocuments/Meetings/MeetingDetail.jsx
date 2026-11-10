@@ -44,6 +44,15 @@ const MeetingDetail = ({ onBack, setExtraBreadcrumbs, meetingId: id, canWrite })
         loadMeetingData
     } = meetingData;
 
+    useEffect(() => {
+        if (isNew || loading || !details.subject) return;
+        window.dispatchEvent(new CustomEvent('active-entity-updated', { detail: {
+            selectedEntityType: 'meeting', selectedEntityId: String(id),
+            selectedEntityName: details.subject, activeTab: 'Meetings'
+        } }));
+        return () => window.dispatchEvent(new CustomEvent('active-entity-updated', { detail: null }));
+    }, [id, isNew, loading, details.subject]);
+
     // ── Participants hook ─────────────────────────────────────────────────────
     const {
         participants, setParticipants,

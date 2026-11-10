@@ -89,7 +89,7 @@ server.listen(PORT, '0.0.0.0', async () => {
             const isWin = process.platform === 'win32';
             const command = isWin ? path.join(pythonDir, 'venv', 'Scripts', 'python.exe') : path.join(pythonDir, 'venv', 'bin', 'python');
             const args = ['-m', 'uvicorn', 'main:app', '--host', '127.0.0.1', '--port', '8000'];
-            if (process.env.NODE_ENV !== 'production') args.push('--reload');
+            if (process.env.NODE_ENV !== 'production' && process.env.MANO_AGENT_PYTHON_RELOAD !== '0') args.push('--reload');
 
             const pythonProcess = spawn(command, args, {
                 cwd: pythonDir,

@@ -187,6 +187,21 @@ export function actionFor(tool, args, preconditions = null) {
                 { label: 'Members', value: preconditions.members.map(member => member.name).join(', ') },
             ] };
     }
+    if (tool.name === 'tasks.reorder' && preconditions?.items) {
+        return { actionType: tool.name, title: args.type === 'task' ? 'Reorder tasks' : 'Reorder task categories',
+            riskLevel: 'WRITE', affectedRecords: preconditions.items.length,
+            description: 'Apply only the requested order shown below. Review the names before confirming.',
+            fields: [{ label: 'Requested order', value: [...preconditions.items]
+                .sort((a, b) => a.requestedOrder - b.requestedOrder)
+                .map(item => `${item.requestedOrder}. ${item.name}`).join('; ') }] };
+    }
+    if (tool.name === 'tasks.updateCategory' && preconditions?.category) {
+        return { actionType: tool.name, title: 'Rename task category', riskLevel: 'WRITE', affectedRecords: 1,
+            description: 'Rename this existing task category. Its tasks remain in the same category.', fields: [
+                { label: 'Current category', value: preconditions.category.name },
+                { label: 'New category name', value: args.name }
+            ] };
+    }
     if (tool.risk === 'WRITE' && (tool.name.startsWith('tasks.') || tool.name.startsWith('projectParties.') || tool.name === 'projects.assignMember')) {
         const titles = { 'projectParties.add': 'Add project party', 'projectParties.update': 'Update project party', 'projects.assignMember': 'Assign project member (restricted)', 'tasks.assign': 'Assign task members', 'tasks.createCategory': 'Create task category', 'tasks.updateCategory': 'Rename task category', 'tasks.reorder': 'Reorder tasks' };
         const title = titles[tool.name] || tool.name;
@@ -195,7 +210,52 @@ export function actionFor(tool, args, preconditions = null) {
             fields: Object.entries(args).filter(([label, value]) => label !== 'projectId' && !(Array.isArray(value) && value.length === 0))
                 .map(([label, value]) => ({ label, value: displayFieldValue(value) })) };
     }
-    if (tool.name.startsWith('meetings.') || tool.name.startsWith('directory.') || tool.name.startsWith('summaries.') || tool.name.startsWith('documents.') || tool.name.startsWith('quality')) {
+    if (tool.name.startsWith('meetings.')) {
+        const title = tool.name === 'meetings.create' ? 'Create meeting' : 'Update meeting';
+        return { actionType: tool.name, title, riskLevel: 'WRITE', affectedRecords: 1,
+            description: `${title}. Confirm the details before saving.`,
+            fields: [
+                ...(preconditions?.current?.subject ? [{ label: 'Meeting', value: preconditions.current.subject }] : []),
+                ...Object.entries(args).filter(([key, value]) => !['projectId', 'meetingId'].includes(key)
+                    && !(Array.isArray(value) && value.length === 0))
+                    .map(([label, value]) => ({ label, value: displayFieldValue(value) }))
+            ] };
+    }
+    if (tool.name.startsWith('qualityMethodologies.') || tool.name.startsWith('qualityChecklists.')) {
+        const isChecklist = tool.name.startsWith('qualityChecklists.');
+        const isCreate = tool.name.endsWith('.create');
+        const current = preconditions?.current;
+        const attachment = preconditions?.attachment;
+        const title = `${isCreate ? 'Add' : 'Update'} quality ${isChecklist ? 'checklist' : 'methodology'}`;
+        return { actionType: tool.name, title, riskLevel: 'WRITE', affectedRecords: 1,
+            description: `${title}. Confirm the selected document and approved attachment before saving.`,
+            fields: [
+                ...(!isCreate && current?.title ? [{ label: isChecklist ? 'Selected checklist' : 'Selected methodology', value: current.title }] : []),
+                ...(isCreate && args.title ? [{ label: 'Title', value: args.title }] : []),
+                ...(!isCreate && args.title ? [{ label: 'New title', value: args.title }] : []),
+                ...(attachment ? [
+                    { label: 'Approved file', value: attachment.filename },
+                    { label: 'File type', value: attachment.mimeType || 'Unknown' },
+                    { label: 'File size', value: `${attachment.size} bytes` },
+                ] : []),
+            ] };
+    }
+    if (tool.name.startsWith('qualityObservations.')) {
+        const attachment = preconditions?.attachment;
+        const title = tool.name === 'qualityObservations.submitFix' ? 'Submit corrective fix'
+            : tool.name === 'qualityObservations.create' ? 'Create quality observation' : 'Update quality observation';
+        const observation = preconditions?.observation;
+        return { actionType: tool.name, title, riskLevel: 'WRITE', affectedRecords: 1,
+            description: `${title}. Confirm the observation details before saving.`,
+            fields: [
+                ...(tool.name !== 'qualityObservations.create' ? [{ label: 'Observation location', value: observation?.location || 'Selected pending observation' }] : []),
+                ...(observation?.before_note ? [{ label: 'Reported issue', value: observation.before_note }] : []),
+                ...(args.location ? [{ label: 'Location', value: args.location }] : []),
+                ...(args.note ? [{ label: tool.name === 'qualityObservations.submitFix' ? 'Fix details' : 'Observation details', value: args.note }] : []),
+                ...(attachment ? [{ label: 'Approved resolution image', value: attachment.filename }] : []),
+            ] };
+    }
+    if (tool.risk === 'WRITE' && (tool.name.startsWith('directory.') || tool.name.startsWith('summaries.') || tool.name.startsWith('documents.') || tool.name.startsWith('quality'))) {
         const titles = { 'meetings.create': 'Create meeting', 'meetings.update': 'Update meeting', 'directory.create': 'Add directory entry', 'directory.update': 'Update directory entry', 'summaries.create': 'Create project summary', 'summaries.update': 'Update project summary', 'documents.saveDraft': 'Save document draft', 'documents.submitDraft': 'Submit document draft for approval', 'qualityObservations.create': 'Create quality observation', 'qualityObservations.update': 'Update quality observation', 'qualityObservations.submitFix': 'Submit corrective fix', 'qualityMethodologies.create': 'Add quality methodology', 'qualityMethodologies.update': 'Update quality methodology', 'qualityChecklists.create': 'Add quality checklist', 'qualityChecklists.update': 'Update quality checklist' };
         const title = titles[tool.name] || tool.name;
         return { actionType: tool.name, title, riskLevel: 'WRITE', affectedRecords: 1,
@@ -254,10 +314,12 @@ export function actionFor(tool, args, preconditions = null) {
             title: `${actionWord} ${typeLabel}`,
             riskLevel: 'WRITE',
             affectedRecords: 1,
-            description: `${actionWord} ${typeLabel} #${args.itemId} in ERP.`,
+            description: `${actionWord} the named ${typeLabel.toLowerCase()} in ERP.`,
             fields: [
                 { label: 'Item Type', value: typeLabel },
-                { label: 'Item ID', value: `#${args.itemId}` },
+                { label: 'Item', value: preconditions?.item?.title || 'Pending item' },
+                { label: 'Project', value: preconditions?.item?.projectName || 'Project' },
+                { label: 'Current status', value: preconditions?.item?.status || 'Pending' },
                 { label: 'Action', value: actionWord },
                 ...(args.comments ? [{ label: 'Comments', value: args.comments }] : [])
             ]
@@ -270,11 +332,13 @@ export function actionFor(tool, args, preconditions = null) {
             actionType: tool.name,
             title: `Batch ${actionWord} (${typeLabel})`,
             riskLevel: 'WRITE',
-            affectedRecords: preconditions?.affectedCount ?? 1,
-            description: `${actionWord} across ${typeLabel} queue.`,
+            affectedRecords: preconditions?.affectedCount ?? 0,
+            description: `${actionWord} only the listed ${typeLabel.toLowerCase()} across the organization.`,
             fields: [
                 { label: 'Scope', value: typeLabel },
                 { label: 'Action', value: actionWord },
+                { label: 'Items', value: (preconditions?.items || []).map(item => `${item.title} (${item.projectName})`).join('; ') },
+                { label: 'Maximum batch size', value: '20 pending items' },
                 ...(args.comments ? [{ label: 'Comments', value: args.comments }] : [])
             ]
         };

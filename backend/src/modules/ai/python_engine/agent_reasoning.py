@@ -20,14 +20,18 @@ WRITE_RESULT_ROWS = 5
 WRITE_RESULT_CHARS = 120
 WRITE_INPUT_MAX_BYTES = 32768
 WRITE_SUPPORTING_TOOLS = frozenset({
+    "tasks.listCategories",
+    "directory.search",
+    "summaries.search",
+    "projectParties.list",
     "clients.search", "clients.get", "vendors.search", "vendors.get", "resources.search", "resources.get", "approvals.listPending", "projects.search", "projects.get", "tasks.search",
-    "adminUsers.search", "permissionTemplates.search", "documentTemplates.search", "documentCycles.search", "documentInstances.search",
+    "adminUsers.search", "permissionTemplates.search", "documentTemplates.search", "documentCycles.search", "documentInstances.search", "qualityDocuments.search",
     "adminUsers.search", "permissionTemplates.search", "documentTemplates.search",
 })
 TERMINAL_READ_TOOLS = frozenset({
     "projects.get", "projects.getExecutiveBriefing", "clients.get", "vendors.get", "resources.get", "resources.getRate",
     "resources.getRateHistory", "resources.getComposition", "resources.simulateCostImpact", "projectParties.list", "interactions.search",
-    "analytics.query", "approvals.listPending", "reports.exportExcel", "reports.getDPR", "reports.getWPR", "reports.getMPR", "transactions.search", "billing.search", "tasks.search", "adminUsers.search", "permissionTemplates.search", "documentTemplates.search", "documentCycles.search", "documentInstances.search",
+    "analytics.query", "approvals.listPending", "reports.exportExcel", "reports.getDPR", "reports.getWPR", "reports.getMPR", "transactions.search", "billing.search", "tasks.search", "adminUsers.search", "permissionTemplates.search", "documentTemplates.search", "documentCycles.search", "documentInstances.search", "directory.search", "summaries.search",
 })
 ASSISTANT_RESPONSE_SCHEMA = {
     "type": "object",
@@ -214,10 +218,22 @@ def select_write_tools(request):
         selected.add("approvals.listPending")
     if selected & {"projects.create", "projects.update", "projects.assignMember", "projects.setMemberPermissions", "projectParties.add", "projectParties.update", "meetings.create", "meetings.update", "directory.create", "directory.update", "summaries.create", "summaries.update", "documents.saveDraft", "documents.submitDraft", "documents.requestRevision", "documents.cancelCycle", "documents.claimRevision", "documents.archiveInstance", "documentTemplates.create", "documentTemplates.update", "qualityObservations.create", "qualityObservations.update", "qualityObservations.submitFix", "qualityMethodologies.create", "qualityMethodologies.update", "qualityChecklists.create", "qualityChecklists.update"}:
         selected.update({"projects.search", "projects.get"})
+    if selected & {"directory.create", "directory.update"}:
+        selected.add("directory.search")
+    if "summaries.update" in selected:
+        selected.add("summaries.search")
+    if "projectParties.update" in selected:
+        selected.add("projectParties.list")
+    if "projects.assignMember" in selected:
+        selected.add("adminUsers.search")
     if selected & {"tasks.create", "tasks.update", "tasks.deleteSelected", "tasks.assign", "tasks.createCategory", "tasks.updateCategory", "tasks.reorder"}:
-        selected.update({"projects.search", "projects.get", "tasks.search"})
+        selected.update({"projects.search", "projects.get", "tasks.search", "tasks.listCategories"})
+    if "tasks.assign" in selected:
+        selected.add("adminUsers.search")
     if selected & {"adminUsers.updateProfile", "adminUsers.setSystemPermissions"}:
         selected.add("adminUsers.search")
+    if selected & {"qualityMethodologies.update", "qualityChecklists.update"}:
+        selected.add("qualityDocuments.search")
     if "permissionTemplates.update" in selected:
         selected.add("permissionTemplates.search")
     if "documentTemplates.update" in selected:
@@ -502,12 +518,16 @@ def select_read_tools(request):
         selected.add("permissionTemplates.search")
     if "document template" in words:
         selected.add("documentTemplates.search")
+    if "directory" in words or "personnel" in words:
+        selected.add("directory.search")
     if any(word in words for word in ("vendor", "supplier", "contractor", "contract", "contracts", "agreement", "agreements")):
         selected.update({"vendors.search", "vendors.get", "interactions.search", "projectParties.list"})
     if tab == "contracts" or "contract" in mod:
         selected.update({"projectParties.list", "vendors.search", "projects.get"})
     if any(word in words for word in ("drawing", "drawings", "sheet", "revisions", "quality", "safety", "document", "documents", "snag", "inspection", "checklist")):
         selected.update({"approvals.listPending", "projects.get"})
+    if any(word in words for word in ("quality", "checklist", "methodology", "observation", "corrective fix")):
+        selected.add("qualityDocuments.search")
     if any(word in words for word in ("document cycle", "approval cycle", "revision cycle", "document instance", "archive document")):
         selected.update({"documentCycles.search", "documentInstances.search"})
     if any(tab_match in (tab, mod) for tab_match in ("drawings", "quality", "safety", "general documents")):
@@ -548,9 +568,13 @@ def select_read_tools(request):
     return [name for name in request.allowedTools if name in selected]
 
 
-def redact_verified_internal_ids(text, results):
+def redact_verified_internal_ids(text, results, context=None):
     """Keep record identifiers in audited tool events, never in user-facing prose."""
     identifiers = set()
+    for field in ("selectedEntityId", "projectId"):
+        value = getattr(context, field, None)
+        if value is not None and str(value).isdigit():
+            identifiers.add(str(value))
     for result in results:
         data = result.data if hasattr(result, "data") else result.get("data", []) if isinstance(result, dict) else []
         for row in data:
@@ -558,10 +582,12 @@ def redact_verified_internal_ids(text, results):
                 identifiers.add(str(row["id"]))
     if not identifiers:
         return text
-    expression = r"(?i)\(?\s*(?:(?:project|client|vendor|resource)\s+)?id\s*(?:number\s*)?(?:#|:)?\s*(?:" + "|".join(
+    expression = r"(?i)\(?\s*(?:(?:project|client|vendor|resource|meeting|task|category|document|cycle|observation|checklist|methodology)\s+)?id\s*(?:number\s*)?(?:#|:)?\s*(?:" + "|".join(
         re.escape(identifier) for identifier in sorted(identifiers, key=len, reverse=True)
-    ) + r")\s*\)?"
-    redacted = re.sub(r"([;,:])(?=\S)", r"\1 ", re.sub(r" {2,}", " ", re.sub(expression, "", text))).strip()
+    ) + r")\b\s*\)?"
+    redacted = re.sub(r" {2,}", " ", re.sub(expression, "", text))
+    redacted = re.sub(r"\s+([,.;:!?])", r"\1", redacted)
+    redacted = re.sub(r"([;,]|(?<!\d):)(?=\S)", r"\1 ", redacted).strip()
     return redacted or "The requested record was found."
 
 
@@ -1037,6 +1063,467 @@ def project_party_category_mismatch(request, response):
     return "I could not verify the contact's category. Please choose an existing matching contact."
 
 
+def _approved_quality_upload(request):
+    attachment = getattr(request.context, "attachment", None)
+    if not isinstance(attachment, dict):
+        return None
+    if attachment.get("kind") != "attachment" or attachment.get("approvedForAgentWrite") is not True:
+        return None
+    upload_id = attachment.get("uploadId")
+    if not isinstance(upload_id, str) or not re.fullmatch(r"[0-9a-fA-F-]{36}", upload_id):
+        return None
+    return upload_id
+
+
+def explicit_quality_document_update(request):
+    """Resolve an explicitly named quality document before proposing its replacement."""
+    update_tools = {
+        "checklist": "qualityChecklists.update",
+        "methodology": "qualityMethodologies.update",
+    }
+    match = re.search(
+        r"\b(?:replace|update|change)\s+(?:the\s+)?(?:existing\s+)?(?:quality\s+)?"
+        r"(?P<kind>checklist|methodology)\b(?P<tail>.*)$",
+        request.message.strip(), re.I,
+    )
+    if not match:
+        return None
+    kind = match.group("kind").lower()
+    tool = update_tools[kind]
+    if tool not in request.allowedTools:
+        return None
+    title_match = re.search(
+        r"\b(?:named|called)\s+(.+?)(?=\s+(?:with|using)\s+(?:the\s+)?attached\b|[.!?]*$)",
+        match.group("tail"), re.I,
+    )
+    if not title_match:
+        return Assistant(kind="assistant", text=f"Please name the existing quality {kind} to replace. No ERP changes were made.", sources=[])
+    title = title_match.group(1).strip(" \t\"'`").rstrip(".!? ")
+    project_id = getattr(request.context, "projectId", None)
+    if not title or not str(project_id or "").isdigit() or int(project_id) < 1:
+        return Assistant(kind="assistant", text=f"Please open the project and name the existing quality {kind}. No ERP changes were made.", sources=[])
+    upload_id = _approved_quality_upload(request)
+    if not upload_id:
+        return Assistant(kind="assistant", text="Attach a file and mark it as an approved quality file before replacing this record. No ERP changes were made.", sources=[])
+    lookup = next((result for result in request.results
+                   if getattr(result, "tool", None) == "qualityDocuments.search"), None)
+    if lookup is None:
+        if "qualityDocuments.search" not in request.allowedTools:
+            return Assistant(kind="assistant", text="I cannot verify the existing quality document from this page. No ERP changes were made.", sources=[])
+        return ToolIntent(kind="tool", tool="qualityDocuments.search", version=1, arguments={
+            "projectId": int(project_id), "documentType": kind, "query": title, "limit": 20,
+        })
+    matches = [row for row in lookup.data if isinstance(row, dict)
+               and type(row.get("id")) is int and row["id"] > 0
+               and str(row.get("title", "")).strip().casefold() == title.casefold()
+               and str(row.get("documentType", "")).strip().casefold() == kind]
+    if len(matches) != 1:
+        return Assistant(kind="assistant", text=f"I could not verify exactly one quality {kind} named '{title}' in this project. Please clarify the record. No ERP changes were made.", sources=[lookup.stepId])
+    return ToolIntent(kind="tool", tool=tool, version=1, arguments={
+        "projectId": int(project_id), "documentId": matches[0]["id"], "uploadId": upload_id,
+    })
+
+
+def explicit_directory_update(request):
+    """Resolve an explicitly named project directory entry before a safe update."""
+    if "directory.update" not in request.allowedTools:
+        return None
+    match = re.fullmatch(
+        r"\s*(?:please\s+)?(?:update|edit|change)\s+(?:the\s+)?directory\s+entry\s+for\s+"
+        r"(?P<target>.+?)\s+and\s+(?:set|change)\s+(?:the\s+)?designation\s+(?:to|as)\s+"
+        r"(?P<value>.+?)[.!]?\s*",
+        request.message, re.I,
+    )
+    if not match:
+        return None
+    target = match.group("target").strip(" \t\"'`")
+    designation = match.group("value").strip(" \t\"'`").rstrip(".!? ")
+    project_id = getattr(request.context, "projectId", None)
+    if not target or not designation:
+        return Assistant(kind="assistant", text="Please provide both the directory contact name and the new designation. No ERP changes were made.", sources=[])
+    if not str(project_id or "").isdigit() or int(project_id) < 1:
+        return Assistant(kind="assistant", text="Open the project containing this directory entry before updating it. No ERP changes were made.", sources=[])
+
+    lookup = next((result for result in request.results
+                   if getattr(result, "tool", None) == "directory.search"), None)
+    if lookup is None:
+        if "directory.search" not in request.allowedTools:
+            return Assistant(kind="assistant", text="I cannot verify that directory entry from this page. No ERP changes were made.", sources=[])
+        return ToolIntent(kind="tool", tool="directory.search", version=1, arguments={
+            "projectId": int(project_id), "query": target, "limit": 20,
+        })
+
+    matches = [row for row in lookup.data if isinstance(row, dict)
+               and type(row.get("id")) is int and row["id"] > 0
+               and target.casefold() in {
+                   str(row.get("contact_person", "")).strip().casefold(),
+                   str(row.get("companyName", "")).strip().casefold(),
+               }]
+    if len(matches) != 1:
+        return Assistant(kind="assistant", text=f"I could not verify exactly one directory entry named '{target}' in this project. Please clarify which entry to update. No ERP changes were made.", sources=[lookup.stepId])
+    return ToolIntent(kind="tool", tool="directory.update", version=1, arguments={
+        "projectId": int(project_id), "directoryId": matches[0]["id"], "designation": designation,
+    })
+
+
+def selected_quality_observation_fix(request):
+    """Use only the observation selected in page context and an approved attached file."""
+    if "qualityObservations.submitFix" not in request.allowedTools or not re.search(
+        r"\b(?:submit|add|attach)\b.*\b(?:corrective\s+)?fix\b.*\bselected\s+(?:quality\s+)?observation\b",
+        request.message, re.I,
+    ):
+        return None
+    context = request.context
+    project_id = getattr(context, "projectId", None)
+    entity_type = str(getattr(context, "selectedEntityType", "") or "").casefold()
+    entity_id = getattr(context, "selectedEntityId", None)
+    if entity_type != "qualityobservation" or not str(entity_id or "").isdigit():
+        return Assistant(kind="assistant", text="Select a pending quality observation first, then ask me to submit its corrective fix. No ERP changes were made.", sources=[])
+    if not str(project_id or "").isdigit() or int(project_id) < 1:
+        return Assistant(kind="assistant", text="Open the target project and select its pending observation before submitting a fix. No ERP changes were made.", sources=[])
+    upload_id = _approved_quality_upload(request)
+    if not upload_id:
+        return Assistant(kind="assistant", text="Attach a file and mark it as an approved quality file before submitting this fix. No ERP changes were made.", sources=[])
+    args = {"projectId": int(project_id), "observationId": int(entity_id), "uploadId": upload_id}
+    if ":" in request.message:
+        note = request.message.split(":", 1)[1].strip().strip(" \t\"'`").rstrip(".!? ")
+        if note:
+            args["note"] = note[:500]
+    return ToolIntent(kind="tool", tool="qualityObservations.submitFix", version=1, arguments=args)
+
+
+def explicit_rate_version_create(request):
+    """Resolve an explicitly named resource, then propose its exact new rate version."""
+    if "resources.createRateVersion" not in request.allowedTools:
+        return None
+    match = re.fullmatch(
+        r"\s*(?:please\s+)?(?:create|add|set)\s+(?:a\s+)?(?:new\s+)?"
+        r"(?:(?:master|organization)\s+)?rate\s+version\s+for\s+(.+?)\s+at\s+"
+        r"(?:INR|rs\.?|rupees?)\s*([\d,]+(?:\.\d{1,2})?)\s+per\s+"
+        r"([a-zA-Z][\w-]{0,29}),?\s+effective(?:\s+from)?\s+(\d{4}-\d{2}-\d{2})"
+        r"(?:[.;,]?\s+remarks?\s*:\s*(.{1,500}))?[.!]?\s*",
+        request.message, re.I,
+    )
+    if not match:
+        return None
+    name, rate, unit_code, effective_from, remarks = match.groups()
+    name = name.strip(" \t\"'`")
+    rate = rate.replace(",", "")
+    try:
+        datetime.date.fromisoformat(effective_from)
+        if float(rate) < 0:
+            raise ValueError
+    except ValueError:
+        return Assistant(kind="assistant", text="Please provide a nonnegative rate and a valid effective date in YYYY-MM-DD format. No ERP changes were made.", sources=[])
+
+    lookup = next((result for result in request.results
+                   if getattr(result, "tool", None) == "resources.search"), None)
+    if lookup is None:
+        if "resources.search" not in request.allowedTools:
+            return Assistant(kind="assistant", text="I cannot verify that resource from this page. No ERP changes were made.", sources=[])
+        return ToolIntent(kind="tool", tool="resources.search", version=1,
+                          arguments={"query": name, "limit": 20})
+    matches = [row for row in lookup.data if isinstance(row, dict)
+               and type(row.get("id")) is int and row["id"] > 0
+               and str(row.get("name", "")).strip().casefold() == name.casefold()]
+    if len(matches) != 1:
+        return Assistant(kind="assistant", text="I could not verify one resource with that exact name. Please clarify which resource to update. No ERP changes were made.", sources=[lookup.stepId])
+    resource = matches[0]
+    base_unit = str(resource.get("base_unit_code") or "").strip()
+    if not base_unit or base_unit.casefold() != unit_code.casefold():
+        return Assistant(kind="assistant", text=f"The verified resource uses {base_unit or 'an unspecified unit'} as its base unit. Please confirm the rate unit before I prepare a proposal. No ERP changes were made.", sources=[lookup.stepId])
+    args = {
+        "resourceId": resource["id"], "rate": rate, "unit_code": base_unit,
+        "effective_from": effective_from,
+    }
+    if remarks:
+        args["remarks"] = remarks.strip(" \t\"'`").rstrip(".!?")
+    return ToolIntent(kind="tool", tool="resources.createRateVersion", version=1, arguments=args)
+
+
+def named_project_party_add(request):
+    """Resolve an explicitly named project contact before adding its verified category."""
+    if "projectParties.add" not in request.allowedTools:
+        return None
+    project_id = str(getattr(request.context, "projectId", "") or "")
+    if not project_id.isdigit() or int(project_id) < 1:
+        return None
+    match = re.fullmatch(
+        r"\s*(?:please\s+)?add\s+(?:the\s+)?existing\s+(?:vendor|supplier)\s+(.+?)\s+"
+        r"as\s+a\s+(supplier|contractor)\s+to\s+this\s+project[.!]?\s*",
+        request.message, re.I,
+    )
+    if not match:
+        return None
+    name, requested_category = (part.strip(" \t\"'") for part in match.groups())
+    search = next((result for result in request.results
+                   if getattr(result, "tool", None) == "vendors.search"), None)
+    if search is None:
+        if "vendors.search" not in request.allowedTools:
+            return Assistant(kind="assistant", text="I cannot verify that vendor from this page. No ERP changes were made.", sources=[])
+        return ToolIntent(kind="tool", tool="vendors.search", version=1,
+                          arguments={"query": name, "limit": 20})
+    exact_matches = [row for row in search.data if isinstance(row, dict)
+                     and isinstance(row.get("id"), int) and row.get("id") > 0
+                     and str(row.get("name", "")).strip().casefold() == name.casefold()]
+    if len(exact_matches) != 1:
+        return Assistant(kind="assistant", text="I could not verify one existing vendor with that exact name. Please clarify which vendor to add.", sources=[search.stepId])
+    contact = exact_matches[0]
+    category = str(contact.get("category") or "").strip()
+    if category.casefold() != requested_category.casefold():
+        return Assistant(kind="assistant", text=f"That vendor is categorized as {category or 'unknown'}, not {requested_category.title()}. Please choose a vendor with the matching category. No ERP changes were made.", sources=[search.stepId])
+    return ToolIntent(kind="tool", tool="projectParties.add", version=1,
+                      arguments={"projectId": int(project_id), "contactId": contact["id"]})
+
+
+def named_project_party_contact_update(request):
+    """Resolve a named QA project party before changing its contact person."""
+    if "projectParties.update" not in request.allowedTools:
+        return None
+    match = re.fullmatch(
+        r"\s*(?:please\s+)?(?:update|edit|change)\s+(?:the\s+)?project\s+party\s+"
+        r"(?P<target>.+?)\s+and\s+set\s+(?:the\s+)?contact\s+person\s+(?:to|as)\s+"
+        r"(?P<value>.+?)[.!]?\s*",
+        request.message, re.I,
+    )
+    project_id = getattr(request.context, "projectId", None)
+    if not match:
+        return None
+    target = match.group("target").strip(" \t\"'`")
+    contact_person = match.group("value").strip(" \t\"'`").rstrip(".!? ")
+    if not target or not contact_person:
+        return Assistant(kind="assistant", text="Please provide the existing project party name and the new contact person. No ERP changes were made.", sources=[])
+    if not str(project_id or "").isdigit() or int(project_id) < 1:
+        return Assistant(kind="assistant", text="Open the project containing this party before updating it. No ERP changes were made.", sources=[])
+    lookup = next((result for result in request.results
+                   if getattr(result, "tool", None) == "projectParties.list"), None)
+    if lookup is None:
+        if "projectParties.list" not in request.allowedTools:
+            return Assistant(kind="assistant", text="I cannot verify that project party from this page. No ERP changes were made.", sources=[])
+        return ToolIntent(kind="tool", tool="projectParties.list", version=1,
+                          arguments={"projectId": int(project_id), "limit": 20})
+    matches = [row for row in lookup.data if isinstance(row, dict)
+               and type(row.get("id")) is int and row["id"] > 0
+               and str(row.get("name", "")).strip().casefold() == target.casefold()]
+    if len(matches) != 1:
+        return Assistant(kind="assistant", text=f"I could not verify exactly one project party named '{target}' in this project. Please clarify which party to update. No ERP changes were made.", sources=[lookup.stepId])
+    return ToolIntent(kind="tool", tool="projectParties.update", version=1, arguments={
+        "projectId": int(project_id), "projectPartyId": matches[0]["id"], "contact_person": contact_person,
+    })
+
+
+def named_project_summary_update(request):
+    """Resolve an exact project summary title before proposing an update."""
+    if "summaries.update" not in request.allowedTools:
+        return None
+    match = re.fullmatch(
+        r"\s*(?:please\s+)?(?:update|edit|change)\s+(?:the\s+)?(?:existing\s+)?project\s+summary\s+"
+        r"(?:titled|named)\s+(.+?)\s+(?:and\s+)?(?:change|set|update)\s+(?:its\s+)?"
+        r"(?:remarks|details|content)\s+(?:to|as)\s*:?\s*(.+?)\s*[.!]?\s*",
+        request.message, re.I | re.S,
+    )
+    if not match:
+        return None
+    title, details = (part.strip(" \t\"'`") for part in match.groups())
+    details = details.strip()
+    project_id = getattr(request.context, "projectId", None)
+    if not title or not details:
+        return Assistant(kind="assistant", text="Please provide the existing summary title and the new details. No ERP changes were made.", sources=[])
+    if len(details) > 500:
+        return Assistant(kind="assistant", text="Please shorten the summary details to 500 characters or fewer. No ERP changes were made.", sources=[])
+    if not str(project_id or "").isdigit() or int(project_id) < 1:
+        return Assistant(kind="assistant", text="Open the project containing this summary before updating it. No ERP changes were made.", sources=[])
+    lookup = next((result for result in request.results
+                   if getattr(result, "tool", None) == "summaries.search"), None)
+    if lookup is None:
+        if "summaries.search" not in request.allowedTools:
+            return Assistant(kind="assistant", text="I cannot verify that project summary from this page. No ERP changes were made.", sources=[])
+        return ToolIntent(kind="tool", tool="summaries.search", version=1,
+                          arguments={"projectId": int(project_id), "query": title, "limit": 20})
+    matches = [row for row in lookup.data if isinstance(row, dict)
+               and type(row.get("id")) is int and row["id"] > 0
+               and str(row.get("title", "")).strip().casefold() == title.casefold()]
+    if len(matches) != 1:
+        return Assistant(kind="assistant", text=f"I could not verify exactly one project summary titled '{title}'. Please clarify which summary to update. No ERP changes were made.", sources=[lookup.stepId])
+    return ToolIntent(kind="tool", tool="summaries.update", version=1, arguments={
+        "projectId": int(project_id), "summaryId": matches[0]["id"], "details": details,
+    })
+
+
+def explicit_project_summary_create(request):
+    """Build a bounded summary proposal from title and content the user supplied."""
+    if request.results or "summaries.create" not in request.allowedTools:
+        return None
+    project_id = str(getattr(request.context, "projectId", "") or "")
+    if not project_id.isdigit() or int(project_id) < 1:
+        return None
+    match = re.fullmatch(
+        r"\s*(?:please\s+)?create\s+(?:a\s+)?project\s+summary\s+titled\s+(.+?)\s+"
+        r"with\s+this\s+content\s*:\s*(.+?)\s*[.!]?\s*",
+        request.message, re.I | re.S,
+    )
+    if not match:
+        return None
+    title, details = (part.strip(" \t\"'") for part in match.groups())
+    if not title or not details:
+        return Assistant(kind="assistant", text="Please provide both a summary title and its content. No ERP changes were made.", sources=[])
+    if len(details) > 500:
+        return Assistant(kind="assistant", text="Please shorten the summary content to 500 characters or fewer. No ERP changes were made.", sources=[])
+    return ToolIntent(kind="tool", tool="summaries.create", version=1,
+                      arguments={"projectId": int(project_id), "title": title, "details": details})
+
+
+def named_project_member_assignment(request):
+    """Resolve an exact organization user, check current membership, then propose assignment."""
+    if "projects.assignMember" not in request.allowedTools:
+        return None
+    project_id = str(getattr(request.context, "projectId", "") or "")
+    if not project_id.isdigit() or int(project_id) < 1:
+        return None
+    match = re.fullmatch(
+        r"\s*(?:please\s+)?assign\s+(?:the\s+existing\s+)?(?:user\s+|employee\s+)?(.+?)\s+"
+        r"to\s+this\s+project[.!]?\s*", request.message, re.I,
+    )
+    if not match:
+        return None
+    name = match.group(1).strip(" \t\"'")
+    user_result = next((result for result in request.results
+                        if getattr(result, "tool", None) == "adminUsers.search"), None)
+    if user_result is None:
+        if "adminUsers.search" not in request.allowedTools:
+            return Assistant(kind="assistant", text="I cannot verify that employee from this page. No ERP changes were made.", sources=[])
+        return ToolIntent(kind="tool", tool="adminUsers.search", version=1,
+                          arguments={"query": name, "limit": 20})
+    users = [row for row in user_result.data if isinstance(row, dict)
+             and isinstance(row.get("id"), int) and row["id"] > 0
+             and str(row.get("name", "")).strip().casefold() == name.casefold()]
+    if len(users) != 1:
+        return Assistant(kind="assistant", text="I could not verify one existing employee with that exact account name. Please clarify the employee’s name.", sources=[user_result.stepId])
+    user = users[0]
+    project_result = next((result for result in request.results
+                           if getattr(result, "tool", None) == "projects.get"), None)
+    if project_result is None:
+        return ToolIntent(kind="tool", tool="projects.get", version=1,
+                          arguments={"projectId": int(project_id)})
+    project = next((row for row in project_result.data if isinstance(row, dict)
+                    and row.get("id") == int(project_id)), None)
+    if not project:
+        return Assistant(kind="assistant", text="I could not verify this project before the assignment. No ERP changes were made.", sources=[project_result.stepId])
+    if any(isinstance(member, dict) and member.get("id") == user["id"]
+           for member in project.get("members", [])):
+        return Assistant(kind="assistant", text=f"{name} is already assigned to this project. No changes were made.", sources=[project_result.stepId])
+    return ToolIntent(kind="tool", tool="projects.assignMember", version=1,
+                      arguments={"projectId": int(project_id), "userId": user["id"]})
+
+
+def selected_task_member_assignment(request):
+    """Resolve a requested assignee and require verified project membership."""
+    if "tasks.assign" not in request.allowedTools:
+        return None
+    context = request.context
+    project_id = str(getattr(context, "projectId", "") or "")
+    task_id = str(getattr(context, "selectedEntityId", "") or "")
+    if (not project_id.isdigit() or int(project_id) < 1 or not task_id.isdigit()
+            or int(task_id) < 1 or (getattr(context, "selectedEntityType", None) or "").casefold() != "task"):
+        return None
+    match = re.fullmatch(
+        r"\s*(?:please\s+)?assign\s+(?:the\s+)?selected\s+task\s+to\s+(.+?)[.!]?\s*",
+        request.message, re.I,
+    )
+    if not match:
+        return None
+    name = match.group(1).strip(" \t\"'")
+    user_result = next((result for result in request.results
+                        if getattr(result, "tool", None) == "adminUsers.search"), None)
+    if user_result is None:
+        if "adminUsers.search" not in request.allowedTools:
+            return Assistant(kind="assistant", text="I cannot verify that employee from this page. No ERP changes were made.", sources=[])
+        return ToolIntent(kind="tool", tool="adminUsers.search", version=1,
+                          arguments={"query": name, "limit": 20})
+    users = [row for row in user_result.data if isinstance(row, dict)
+             and isinstance(row.get("id"), int) and row["id"] > 0
+             and str(row.get("name", "")).strip().casefold() == name.casefold()]
+    if len(users) != 1:
+        return Assistant(kind="assistant", text="I could not verify one existing employee with that exact account name. Please clarify the employee’s name.", sources=[user_result.stepId])
+    user = users[0]
+    project_result = next((result for result in request.results
+                           if getattr(result, "tool", None) == "projects.get"), None)
+    if project_result is None:
+        return ToolIntent(kind="tool", tool="projects.get", version=1,
+                          arguments={"projectId": int(project_id)})
+    project = next((row for row in project_result.data if isinstance(row, dict)
+                    and row.get("id") == int(project_id)), None)
+    if not project:
+        return Assistant(kind="assistant", text="I could not verify this project before the assignment. No ERP changes were made.", sources=[project_result.stepId])
+    if not any(isinstance(member, dict) and member.get("id") == user["id"]
+               for member in project.get("members", [])):
+        return Assistant(kind="assistant", text=f"{name} is not an existing member of this project, so I cannot assign them to the selected task. No ERP changes were made.", sources=[project_result.stepId])
+    return ToolIntent(kind="tool", tool="tasks.assign", version=1,
+                      arguments={"projectId": int(project_id), "taskId": int(task_id), "assigneeIds": [user["id"]]})
+
+
+def explicit_project_task_create(request):
+    """Plan the explicit task-name/category exchange without provider field guessing."""
+    if request.results or "tasks.create" not in request.allowedTools:
+        return None
+    project_id = str(getattr(request.context, "projectId", "") or "")
+    if not project_id.isdigit() or int(project_id) < 1:
+        return None
+    pieces = request.message.split("\nAdditional details from the user: ")
+    if len(pieces) > 2:
+        return None
+    match = re.fullmatch(
+        r"\s*create\s+(?:a\s+)?task\s+(?:named|called)\s+(.+?)"
+        r"(?:\s+in\s+(?:the\s+)?(?:existing\s+)?(.+?)\s+category)?"
+        r"\s+for\s+this\s+project(?:,?\s+due\s+(\d{4}-\d{2}-\d{2}))?[.!]?\s*",
+        pieces[0], re.I,
+    )
+    if not match:
+        return None
+    name, category, due = match.groups()
+    if len(pieces) == 2:
+        detail = re.fullmatch(r"\s*(?:use\s+)?(?:the\s+)?(?:existing\s+)?(.+?)\s+category[.!]?\s*", pieces[1], re.I)
+        if not detail or category:
+            return None
+        category = detail.group(1)
+    if not category:
+        return Assistant(kind="assistant", text="Which existing task category should I use for this task? Please provide its name.", sources=[])
+    args = {"projectId": int(project_id), "name": name.strip(" \t\"'"), "categoryName": category.strip(" \t\"'")}
+    if due:
+        try:
+            datetime.date.fromisoformat(due)
+        except ValueError:
+            return Assistant(kind="assistant", text="Please provide a valid due date in YYYY-MM-DD format.", sources=[])
+        args["due_date"] = due
+    return ToolIntent(kind="tool", tool="tasks.create", version=1, arguments=args)
+
+
+def named_task_category_rename(request):
+    """Resolve a category name through a scoped read; never ask users for internal IDs."""
+    if "tasks.updateCategory" not in request.allowedTools or "tasks.listCategories" not in request.allowedTools:
+        return None
+    match = re.fullmatch(
+        r"\s*rename\s+(?:the\s+)?(?:existing\s+)?task\s+category\s+(.+?)\s+to\s+(.+?)\s+(?:in|for)\s+this\s+project[.!]?\s*",
+        request.message, re.I,
+    )
+    project_id = str(getattr(request.context, "projectId", "") or "")
+    if not match or not project_id.isdigit() or int(project_id) < 1:
+        return None
+    original, renamed = (value.strip(" \t\"'") for value in match.groups())
+    if not request.results:
+        return ToolIntent(kind="tool", tool="tasks.listCategories", version=1,
+                          arguments={"projectId": int(project_id), "query": original, "limit": 20})
+    lookup = request.results[-1]
+    if lookup.tool != "tasks.listCategories":
+        return None
+    matches = [row for row in lookup.data if type(row.get("id")) is int and row["id"] > 0
+               and str(row.get("name", "")).strip().casefold() == original.casefold()]
+    if len(matches) != 1:
+        return Assistant(kind="assistant", text="I could not verify one category with that exact name in this project. Which existing category do you mean?", sources=[lookup.stepId])
+    return ToolIntent(kind="tool", tool="tasks.updateCategory", version=1,
+                      arguments={"projectId": int(project_id), "categoryId": matches[0]["id"], "name": renamed})
+
+
 def client_create_from_message(request):
     """Plan a fully specified client creation without a model-authored faux preview.
 
@@ -1225,30 +1712,42 @@ def admin_user_uniform_no_access(request):
 
 
 def named_master_delete(request):
-    """Resolve one explicitly named delete target from an exact scoped lookup."""
-    match = re.search(r"\b(?:delete|remove)\s+(?:the\s+)?(client|vendor|resource)\s+named\s+(.+?)(?=[.!?]|$)",
+    """Resolve explicitly named targets with exact, separately verified scoped lookups."""
+    match = re.search(r"\b(?:delete|remove)\s+(?:the\s+)?(client|vendor|resource)s?\s+named\s+(.+?)(?=[.!?](?:\s|$)|$)",
                       request.message, re.I)
     if not match:
         return None
-    entity, name = match.group(1).lower(), match.group(2).strip(" \t\"'`")
-    if not name or len(name) > 120 or name.lower() in ("all", "everything", "every"):
+    entity, specification = match.group(1).lower(), match.group(2).strip()
+    if re.fullmatch(r'"[^"]+"(?:\s*(?:,\s*(?:and\s+)?|and\s+)"[^"]+")*', specification):
+        names = re.findall(r'"([^"]+)"', specification)
+    else:
+        names = [specification.strip(" \t\"'`")]
+    # The request loop permits four steps. Larger/selected batches keep using
+    # the full allowlisted planner; small named batches need no provider round trip.
+    if len(names) > 3:
+        return None
+    if any(not name or len(name) > 120 or name.lower() in ("all", "everything", "every") for name in names):
         return Assistant(kind="assistant", text="Please name one exact record to delete. No ERP changes were made.", sources=[])
+    if len({name.strip().casefold() for name in names}) != len(names):
+        return Assistant(kind="assistant", text="Please list each deletion target only once. No ERP changes were made.", sources=[])
     write_tool = f"{entity}s.deleteSelected"
     search_tool = f"{entity}s.search"
     if write_tool not in request.allowedTools or search_tool not in request.allowedTools:
         return None
-    if not request.results:
-        return ToolIntent(kind="tool", tool=search_tool, version=1, arguments={"query": name, "limit": 20})
-    lookup = request.results[-1]
-    if lookup.tool != search_tool:
-        return Assistant(kind="assistant", text="I could not verify the deletion target. No ERP changes were made.", sources=[])
-    matches = [row for row in lookup.data if isinstance(row, dict) and type(row.get("id")) is int
-               and row["id"] > 0 and str(row.get("name", "")).strip().casefold() == name.casefold()]
-    if len(matches) != 1:
-        return Assistant(kind="assistant", text="I could not verify one record with that exact name. Please clarify the target. No ERP changes were made.", sources=[lookup.stepId])
-    row = matches[0]
+    lookups = [result for result in request.results if result.tool == search_tool]
+    targets = []
+    for index, name in enumerate(names):
+        if index >= len(lookups):
+            return ToolIntent(kind="tool", tool=search_tool, version=1, arguments={"query": name, "limit": 20})
+        lookup = lookups[index]
+        matches = [row for row in lookup.data if isinstance(row, dict) and type(row.get("id")) is int
+                   and row["id"] > 0 and str(row.get("name", "")).strip().casefold() == name.casefold()]
+        if len(matches) != 1:
+            return Assistant(kind="assistant", text="I could not verify one record with that exact name. Please clarify the target. No ERP changes were made.", sources=[lookup.stepId])
+        row = matches[0]
+        targets.append({"id": row["id"], "expectedName": row["name"]})
     return ToolIntent(kind="tool", tool=write_tool, version=1,
-                      arguments={"targets": [{"id": row["id"], "expectedName": row["name"]}]})
+                      arguments={"targets": targets})
 
 
 def named_document_cycle_cancel(request):
@@ -1316,6 +1815,30 @@ def named_document_instance_archive(request):
 
 
 async def reason(request, provider=complete, read_provider=complete_groq):
+    directory_update = explicit_directory_update(request)
+    if directory_update is not None:
+        return directory_update
+    rate_version = explicit_rate_version_create(request)
+    if rate_version is not None:
+        return rate_version
+    quality_document_update = explicit_quality_document_update(request)
+    if quality_document_update is not None:
+        return quality_document_update
+    quality_observation_fix = selected_quality_observation_fix(request)
+    if quality_observation_fix is not None:
+        return quality_observation_fix
+    category_rename = named_task_category_rename(request)
+    if category_rename is not None:
+        return category_rename
+    project_party_add = named_project_party_add(request)
+    if project_party_add is not None:
+        return project_party_add
+    project_party_update = named_project_party_contact_update(request)
+    if project_party_update is not None:
+        return project_party_update
+    project_summary_update = named_project_summary_update(request)
+    if project_summary_update is not None:
+        return project_summary_update
     if re.search(r"\b(?:delete|remove)\b.*\bprojects?\b", request.message, re.I) and not re.search(
             r"\b(?:task|member|party|resource|vendor|client)\b", request.message, re.I):
         return Assistant(kind="assistant", text="Project deletion is unavailable because linked records and files cannot yet be removed atomically with an accurate impact preview. No ERP changes were made.", sources=[])
@@ -1330,6 +1853,18 @@ async def reason(request, provider=complete, read_provider=complete_groq):
     if re.search(r"\b(random|dummy|invented|fake|made[- ]up)\b", request.message, re.I) and re.search(
             r"\b(create|add|import|update|edit|change|save)\b", request.message, re.I):
         return Assistant(kind="assistant", text="Please provide the actual details you want saved. I cannot invent business details for a write. No ERP changes were made.", sources=[])
+    task_create = explicit_project_task_create(request)
+    if task_create is not None:
+        return task_create
+    project_summary = explicit_project_summary_create(request)
+    if project_summary is not None:
+        return project_summary
+    project_member = named_project_member_assignment(request)
+    if project_member is not None:
+        return project_member
+    task_assignee = selected_task_member_assignment(request)
+    if task_assignee is not None:
+        return task_assignee
     if re.fullmatch(r"\s*(?:please\s+)?(?:create|add)\s+(?:a\s+)?(?:new\s+)?client[.!?]*\s*", request.message, re.I):
         return Assistant(kind="assistant", text="What is the client's name? Please provide the details you want saved; I will show a confirmation preview before saving.", sources=[])
     explicit_client_create = client_create_from_message(request)
@@ -1350,8 +1885,11 @@ async def reason(request, provider=complete, read_provider=complete_groq):
     master_delete = named_master_delete(request)
     if master_delete is not None:
         return master_delete
-    if any(tool.startswith("adminUsers.") for tool in request.allowedTools) and re.search(
-            r"[\w.+-]+@[\w.-]+\.[A-Za-z]{2,}|(?<!\w)\+?\d[\d ()-]{7,}\d(?!\w)", request.message):
+    if ({"adminUsers.updateProfile", "adminUsers.setSystemPermissions"} & set(request.allowedTools)
+            and re.search(r"\b(?:user|employee|account|staff)\b", request.message, re.I)
+            and (re.search(r"\b(?:email|e-mail|phone|mobile)\b", request.message, re.I)
+                 or re.search(r"[\w.+-]+@[\w.-]+\.[A-Za-z]{2,}|(?<!\w)\+?\d[\d ()-]{7,}\d(?!\w)", request.message))
+            and re.search(r"[\w.+-]+@[\w.-]+\.[A-Za-z]{2,}|(?<!\w)\+?\d[\d ()-]{7,}\d(?!\w)", request.message)):
         return Assistant(kind="assistant", text="For privacy, please identify the user by their account name. Contact details are not sent to the AI provider. No ERP changes were made.", sources=[])
     document_cycle_cancel = named_document_cycle_cancel(request)
     if document_cycle_cancel is not None:
@@ -2147,7 +2685,7 @@ async def reason(request, provider=complete, read_provider=complete_groq):
         response = Assistant(kind="assistant", text=mismatch, sources=[])
         diagnostics = diagnostics.model_copy(update={"finishReason": "stop"})
     if not isinstance(response, ToolIntent):
-        redacted = redact_verified_internal_ids(response.text, request.results)
+        redacted = redact_verified_internal_ids(response.text, request.results, request.context)
         redacted = redact_internal_schema_leakage(redacted)
         redacted = format_records_as_clean_list(redacted, request.results)
         if not redacted:
