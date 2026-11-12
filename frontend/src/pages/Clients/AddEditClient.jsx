@@ -235,7 +235,7 @@ const AddEditClient = ({
                 <div className="p-8 overflow-y-auto custom-scrollbar flex-1">
                     <form id="clientForm" onSubmit={handleSubmit} className="grid grid-cols-1 md:grid-cols-2 gap-6">
                         <div>
-                            <label className={labelClasses}>Company Name</label>
+                            <label className={labelClasses}>Company Name <span className="text-red-500">*</span></label>
                             <input
                                 type="text"
                                 name="name"
@@ -253,7 +253,6 @@ const AddEditClient = ({
                                 value={formData.contact_person}
                                 onChange={handleChange}
                                 className={inputClasses}
-                                required
                             />
                         </div>
                         <div>
@@ -276,7 +275,6 @@ const AddEditClient = ({
                                 value={formData.email}
                                 onChange={handleChange}
                                 className={inputClasses}
-                                required
                             />
                         </div>
                         <div>
@@ -287,7 +285,6 @@ const AddEditClient = ({
                                 value={formData.contact_no}
                                 onChange={handleChange}
                                 className={inputClasses}
-                                required
                             />
                         </div>
 
@@ -310,7 +307,6 @@ const AddEditClient = ({
                                 value={formData.address}
                                 onChange={handleChange}
                                 className={inputClasses}
-                                required
                             />
                         </div>
 

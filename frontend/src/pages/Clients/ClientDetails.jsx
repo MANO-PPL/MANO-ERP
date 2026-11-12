@@ -1,9 +1,10 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { X, Copy, Plus, Phone, Mail, Globe, Send, Clock, Check, Edit3, User } from 'lucide-react';
+import { X, Copy, Plus, Phone, Mail, Globe, Send, Clock, Check, Edit3, User, Trash2 } from 'lucide-react';
 import api from '../../services/api';
 import { toast } from 'react-toastify';
 import CustomDatePicker from '../../components/CustomDatePicker';
 import CustomSelect from '../../components/CustomSelect';
+import ConfirmModal from '../../components/ConfirmModal';
 
 const INTERACTION_TYPES = ['All', 'Call', 'WhatsApp', 'Email', 'Site Visit', 'Meeting'];
 const typeOptions = INTERACTION_TYPES.slice(1).map(t => ({ label: t, value: t }));
@@ -21,6 +22,12 @@ const ClientDetails = ({ isOpen, onClose, client, onUpdate, onEdit }) => {
         interaction_date: new Date().toISOString().split('T')[0],
         follow_up_date: '',
         remarks: ''
+    });
+    const [deleteModal, setDeleteModal] = useState({
+        isOpen: false,
+        interactionId: null,
+        interactionType: '',
+        isLoading: false
     });
 
     const isTempClient = !client?.id || String(client.id).startsWith('temp_') || isNaN(Number(client.id));
@@ -96,6 +103,33 @@ const ClientDetails = ({ isOpen, onClose, client, onUpdate, onEdit }) => {
             toast.error(msg);
         } finally {
             setIsSubmitting(false);
+        }
+    };
+
+    const handleDeleteInteractionClick = (e, item) => {
+        e.stopPropagation();
+        setDeleteModal({
+            isOpen: true,
+            interactionId: item.id,
+            interactionType: item.type || 'Interaction',
+            isLoading: false
+        });
+    };
+
+    const handleConfirmDeleteInteraction = async () => {
+        if (!deleteModal.interactionId) return;
+        setDeleteModal(prev => ({ ...prev, isLoading: true }));
+        try {
+            await api.delete(`/clients/${client.id}/interactions/${deleteModal.interactionId}`);
+            toast.success('Interaction deleted successfully');
+            setLocalInteractions(prev => prev.filter(item => item.id !== deleteModal.interactionId));
+            setDeleteModal({ isOpen: false, interactionId: null, interactionType: '', isLoading: false });
+            if (onUpdate) onUpdate();
+        } catch (error) {
+            console.error('Error deleting interaction:', error);
+            const msg = error.response?.data?.message || 'Failed to delete interaction';
+            toast.error(msg);
+            setDeleteModal(prev => ({ ...prev, isLoading: false }));
         }
     };
 
@@ -385,7 +419,8 @@ const ClientDetails = ({ isOpen, onClose, client, onUpdate, onEdit }) => {
                                             <th className="py-2 px-2 font-semibold whitespace-nowrap">Date</th>
                                             <th className="py-2 px-2 font-semibold min-w-[130px]">Description</th>
                                             <th className="py-2 px-2 font-semibold whitespace-nowrap">Follow-up</th>
-                                            <th className="py-2 pl-2 font-semibold whitespace-nowrap">By</th>
+                                            <th className="py-2 px-2 font-semibold whitespace-nowrap">By</th>
+                                            <th className="py-2 pl-2 pr-1 font-semibold whitespace-nowrap text-right">Actions</th>
                                         </tr>
                                     </thead>
                                     <tbody className="divide-y divide-gray-100 dark:divide-white/5">
@@ -401,7 +436,7 @@ const ClientDetails = ({ isOpen, onClose, client, onUpdate, onEdit }) => {
                                                         title={item.remarks ? (isExpanded ? 'Click to collapse' : 'Click to view full description') : ''}
                                                     >
                                                         <td className="py-2.5 pr-2.5 whitespace-nowrap">
-                                                            <span className="font-semibold text-gray-900 dark:text-gray-100 text-xs">
+                                                             <span className="font-semibold text-gray-900 dark:text-gray-100 text-xs">
                                                                 {item.type}
                                                             </span>
                                                         </td>
@@ -421,13 +456,23 @@ const ClientDetails = ({ isOpen, onClose, client, onUpdate, onEdit }) => {
                                                                 <span className="text-gray-300 dark:text-gray-600 text-xs">—</span>
                                                             )}
                                                         </td>
-                                                        <td className="py-2.5 pl-2 whitespace-nowrap text-gray-500 dark:text-gray-400 text-xs truncate max-w-[90px]" title={item.interacted_by_name || 'System'}>
+                                                        <td className="py-2.5 px-2 whitespace-nowrap text-gray-500 dark:text-gray-400 text-xs truncate max-w-[90px]" title={item.interacted_by_name || 'System'}>
                                                             {item.interacted_by_name || 'System'}
+                                                        </td>
+                                                        <td className="py-2.5 pl-2 pr-1 whitespace-nowrap text-right" onClick={(e) => e.stopPropagation()}>
+                                                            <button
+                                                                type="button"
+                                                                onClick={(e) => handleDeleteInteractionClick(e, item)}
+                                                                title="Delete interaction"
+                                                                className="p-1 text-gray-400 hover:text-rose-600 dark:hover:text-rose-400 rounded hover:bg-gray-100 dark:hover:bg-white/5 transition-colors cursor-pointer"
+                                                            >
+                                                                <Trash2 size={13} />
+                                                            </button>
                                                         </td>
                                                     </tr>
                                                     {isExpanded && (
                                                         <tr className="bg-blue-50/25 dark:bg-blue-500/[0.03]">
-                                                            <td colSpan={5} className="py-2.5 px-3 text-xs border-b border-gray-100 dark:border-white/5">
+                                                            <td colSpan={6} className="py-2.5 px-3 text-xs border-b border-gray-100 dark:border-white/5">
                                                                 <div className="flex items-start justify-between gap-3">
                                                                     <div className="space-y-1 min-w-0 flex-1">
                                                                         <div className="flex items-center gap-2">
@@ -490,6 +535,18 @@ const ClientDetails = ({ isOpen, onClose, client, onUpdate, onEdit }) => {
                     </button>
                 </div>
             </div>
+
+            <ConfirmModal
+                isOpen={deleteModal.isOpen}
+                onClose={() => !deleteModal.isLoading && setDeleteModal(prev => ({ ...prev, isOpen: false }))}
+                onConfirm={handleConfirmDeleteInteraction}
+                title="Delete Interaction"
+                message={`Are you sure you want to delete this ${deleteModal.interactionType.toLowerCase()} interaction? This action cannot be undone.`}
+                confirmText="Delete"
+                cancelText="Cancel"
+                variant="danger"
+                isLoading={deleteModal.isLoading}
+            />
         </div>
     );
 };

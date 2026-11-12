@@ -139,6 +139,19 @@ export const addInteraction = catchAsync(async (req, res) => {
     res.status(201).json({ success: true, message: 'Interaction logged successfully', id: newId });
 });
 
+export const deleteInteraction = catchAsync(async (req, res) => {
+    const { id, interactionId } = req.params;
+    if (!id || isNaN(parseInt(id))) {
+        throw new AppError('Invalid Client ID', 400);
+    }
+    if (!interactionId || isNaN(parseInt(interactionId))) {
+        throw new AppError('Invalid Interaction ID', 400);
+    }
+
+    await clientService.deleteInteraction(req.user.org_id, id, interactionId);
+    res.json({ success: true, message: 'Interaction deleted successfully' });
+});
+
 export const createMasterContact = catchAsync(async (req, res) => {
     const contact = await clientService.createMasterContact(req.user.org_id, req.body || {});
     res.status(201).json({ success: true, contact });
@@ -173,6 +186,7 @@ export default {
     bulkValidate,
     bulkJson,
     addInteraction,
+    deleteInteraction,
     createMasterContact,
     createProjectContact,
     listAvailableContacts,

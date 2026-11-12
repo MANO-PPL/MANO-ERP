@@ -465,6 +465,23 @@ export async function createInteraction(orgId, data, options = {}) {
     return newId;
 }
 
+export async function deleteInteraction(orgId, contactId, interactionId, options = {}) {
+    const connection = options.transaction || db;
+    const deletedCount = await connection('crm_interactions')
+        .where({
+            id: interactionId,
+            contact_id: contactId,
+            org_id: orgId
+        })
+        .delete();
+
+    if (!deletedCount) {
+        throw new AppError('Interaction not found or unauthorized', 404);
+    }
+
+    return true;
+}
+
 export async function batchSaveClients(orgId, payload = {}) {
     const { created = [], updated = [], deleted = [] } = payload;
 
@@ -795,6 +812,7 @@ export default {
     bulkInsertClients,
     bulkValidateClients,
     createInteraction,
+    deleteInteraction,
     batchSaveClients,
     initializeCrmSchema,
     createMasterContact,

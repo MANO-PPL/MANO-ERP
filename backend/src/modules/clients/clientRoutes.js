@@ -23,6 +23,7 @@ router.put('/:id', clientController.updateClient);
 router.delete('/', clientController.deleteClients);
 router.delete('/:id', clientController.deleteClient);
 router.post('/:id/interactions', clientController.addInteraction);
+router.delete('/:id/interactions/:interactionId', clientController.deleteInteraction);
 
 export default router;
 
