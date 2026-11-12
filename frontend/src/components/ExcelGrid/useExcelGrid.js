@@ -131,6 +131,8 @@ export const useExcelGrid = ({
     const redoStackRef = useRef([]);
     const cellEditInitialStateRef = useRef(null);
     const [undoVersion, setUndoVersion] = useState(0);
+    const lastUndoTimeRef = useRef(0);
+    const lastRedoTimeRef = useRef(0);
 
     const pushUndoState = useCallback((currentGrid) => {
         if (!currentGrid) return;
@@ -1032,6 +1034,12 @@ export const useExcelGrid = ({
 
     // Undo / Redo
     const undo = useCallback(() => {
+        const now = performance.now();
+        if (now - lastUndoTimeRef.current < 200) {
+            return; // Ignore duplicate or rapid auto-repeat triggers
+        }
+        lastUndoTimeRef.current = now;
+
         if (undoStackRef.current.length === 0) return;
         const previousState = undoStackRef.current.pop();
 
@@ -1048,6 +1056,12 @@ export const useExcelGrid = ({
     }, [notify]);
 
     const redo = useCallback(() => {
+        const now = performance.now();
+        if (now - lastRedoTimeRef.current < 200) {
+            return;
+        }
+        lastRedoTimeRef.current = now;
+
         if (redoStackRef.current.length === 0) return;
         const nextState = redoStackRef.current.pop();
 
@@ -1315,6 +1329,7 @@ export const useExcelGrid = ({
             // Ctrl + Z: Undo
             if (isModifier && e.key.toLowerCase() === 'z' && !e.shiftKey) {
                 markHandled();
+                if (e.repeat) return;
                 if (editingCell) {
                     setEditingCell(null);
                 }
@@ -1333,6 +1348,7 @@ export const useExcelGrid = ({
                 (isModifier && e.shiftKey && e.key.toLowerCase() === 'z')
             ) {
                 markHandled();
+                if (e.repeat) return;
                 if (editingCell) {
                     setEditingCell(null);
                 }
@@ -1887,6 +1903,10 @@ export const useExcelGrid = ({
 
             // Ctrl + Z: Undo
             if (isCtrlOrCmd && e.key.toLowerCase() === 'z' && !e.shiftKey) {
+                if (e.repeat) {
+                    e.preventDefault();
+                    return;
+                }
                 const isInsideExcel =
                     activeElem?.closest('td[data-excel-cell="true"]') ||
                     activeElem?.closest('[data-excel-grid="true"]') ||
@@ -1909,6 +1929,10 @@ export const useExcelGrid = ({
                 (isCtrlOrCmd && e.key.toLowerCase() === 'y') ||
                 (isCtrlOrCmd && e.shiftKey && e.key.toLowerCase() === 'z')
             ) {
+                if (e.repeat) {
+                    e.preventDefault();
+                    return;
+                }
                 const isInsideExcel =
                     activeElem?.closest('td[data-excel-cell="true"]') ||
                     activeElem?.closest('[data-excel-grid="true"]') ||

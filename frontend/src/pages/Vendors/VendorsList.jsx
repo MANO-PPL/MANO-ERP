@@ -416,8 +416,9 @@ export const VendorsList = () => {
     const handleSaveGridBatch = async (payload) => {
         const { created, updated, deleted } = payload;
 
-        if (deleted.length > 0) {
-            await vendorApi.deleteVendors(deleted);
+        const realDeleted = (deleted || []).filter((id) => id && !String(id).startsWith('temp_'));
+        if (realDeleted.length > 0) {
+            await vendorApi.deleteVendors(realDeleted);
         }
 
         if (created.length > 0) {

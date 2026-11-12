@@ -310,9 +310,12 @@ export async function deleteClients(orgId, ids) {
     if (!Array.isArray(ids) || ids.length === 0) {
         throw new AppError('No Client IDs provided', 400);
     }
-    await db('crm_interactions').whereIn('contact_id', ids).andWhere('org_id', orgId).delete();
+    const validIds = ids.filter(id => id && !String(id).startsWith('temp_'));
+    if (validIds.length === 0) return true;
+
+    await db('crm_interactions').whereIn('contact_id', validIds).andWhere('org_id', orgId).delete();
     await db('crm_contacts')
-        .whereIn('id', ids)
+        .whereIn('id', validIds)
         .andWhere('org_id', orgId)
         .whereRaw('LOWER(??) = ?', ['category', 'client'])
         .delete();
@@ -788,9 +791,17 @@ export default {
     createClient,
     updateClient,
     deleteClient,
+    deleteClients,
     bulkInsertClients,
     bulkValidateClients,
     createInteraction,
     batchSaveClients,
-    initializeCrmSchema
+    initializeCrmSchema,
+    createMasterContact,
+    createProjectContact,
+    linkContactToProject,
+    linkContactsToProject,
+    getAvailableContacts,
+    getAvailableContactCandidates,
+    promoteContactToMaster
 };

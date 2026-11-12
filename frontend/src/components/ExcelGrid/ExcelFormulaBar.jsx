@@ -57,6 +57,12 @@ export const ExcelFormulaBar = ({
     const handleKeyDown = (e) => {
         if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'z' && !e.shiftKey) {
             e.preventDefault();
+            if (e.stopPropagation) e.stopPropagation();
+            if (e.nativeEvent) {
+                e.nativeEvent._excelHandled = true;
+                if (e.nativeEvent.stopImmediatePropagation) e.nativeEvent.stopImmediatePropagation();
+            }
+            if (e.repeat) return;
             handleCancel();
             if (onUndo) onUndo();
             return;
@@ -66,6 +72,12 @@ export const ExcelFormulaBar = ({
             (e.key.toLowerCase() === 'y' || (e.shiftKey && e.key.toLowerCase() === 'z'))
         ) {
             e.preventDefault();
+            if (e.stopPropagation) e.stopPropagation();
+            if (e.nativeEvent) {
+                e.nativeEvent._excelHandled = true;
+                if (e.nativeEvent.stopImmediatePropagation) e.nativeEvent.stopImmediatePropagation();
+            }
+            if (e.repeat) return;
             handleCancel();
             if (onRedo) onRedo();
             return;

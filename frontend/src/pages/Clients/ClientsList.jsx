@@ -236,8 +236,9 @@ export const ClientsList = () => {
         const { created, updated, deleted } = payload;
 
         // 1. Delete rows
-        if (deleted.length > 0) {
-            await clientApi.deleteClients(deleted);
+        const realDeleted = (deleted || []).filter((id) => id && !String(id).startsWith('temp_'));
+        if (realDeleted.length > 0) {
+            await clientApi.deleteClients(realDeleted);
         }
 
         // 2. Create new rows
