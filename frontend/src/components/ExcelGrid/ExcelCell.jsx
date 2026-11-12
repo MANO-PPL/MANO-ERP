@@ -57,12 +57,17 @@ export const ExcelCell = ({
     const isLeftEdge = selectionBounds && colIndex === selectionBounds.minCol && isInRange;
     const isRightEdge = selectionBounds && colIndex === selectionBounds.maxCol && isInRange;
 
+    const initialChar = isEditing ? editingCell?.initialChar : undefined;
+
     useEffect(() => {
         if (!isEditing) {
             setLocalValue(value ?? '');
             localValueRef.current = value ?? '';
+        } else if (initialChar !== undefined) {
+            setLocalValue(initialChar);
+            localValueRef.current = initialChar;
         }
-    }, [value, isEditing]);
+    }, [value, isEditing, initialChar]);
 
     const updateLocalValue = (newVal) => {
         localValueRef.current = newVal;
@@ -83,14 +88,20 @@ export const ExcelCell = ({
                         } catch {
                             // Ignore if showPicker is unsupported or not permitted
                         }
+                    } else if (initialChar !== undefined) {
+                        // Direct typing: position cursor at end, DO NOT select all so next keystroke appends
+                        const len = String(inputRef.current.value || initialChar).length;
+                        try {
+                            inputRef.current.setSelectionRange?.(len, len);
+                        } catch {}
                     } else if (inputRef.current.select && column.type !== 'checkbox') {
                         inputRef.current.select();
                     }
                 }
-            }, 25);
+            }, 0);
             return () => clearTimeout(timer);
         }
-    }, [isEditing, column.type]);
+    }, [isEditing, column.type, initialChar]);
 
     const handleBlur = (overrideVal) => {
         const valToCommit = overrideVal !== undefined ? overrideVal : (inputRef.current?.value ?? localValueRef.current);
@@ -195,32 +206,35 @@ export const ExcelCell = ({
     };
 
     const renderEditor = () => {
+        const displayVal = (isEditing && initialChar !== undefined && localValue === '') ? initialChar : localValue;
+
         if (column.renderEditor && typeof column.renderEditor === 'function') {
-            return column.renderEditor(localValue, row, column, updateLocalValue, handleBlur, rowIndex, onChangeValue);
+            return column.renderEditor(displayVal, row, column, updateLocalValue, handleBlur, rowIndex, onChangeValue);
         }
 
         if (column.type === 'select') {
             const opts = column.options || [];
             const getOptValue = (opt) => (typeof opt === 'object' && opt !== null ? (opt.value !== undefined ? opt.value : (opt.code !== undefined ? opt.code : opt.id)) : opt);
             const getOptLabel = (opt) => (typeof opt === 'object' && opt !== null ? (opt.label !== undefined ? opt.label : (opt.name ? `${opt.name} (${opt.code || opt.symbol || opt.value || ''})` : (opt.code || opt.value || ''))) : opt);
-            const hasCurrentVal = !localValue || opts.some(opt => String(getOptValue(opt)) === String(localValue));
+            const hasCurrentVal = !displayVal || opts.some(opt => String(getOptValue(opt)) === String(displayVal));
             return (
                 <select
                     ref={inputRef}
-                    value={localValue}
+                    autoFocus
+                    value={displayVal}
                     onChange={(e) => {
                         const newVal = e.target.value;
                         updateLocalValue(newVal);
                         onChangeValue(rowIndex, column.key, newVal, true);
                     }}
                     onBlur={() => handleBlur()}
-                    onKeyDown={(e) => onKeyDown(e, rowIndex, column.key)}
+                    onKeyDown={(e) => onKeyDown && onKeyDown(e, rowIndex, column.key)}
                     className="w-full h-full px-2 py-0.5 bg-white dark:bg-[#161b22] text-gray-900 dark:text-white border border-blue-500 rounded text-xs outline-none focus:ring-1 focus:ring-blue-500 cursor-pointer"
                 >
                     <option value="" className="text-gray-900 dark:text-white dark:bg-[#161b22]">-- Select --</option>
                     {!hasCurrentVal && (
-                        <option value={localValue} className="text-gray-900 dark:text-white dark:bg-[#161b22]">
-                            {localValue}
+                        <option value={displayVal} className="text-gray-900 dark:text-white dark:bg-[#161b22]">
+                            {displayVal}
                         </option>
                     )}
                     {opts.map((opt, idx) => {
@@ -241,12 +255,13 @@ export const ExcelCell = ({
                 <input
                     ref={inputRef}
                     type="number"
+                    autoFocus
                     data-initial-value={value ?? ''}
                     step={column.step || 'any'}
-                    value={localValue}
+                    value={displayVal}
                     onChange={(e) => updateLocalValue(e.target.value)}
                     onBlur={() => handleBlur()}
-                    onKeyDown={(e) => onKeyDown(e, rowIndex, column.key)}
+                    onKeyDown={(e) => onKeyDown && onKeyDown(e, rowIndex, column.key)}
                     className="w-full min-w-0 bg-transparent border-0 outline-none p-0 text-xs font-semibold text-gray-900 dark:text-white text-right font-mono [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
                 />
             );
@@ -257,11 +272,12 @@ export const ExcelCell = ({
                 <input
                     ref={inputRef}
                     type="date"
+                    autoFocus
                     data-initial-value={value ?? ''}
-                    value={localValue}
+                    value={displayVal}
                     onChange={(e) => updateLocalValue(e.target.value)}
                     onBlur={() => handleBlur()}
-                    onKeyDown={(e) => onKeyDown(e, rowIndex, column.key)}
+                    onKeyDown={(e) => onKeyDown && onKeyDown(e, rowIndex, column.key)}
                     className="w-full min-w-0 bg-transparent border-0 outline-none p-0 text-xs font-semibold text-gray-900 dark:text-white"
                 />
             );
@@ -271,11 +287,12 @@ export const ExcelCell = ({
             <input
                 ref={inputRef}
                 type="text"
+                autoFocus
                 data-initial-value={value ?? ''}
-                value={localValue}
+                value={displayVal}
                 onChange={(e) => updateLocalValue(e.target.value)}
                 onBlur={() => handleBlur()}
-                onKeyDown={(e) => onKeyDown(e, rowIndex, column.key)}
+                onKeyDown={(e) => onKeyDown && onKeyDown(e, rowIndex, column.key)}
                 className="w-full min-w-0 bg-transparent border-0 outline-none p-0 text-xs font-semibold text-gray-900 dark:text-white"
             />
         );
@@ -301,9 +318,16 @@ export const ExcelCell = ({
 
                 if (column.type === 'searchable-select' && onOpenDropdownPortal) {
                     onOpenDropdownPortal(rowIndex, column.key);
-                } else if (column.type === 'select' && !column.renderCell && canWrite && !column.readOnly && !e.shiftKey && !e.ctrlKey && !e.metaKey) {
+                }
+            }}
+            onClick={(e) => {
+                if (e.button !== 0) return;
+                if (e.target.closest('.z-\\[6000\\]') || e.target.closest('button') || e.target.closest('select') || e.target.closest('input')) return;
+                if (isEditing) return;
+
+                if (column.type === 'select' && !column.renderCell && canWrite && !column.readOnly && !e.shiftKey && !e.ctrlKey && !e.metaKey) {
                     onStartEditing(rowIndex, column.key);
-                } else if (column.key === 'name' && (!value || String(value).trim() === '') && canWrite && !column.readOnly && !e.shiftKey && !e.ctrlKey && !e.metaKey) {
+                } else if (canWrite && !column.readOnly && (!value || String(value).trim() === '') && column.type !== 'select' && column.type !== 'searchable-select' && column.type !== 'checkbox' && !e.shiftKey && !e.ctrlKey && !e.metaKey) {
                     onStartEditing(rowIndex, column.key);
                 }
             }}

@@ -27,8 +27,11 @@ const COLUMN_ALIASES = {
     designation: ['designation', 'position', 'title', 'job title', 'role / designation'],
     telephone_no: ['contact no', 'phone no', 'mobile no', 'telephone', 'phone', 'mobile', 'cell', 'contact number', 'telephone no', 'tel'],
     email: ['email id', 'email', 'e-mail', 'mail', 'email address', 'mail id'],
+    website: ['website', 'web', 'site', 'url', 'web url', 'company website'],
     address: ['address', 'office address', 'site address', 'full address', 'street'],
     location: ['location', 'city', 'state', 'area', 'branch'],
+    responsibility: ['responsibility', 'responsible', 'assigned to', 'role', 'lead'],
+    reference: ['reference', 'referred by', 'ref', 'source'],
     remarks: ['remarks', 'notes', 'comments', 'description', 'remark', 'note']
 };
 
@@ -208,6 +211,13 @@ export const ClientsList = () => {
                 aliases: COLUMN_ALIASES.email
             },
             {
+                key: 'website',
+                label: 'Website',
+                width: '180px',
+                minWidth: '160px',
+                aliases: COLUMN_ALIASES.website
+            },
+            {
                 key: 'address',
                 label: 'Address',
                 width: '240px',
@@ -222,12 +232,27 @@ export const ClientsList = () => {
                 aliases: COLUMN_ALIASES.location
             },
             {
+                key: 'responsibility',
+                label: 'Responsibility',
+                width: '160px',
+                minWidth: '150px',
+                aliases: COLUMN_ALIASES.responsibility
+            },
+
+            {
                 key: 'remarks',
                 label: 'Remarks',
                 width: '200px',
                 minWidth: '180px',
                 aliases: COLUMN_ALIASES.remarks
-            }
+            },
+            {
+                key: 'reference',
+                label: 'Reference',
+                width: '160px',
+                minWidth: '150px',
+                aliases: COLUMN_ALIASES.reference
+            },
         ];
     }, [jobOptions, sectorOptions]);
 

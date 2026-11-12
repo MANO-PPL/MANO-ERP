@@ -1796,12 +1796,14 @@ export const useExcelGrid = ({
             if (canWrite && e.key.length === 1 && !isModifier && !e.altKey) {
                 const targetCol = columns[colIndex];
                 if (targetCol && !targetCol.readOnly && targetCol.type !== 'select' && targetCol.type !== 'searchable-select') {
+                    markHandled();
                     cellEditInitialStateRef.current = gridDataRef.current.map((r) => ({
                         ...r,
                         _errors: r._errors ? { ...r._errors } : {}
                     }));
-                    setEditingCell({ rowIndex: curFocus.r, colKey });
+                    setEditingCell({ rowIndex: curFocus.r, colKey, initialChar: e.key });
                     handleCellChange(curFocus.r, colKey, e.key);
+                    return;
                 }
             }
         },
