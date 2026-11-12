@@ -10,6 +10,7 @@ import {
 } from 'lucide-react';
 import api from '../../services/api';
 import vendorApi from '../../services/vendorApi';
+import { toast } from 'react-toastify';
 import VendorDetails from './VendorDetails';
 import VendorFilterDropdown from './VendorFilterDropdown';
 import AddEditVendor from './AddEditVendor';
@@ -440,6 +441,12 @@ export const VendorsList = () => {
 
     // View Details
     const handleViewVendorDetails = async (vendor) => {
+        if (!vendor) return;
+        const isTemp = !vendor.id || String(vendor.id).startsWith('temp_') || isNaN(Number(vendor.id));
+        if (isTemp) {
+            toast.warning('Please save this vendor before viewing details.');
+            return;
+        }
         try {
             const res = await vendorApi.getVendorById(vendor.id);
             setViewingVendor(res?.vendor || vendor);
@@ -530,6 +537,7 @@ export const VendorsList = () => {
                 onSave={handleSaveGridBatch}
                 onRefresh={fetchVendors}
                 onViewRow={handleViewVendorDetails}
+                allowAddColumn={false}
                 emptyMessage="No vendors found in database"
                 extraFilters={
                     <VendorFilterDropdown
@@ -607,7 +615,9 @@ export const VendorsList = () => {
                     onSave={handleSaveVendorFromModal}
                     initialData={editingVendor}
                     allJobNatures={allJobNatures}
+                    jobOptions={jobOptions}
                     categoryOptions={CATEGORY_OPTIONS}
+                    onRefreshMetadata={fetchMetadata}
                 />
             )}
 

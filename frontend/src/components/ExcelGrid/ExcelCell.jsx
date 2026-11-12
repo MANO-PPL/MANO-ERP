@@ -58,9 +58,11 @@ export const ExcelCell = ({
     const isRightEdge = selectionBounds && colIndex === selectionBounds.maxCol && isInRange;
 
     useEffect(() => {
-        setLocalValue(value ?? '');
-        localValueRef.current = value ?? '';
-    }, [value]);
+        if (!isEditing) {
+            setLocalValue(value ?? '');
+            localValueRef.current = value ?? '';
+        }
+    }, [value, isEditing]);
 
     const updateLocalValue = (newVal) => {
         localValueRef.current = newVal;
@@ -91,8 +93,10 @@ export const ExcelCell = ({
     }, [isEditing, column.type]);
 
     const handleBlur = (overrideVal) => {
-        const valToCommit = overrideVal !== undefined ? overrideVal : localValueRef.current;
-        onChangeValue(rowIndex, column.key, valToCommit);
+        const valToCommit = overrideVal !== undefined ? overrideVal : (inputRef.current?.value ?? localValueRef.current);
+        if (String(valToCommit ?? '').trim() !== String(value ?? '').trim()) {
+            onChangeValue(rowIndex, column.key, valToCommit);
+        }
         onStopEditing();
     };
 
@@ -237,6 +241,7 @@ export const ExcelCell = ({
                 <input
                     ref={inputRef}
                     type="number"
+                    data-initial-value={value ?? ''}
                     step={column.step || 'any'}
                     value={localValue}
                     onChange={(e) => updateLocalValue(e.target.value)}
@@ -252,6 +257,7 @@ export const ExcelCell = ({
                 <input
                     ref={inputRef}
                     type="date"
+                    data-initial-value={value ?? ''}
                     value={localValue}
                     onChange={(e) => updateLocalValue(e.target.value)}
                     onBlur={() => handleBlur()}
@@ -265,6 +271,7 @@ export const ExcelCell = ({
             <input
                 ref={inputRef}
                 type="text"
+                data-initial-value={value ?? ''}
                 value={localValue}
                 onChange={(e) => updateLocalValue(e.target.value)}
                 onBlur={() => handleBlur()}

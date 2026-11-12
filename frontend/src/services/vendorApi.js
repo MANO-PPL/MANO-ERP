@@ -12,6 +12,9 @@ export const vendorApi = {
 
     // ─── Get Single Vendor ───────────────────────────────────────────────────
     getVendorById: async (id) => {
+        if (!id || String(id).startsWith('temp_') || isNaN(Number(id))) {
+            return null;
+        }
         const response = await api.get(`/vendors/${id}`);
         return response.data;
     },
@@ -24,12 +27,18 @@ export const vendorApi = {
 
     // ─── Update Single Vendor ────────────────────────────────────────────────
     updateVendor: async (id, data) => {
+        if (!id || String(id).startsWith('temp_') || isNaN(Number(id))) {
+            return null;
+        }
         const response = await api.put(`/vendors/${id}`, data);
         return response.data;
     },
 
     // ─── Delete Single Vendor ────────────────────────────────────────────────
     deleteVendor: async (id) => {
+        if (!id || String(id).startsWith('temp_') || isNaN(Number(id))) {
+            return null;
+        }
         const response = await api.delete('/vendors', { data: { ids: [id] } });
         return response.data;
     },

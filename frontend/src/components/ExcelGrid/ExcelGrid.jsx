@@ -90,6 +90,7 @@ export const ExcelGrid = ({
     initialPageSize = 100,
     enablePagination = true,
     showFormulaBar = true,
+    allowAddColumn = false,
     renderExpandedRow = null,
     expandedRowIds = undefined,
     onToggleExpandRow = null,
@@ -400,7 +401,7 @@ export const ExcelGrid = ({
                     setImportModalTab(tab);
                     setIsImportModalOpen(true);
                 }}
-                onOpenAddColumn={() => setIsAddColumnModalOpen(true)}
+                onOpenAddColumn={allowAddColumn ? () => setIsAddColumnModalOpen(true) : null}
                 onDownloadTemplate={() => downloadExcelTemplate(mergedColumns, entityName)}
                 onExportCSV={() => exportToCSVFile(grid.sortedGridData, mergedColumns, entityName)}
                 onExportExcel={() => exportToExcelFile(grid.sortedGridData, mergedColumns, entityName)}
@@ -424,6 +425,8 @@ export const ExcelGrid = ({
                         grid.setIsFindReplaceOpen(true);
                     }}
                     canWrite={canWrite}
+                    onUndo={onUndo || grid.undo}
+                    onRedo={onRedo || grid.redo}
                 />
             )}
 
@@ -472,8 +475,8 @@ export const ExcelGrid = ({
                 onSelectColumnHeader={grid.handleSelectColumnHeader}
                 onColumnHeaderMouseEnter={grid.handleColumnHeaderMouseEnter}
                 onSelectAllCells={grid.handleSelectAllCells}
-                onOpenAddColumn={() => setIsAddColumnModalOpen(true)}
-                onStartEditing={(rowIndex, colKey) => grid.setEditingCell({ rowIndex, colKey })}
+                onOpenAddColumn={allowAddColumn ? () => setIsAddColumnModalOpen(true) : null}
+                onStartEditing={grid.handleStartEditing || ((rowIndex, colKey) => grid.setEditingCell({ rowIndex, colKey }))}
                 onStopEditing={grid.handleCellBlur}
                 onChangeValue={grid.handleCellChange}
                 onCellKeyDown={grid.handleCellKeyDown}
@@ -671,12 +674,14 @@ export const ExcelGrid = ({
             />
 
             {/* Add Custom Column Modal */}
-            <ExcelAddColumnModal
-                isOpen={isAddColumnModalOpen}
-                onClose={() => setIsAddColumnModalOpen(false)}
-                onAddColumn={handleAddColumn}
-                existingColumns={mergedColumns}
-            />
+            {allowAddColumn && isAddColumnModalOpen && (
+                <ExcelAddColumnModal
+                    isOpen={isAddColumnModalOpen}
+                    onClose={() => setIsAddColumnModalOpen(false)}
+                    onAddColumn={handleAddColumn}
+                    existingColumns={mergedColumns}
+                />
+            )}
 
             {/* Keyboard Shortcuts Reference Modal */}
             <ExcelShortcutsModal

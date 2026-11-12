@@ -251,9 +251,11 @@ export const ExcelTable = ({
                             </th>
                         )}
 
-                        {/* Actions Column */}
+                        {/* Actions Column (Sticky Right) */}
                         {hasActions && (
-                            <th className="px-3 py-2.5 w-20 min-w-20 max-w-20 text-center">Actions</th>
+                            <th className="px-3 py-2.5 w-20 min-w-[80px] max-w-[80px] text-center sticky right-0 top-0 z-40 bg-gray-50/95 dark:bg-[#161b22]/95 backdrop-blur border-l border-b border-gray-200 dark:border-white/10 shadow-[-4px_0_8px_-2px_rgba(0,0,0,0.06)] dark:shadow-[-4px_0_8px_-2px_rgba(0,0,0,0.35)]">
+                                Actions
+                            </th>
                         )}
                     </tr>
                 </thead>
@@ -479,16 +481,29 @@ export const ExcelTable = ({
                                             <td className="px-2 py-2 border-r border-b border-gray-100 dark:border-white/5 bg-gray-50/20 dark:bg-white/[0.005] select-none text-center" />
                                         )}
 
-                                        {/* Action Buttons */}
+                                        {/* Action Buttons (Sticky Right) */}
                                         {hasActions && (
-                                            <td className="px-3 py-2 text-center border-b border-gray-100 dark:border-white/5 select-none">
+                                            <td
+                                                className={`px-3 py-2 w-20 min-w-[80px] max-w-[80px] text-center border-l border-b border-gray-100 dark:border-white/5 select-none sticky right-0 z-20 transition-colors shadow-[-4px_0_8px_-2px_rgba(0,0,0,0.05)] dark:shadow-[-4px_0_8px_-2px_rgba(0,0,0,0.25)] ${
+                                                    isRowSelected
+                                                        ? 'bg-blue-50/95 dark:bg-[#162032]'
+                                                        : isRowExpanded
+                                                        ? 'bg-blue-50/80 dark:bg-[#131b2a]'
+                                                        : 'bg-white dark:bg-[#0d1117] group-hover/row:bg-gray-50/90 dark:group-hover/row:bg-[#161b22]'
+                                                }`}
+                                            >
                                                 <div className="flex items-center justify-center gap-1">
                                                     {onViewRow && (
                                                         <button
                                                             type="button"
-                                                            onClick={() => onViewRow(row)}
-                                                            className="p-1 hover:bg-gray-100 dark:hover:bg-white/5 text-gray-500 hover:text-blue-600 rounded transition cursor-pointer"
-                                                            title="View Details"
+                                                            disabled={isNew}
+                                                            onClick={() => !isNew && onViewRow(row)}
+                                                            className={`p-1 rounded transition ${
+                                                                isNew
+                                                                    ? 'opacity-30 cursor-not-allowed text-gray-400'
+                                                                    : 'hover:bg-gray-100 dark:hover:bg-white/5 text-gray-500 hover:text-blue-600 cursor-pointer'
+                                                            }`}
+                                                            title={isNew ? 'Save row before viewing details' : 'View Details'}
                                                         >
                                                             <Eye size={13} />
                                                         </button>

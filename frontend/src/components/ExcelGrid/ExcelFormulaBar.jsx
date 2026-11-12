@@ -18,7 +18,9 @@ export const ExcelFormulaBar = ({
     sortedGridData = [],
     onChangeValue,
     onOpenFindReplace,
-    canWrite = true
+    canWrite = true,
+    onUndo,
+    onRedo
 }) => {
     const activeRow = selectionFocus ? sortedGridData[selectionFocus.r] : null;
     const activeCol = selectionFocus ? columns[selectionFocus.c] : null;
@@ -28,6 +30,7 @@ export const ExcelFormulaBar = ({
     const [isFocused, setIsFocused] = useState(false);
     const [showFormulaModal, setShowFormulaModal] = useState(false);
     const inputRef = useRef(null);
+    const targetCellRef = useRef(null);
 
     useEffect(() => {
         if (!isFocused) {
@@ -39,17 +42,34 @@ export const ExcelFormulaBar = ({
     const colName = activeCol ? activeCol.label || activeCol.key : '';
 
     const handleCommit = () => {
-        if (selectionFocus && activeCol && canWrite) {
-            onChangeValue(selectionFocus.r, activeCol.key, formulaValue, true);
+        const target = targetCellRef.current || (selectionFocus && activeCol ? { r: selectionFocus.r, colKey: activeCol.key } : null);
+        if (target && canWrite) {
+            onChangeValue(target.r, target.colKey, formulaValue, true);
         }
     };
 
     const handleCancel = () => {
         setFormulaValue(activeValue);
+        targetCellRef.current = null;
         if (inputRef.current) inputRef.current.blur();
     };
 
     const handleKeyDown = (e) => {
+        if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'z' && !e.shiftKey) {
+            e.preventDefault();
+            handleCancel();
+            if (onUndo) onUndo();
+            return;
+        }
+        if (
+            (e.ctrlKey || e.metaKey) &&
+            (e.key.toLowerCase() === 'y' || (e.shiftKey && e.key.toLowerCase() === 'z'))
+        ) {
+            e.preventDefault();
+            handleCancel();
+            if (onRedo) onRedo();
+            return;
+        }
         if (e.key === 'Enter') {
             e.preventDefault();
             handleCommit();
@@ -61,7 +81,7 @@ export const ExcelFormulaBar = ({
     };
 
     return (
-        <div className="px-3 py-1.5 border-b border-gray-200 dark:border-white/5 bg-gray-50/50 dark:bg-[#161b22]/50 flex items-center gap-2 text-xs select-none shrink-0">
+        <div data-excel-formula-bar="true" className="px-3 py-1.5 border-b border-gray-200 dark:border-white/5 bg-gray-50/50 dark:bg-[#161b22]/50 flex items-center gap-2 text-xs select-none shrink-0">
             {/* Cell Address Name Box */}
             <div
                 className="w-20 px-2 py-1 bg-white dark:bg-[#0d1117] border border-gray-200 dark:border-white/10 rounded-md font-mono text-[11px] font-bold text-blue-600 dark:text-blue-400 text-center truncate shadow-2xs"
@@ -111,10 +131,14 @@ export const ExcelFormulaBar = ({
                     disabled={!selectionFocus || !canWrite || activeCol?.readOnly}
                     value={selectionFocus ? String(formulaValue ?? '') : ''}
                     onChange={(e) => setFormulaValue(e.target.value)}
-                    onFocus={() => setIsFocused(true)}
+                    onFocus={() => {
+                        setIsFocused(true);
+                        targetCellRef.current = selectionFocus && activeCol ? { r: selectionFocus.r, colKey: activeCol.key } : null;
+                    }}
                     onBlur={() => {
-                        setIsFocused(false);
                         handleCommit();
+                        setIsFocused(false);
+                        targetCellRef.current = null;
                     }}
                     onKeyDown={handleKeyDown}
                     placeholder={

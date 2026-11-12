@@ -7,6 +7,7 @@ import {
     CopyCheck
 } from 'lucide-react';
 import { resourceApi } from '../../services/resourceApi';
+import { toast } from 'react-toastify';
 import ResourceDetail from './ResourceDetail';
 import ResourceForm from './ResourceForm';
 import { UNIT_OPTIONS, normalizeUnitCode } from './resourceConstants';
@@ -216,6 +217,12 @@ export const ResourceDirectoryTab = ({
 
     // View Details Drawer
     const handleViewResourceDetails = async (resource) => {
+        if (!resource) return;
+        const isTemp = !resource.id || String(resource.id).startsWith('temp_') || isNaN(Number(resource.id));
+        if (isTemp) {
+            toast.warning('Please save this resource before viewing details.');
+            return;
+        }
         try {
             const res = await resourceApi.getResourceById(resource.id);
             setViewingResource(res?.resource || res || resource);

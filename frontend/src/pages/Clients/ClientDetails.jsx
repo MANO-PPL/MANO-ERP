@@ -23,6 +23,8 @@ const ClientDetails = ({ isOpen, onClose, client, onUpdate, onEdit }) => {
         remarks: ''
     });
 
+    const isTempClient = !client?.id || String(client.id).startsWith('temp_') || isNaN(Number(client.id));
+
     useEffect(() => {
         setLocalInteractions(client?.interactions || []);
     }, [client]);
@@ -74,6 +76,10 @@ const ClientDetails = ({ isOpen, onClose, client, onUpdate, onEdit }) => {
 
     const handleInteractionSubmit = async (e) => {
         e.preventDefault();
+        if (isTempClient) {
+            toast.warning('Please save this client before logging interactions.');
+            return;
+        }
         setIsSubmitting(true);
         try {
             const res = await api.post(`/clients/${client.id}/interactions`, form);
@@ -86,7 +92,8 @@ const ClientDetails = ({ isOpen, onClose, client, onUpdate, onEdit }) => {
             }
         } catch (error) {
             console.error('Error logging interaction:', error);
-            toast.error('Failed to log interaction');
+            const msg = error.response?.data?.message || 'Failed to log interaction';
+            toast.error(msg);
         } finally {
             setIsSubmitting(false);
         }
@@ -305,15 +312,28 @@ const ClientDetails = ({ isOpen, onClose, client, onUpdate, onEdit }) => {
                                 </span>
                             </div>
                             <button
-                                onClick={() => setIsLogging(!isLogging)}
-                                className={`flex items-center gap-1 px-2.5 py-1 rounded-md text-xs font-semibold cursor-pointer transition ${
-                                    isLogging ? 'bg-red-50 text-red-600 dark:bg-red-500/10' : 'bg-blue-50 text-blue-600 dark:bg-blue-500/10 hover:bg-blue-100'
+                                disabled={isTempClient}
+                                onClick={() => !isTempClient && setIsLogging(!isLogging)}
+                                className={`flex items-center gap-1 px-2.5 py-1 rounded-md text-xs font-semibold transition ${
+                                    isTempClient
+                                        ? 'opacity-40 cursor-not-allowed bg-gray-100 text-gray-400 dark:bg-white/5'
+                                        : isLogging
+                                        ? 'bg-red-50 text-red-600 dark:bg-red-500/10 cursor-pointer'
+                                        : 'bg-blue-50 text-blue-600 dark:bg-blue-500/10 hover:bg-blue-100 cursor-pointer'
                                 }`}
+                                title={isTempClient ? 'Save client before logging interactions' : isLogging ? 'Cancel' : 'Log'}
                             >
                                 {isLogging ? <X size={12} /> : <Plus size={12} />}
                                 <span>{isLogging ? 'Cancel' : 'Log'}</span>
                             </button>
                         </div>
+
+                        {/* Temp Client Notice */}
+                        {isTempClient && (
+                            <div className="mb-2.5 p-2 bg-amber-50 dark:bg-amber-950/20 border border-amber-200 dark:border-amber-800/40 rounded-lg text-xs text-amber-700 dark:text-amber-300">
+                                This client is newly added and not yet saved to the database. Please save the grid changes before logging interactions.
+                            </div>
+                        )}
 
                         {/* Inline Form */}
                         {isLogging && (

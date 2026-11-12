@@ -16,9 +16,14 @@ export const resourceApi = {
     },
 
     // ─── Get single resource with conversions & compositions ──────────────────
-    getResourceById: (id, date, projectId = null) => unwrap(api.get(`/resources/${id}`, {
-        params: { ...(date ? { date } : {}), ...(projectId ? { project_id: projectId } : {}) }
-    })),
+    getResourceById: (id, date, projectId = null) => {
+        if (!id || String(id).startsWith('temp_') || isNaN(Number(id))) {
+            return Promise.resolve(null);
+        }
+        return unwrap(api.get(`/resources/${id}`, {
+            params: { ...(date ? { date } : {}), ...(projectId ? { project_id: projectId } : {}) }
+        }));
+    },
 
     // Resolve the effective manual or computed rate for a resource.
     getResolvedRate: (id, date, projectId = null) => unwrap(api.get(`/resources/${id}/rate`, {

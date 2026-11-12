@@ -10,6 +10,7 @@ import {
 } from 'lucide-react';
 import api from '../../services/api';
 import clientApi from '../../services/clientApi';
+import { toast } from 'react-toastify';
 import ClientDetails from './ClientDetails';
 import ClientFilterDropdown from './ClientFilterDropdown';
 import AddEditClient from './AddEditClient';
@@ -56,6 +57,7 @@ export const ClientsList = () => {
     const [isDuplicateModalOpen, setIsDuplicateModalOpen] = useState(false);
     const [isJobNatureModalOpen, setIsJobNatureModalOpen] = useState(false);
     const [isSectorModalOpen, setIsSectorModalOpen] = useState(false);
+    const [isMetadataMenuOpen, setIsMetadataMenuOpen] = useState(false);
 
     // Fetch Metadata
     const fetchMetadata = async () => {
@@ -262,6 +264,12 @@ export const ClientsList = () => {
 
     // View Details Drawer Handler
     const handleViewClientDetails = async (client) => {
+        if (!client) return;
+        const isTemp = !client.id || String(client.id).startsWith('temp_') || isNaN(Number(client.id));
+        if (isTemp) {
+            toast.warning('Please save this client before viewing details or logging interactions.');
+            return;
+        }
         try {
             const res = await clientApi.getClientById(client.id);
             setViewingClient(res?.client || client);
@@ -352,6 +360,7 @@ export const ClientsList = () => {
                 onSave={handleSaveGridBatch}
                 onRefresh={fetchClients}
                 onViewRow={handleViewClientDetails}
+                allowAddColumn={false}
                 emptyMessage="No clients found in database"
                 extraFilters={
                     <ClientFilterDropdown
@@ -389,14 +398,40 @@ export const ClientsList = () => {
                                     <CopyCheck size={13} className="text-amber-500 stroke-[2.5]" />
                                     <span>Resolve Duplicates</span>
                                 </button>
-                                <button
-                                    type="button"
-                                    onClick={() => setIsJobNatureModalOpen(true)}
-                                    className="p-1.5 hover:bg-gray-100 dark:hover:bg-white/5 text-gray-600 dark:text-gray-400 rounded-lg border border-gray-200 dark:border-white/10 transition cursor-pointer"
-                                    title="Manage Job Natures & Sectors"
-                                >
-                                    <SlidersHorizontal size={13} />
-                                </button>
+                                <div className="relative">
+                                    <button
+                                        type="button"
+                                        onClick={() => setIsMetadataMenuOpen((prev) => !prev)}
+                                        className="p-1.5 hover:bg-gray-100 dark:hover:bg-white/5 text-gray-600 dark:text-gray-400 rounded-lg border border-gray-200 dark:border-white/10 transition cursor-pointer flex items-center gap-1"
+                                        title="Manage Job Natures & Sectors"
+                                    >
+                                        <SlidersHorizontal size={13} />
+                                    </button>
+                                    {isMetadataMenuOpen && (
+                                        <div className="absolute right-0 top-full mt-1 w-48 bg-white dark:bg-[#161b22] border border-gray-200 dark:border-white/10 rounded-lg shadow-xl z-50 py-1 text-xs text-gray-700 dark:text-gray-200 font-semibold animate-in fade-in zoom-in-95">
+                                            <button
+                                                type="button"
+                                                onClick={() => {
+                                                    setIsMetadataMenuOpen(false);
+                                                    setIsJobNatureModalOpen(true);
+                                                }}
+                                                className="w-full text-left px-3 py-1.5 hover:bg-blue-50 dark:hover:bg-white/5 flex items-center gap-2 cursor-pointer"
+                                            >
+                                                <span>Manage Nature of Jobs</span>
+                                            </button>
+                                            <button
+                                                type="button"
+                                                onClick={() => {
+                                                    setIsMetadataMenuOpen(false);
+                                                    setIsSectorModalOpen(true);
+                                                }}
+                                                className="w-full text-left px-3 py-1.5 hover:bg-blue-50 dark:hover:bg-white/5 flex items-center gap-2 cursor-pointer"
+                                            >
+                                                <span>Manage Sectors</span>
+                                            </button>
+                                        </div>
+                                    )}
+                                </div>
                             </>
                         )}
                     </div>
@@ -414,7 +449,7 @@ export const ClientsList = () => {
                     setViewingClient(null);
                 }}
                 onUpdate={async () => {
-                    if (viewingClient?.id) {
+                    if (viewingClient?.id && !String(viewingClient.id).startsWith('temp_') && !isNaN(Number(viewingClient.id))) {
                         try {
                             const res = await clientApi.getClientById(viewingClient.id);
                             if (res?.client) setViewingClient(res.client);
@@ -438,10 +473,13 @@ export const ClientsList = () => {
                     initialData={editingClient}
                     allJobNatures={allJobNatures}
                     allSectors={allSectors}
+                    jobOptions={jobOptions}
+                    sectorOptions={sectorOptions}
+                    onRefreshMetadata={fetchMetadata}
                 />
             )}
 
-            {/* ─── Manage Metadata Modal ─── */}
+            {/* ─── Manage Metadata Modals ─── */}
             {isJobNatureModalOpen && (
                 <ManageMetadataModal
                     isOpen={isJobNatureModalOpen}
@@ -451,6 +489,19 @@ export const ClientsList = () => {
                     }}
                     type="job_natures"
                     title="Manage Nature of Jobs"
+                    onUpdate={fetchMetadata}
+                />
+            )}
+
+            {isSectorModalOpen && (
+                <ManageMetadataModal
+                    isOpen={isSectorModalOpen}
+                    onClose={() => {
+                        setIsSectorModalOpen(false);
+                        fetchMetadata();
+                    }}
+                    type="sectors"
+                    title="Manage Sectors"
                     onUpdate={fetchMetadata}
                 />
             )}
