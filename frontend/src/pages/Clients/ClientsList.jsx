@@ -270,7 +270,11 @@ export const ClientsList = () => {
         if (created.length > 0) {
             for (const item of created) {
                 if (item.name && item.name.trim()) {
-                    await clientApi.createClient(item);
+                    const payloadItem = { ...item };
+                    if (payloadItem.remarks !== undefined) payloadItem.self_remark = payloadItem.remarks;
+                    if (payloadItem.telephone_no !== undefined) payloadItem.contact_no = payloadItem.telephone_no;
+                    if (payloadItem.website !== undefined) payloadItem.web_site = payloadItem.website;
+                    await clientApi.createClient(payloadItem);
                 }
             }
         }
@@ -279,7 +283,11 @@ export const ClientsList = () => {
         if (updated.length > 0) {
             for (const item of updated) {
                 if (item.id && item.name && item.name.trim()) {
-                    await clientApi.updateClient(item.id, item);
+                    const payloadItem = { ...item };
+                    if (payloadItem.remarks !== undefined) payloadItem.self_remark = payloadItem.remarks;
+                    if (payloadItem.telephone_no !== undefined) payloadItem.contact_no = payloadItem.telephone_no;
+                    if (payloadItem.website !== undefined) payloadItem.web_site = payloadItem.website;
+                    await clientApi.updateClient(payloadItem.id, payloadItem);
                 }
             }
         }

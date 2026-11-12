@@ -229,20 +229,31 @@ export async function updateVendor(orgId, id, data, options = {}) {
     if (data.category !== undefined) updateData.category = resolveCategory(data.category, vendor.category || 'Contractor');
     if (data.contact_person !== undefined) updateData.contact_person = data.contact_person;
     if (data.designation !== undefined) updateData.designation = data.designation;
-    if (data.telephone_no !== undefined) updateData.telephone_no = data.telephone_no;
+    if (data.telephone_no !== undefined) {
+        updateData.telephone_no = data.telephone_no;
+    } else if (data.contact_no !== undefined) {
+        updateData.telephone_no = data.contact_no;
+    }
     if (data.mobile !== undefined) updateData.mobile = data.mobile;
-    if (data.contact_no !== undefined) updateData.telephone_no = data.contact_no;
     if (data.email !== undefined) updateData.email = data.email;
     if (data.address !== undefined) updateData.address = data.address;
     if (data.location !== undefined) updateData.location = data.location;
-    if (data.website !== undefined) updateData.website = data.website;
-    if (data.web_site !== undefined) updateData.website = data.web_site;
+    if (data.website !== undefined) {
+        updateData.website = data.website;
+    } else if (data.web_site !== undefined) {
+        updateData.website = data.web_site;
+    }
     if (data.gst_no !== undefined) updateData.gst_no = data.gst_no;
     if (data.constitution !== undefined) updateData.constitution = data.constitution;
     if (data.reference !== undefined) updateData.reference = data.reference;
     if (data.responsibility !== undefined) updateData.responsibility = data.responsibility;
-    if (data.remarks !== undefined) updateData.remarks = data.remarks;
-    if (data.self_remark !== undefined) updateData.remarks = data.self_remark;
+    if (data.remarks !== undefined) {
+        updateData.remarks = data.remarks;
+    } else if (data.remark !== undefined) {
+        updateData.remarks = data.remark;
+    } else if (data.self_remark !== undefined) {
+        updateData.remarks = data.self_remark;
+    }
 
     // Resolve job nature name to ID if provided as string
     if ((data.job_nature || data.job_name) && !updateData.job_nature_id) {

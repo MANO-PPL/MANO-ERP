@@ -211,17 +211,17 @@ export async function createClient(orgId, data, options = {}) {
         category: 'Client',
         contact_person: data.contact_person || null,
         designation: data.designation || null,
-        telephone_no: data.telephone_no || data.contact_no || null,
+        telephone_no: (data.telephone_no !== undefined ? data.telephone_no : data.contact_no) || null,
         mobile: data.mobile || null,
         email: data.email || null,
         address: data.address || null,
         location: data.location || null,
-        website: data.website || data.web_site || null,
-        gst_no: data.gst_no || data.qst_no || null,
+        website: (data.website !== undefined ? data.website : data.web_site) || null,
+        gst_no: (data.gst_no !== undefined ? data.gst_no : data.qst_no) || null,
         constitution: data.constitution || null,
         reference: data.reference || null,
         responsibility: data.responsibility || null,
-        remarks: data.remarks || data.self_remark || null
+        remarks: (data.remarks !== undefined ? data.remarks : (data.remark !== undefined ? data.remark : data.self_remark)) || null
     };
 
     // Resolve sector name to ID if provided as string
@@ -257,21 +257,35 @@ export async function updateClient(orgId, id, data, options = {}) {
     updateData.category = 'Client';
     if (data.contact_person !== undefined) updateData.contact_person = data.contact_person;
     if (data.designation !== undefined) updateData.designation = data.designation;
-    if (data.telephone_no !== undefined) updateData.telephone_no = data.telephone_no;
+    if (data.telephone_no !== undefined) {
+        updateData.telephone_no = data.telephone_no;
+    } else if (data.contact_no !== undefined) {
+        updateData.telephone_no = data.contact_no;
+    }
     if (data.mobile !== undefined) updateData.mobile = data.mobile;
-    if (data.contact_no !== undefined) updateData.telephone_no = data.contact_no;
     if (data.email !== undefined) updateData.email = data.email;
     if (data.address !== undefined) updateData.address = data.address;
     if (data.location !== undefined) updateData.location = data.location;
-    if (data.website !== undefined) updateData.website = data.website;
-    if (data.web_site !== undefined) updateData.website = data.web_site;
-    if (data.gst_no !== undefined) updateData.gst_no = data.gst_no;
-    if (data.qst_no !== undefined) updateData.gst_no = data.qst_no;
+    if (data.website !== undefined) {
+        updateData.website = data.website;
+    } else if (data.web_site !== undefined) {
+        updateData.website = data.web_site;
+    }
+    if (data.gst_no !== undefined) {
+        updateData.gst_no = data.gst_no;
+    } else if (data.qst_no !== undefined) {
+        updateData.gst_no = data.qst_no;
+    }
     if (data.constitution !== undefined) updateData.constitution = data.constitution;
     if (data.reference !== undefined) updateData.reference = data.reference;
     if (data.responsibility !== undefined) updateData.responsibility = data.responsibility;
-    if (data.remarks !== undefined) updateData.remarks = data.remarks;
-    if (data.self_remark !== undefined) updateData.remarks = data.self_remark;
+    if (data.remarks !== undefined) {
+        updateData.remarks = data.remarks;
+    } else if (data.remark !== undefined) {
+        updateData.remarks = data.remark;
+    } else if (data.self_remark !== undefined) {
+        updateData.remarks = data.self_remark;
+    }
 
     // Resolve job nature name to ID if provided as string
     if ((data.job_nature || data.job_nature_name || data.job_name) && !updateData.job_nature_id) {
@@ -501,12 +515,29 @@ export async function batchSaveClients(orgId, payload = {}) {
             if (item.name !== undefined) updateData.name = item.name;
             if (item.company !== undefined) updateData.name = item.company;
             if (item.contact_person !== undefined) updateData.contact_person = item.contact_person;
-            if (item.contact_no !== undefined || item.telephone_no !== undefined || item.mobile !== undefined) {
-                updateData.telephone_no = item.contact_no ?? item.telephone_no ?? item.mobile;
+            if (item.designation !== undefined) updateData.designation = item.designation;
+            if (item.telephone_no !== undefined) {
+                updateData.telephone_no = item.telephone_no;
+            } else if (item.contact_no !== undefined || item.mobile !== undefined) {
+                updateData.telephone_no = item.contact_no ?? item.mobile;
             }
             if (item.email !== undefined) updateData.email = item.email;
+            if (item.website !== undefined) {
+                updateData.website = item.website;
+            } else if (item.web_site !== undefined) {
+                updateData.website = item.web_site;
+            }
             if (item.address !== undefined) updateData.address = item.address;
             if (item.location !== undefined) updateData.location = item.location;
+            if (item.responsibility !== undefined) updateData.responsibility = item.responsibility;
+            if (item.reference !== undefined) updateData.reference = item.reference;
+            if (item.remarks !== undefined) {
+                updateData.remarks = item.remarks;
+            } else if (item.remark !== undefined) {
+                updateData.remarks = item.remark;
+            } else if (item.self_remark !== undefined) {
+                updateData.remarks = item.self_remark;
+            }
 
             if (item.job_name || item.job_nature) {
                 updateData.job_nature_id = await findOrCreateJobNature(orgId, item.job_name || item.job_nature, trx);
@@ -545,10 +576,15 @@ export async function batchSaveClients(orgId, payload = {}) {
                 job_nature_id: jobNatureId,
                 sector_id: sectorId,
                 contact_person: item.contact_person || null,
-                telephone_no: item.contact_no || item.telephone_no || item.mobile || null,
+                designation: item.designation || null,
+                telephone_no: item.telephone_no || item.contact_no || item.mobile || null,
                 email: item.email || null,
+                website: item.website || item.web_site || null,
                 address: item.address || null,
-                location: item.location || null
+                location: item.location || null,
+                responsibility: item.responsibility || null,
+                reference: item.reference || null,
+                remarks: (item.remarks !== undefined ? item.remarks : (item.remark !== undefined ? item.remark : item.self_remark)) || null
             });
         }
 

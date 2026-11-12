@@ -123,7 +123,7 @@ const AddEditClient = ({
                 website: initialData.website || '',
                 address: initialData.address || '',
                 reference: initialData.reference || '',
-                remarks: initialData.remarks || '',
+                remarks: initialData.remarks || initialData.self_remark || '',
                 job_nature: initialData.job_name || initialData.job_nature || '',
                 location: initialData.location || '',
                 sector: initialData.sector_name || initialData.sector || '',
