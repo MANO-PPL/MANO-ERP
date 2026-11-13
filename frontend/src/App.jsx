@@ -93,6 +93,8 @@ const ProtectedRoute = ({ children, pageId, requiredLevel = 1 }) => {
   return children;
 };
 
+const isDevLabEnabled = import.meta.env.VITE_ENABLE_DEV_LAB === 'true';
+
 function App() {
   React.useEffect(() => {
     Object.keys(sessionStorage).forEach(key => {
@@ -241,20 +243,25 @@ function App() {
                 </Suspense>
               </ProtectedRoute>
             } />
-            <Route path="/dev/location-lab" element={
-              <DevRoute>
-                <Suspense fallback={<PageSkeleton variant="table" />}>
-                  <LocationLab />
-                </Suspense>
-              </DevRoute>
-            } />
-            <Route path="/dev/catalog-lab" element={
-              <DevRoute>
-                <Suspense fallback={<PageSkeleton variant="table" />}>
-                  <CatalogLab />
-                </Suspense>
-              </DevRoute>
-            } />
+            {/* Dev Labs: Only registered in router when enabled; otherwise treated as completely unknown routes */}
+            {isDevLabEnabled && (
+              <>
+                <Route path="/dev/location-lab" element={
+                  <DevRoute>
+                    <Suspense fallback={<PageSkeleton variant="table" />}>
+                      <LocationLab />
+                    </Suspense>
+                  </DevRoute>
+                } />
+                <Route path="/dev/catalog-lab" element={
+                  <DevRoute>
+                    <Suspense fallback={<PageSkeleton variant="table" />}>
+                      <CatalogLab />
+                    </Suspense>
+                  </DevRoute>
+                } />
+              </>
+            )}
             {/* Catch-all 404 Route: Prevents blank screens for undefined routes */}
             <Route path="*" element={<NotFoundPage countdownSeconds={5} />} />
           </Routes>

@@ -3,7 +3,36 @@ import { useAuth } from '../context/AuthContext';
 import LoadingScreen from './LoadingScreen';
 import AccessRestricted from '../pages/Auth/AccessRestricted';
 import NotFoundPage from '../pages/Auth/NotFoundPage';
-import api from '../services/api';
+import { getAccessToken } from '../services/api';
+
+/**
+ * Probes the backend clearance endpoint using native fetch.
+ * NOTE: We deliberately use native fetch instead of the axios instance so that
+ * 401/403 responses do NOT trigger the axios interceptor (which auto-redirects
+ * the entire page via window.location.href = '/login').
+ */
+async function probeClearance() {
+    try {
+        const token = getAccessToken();
+        const headers = { 'Content-Type': 'application/json' };
+        if (token) {
+            headers['Authorization'] = `Bearer ${token}`;
+        }
+        const res = await fetch('/api/dev/clearance', {
+            method: 'GET',
+            headers,
+            credentials: 'include'
+        });
+        const data = await res.json().catch(() => ({}));
+        return { status: res.status, ok: res.ok, data };
+    } catch (networkErr) {
+        return {
+            status: 500,
+            ok: false,
+            data: { error: { message: networkErr.message } }
+        };
+    }
+}
 
 /**
  * DevRoute
@@ -15,7 +44,7 @@ import api from '../services/api';
  * =========================================================================
  * Before anything else, verify whether Developer Labs are active/open:
  * 1. Frontend Kill-Switch: If VITE_ENABLE_DEV_LAB !== 'true' -> Return 404 immediately.
- * 2. Backend Kill-Switch Probe: Calls /api/dev/clearance.
+ * 2. Backend Kill-Switch Probe: Calls /api/dev/clearance via native fetch.
  *    If backend responds with 404 or DEV_LAB_DISABLED -> Return 404 immediately.
  *
  * -> Under NO circumstances is it revealed that dev labs exist when closed.
@@ -56,138 +85,55 @@ export default function DevRoute({ children }) {
 
         let isMounted = true;
 
-        // If user is not logged in:
-        // Probe backend without credentials to confirm if lab is open or closed
-        if (!user) {
-            api.get('/dev/clearance')
-                .then(() => {
-                    if (isMounted) {
-                        setStatus({
-                            checking: false,
-                            isLabOpen: true,
-                            isCleared: false,
-                            errorType: 'unauthenticated',
-                            errorMessage: 'You must be signed in with an authorized account to access this page.',
-                        });
-                    }
-                })
-                .catch(err => {
-                    if (isMounted) {
-                        const httpStatus = err.response?.status;
-                        const errCode = err.response?.data?.error?.code;
+        probeClearance().then(({ status: httpStatus, data }) => {
+            if (!isMounted) return;
 
-                        // Backend reports 404 or DEV_LAB_DISABLED -> LAB IS CLOSED (Conceal via 404)
-                        if (httpStatus === 404 || errCode === 'DEV_LAB_DISABLED') {
-                            setStatus({ checking: false, isLabOpen: false, isCleared: false, errorType: null, errorMessage: null });
-                        } else {
-                            // Backend rejected with 401 or 403, meaning lab is OPEN, but user is not logged in
-                            setStatus({
-                                checking: false,
-                                isLabOpen: true,
-                                isCleared: false,
-                                errorType: 'unauthenticated',
-                                errorMessage: 'You must be signed in with an authorized account to access this page.',
-                            });
-                        }
-                    }
+            const errCode = data?.error?.code;
+            const errMsg = data?.error?.message;
+
+            // LEVEL 1: Lab is CLOSED on the backend (404 or DEV_LAB_DISABLED) -> Conceal via 404
+            if (httpStatus === 404 || errCode === 'DEV_LAB_DISABLED') {
+                setStatus({ checking: false, isLabOpen: false, isCleared: false, errorType: null, errorMessage: null });
+                return;
+            }
+
+            // LEVEL 2 - Case A: Unauthenticated (401 or no user session)
+            if (httpStatus === 401 || !user) {
+                setStatus({
+                    checking: false,
+                    isLabOpen: true,
+                    isCleared: false,
+                    errorType: 'unauthenticated',
+                    errorMessage: 'You must be signed in with an authorized account to access this page.'
                 });
-            return () => { isMounted = false; };
-        }
+                return;
+            }
 
-        // User IS logged in:
-        // First check client-side admin role
-        if (!isAdmin) {
-            // Check if lab is open before showing permission denied
-            api.get('/dev/clearance')
-                .then(() => {
-                    if (isMounted) {
-                        setStatus({
-                            checking: false,
-                            isLabOpen: true,
-                            isCleared: false,
-                            errorType: 'lab_unauthorized',
-                            errorMessage: 'Developer and administrator clearance required.',
-                        });
-                    }
-                })
-                .catch(err => {
-                    if (isMounted) {
-                        const httpStatus = err.response?.status;
-                        const errCode = err.response?.data?.error?.code;
-                        if (httpStatus === 404 || errCode === 'DEV_LAB_DISABLED') {
-                            // Lab is closed! Conceal it
-                            setStatus({ checking: false, isLabOpen: false, isCleared: false, errorType: null, errorMessage: null });
-                        } else {
-                            setStatus({
-                                checking: false,
-                                isLabOpen: true,
-                                isCleared: false,
-                                errorType: 'lab_unauthorized',
-                                errorMessage: 'Developer and administrator clearance required.',
-                            });
-                        }
-                    }
+            // LEVEL 2 - Case B: Not an administrator
+            if (!isAdmin) {
+                setStatus({
+                    checking: false,
+                    isLabOpen: true,
+                    isCleared: false,
+                    errorType: 'lab_unauthorized',
+                    errorMessage: 'Developer and administrator clearance required.'
                 });
-            return () => { isMounted = false; };
-        }
+                return;
+            }
 
-        // Admin logged in: Verify Level 1 (Lab Open) & Level 2 (Whitelist clearance)
-        api.get('/dev/clearance')
-            .then(res => {
-                if (isMounted) {
-                    if (res.data?.success && res.data?.cleared) {
-                        setStatus({ checking: false, isLabOpen: true, isCleared: true, errorType: null, errorMessage: null });
-                    } else {
-                        setStatus({
-                            checking: false,
-                            isLabOpen: true,
-                            isCleared: false,
-                            errorType: 'lab_unauthorized',
-                            errorMessage: 'Your account is not on the Developer Lab whitelist.',
-                        });
-                    }
-                }
-            })
-            .catch(err => {
-                if (isMounted) {
-                    const httpStatus = err.response?.status;
-                    const errCode = err.response?.data?.error?.code;
-                    const errMsg = err.response?.data?.error?.message;
-
-                    // LEVEL 1: Lab is CLOSED on the backend
-                    if (httpStatus === 404 || errCode === 'DEV_LAB_DISABLED') {
-                        setStatus({ checking: false, isLabOpen: false, isCleared: false, errorType: null, errorMessage: null });
-                        return;
-                    }
-
-                    // LEVEL 2: Lab is OPEN, but user failed whitelist clearance
-                    if (errCode === 'DEV_LAB_NOT_WHITELISTED') {
-                        setStatus({
-                            checking: false,
-                            isLabOpen: true,
-                            isCleared: false,
-                            errorType: 'lab_unauthorized',
-                            errorMessage: errMsg || 'Access denied: User ID or email is not in the whitelist.',
-                        });
-                    } else if (httpStatus === 401) {
-                        setStatus({
-                            checking: false,
-                            isLabOpen: true,
-                            isCleared: false,
-                            errorType: 'unauthenticated',
-                            errorMessage: 'Session expired or not authenticated. Please log in.',
-                        });
-                    } else {
-                        setStatus({
-                            checking: false,
-                            isLabOpen: true,
-                            isCleared: false,
-                            errorType: 'lab_unauthorized',
-                            errorMessage: errMsg || 'Access restricted by developer clearance guard.',
-                        });
-                    }
-                }
-            });
+            // LEVEL 2 - Case C: Whitelist verification
+            if (data?.success && data?.cleared) {
+                setStatus({ checking: false, isLabOpen: true, isCleared: true, errorType: null, errorMessage: null });
+            } else {
+                setStatus({
+                    checking: false,
+                    isLabOpen: true,
+                    isCleared: false,
+                    errorType: 'lab_unauthorized',
+                    errorMessage: errMsg || 'Access denied: User ID or email is not in the whitelist.'
+                });
+            }
+        });
 
         return () => {
             isMounted = false;
