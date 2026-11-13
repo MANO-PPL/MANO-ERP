@@ -1,4 +1,4 @@
-﻿
+
 import React, { Suspense, lazy } from 'react';
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
 import MainLayout from './components/layout/MainLayout';
@@ -13,6 +13,8 @@ import { toast as reactToastify, ToastContainer } from 'react-toastify';
 import MobilePilotLayout from './mobile/routing/MobilePilotLayout';
 import ResponsiveRoute from './mobile/routing/ResponsiveRoute';
 import DevRoute from './components/DevRoute';
+import AccessRestricted from './pages/Auth/AccessRestricted';
+import NotFoundPage from './pages/Auth/NotFoundPage';
 import { loadMobileProjects } from './mobile/hooks/useMobileProjects';
 import 'react-toastify/dist/ReactToastify.css';
 
@@ -44,6 +46,7 @@ const Login = lazyWithRetry(() => import('./pages/Auth/Login'), 'login');
 const DrawingTest = lazyWithRetry(() => import('./pages/DrawingTest/DrawingTest'), 'drawing_test');
 const SpreadsheetPage = lazyWithRetry(() => import('./pages/Spreadsheets/SpreadsheetPage'), 'spreadsheets');
 const LocationLab = lazyWithRetry(() => import('./pages/Dev/LocationLab'), 'location_lab');
+const CatalogLab = lazyWithRetry(() => import('./pages/Dev/CatalogLab'), 'catalog_lab');
 // â”€â”€â”€ Lazy-loaded pages â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 const MobileMainLayout = lazy(() => import('./mobile/layout/MobileMainLayout'));
 const MobileLogin = lazy(() => import('./mobile/pages/Auth/MobileLogin'));
@@ -64,7 +67,7 @@ const MobileGlobalSpreadsheets = lazy(() => import('./mobile/pages/Spreadsheets/
 
 import './index.css';
 
-// â”€â”€â”€ Protected Route Wrapper â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// Protected Route Wrapper
 const ProtectedRoute = ({ children, pageId, requiredLevel = 1 }) => {
   const { user, loading, hasPermission } = useAuth();
 
@@ -77,7 +80,14 @@ const ProtectedRoute = ({ children, pageId, requiredLevel = 1 }) => {
   }
 
   if (pageId && !hasPermission(pageId, requiredLevel)) {
-    return <Navigate to="/" replace />;
+    return (
+      <AccessRestricted
+        type="permission_denied"
+        title="Access Restricted"
+        message="You do not have the required permission level to access this section."
+        countdownSeconds={8}
+      />
+    );
   }
 
   return children;
@@ -238,6 +248,15 @@ function App() {
                 </Suspense>
               </DevRoute>
             } />
+            <Route path="/dev/catalog-lab" element={
+              <DevRoute>
+                <Suspense fallback={<PageSkeleton variant="table" />}>
+                  <CatalogLab />
+                </Suspense>
+              </DevRoute>
+            } />
+            {/* Catch-all 404 Route: Prevents blank screens for undefined routes */}
+            <Route path="*" element={<NotFoundPage countdownSeconds={5} />} />
           </Routes>
         </Router>
         <ToastContainer position="bottom-center" autoClose={3000} limit={2} hideProgressBar={true} newestOnTop={true} closeOnClick={true} />
