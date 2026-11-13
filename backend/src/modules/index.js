@@ -20,6 +20,8 @@ import drawingsTestRoutes from './projects/drawings/testDrawings.js';
 import ledgerRoutes from './ledger/ledgerRoutes.js';
 import locationRoutes from './locations/locationRoutes.js';
 import locationLabRoutes from './locations/locationLabRoutes.js';
+import catalogRoutes from './catalog/catalogRoutes.js';
+import catalogLabRoutes from './catalog/catalogLabRoutes.js';
 
 const router = express.Router();
 
@@ -41,6 +43,7 @@ router.use('/agent', agentRoutes);
 router.use('/drawings-test', drawingsTestRoutes);
 router.use('/ledger', ledgerRoutes);
 router.use('/locations', locationRoutes);
+router.use('/catalog', catalogRoutes);
 
 // Modular Dev Lab routes (Only active if ENABLE_DEV_LAB=true in .env / .env.lab)
 if (isDevLabEnabled()) {
