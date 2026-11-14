@@ -18,35 +18,39 @@ export const CatalogErrorCodes = {
     CAT_INVALID_VALUE: 'CAT_INVALID_VALUE',
 };
 
+export function mapCatalogErrorCodeToHttpStatus(code) {
+    switch (code) {
+        case CatalogErrorCodes.CAT_NOT_FOUND:
+            return 404;
+        case CatalogErrorCodes.CAT_DUPLICATE_CODE:
+        case CatalogErrorCodes.CAT_IN_USE:
+        case CatalogErrorCodes.CAT_RATE_OVERLAP:
+        case CatalogErrorCodes.CAT_NORM_OVERLAP:
+        case CatalogErrorCodes.CAT_ARCHIVED:
+            return 409;
+        case CatalogErrorCodes.CAT_INVALID_VALUE:
+        case CatalogErrorCodes.CAT_UNIT_INCOMPATIBLE:
+        case CatalogErrorCodes.CAT_NO_CONVERSION:
+        case CatalogErrorCodes.CAT_KIND_MISMATCH:
+        case CatalogErrorCodes.CAT_SCOPE_MISMATCH:
+        case CatalogErrorCodes.CAT_NOT_MASTER:
+            return 422;
+        default:
+            return 500;
+    }
+}
+
 export class CatalogError extends Error {
     constructor(code, message, details = {}) {
         super(message || code);
         this.name = 'CatalogError';
         this.code = code;
         this.details = details;
-        this.statusCode = CatalogError.getStatusCode(code);
+        this.statusCode = mapCatalogErrorCodeToHttpStatus(code);
     }
 
     static getStatusCode(code) {
-        switch (code) {
-            case CatalogErrorCodes.CAT_NOT_FOUND:
-                return 404;
-            case CatalogErrorCodes.CAT_DUPLICATE_CODE:
-                return 409;
-            case CatalogErrorCodes.CAT_KIND_MISMATCH:
-            case CatalogErrorCodes.CAT_SCOPE_MISMATCH:
-            case CatalogErrorCodes.CAT_UNIT_INCOMPATIBLE:
-            case CatalogErrorCodes.CAT_NO_CONVERSION:
-            case CatalogErrorCodes.CAT_RATE_OVERLAP:
-            case CatalogErrorCodes.CAT_NORM_OVERLAP:
-            case CatalogErrorCodes.CAT_IN_USE:
-            case CatalogErrorCodes.CAT_ARCHIVED:
-            case CatalogErrorCodes.CAT_NOT_MASTER:
-            case CatalogErrorCodes.CAT_INVALID_VALUE:
-                return 400;
-            default:
-                return 500;
-        }
+        return mapCatalogErrorCodeToHttpStatus(code);
     }
 }
 
