@@ -1,9 +1,10 @@
 export const MOBILE_NAV_ITEMS = Object.freeze([
-    { id: 'dashboard', label: 'Dashboard', path: '/', icon: 'dashboard' },
+    { id: 'dashboard', label: 'Dashboard', path: '/', pageId: 'dashboard', icon: 'dashboard' },
     { id: 'projects', label: 'Projects', path: '/projects', pageId: 'projects', icon: 'projects' },
     { id: 'vendors', label: 'Vendors', path: '/vendors', pageId: 'vendors', icon: 'vendors' },
     { id: 'clients', label: 'Clients', path: '/clients', pageId: 'clients', icon: 'clients' },
     { id: 'resources', label: 'Resources', path: '/resources', pageId: 'resources', icon: 'resources' },
+    { id: 'units', label: 'Units', path: '/units', pageId: 'units', icon: 'resources' },
     { id: 'spreadsheets', label: 'Spreadsheets', path: '/spreadsheets', pageId: 'spreadsheets', icon: 'spreadsheets' },
     { id: 'collaboration', label: 'Collaboration', path: '/collaboration', pageId: 'collaboration', icon: 'collaboration' },
     { id: 'admin', label: 'Employee', path: '/admin', pageId: 'admin', icon: 'admin' },

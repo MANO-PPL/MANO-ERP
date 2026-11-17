@@ -1,12 +1,14 @@
 import React, { useEffect, useState } from 'react';
 import MobilePageHeader from '../../components/MobilePageHeader';
 import MobileTabs from '../../components/MobileTabs';
+import { useAuth } from '../../../context/AuthContext';
 import MobileChat from './MobileChat';
 import MobileCalendar from './MobileCalendar';
 import { collaborationHashUrl, resolveCollaborationView, shouldNormalizeCollaborationHash } from './mobileCollaborationModel';
 
 export default function MobileCollaboration() {
-    const [view, setView] = useState(() => resolveCollaborationView(window.location.hash));
+    const { hasPermission } = useAuth();
+    const [requestedView, setView] = useState(() => resolveCollaborationView(window.location.hash));
     useEffect(() => {
         if (shouldNormalizeCollaborationHash(window.location.hash)) window.history.replaceState(window.history.state, '', collaborationHashUrl(window.location, 'chat'));
         setView(resolveCollaborationView(window.location.hash));
@@ -15,9 +17,12 @@ export default function MobileCollaboration() {
         return () => window.removeEventListener('hashchange', onHash);
     }, []);
     const changeView = (next) => { if (resolveCollaborationView(window.location.hash) === next && window.location.hash === `#${next}`) return; window.location.hash = next; };
+    const items = [{ value: 'chat', label: 'Chat' }, { value: 'calendar', label: 'Calendar' }].filter(item => hasPermission(`collaboration.${item.value}`));
+    const view = items.find(item => item.value === requestedView)?.value || items[0]?.value;
+    if (!view) return <p className="p-6">No collaboration pages assigned.</p>;
     return <section className="w-full min-w-0" data-mobile-collaboration data-collaboration-view={view}>
         <MobilePageHeader eyebrow="MANO WORKSPACE" title="Collaboration" subtitle="Static communication and schedule preview" />
-        <div className="w-full min-w-0 px-2 sm:px-3 pb-2"><MobileTabs segmented label="Collaboration view" value={view} onChange={changeView} items={[{ value: 'chat', label: 'Chat' }, { value: 'calendar', label: 'Calendar' }]} /></div>
+        <div className="w-full min-w-0 px-2 sm:px-3 pb-2"><MobileTabs segmented label="Collaboration view" value={view} onChange={changeView} items={items} /></div>
         {view === 'calendar' ? <MobileCalendar /> : <MobileChat />}
     </section>;
 }

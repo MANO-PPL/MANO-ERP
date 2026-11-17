@@ -27,10 +27,10 @@ export default function MobileProjectShell({ authOverride, projectService, modul
     const drawer = useMobileDrawer({ navigate });
 
     useEffect(() => {
-        if (!loading && activeKey !== searchParams.get('tab')) {
+        if (!loading && activeModule && activeKey !== searchParams.get('tab')) {
             setSearchParams(updateProjectModuleSearch(searchParams, activeKey).slice(1), { replace: true });
         }
-    }, [activeKey, loading, searchParams, setSearchParams]);
+    }, [activeModule, activeKey, loading, searchParams, setSearchParams]);
 
     useEffect(() => {
         if (activeModule?.label) {
@@ -60,7 +60,7 @@ export default function MobileProjectShell({ authOverride, projectService, modul
 
     if (loading) return <MobileLoadingState label="Loading project" rows={4} />;
     if (error) return <div className="w-full min-w-0 px-2 sm:px-3 pb-24"><MobileEmptyState title="Project unavailable" description={error?.message || 'The project could not be loaded.'} action={<button type="button" onClick={refresh} className="min-h-10 rounded-xl bg-blue-600 px-4 text-xs font-semibold text-white">Try again</button>} /></div>;
-    if (!project || !activeModule) return <div className="w-full min-w-0 px-2 sm:px-3 pb-24"><MobileEmptyState title="Project unavailable" description="No project context was returned." /></div>;
+    if (!project || !activeModule) return <div className="w-full min-w-0 px-2 sm:px-3 pb-24"><MobileEmptyState title="Project unavailable" description="No project pages are available to this account." /></div>;
 
     return <div data-mobile-page="project-shell" className="w-full min-w-0 pb-4">
         <MobileProjectModuleOutlet module={activeModule} project={project} projectId={projectId} permissions={permissions} visibleModules={modules} isAdmin={isAdmin} user={user} canWrite={canWrite} refreshProject={refresh} onSelectModule={navigateToModule} services={moduleServices} taskService={moduleServices.tasks} projectService={moduleServices.projects || projectService} />

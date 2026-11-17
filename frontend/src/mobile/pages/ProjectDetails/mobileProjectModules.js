@@ -1,5 +1,5 @@
 export const MOBILE_PROJECT_MODULES = Object.freeze([
-    { key: 'Dashboard', label: 'Dashboard', classification: 'standard', stage: 'M5' },
+    { key: 'Dashboard', permission: 'Dashboard', label: 'Dashboard', classification: 'standard', stage: 'M5' },
     { key: 'Tasks', label: 'Tasks', classification: 'standard', stage: 'M5', permission: 'Tasks' },
     { key: 'WIP', label: 'WIP', classification: 'advanced', stage: 'M5', permission: 'WIP' },
     { key: 'Reports', label: 'Reports', classification: 'advanced', stage: 'M10', permission: 'Reports' },
@@ -41,7 +41,7 @@ export function getProjectPermissionLevel(permissions, permission) {
 }
 
 export function getVisibleProjectModules({ permissions, isAdmin = false } = {}) {
-    return MOBILE_PROJECT_MODULES.filter((module) => module.key === PROJECT_DEFAULT_MODULE || isAdmin || getProjectPermissionLevel(permissions, module.permission) >= 1);
+    return MOBILE_PROJECT_MODULES.filter((module) => isAdmin || getProjectPermissionLevel(permissions, module.permission) >= 1);
 }
 
 export function resolveProjectModule(requestedKey, visibleModules = MOBILE_PROJECT_MODULES) {
