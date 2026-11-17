@@ -18,7 +18,8 @@ import { useAuth } from '../../context/AuthContext';
 import { projectApi } from '../../services/projectApi';
 
 const Sidebar = () => {
-    const { hasPermission } = useAuth();
+    const { user, hasPermission } = useAuth();
+    const canSeeProjects = hasPermission('projects');
     const [projects, setProjects] = useState([]);
 
     useEffect(() => {
@@ -32,11 +33,8 @@ const Sidebar = () => {
                 console.error("Failed to load sidebar projects:", err);
             }
         };
-        // Always fetch — the backend already scopes results to projects the user is assigned to.
-        // This ensures users assigned to specific projects but without system 'projects' permission
-        // can still navigate to their projects via the sidebar.
-        fetchProjects();
-    }, []);
+        if (canSeeProjects) fetchProjects();
+    }, [canSeeProjects, user?.id]);
 
     const navItems = [
         { icon: LayoutDashboard, label: 'Dashboard',     path: '/',             pageId: 'dashboard' },
@@ -44,13 +42,13 @@ const Sidebar = () => {
         { icon: Map,             label: 'Vendors',       path: '/vendors',       pageId: 'vendors' },
         { icon: Users,           label: 'Clients',       path: '/clients',       pageId: 'clients' },
         { icon: Package,         label: 'Resources',     path: '/resources',     pageId: 'resources' },
+        { icon: ArrowLeftRight, label: 'Units', path: '/units', pageId: 'units' },
         { icon: FileSpreadsheet, label: 'Spreadsheets',  path: '/spreadsheets',  pageId: 'spreadsheets' },
         { icon: MessageCircle,   label: 'Collaboration', path: '/collaboration', pageId: 'collaboration' },
         { icon: Shield,          label: 'Employee',      path: '/admin',         pageId: 'admin' },
     ];
 
     const filteredNavItems = navItems.filter(item => {
-        if (item.pageId === 'dashboard') return true;
         return hasPermission(item.pageId, 1);
     });
 
@@ -86,7 +84,7 @@ const Sidebar = () => {
                 </nav>
 
                 {/* Recent Projects Section — visible when user has any assigned projects */}
-                {projects.length > 0 && (
+                {canSeeProjects && projects.length > 0 && (
                     <div className="mt-6 mb-4">
                         <div className="px-6 mb-2 flex justify-between items-center group cursor-pointer">
                             <span className="text-xs font-semibold text-gray-500 dark:text-gray-500 uppercase tracking-wider group-hover:text-gray-700 dark:group-hover:text-gray-300 transition-colors">Recent Projects</span>

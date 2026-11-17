@@ -34,6 +34,8 @@ body {
   font-family: 'Poppins', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
 }
 
+html.dark,
+html.dark body,
 .dark html,
 .dark body {
   background-color: var(--color-gh-bg);

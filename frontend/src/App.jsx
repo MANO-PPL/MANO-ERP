@@ -1,6 +1,5 @@
-
 import React, { Suspense, lazy } from 'react';
-import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
+import { BrowserRouter as Router, Routes, Route, Navigate, useSearchParams } from 'react-router-dom';
 import MainLayout from './components/layout/MainLayout';
 import PageSkeleton from './components/PageSkeleton';
 import LoadingScreen from './components/LoadingScreen';
@@ -42,6 +41,7 @@ const ClientsList = lazyWithRetry(() => import('./pages/Clients/ClientsList'), '
 const ClientBulkUpload = lazyWithRetry(() => import('./pages/Clients/ClientBulkUpload'), 'client_upload');
 const CollaborationPage = lazyWithRetry(() => import('./pages/Collaboration/CollaborationPage'), 'collaboration');
 const AdminPage = lazyWithRetry(() => import('./pages/Admin/AdminPage'), 'admin');
+const EmployeeBulkUpload = lazyWithRetry(() => import('./pages/Admin/EmployeeBulkUpload'), 'employee_upload');
 const Login = lazyWithRetry(() => import('./pages/Auth/Login'), 'login');
 const DrawingTest = lazyWithRetry(() => import('./pages/DrawingTest/DrawingTest'), 'drawing_test');
 const SpreadsheetPage = lazyWithRetry(() => import('./pages/Spreadsheets/SpreadsheetPage'), 'spreadsheets');
@@ -63,8 +63,12 @@ const MobileResourceBulkUpload = lazy(() => import('./mobile/pages/Resources/Mob
 const MobileCadViewer = lazy(() => import('./mobile/pages/ProjectDetails/CAD/MobileCadViewer'));
 const MobileCollaboration = lazy(() => import('./mobile/pages/Collaboration/MobileCollaboration'));
 const MobileAdmin = lazy(() => import('./mobile/pages/Admin/MobileAdmin'));
+const MobileEmployeeBulkUpload = lazy(() => import('./mobile/pages/Admin/MobileEmployeeBulkUpload'));
 const MobileGlobalSpreadsheets = lazy(() => import('./mobile/pages/Spreadsheets/MobileGlobalSpreadsheets'));
 
+import { MOBILE_NAV_ITEMS } from './mobile/layout/mobileNavigation';
+import { projectApi } from './services/projectApi';
+import { getProjectPermissionLevel } from './mobile/pages/ProjectDetails/mobileProjectModules';
 import './index.css';
 
 // Protected Route Wrapper
@@ -80,11 +84,14 @@ const ProtectedRoute = ({ children, pageId, requiredLevel = 1 }) => {
   }
 
   if (pageId && !hasPermission(pageId, requiredLevel)) {
+    const landing = MOBILE_NAV_ITEMS.find(item => hasPermission(item.pageId));
     return (
       <AccessRestricted
         type="permission_denied"
         title="Access Restricted"
         message="You do not have the required permission level to access this section."
+        redirectTo={landing?.path || '/'}
+        redirectLabel={landing ? `Go to ${landing.label || 'Home'}` : 'Go to Dashboard'}
         countdownSeconds={8}
       />
     );
@@ -94,6 +101,24 @@ const ProtectedRoute = ({ children, pageId, requiredLevel = 1 }) => {
 };
 
 const isDevLabEnabled = import.meta.env.VITE_ENABLE_DEV_LAB === 'true';
+
+function DrawingAccess({ children }) {
+  const { isAdmin } = useAuth();
+  const [params] = useSearchParams();
+  const projectId = params.get('projectId');
+  const [decision, setDecision] = React.useState(null);
+  React.useEffect(() => {
+    if (isAdmin || !projectId) return;
+    let current = true;
+    projectApi.getProject(projectId).then(result => {
+      if (current) setDecision({ projectId, allowed: result.success && getProjectPermissionLevel(result.projectPermissions, 'Drawings') >= 1 });
+    }).catch(() => { if (current) setDecision({ projectId, allowed: false }); });
+    return () => { current = false; };
+  }, [projectId, isAdmin]);
+  if (isAdmin) return children;
+  if (projectId && decision?.projectId !== projectId) return <LoadingScreen />;
+  return projectId && decision?.allowed ? children : <Navigate to="/projects" replace />;
+}
 
 function App() {
   React.useEffect(() => {
@@ -128,9 +153,11 @@ function App() {
               </ProtectedRoute>
             }>
               <Route index element={
+                <ProtectedRoute>
                 <Suspense fallback={<PageSkeleton variant="grid" />}>
                   <ResponsiveRoute mobile={<MobileDashboard />} desktop={<Dashboard />} />
                 </Suspense>
+                </ProtectedRoute>
               } />
               <Route path="projects" element={
                 <ProtectedRoute pageId="projects">
@@ -157,7 +184,7 @@ function App() {
                 </ProtectedRoute>
               } />
               <Route path="projects/:id" element={
-                <ProtectedRoute>
+                <ProtectedRoute pageId="projects">
                   <Suspense fallback={<PageSkeleton variant="grid" />}>
                     <ResponsiveRoute mobile={<MobileProjectShell />} desktop={<ProjectDetails />} />
                   </Suspense>
@@ -171,7 +198,7 @@ function App() {
                 </ProtectedRoute>
               } />
               <Route path="vendors/bulk-upload" element={
-                <ProtectedRoute pageId="vendors">
+                <ProtectedRoute pageId="vendors" requiredLevel={2}>
                   <Suspense fallback={<PageSkeleton variant="table" />}>
                     <ResponsiveRoute mobile={<MobileVendorBulkUpload />} desktop={<VendorBulkUpload />} />
                   </Suspense>
@@ -185,14 +212,14 @@ function App() {
                 </ProtectedRoute>
               } />
               <Route path="resources/bulk-upload" element={
-                <ProtectedRoute pageId="resources">
+                <ProtectedRoute pageId="resources" requiredLevel={2}>
                   <Suspense fallback={<PageSkeleton variant="table" />}>
                     <ResponsiveRoute mobile={<MobileResourceBulkUpload />} desktop={<ResourceBulkUpload />} />
                   </Suspense>
                 </ProtectedRoute>
               } />
               <Route path="resource-rate" element={<Navigate to="/resources?tab=rates" replace />} />
-              <Route path="units" element={<Navigate to="/resources" replace />} />
+              <Route path="units" element={<ProtectedRoute pageId="units"><Suspense fallback={<PageSkeleton />}><UnitsList /></Suspense></ProtectedRoute>} />
               <Route path="spreadsheets" element={
                 <ProtectedRoute pageId="spreadsheets">
                   <Suspense fallback={<PageSkeleton variant="table" />}>
@@ -214,6 +241,20 @@ function App() {
                   </Suspense>
                 </ProtectedRoute>
               } />
+              <Route path="employees/bulk" element={
+                <ProtectedRoute pageId="admin" requiredLevel={2}>
+                  <Suspense fallback={<PageSkeleton variant="table" />}>
+                    <ResponsiveRoute mobile={<MobileEmployeeBulkUpload />} desktop={<EmployeeBulkUpload />} />
+                  </Suspense>
+                </ProtectedRoute>
+              } />
+              <Route path="admin/bulk" element={
+                <ProtectedRoute pageId="admin" requiredLevel={2}>
+                  <Suspense fallback={<PageSkeleton variant="table" />}>
+                    <ResponsiveRoute mobile={<MobileEmployeeBulkUpload />} desktop={<EmployeeBulkUpload />} />
+                  </Suspense>
+                </ProtectedRoute>
+              } />
               <Route path="clients" element={
                 <ProtectedRoute pageId="clients">
                   <Suspense fallback={<PageSkeleton variant="table" />}>
@@ -222,24 +263,24 @@ function App() {
                 </ProtectedRoute>
               } />
               <Route path="clients/bulk-upload" element={
-                <ProtectedRoute pageId="clients">
+                <ProtectedRoute pageId="clients" requiredLevel={2}>
                   <Suspense fallback={<PageSkeleton variant="table" />}>
                     <ResponsiveRoute mobile={<MobileClientBulkUpload />} desktop={<ClientBulkUpload />} />
                   </Suspense>
                 </ProtectedRoute>
               } />
               <Route path="drawing-test" element={
-                <ProtectedRoute>
+                <ProtectedRoute pageId="projects">
                   <Suspense fallback={<PageSkeleton variant="table" />}>
-                    <ResponsiveRoute mobile={<MobileCadViewer />} desktop={<DrawingTest />} />
+                    <DrawingAccess><ResponsiveRoute mobile={<MobileCadViewer />} desktop={<DrawingTest />} /></DrawingAccess>
                   </Suspense>
                 </ProtectedRoute>
               } />
             </Route>
             <Route path="/drawing-viewer" element={
-              <ProtectedRoute>
+              <ProtectedRoute pageId="projects">
                 <Suspense fallback={<PageSkeleton variant="table" />}>
-                  <ResponsiveRoute mobile={<MobileCadViewer />} desktop={<DrawingTest />} />
+                  <DrawingAccess><ResponsiveRoute mobile={<MobileCadViewer />} desktop={<DrawingTest />} /></DrawingAccess>
                 </Suspense>
               </ProtectedRoute>
             } />

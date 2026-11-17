@@ -179,11 +179,17 @@ const CustomSelect = ({
                 type="button"
                 disabled={disabled}
                 onClick={toggleOpen}
-                className={buttonClassName || `w-full flex items-center justify-between px-3 py-1.5 bg-white dark:bg-[#161b22] border rounded-lg text-xs text-gray-900 dark:text-white transition-all cursor-pointer shadow-2xs hover:border-blue-500/40 text-left ${
-                    disabled ? 'opacity-60 cursor-not-allowed' : ''
-                } ${
-                    isOpen ? 'border-blue-500 ring-2 ring-blue-500/20 shadow-sm' : 'border-gray-200 dark:border-white/10'
-                }`}
+                className={
+                    typeof buttonClassName === 'function'
+                        ? buttonClassName(isOpen)
+                        : buttonClassName
+                        ? `${buttonClassName} ${isOpen ? 'border-blue-500 ring-2 ring-blue-500/20 shadow-sm' : ''} ${disabled ? 'opacity-60 cursor-not-allowed' : ''}`
+                        : `w-full flex items-center justify-between px-3 py-1.5 bg-white dark:bg-[#161b22] border rounded-lg text-xs text-gray-900 dark:text-white transition-all cursor-pointer shadow-2xs hover:border-blue-500/40 text-left ${
+                            disabled ? 'opacity-60 cursor-not-allowed' : ''
+                        } ${
+                            isOpen ? 'border-blue-500 ring-2 ring-blue-500/20 shadow-sm' : 'border-gray-200 dark:border-white/10'
+                        }`
+                }
             >
                 <span className="truncate pr-1 font-medium">{displayLabel}</span>
                 <ChevronDown size={14} className={`text-gray-400 shrink-0 transition-transform duration-200 ${isOpen ? 'rotate-180 text-blue-500' : ''}`} />
