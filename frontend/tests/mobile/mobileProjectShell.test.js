@@ -24,13 +24,14 @@ test('project module visibility preserves runtime permission lookup semantics', 
     assert.equal(getProjectPermissionLevel(permissions, 'Tasks'), 1);
     assert.equal(getProjectPermissionLevel(permissions, 'WIP'), 2);
     assert.equal(getProjectPermissionLevel(permissions, 'General Documents'), 1);
-    assert.deepEqual(getVisibleProjectModules({ permissions }).map((module) => module.key), ['Dashboard', 'Tasks', 'WIP', 'General Documents']);
+    assert.deepEqual(getVisibleProjectModules({ permissions }).map((module) => module.key), ['Tasks', 'WIP', 'General Documents']);
+    assert.deepEqual(getVisibleProjectModules({ permissions: {} }), []);
     assert.equal(getVisibleProjectModules({ permissions, isAdmin: true }).length, 17);
 });
 
 test('project module selection falls back safely and preserves unrelated query state', () => {
     const visible = getVisibleProjectModules({ permissions: { tasks: 1 } });
-    assert.equal(resolveProjectModule('Missing', visible), 'Dashboard');
+    assert.equal(resolveProjectModule('Missing', visible), 'Tasks');
     assert.equal(updateProjectModuleSearch('?project_id=77&foo=bar', 'Tasks'), '?project_id=77&foo=bar&tab=Tasks');
 });
 

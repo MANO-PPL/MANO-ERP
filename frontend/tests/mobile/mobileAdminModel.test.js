@@ -30,7 +30,7 @@ test('employee normalization uses production identifiers and source-backed field
 
 test('create and update payloads preserve membership contract and omit ignored metadata', () => {
     const create = createEmployeePayload({ name: 'Ada', email: 'ada@example.test', password: 'secret', user_type: 'admin', project_ids: ['4'], system_permissions: { projects: 2 }, status: 'Active', template_id: 9 });
-    assert.deepEqual(create.project_ids, [4]); assert.deepEqual(create.project_permissions, {}); assert.equal(create.password, 'secret'); assert.equal(create.status, undefined); assert.equal(create.template_id, undefined);
+    assert.equal(create.project_ids, undefined); assert.equal(create.project_permissions, undefined); assert.equal(create.password, 'secret'); assert.equal(create.status, undefined); assert.equal(create.template_id, undefined);
     const update = updateEmployeePayload({ ...create, id: 7, password: 'new-secret' });
     assert.equal(update.user_password, 'new-secret'); assert.equal(update.password, undefined);
 });

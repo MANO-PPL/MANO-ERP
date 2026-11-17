@@ -1,11 +1,10 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useAuth } from '../../../context/AuthContext';
 import { adminApi as defaultAdminApi } from '../../../services/adminApi';
-import { projectApi as defaultProjectApi } from '../../../services/projectApi';
 import { customToast } from '../../../utils/toast';
 import {
     classifyReconciledCreate, createEmployeePayload, createOwnershipSlots, isBackendAdmin,
-    normalizeImportResult, normalizeProjectsResponse, normalizeTemplatesResponse, normalizeUsersResponse,
+    normalizeImportResult, normalizeTemplatesResponse, normalizeUsersResponse,
     templatePayload, updateEmployeePayload, userId,
 } from './mobileAdminModel';
 
@@ -17,14 +16,12 @@ export default function useMobileAdmin({ services = {}, authOverride } = {}) {
     const context = useAuth();
     const auth = authOverride || context;
     const admin = services.admin || defaultAdminApi;
-    const project = services.project || defaultProjectApi;
     const roleRef = useRef(auth.user);
     roleRef.current = auth.user;
     const mountedRef = useRef(true);
     const slotsRef = useRef(createOwnershipSlots(SLOT_NAMES));
     const [users, setUsers] = useState([]);
     const [templates, setTemplates] = useState([]);
-    const [projects, setProjects] = useState([]);
     const [loading, setLoading] = useState({ users: true, templates: true, projects: true });
     const [errors, setErrors] = useState({ users: '', templates: '', projects: '' });
     const [pending, setPending] = useState({});
@@ -52,20 +49,15 @@ export default function useMobileAdmin({ services = {}, authOverride } = {}) {
         catch (error) { if (current(token)) setErrors((state) => ({ ...state, templates: messageOf(error, 'Permission templates could not be loaded.') })); throw error; }
         finally { if (current(token)) setLoading((state) => ({ ...state, templates: false })); }
     }, [admin, current]);
-    const loadProjects = useCallback(async () => {
-        const token = slotsRef.current.begin('projects'); setLoading((state) => ({ ...state, projects: true })); setErrors((state) => ({ ...state, projects: '' }));
-        try { const response = await project.listProjects(); if (current(token)) setProjects(normalizeProjectsResponse(response)); return normalizeProjectsResponse(response); }
-        catch (error) { if (current(token)) setErrors((state) => ({ ...state, projects: messageOf(error, 'Projects could not be loaded.') })); throw error; }
-        finally { if (current(token)) setLoading((state) => ({ ...state, projects: false })); }
-    }, [project, current]);
 
-    useEffect(() => {
-        mountedRef.current = true;
-        Promise.allSettled([loadUsers(), loadTemplates(), loadProjects()]);
-        return () => { mountedRef.current = false; slotsRef.current.invalidateAll(); };
-    }, [loadProjects, loadTemplates, loadUsers]);
 
     const allowed = useCallback(() => isBackendAdmin(roleRef.current), []);
+    useEffect(() => {
+        mountedRef.current = true;
+        Promise.allSettled([loadUsers(), ...(allowed() ? [loadTemplates()] : [])]);
+        return () => { mountedRef.current = false; slotsRef.current.invalidateAll(); };
+    }, [allowed, loadTemplates, loadUsers]);
+
     const mutationCurrent = useCallback((token) => current(token) && allowed(), [allowed, current]);
     const denied = useCallback(() => { setNotice({ tone: 'error', text: 'Your current account is read-only for Admin changes.' }); return { success: false, denied: true }; }, []);
     const reconcileUsers = useCallback(async () => { try { return await loadUsers(); } catch { return null; } }, [loadUsers]);
@@ -117,5 +109,5 @@ export default function useMobileAdmin({ services = {}, authOverride } = {}) {
         finally { setBusy('bulkImport', false, token); }
     }, [admin, allowed, denied, loadUsers, mutationCurrent, setBusy]);
 
-    return { user: auth.user, canWrite: allowed(), users, templates, projects, loading, errors, pending, notice, setNotice, loadUsers, loadTemplates, loadProjects, createUser, updateUser, deleteUser, saveTemplate, deleteTemplate, applyTemplate, bulkImport };
+    return { user: auth.user, canWrite: allowed(), users, templates, loading, errors, pending, notice, setNotice, loadUsers, loadTemplates, createUser, updateUser, deleteUser, saveTemplate, deleteTemplate, applyTemplate, bulkImport };
 }

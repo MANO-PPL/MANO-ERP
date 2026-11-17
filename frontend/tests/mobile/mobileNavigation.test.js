@@ -6,7 +6,7 @@ import {
     normalizeRecentProjects,
 } from '../../src/mobile/layout/mobileNavigation.js';
 
-test('dashboard is universal and other navigation follows read permission', () => {
+test('dashboard is always visible and other pages require read permission', () => {
     const seen = [];
     const filtered = filterMobileNavigation(MOBILE_NAV_ITEMS, (pageId, level) => {
         seen.push([pageId, level]);
@@ -18,7 +18,7 @@ test('dashboard is universal and other navigation follows read permission', () =
     assert.ok(seen.every(([, level]) => level === 1));
 });
 
-test('no permissions exposes only the authenticated dashboard destination', () => {
+test('a signed-in employee with no grants sees only the dashboard', () => {
     assert.deepEqual(filterMobileNavigation(MOBILE_NAV_ITEMS, () => false).map((item) => item.path), ['/']);
 });
 
