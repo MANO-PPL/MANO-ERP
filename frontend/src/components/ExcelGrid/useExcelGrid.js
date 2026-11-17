@@ -2,13 +2,22 @@ import { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import {
     parseTSV,
     stringifyTSV,
+    cleanClipboardText,
     getSelectionBounds,
     isCellInBounds,
     validateRow,
     calculateAutoFitWidth,
     generateBatchPayload,
-    transformCase
+    transformCase,
+    getUniqueKeyColumn,
+    getRowUniqueValue,
+    findDuplicateGroups,
+    resolveDropdownValue
 } from './excelUtils';
+import { customToast } from '../../utils/toast';
+
+// Centralized clipboard and keyboard event handlers
+
 
 /**
  * Core spreadsheet hook managing grid state, cell selections, undo/redo history,
@@ -25,8 +34,35 @@ export const useExcelGrid = ({
     onRedo = null,
     canUndo: externalCanUndo = undefined,
     canRedo: externalCanRedo = undefined,
-    onCellChange = null
+    onCellChange = null,
+    storageKey = null
 }) => {
+    // Helper to read draft from localStorage
+    const loadDraftFromStorage = useCallback(() => {
+        if (!storageKey || typeof window === 'undefined') return null;
+        try {
+            const raw = window.localStorage.getItem(storageKey);
+            if (!raw) return null;
+            const parsed = JSON.parse(raw);
+            if (parsed && typeof parsed === 'object') {
+                return parsed;
+            }
+        } catch (err) {
+            console.warn('Failed to load draft from localStorage:', err);
+        }
+        return null;
+    }, [storageKey]);
+
+    // Helper to clear draft from localStorage
+    const clearDraftFromStorage = useCallback(() => {
+        if (!storageKey || typeof window === 'undefined') return;
+        try {
+            window.localStorage.removeItem(storageKey);
+        } catch (err) {
+            console.warn('Failed to clear draft from localStorage:', err);
+        }
+    }, [storageKey]);
+
     // 1. Original database data map for dirty comparison
     const originalDataMap = useMemo(() => {
         const map = new Map();
@@ -38,17 +74,37 @@ export const useExcelGrid = ({
         return map;
     }, [data, primaryKey]);
 
-    // 2. Main Grid Data State
-    const [gridData, setGridData] = useState(() =>
-        (data || []).map((row) => ({
+    // 2. Main Grid Data State - Hydrated from localStorage draft if present
+    const [gridData, setGridData] = useState(() => {
+        const draft = loadDraftFromStorage();
+        if (draft) {
+            if (Array.isArray(draft.allRows) && draft.allRows.length > 0) {
+                return draft.allRows;
+            }
+            if (Array.isArray(draft.newRows) && draft.newRows.length > 0 && (!data || data.length === 0)) {
+                return draft.newRows;
+            }
+        }
+        return (data || []).map((row) => ({
             ...row,
             _status: 'saved',
             _errors: {}
-        }))
-    );
+        }));
+    });
     const gridDataRef = useRef(gridData);
     gridDataRef.current = gridData;
     const isSavingRef = useRef(false);
+
+    // 3. Deleted IDs Tracking - Hydrated from localStorage draft if present
+    const [deletedIds, setDeletedIds] = useState(() => {
+        const draft = loadDraftFromStorage();
+        if (draft && Array.isArray(draft.deletedIds) && draft.deletedIds.length > 0) {
+            return new Set(draft.deletedIds);
+        }
+        return new Set();
+    });
+    const deletedIdsRef = useRef(deletedIds);
+    deletedIdsRef.current = deletedIds;
 
     // Synchronize whenever prop data changes
     useEffect(() => {
@@ -59,6 +115,7 @@ export const useExcelGrid = ({
                 isSavingRef.current = false;
                 deletedIdsRef.current = new Set();
                 setDeletedIds(new Set());
+                clearDraftFromStorage();
                 return (data || []).map((item) => ({
                     ...item,
                     _status: 'saved',
@@ -66,47 +123,71 @@ export const useExcelGrid = ({
                 }));
             }
 
-            const existingNames = new Set(
-                (data || []).map((d) => (d.name ? String(d.name).trim().toLowerCase() : null)).filter(Boolean)
-            );
-            const dataIdSet = new Set((data || []).map((d) => d[primaryKey]));
+            // Check if there is an unsaved draft in localStorage or in prevGrid
+            const draft = loadDraftFromStorage();
+            const draftModifiedMap = new Map();
+            const draftNewRows = [];
+            const draftDeletedIdSet = new Set(deletedIdsRef.current);
 
-            const newUnsaved = prevGrid.filter((r) => {
-                if (dataIdSet.has(r[primaryKey])) return false;
-                const isTemp = String(r[primaryKey]).startsWith('temp_');
-                if (!isTemp && r._status !== 'new') return false;
+            if (draft) {
+                if (Array.isArray(draft.deletedIds)) {
+                    draft.deletedIds.forEach((id) => draftDeletedIdSet.add(id));
+                }
+                if (Array.isArray(draft.modifiedRows)) {
+                    draft.modifiedRows.forEach((r) => {
+                        if (r && r[primaryKey] !== undefined) {
+                            draftModifiedMap.set(String(r[primaryKey]), r);
+                        }
+                    });
+                }
+                if (Array.isArray(draft.newRows)) {
+                    draft.newRows.forEach((r) => draftNewRows.push(r));
+                }
+            }
 
-                // Do not resurrect completely empty temp rows
+            // Also check prevGrid for any in-memory unsaved rows
+            (prevGrid || []).forEach((r) => {
+                const idStr = String(r[primaryKey] || '');
+                if (r._status === 'modified' || r._status === 'duplicate' || r._status === 'error') {
+                    if (!draftModifiedMap.has(idStr)) {
+                        draftModifiedMap.set(idStr, r);
+                    }
+                } else if (r._status === 'new' || idStr.startsWith('temp_')) {
+                    if (!draftNewRows.some((nr) => String(nr[primaryKey]) === idStr)) {
+                        draftNewRows.push(r);
+                    }
+                }
+            });
+
+            // If incoming data from server is empty and we have draft/prevGrid, preserve it
+            if ((!data || data.length === 0) && (prevGrid.length > 0 || draftNewRows.length > 0)) {
+                return prevGrid.length > 0 ? prevGrid : draftNewRows;
+            }
+
+            // Filter new unsaved rows
+            const newUnsaved = draftNewRows.filter((r) => {
+                const isTemp = !r[primaryKey] || String(r[primaryKey]).startsWith('temp_') || r._status === 'new';
+                if (!isTemp) return false;
                 const hasAnyContent = Object.entries(r).some(
                     ([k, v]) => !k.startsWith('_') && k !== primaryKey && v != null && String(v).trim() !== ''
                 );
-                if (!hasAnyContent) return false;
-
-                // Do not keep as new if already represented in incoming server data
-                if (r.name && existingNames.has(String(r.name).trim().toLowerCase())) {
-                    return false;
-                }
-
-                return true;
+                return hasAnyContent;
             });
 
-            const modifiedMap = new Map(
-                prevGrid
-                    .filter((r) => r._status === 'modified' || r._status === 'error')
-                    .map((r) => [r[primaryKey], r])
-            );
-            const curDeletedIds = deletedIdsRef.current;
-
             const updatedGrid = (data || [])
-                .filter((item) => !curDeletedIds.has(item[primaryKey]))
+                .filter((item) => !draftDeletedIdSet.has(item[primaryKey]) && !draftDeletedIdSet.has(String(item[primaryKey])))
                 .map((item) => {
-                    if (modifiedMap.has(item[primaryKey])) {
+                    const itemKey = String(item[primaryKey]);
+                    if (draftModifiedMap.has(itemKey)) {
+                        const modRow = draftModifiedMap.get(itemKey);
                         return {
                             ...item,
-                            ...modifiedMap.get(item[primaryKey]),
+                            ...modRow,
+                            _status: modRow._status || 'modified',
+                            _errors: modRow._errors || {},
                             personnel: (Array.isArray(item.personnel) && item.personnel.length > 0)
                                 ? item.personnel
-                                : modifiedMap.get(item[primaryKey]).personnel
+                                : modRow.personnel
                         };
                     }
                     const isNew = item._status === 'new' || String(item[primaryKey] || '').startsWith('temp_');
@@ -119,30 +200,31 @@ export const useExcelGrid = ({
 
             return [...updatedGrid, ...newUnsaved];
         });
-    }, [data, primaryKey]);
-
-    // 3. Deleted IDs Tracking
-    const [deletedIds, setDeletedIds] = useState(new Set());
-    const deletedIdsRef = useRef(deletedIds);
+    }, [data, primaryKey, loadDraftFromStorage, clearDraftFromStorage]);
     deletedIdsRef.current = deletedIds;
 
     // 4. Undo / Redo Stacks
     const undoStackRef = useRef([]);
     const redoStackRef = useRef([]);
     const cellEditInitialStateRef = useRef(null);
+    const [historyVersion, setHistoryVersion] = useState(0);
     const [undoVersion, setUndoVersion] = useState(0);
     const lastUndoTimeRef = useRef(0);
     const lastRedoTimeRef = useRef(0);
 
     const pushUndoState = useCallback((currentGrid) => {
         if (!currentGrid) return;
-        const snapshot = currentGrid.map((r) => ({
-            ...r,
-            _errors: r._errors ? { ...r._errors } : {}
-        }));
+        const snapshot = {
+            grid: currentGrid.map((r) => ({
+                ...r,
+                _errors: r._errors ? { ...r._errors } : {}
+            })),
+            deletedIds: new Set(deletedIdsRef.current)
+        };
         undoStackRef.current.push(snapshot);
         if (undoStackRef.current.length > 80) undoStackRef.current.shift();
         redoStackRef.current = [];
+        setHistoryVersion((v) => v + 1);
         setUndoVersion((v) => v + 1);
     }, []);
 
@@ -170,6 +252,9 @@ export const useExcelGrid = ({
 
     // 6. Cell Editing State
     const [editingCell, setEditingCell] = useState(null); // { rowIndex, colKey }
+    const editingCellRef = useRef(null);
+    editingCellRef.current = editingCell;
+    const activeEditorValueRef = useRef(undefined);
     const [activeDropdownCell, setActiveDropdownCell] = useState(null);
     const [dropdownPortalProps, setDropdownPortalProps] = useState(null);
 
@@ -180,6 +265,8 @@ export const useExcelGrid = ({
 
     // 8. Clipboard Buffer Ref
     const internalClipboardRef = useRef('');
+    const internalClipboardRowsRef = useRef([]);
+    const lastPasteHandledTimestampRef = useRef(0);
     const lastNavEventRef = useRef({ time: 0, key: '' });
 
     // 9. Row Selection Checkboxes
@@ -250,6 +337,7 @@ export const useExcelGrid = ({
         }
     }, [currentPage, totalPages]);
 
+    
     const prevPageRef = useRef(currentPage);
     const prevFocusRowRef = useRef(selectionFocus?.r);
 
@@ -269,7 +357,6 @@ export const useExcelGrid = ({
         const focusRowChanged = typeof currentFocusRow === 'number' && currentFocusRow !== prevFocusRowRef.current;
 
         if (focusRowChanged) {
-            // Selection row changed (e.g. keyboard navigation, arrow keys, enter, tab, search)
             const targetPage = Math.floor(currentFocusRow / size) + 1;
             if (targetPage >= 1 && targetPage <= totalPages && targetPage !== currentPage) {
                 setCurrentPage(targetPage);
@@ -277,7 +364,6 @@ export const useExcelGrid = ({
             }
             prevFocusRowRef.current = currentFocusRow;
         } else if (pageChanged) {
-            // Page was changed manually (e.g. clicking pagination buttons or page size dropdown)
             prevPageRef.current = currentPage;
             if (typeof currentFocusRow === 'number') {
                 const minRow = (currentPage - 1) * size;
@@ -354,11 +440,7 @@ export const useExcelGrid = ({
                 if (hasContent) createdCount++;
             } else {
                 const original = originalDataMap.get(row[primaryKey]);
-                if (original) {
-                    if (isRowDirty(row, original)) {
-                        updatedCount++;
-                    }
-                } else if (row._status === 'modified') {
+                if (row._status === 'modified' || (original && isRowDirty(row, original))) {
                     updatedCount++;
                 }
             }
@@ -372,29 +454,102 @@ export const useExcelGrid = ({
         };
     }, [gridData, originalDataMap, deletedIds, primaryKey, columns, isRowDirty]);
 
-    // Mouse Cell Selection & Drag Handlers
-    const handleCellMouseDown = useCallback((rowIndex, colIndex, isShift = false, isCtrl = false) => {
-        if (!isShift && !isCtrl && selectedIdsRef.current.size > 0) {
-            setSelectedIds(new Set());
-        }
-        if (isShift && selectionAnchorRef.current) {
-            setSelectionFocus({ r: rowIndex, c: colIndex });
-        } else {
-            setSelectionAnchor({ r: rowIndex, c: colIndex });
-            setSelectionFocus({ r: rowIndex, c: colIndex });
-            setIsMouseDown(true);
-        }
-    }, []);
+    // Auto-save draft to browser localStorage across page refreshes
+    useEffect(() => {
+        if (!storageKey || typeof window === 'undefined') return;
+        if (isSavingRef.current) return;
 
-    const handleCellMouseEnter = useCallback(
-        (rowIndex, colIndex) => {
-            if (isFillDragging) {
-                setFillDragTargetRow(rowIndex);
-            } else if (isMouseDown) {
-                setSelectionFocus({ r: rowIndex, c: colIndex });
+        const timer = setTimeout(() => {
+            try {
+                const currentData = gridDataRef.current || gridData;
+                const curDeleted = deletedIdsRef.current || deletedIds;
+
+                const modifiedRows = [];
+                const newRows = [];
+
+                currentData.forEach((row) => {
+                    const idStr = String(row[primaryKey] || '');
+                    const isNew = row._status === 'new' || idStr.startsWith('temp_');
+                    if (isNew) {
+                        const hasContent = columns.some(
+                            (col) => row[col.key] !== undefined && String(row[col.key]).trim() !== ''
+                        );
+                        if (hasContent) newRows.push(row);
+                    } else if (row._status === 'modified' || row._status === 'duplicate' || row._status === 'error') {
+                        modifiedRows.push(row);
+                    } else {
+                        const original = originalDataMap.get(row[primaryKey]);
+                        if (original && isRowDirty(row, original)) {
+                            modifiedRows.push(row);
+                        }
+                    }
+                });
+
+                const totalChanges = modifiedRows.length + newRows.length + curDeleted.size;
+
+                if (totalChanges > 0) {
+                    const draftPayload = {
+                        modifiedRows,
+                        newRows,
+                        deletedIds: Array.from(curDeleted),
+                        allRows: currentData.length <= 1000 ? currentData : undefined,
+                        timestamp: Date.now()
+                    };
+                    window.localStorage.setItem(storageKey, JSON.stringify(draftPayload));
+                } else {
+                    window.localStorage.removeItem(storageKey);
+                }
+            } catch (err) {
+                console.warn('Failed to auto-save spreadsheet draft to localStorage:', err);
+            }
+        }, 300);
+
+        return () => clearTimeout(timer);
+    }, [gridData, deletedIds, storageKey, primaryKey, columns, originalDataMap, isRowDirty]);
+
+    // Discard local draft and reset to database data
+    const discardDraft = useCallback(() => {
+        clearDraftFromStorage();
+        deletedIdsRef.current = new Set();
+        setDeletedIds(new Set());
+        setGridData((data || []).map((item) => ({
+            ...item,
+            _status: 'saved',
+            _errors: {}
+        })));
+        if (showToast) {
+            showToast('info', 'Draft Discarded', 'Reverted unsaved changes to cloud data');
+        } else {
+            customToast.info('Reverted unsaved changes to cloud data', 'Draft Discarded');
+        }
+    }, [clearDraftFromStorage, data, showToast]);
+
+    // Helper to focus active cell DOM element
+    const focusCellElement = useCallback(
+        (r, c) => {
+            if (r == null || c == null) return;
+            const col = columns[c];
+            if (!col) return;
+            const cellId = `excel-cell-${r}-${col.key}`;
+            const cellEl = document.getElementById(cellId);
+            if (cellEl) {
+                try {
+                    cellEl.focus({ preventScroll: true });
+                    cellEl.scrollIntoView?.({ block: 'nearest', inline: 'nearest' });
+                } catch {}
+            } else {
+                setTimeout(() => {
+                    const fallbackEl = document.getElementById(cellId);
+                    if (fallbackEl) {
+                        try {
+                            fallbackEl.focus({ preventScroll: true });
+                            fallbackEl.scrollIntoView?.({ block: 'nearest', inline: 'nearest' });
+                        } catch {}
+                    }
+                }, 15);
             }
         },
-        [isFillDragging, isMouseDown]
+        [columns]
     );
 
     // Helper notification toast
@@ -409,49 +564,94 @@ export const useExcelGrid = ({
 
     // 13. Cell Value Mutations
     const handleCellChange = useCallback(
-        (rowIndex, colKey, value, isAtomic = false) => {
+        (rowIndex, colKey, value, isAtomic = false, explicitRowId = null) => {
             if (!canWrite) return;
-            const targetRowObj = sortedGridDataRef.current[rowIndex] || gridDataRef.current[rowIndex];
+            const targetRowObj =
+                (explicitRowId != null ? gridDataRef.current.find((r) => String(r[primaryKey]) === String(explicitRowId)) : null) ||
+                sortedGridDataRef.current[rowIndex] ||
+                gridDataRef.current[rowIndex];
             if (!targetRowObj) return;
 
+            if (isAtomic) {
+                pushUndoState(gridDataRef.current);
+            }
+
+            // Immediately synchronize gridDataRef so that direct save or commit reads the updated value
+            const realIdx = gridDataRef.current.findIndex(
+                (r) => String(r[primaryKey]) === String(targetRowObj[primaryKey])
+            );
+            const uniqueKeyCol = getUniqueKeyColumn(columns);
+            const targetCol = columns.find((c) => c.key === colKey || c.accessor === colKey);
+            const isCodeCol = colKey === 'code' || colKey === 'item_code' || colKey === 'resource_code' || targetCol?.label?.toLowerCase().includes('code');
+            const isUniqueCol = isCodeCol || targetCol?.unique === true || targetCol?.isUnique === true || colKey === uniqueKeyCol;
+
+            const normVal = String(value || '').trim().toLowerCase();
+            const duplicateRow = normVal && isUniqueCol ? gridDataRef.current.find(
+                (r) =>
+                    String(r[primaryKey]) !== String(targetRowObj[primaryKey]) &&
+                    String(r[colKey] || '').trim().toLowerCase() === normVal
+            ) : null;
+            const isDuplicate = Boolean(duplicateRow);
+
+            if (realIdx !== -1) {
+                const nextRef = [...gridDataRef.current];
+                const updatedRowRef = { ...nextRef[realIdx], [colKey]: value };
+                updatedRowRef._errors = validateRow(updatedRowRef, columns, nextRef);
+                if (isDuplicate) {
+                    const dupLabel = duplicateRow?.name ? ` (${duplicateRow.name})` : '';
+                    const errText = isCodeCol
+                        ? `Resource code already exists: "${value}"${dupLabel}. Resource code must be strictly unique. Please change it.`
+                        : `Data already exists: "${value}" is already present in this sheet`;
+                    updatedRowRef._errors = {
+                        ...(updatedRowRef._errors || {}),
+                        [colKey]: errText
+                    };
+                    updatedRowRef._status = 'duplicate';
+                } else if (updatedRowRef._status === 'duplicate') {
+                    const hasOtherDup = Boolean(
+                        updatedRowRef._errors && Object.values(updatedRowRef._errors).some(msg =>
+                            typeof msg === 'string' && (msg.toLowerCase().includes('already exists') || msg.toLowerCase().includes('strictly unique'))
+                        )
+                    );
+                    if (!hasOtherDup) {
+                        updatedRowRef._status = String(updatedRowRef[primaryKey]).startsWith('temp_') ? 'new' : 'modified';
+                    }
+                } else if (updatedRowRef._status !== 'new' && !String(updatedRowRef[primaryKey]).startsWith('temp_')) {
+                    updatedRowRef._status = 'modified';
+                }
+                nextRef[realIdx] = updatedRowRef;
+                gridDataRef.current = nextRef;
+            }
+
             setGridData((prevGrid) => {
-                const realIdx = prevGrid.findIndex((r) => r[primaryKey] === targetRowObj[primaryKey]);
+                const realIdx = prevGrid.findIndex((r) => String(r[primaryKey]) === String(targetRowObj[primaryKey]));
                 if (realIdx === -1) return prevGrid;
 
-                const currentRow = prevGrid[realIdx];
-                const currentVal = currentRow[colKey];
-
-                // If value hasn't changed at all, don't mark dirty or mutate state
-                const strOld = String(currentVal ?? '').trim();
-                const strNew = String(value ?? '').trim();
-                const isTemp = currentRow._status === 'new' || String(currentRow[primaryKey]).startsWith('temp_');
-
-                if (strOld === strNew && !isTemp) {
-                    return prevGrid;
-                }
-
-                // Always record previous state into undo stack
-                if (cellEditInitialStateRef.current) {
-                    pushUndoState(cellEditInitialStateRef.current);
-                    cellEditInitialStateRef.current = null;
-                } else {
-                    pushUndoState(prevGrid);
-                }
-
                 const next = [...prevGrid];
-                const updatedRow = { ...currentRow, [colKey]: value };
+                const updatedRow = { ...next[realIdx], [colKey]: value };
 
-                updatedRow._errors = validateRow(updatedRow, columns);
-
-                if (!isTemp) {
-                    const original = originalDataMap.get(updatedRow[primaryKey]);
-                    if (original && isRowDirty(updatedRow, original)) {
-                        updatedRow._status = 'modified';
-                    } else if (original && !isRowDirty(updatedRow, original)) {
-                        updatedRow._status = 'saved';
-                    } else {
-                        updatedRow._status = 'modified';
+                updatedRow._errors = validateRow(updatedRow, columns, next);
+                if (isDuplicate) {
+                    const dupLabel = duplicateRow?.name ? ` (${duplicateRow.name})` : '';
+                    const errText = isCodeCol
+                        ? `Resource code already exists: "${value}"${dupLabel}. Resource code must be strictly unique. Please change it.`
+                        : `Data already exists: "${value}" is already present in this sheet`;
+                    updatedRow._errors = {
+                        ...(updatedRow._errors || {}),
+                        [colKey]: errText
+                    };
+                    updatedRow._status = 'duplicate';
+                } else if (updatedRow._status === 'duplicate') {
+                    const hasOtherDup = Boolean(
+                        updatedRow._errors && Object.values(updatedRow._errors).some(msg =>
+                            typeof msg === 'string' && (msg.toLowerCase().includes('already exists') || msg.toLowerCase().includes('strictly unique'))
+                        )
+                    );
+                    if (!hasOtherDup) {
+                        updatedRow._status = String(updatedRow[primaryKey]).startsWith('temp_') ? 'new' : 'modified';
                     }
+                } else if (updatedRow._status !== 'new' && !String(updatedRow[primaryKey]).startsWith('temp_')) {
+                    updatedRow._status = 'modified';
                 }
 
                 next[realIdx] = updatedRow;
@@ -462,38 +662,195 @@ export const useExcelGrid = ({
                 onCellChange(rowIndex, colKey, value, isAtomic, targetRowObj);
             }
         },
-        [canWrite, primaryKey, columns, pushUndoState, onCellChange, originalDataMap, isRowDirty]
+        [canWrite, primaryKey, columns, pushUndoState, onCellChange]
     );
 
+    const [activeEditorValue, setActiveEditorValue] = useState(undefined);
+    const handleEditorValueChange = useCallback((val) => {
+        activeEditorValueRef.current = val;
+        setActiveEditorValue(val);
+    }, []);
+
+    const commitEditingCell = useCallback(
+        (overrideVal) => {
+            const curEdit = editingCellRef.current;
+            if (!curEdit) return;
+
+            let valToCommit = overrideVal;
+            if (valToCommit === undefined && activeEditorValueRef.current !== undefined) {
+                valToCommit = activeEditorValueRef.current;
+            }
+            if (valToCommit === undefined) {
+                const activeInput = document.activeElement;
+                if (
+                    activeInput &&
+                    (activeInput.tagName === 'INPUT' ||
+                        activeInput.tagName === 'TEXTAREA' ||
+                        activeInput.tagName === 'SELECT')
+                ) {
+                    valToCommit = activeInput.value;
+                }
+            }
+
+            if (valToCommit !== undefined) {
+                const targetRow =
+                    (curEdit.rowId != null ? gridDataRef.current.find((r) => String(r[primaryKey]) === String(curEdit.rowId)) : null) ||
+                    sortedGridDataRef.current[curEdit.rowIndex] ||
+                    gridDataRef.current[curEdit.rowIndex];
+                const oldVal = targetRow ? targetRow[curEdit.colKey] : undefined;
+
+                // Duplicate Check on unique/identifying column (including resource code)
+                const uniqueKeyCol = getUniqueKeyColumn(columns);
+                const colDef = columns.find((c) => c.key === curEdit.colKey || c.accessor === curEdit.colKey);
+                const isCodeCol = curEdit.colKey === 'code' || curEdit.colKey === 'item_code' || curEdit.colKey === 'resource_code' || colDef?.label?.toLowerCase().includes('code');
+                const isUniqueCol = isCodeCol || colDef?.unique === true || colDef?.isUnique === true || curEdit.colKey === uniqueKeyCol;
+
+                if (isUniqueCol) {
+                    const trimmedVal = String(valToCommit || '').trim();
+                    if (trimmedVal) {
+                        const norm = trimmedVal.toLowerCase();
+                        const curRowId = curEdit.rowId != null ? curEdit.rowId : targetRow?.[primaryKey];
+                        const duplicateRow = gridDataRef.current.find(
+                            (r) =>
+                                String(r[primaryKey]) !== String(curRowId) &&
+                                String(r[curEdit.colKey] || '').trim().toLowerCase() === norm
+                        );
+                        if (duplicateRow) {
+                            const isCode = isCodeCol;
+                            const title = isCode ? 'Resource Code Already Exists' : 'Duplicate Entry';
+                            const msg = isCode
+                                ? `Resource code already exists: "${trimmedVal}"${duplicateRow.name ? ` (${duplicateRow.name})` : ''}. Resource code must be strictly unique. Please change it.`
+                                : `Data already exists! A record with "${trimmedVal}" is already present in this sheet. Please change it.`;
+
+                            notify('error', title, msg);
+                            customToast.error(msg, title);
+                        }
+                    }
+                }
+
+                if (String(oldVal ?? '') !== String(valToCommit ?? '')) {
+                    pushUndoState(cellEditInitialStateRef.current || gridDataRef.current);
+                }
+                handleCellChange(curEdit.rowIndex, curEdit.colKey, valToCommit, false, curEdit.rowId);
+            }
+
+            editingCellRef.current = null;
+            activeEditorValueRef.current = undefined;
+            setActiveEditorValue(undefined);
+            setEditingCell(null);
+            cellEditInitialStateRef.current = null;
+        },
+        [handleCellChange, pushUndoState, primaryKey, columns, notify]
+    );
+
+
     const handleStartEditing = useCallback(
-        (rowIndex, colKey) => {
+        (rowIndex, colKey, initialChar = undefined) => {
             if (!canWrite) return;
+            const col = columns.find((c) => c.key === colKey);
+            if (col?.readOnly) return;
+
+            if (editingCellRef.current) {
+                commitEditingCell();
+            }
+
             cellEditInitialStateRef.current = gridDataRef.current.map((r) => ({
                 ...r,
                 _errors: r._errors ? { ...r._errors } : {}
             }));
-            setEditingCell({ rowIndex, colKey });
+
+            const targetRow = sortedGridDataRef.current[rowIndex] || gridDataRef.current[rowIndex];
+            const curVal = targetRow ? (targetRow[colKey] ?? '') : '';
+            const startVal = initialChar !== undefined ? initialChar : curVal;
+            const isDirectTyping = initialChar !== undefined;
+
+            activeEditorValueRef.current = startVal;
+            const editObj = {
+                rowIndex,
+                colKey,
+                rowId: targetRow?.[primaryKey],
+                initialValue: startVal,
+                isDirectTyping
+            };
+            editingCellRef.current = editObj;
+            setEditingCell(editObj);
+
+            if (initialChar !== undefined) {
+                handleCellChange(rowIndex, colKey, initialChar, false, targetRow?.[primaryKey]);
+            }
         },
-        [canWrite]
+        [canWrite, columns, commitEditingCell, handleCellChange, primaryKey]
     );
 
-    const handleCellBlur = useCallback(() => {
-        if (editingCell) {
-            setEditingCell(null);
-            cellEditInitialStateRef.current = null;
-        }
-    }, [editingCell]);
+    const handleCellBlur = useCallback(
+        (overrideVal) => {
+            commitEditingCell(overrideVal);
+        },
+        [commitEditingCell]
+    );
+
+    // Mouse Cell Selection & Drag Handlers
+    const handleCellMouseDown = useCallback(
+        (rowIndex, colIndex, isShift = false, isCtrl = false) => {
+            if (editingCellRef.current) {
+                const curEdit = editingCellRef.current;
+                const curColIdx = columns.findIndex((c) => c.key === curEdit.colKey);
+                if (curEdit.rowIndex !== rowIndex || curColIdx !== colIndex) {
+                    commitEditingCell();
+                }
+            }
+
+            if (!isShift && !isCtrl && selectedIdsRef.current.size > 0) {
+                setSelectedIds(new Set());
+            }
+            if (isShift && selectionAnchorRef.current) {
+                selectionFocusRef.current = { r: rowIndex, c: colIndex };
+                setSelectionFocus({ r: rowIndex, c: colIndex });
+            } else {
+                selectionAnchorRef.current = { r: rowIndex, c: colIndex };
+                selectionFocusRef.current = { r: rowIndex, c: colIndex };
+                setSelectionAnchor({ r: rowIndex, c: colIndex });
+                setSelectionFocus({ r: rowIndex, c: colIndex });
+                setIsMouseDown(true);
+            }
+            focusCellElement(rowIndex, colIndex);
+        },
+        [columns, commitEditingCell, focusCellElement]
+    );
+
+    const handleCellMouseEnter = useCallback(
+        (rowIndex, colIndex) => {
+            if (isFillDragging) {
+                setFillDragTargetRow(rowIndex);
+            } else if (isMouseDown) {
+                selectionFocusRef.current = { r: rowIndex, c: colIndex };
+                setSelectionFocus({ r: rowIndex, c: colIndex });
+            }
+        },
+        [isFillDragging, isMouseDown]
+    );
 
     // 14. Excel Shortcuts & Actions
 
-    // Copy to Clipboard (TSV)
-    const executeCopy = useCallback(async () => {
+    // Helper to get formatted pure text TSV matrix and row objects for the current selection
+    const getSelectedDataMatrix = useCallback(() => {
+        let bounds = getBoundsFromRefs();
+        const curSelectedIds = selectedIdsRef.current;
+        const focus = selectionFocusRef.current;
+        const curEdit = editingCellRef.current;
+
         let rowsToCopy = [];
         let minCol = 0;
         let maxCol = columns.length - 1;
 
-        const bounds = getBoundsFromRefs();
-        const curSelectedIds = selectedIdsRef.current;
+        if (!bounds && focus) {
+            bounds = { minRow: focus.r, maxRow: focus.r, minCol: focus.c, maxCol: focus.c };
+        } else if (!bounds && curEdit) {
+            const colIdx = columns.findIndex((c) => c.key === curEdit.colKey);
+            if (colIdx !== -1) {
+                bounds = { minRow: curEdit.rowIndex, maxRow: curEdit.rowIndex, minCol: colIdx, maxCol: colIdx };
+            }
+        }
 
         if (bounds) {
             for (let r = bounds.minRow; r <= bounds.maxRow; r++) {
@@ -506,33 +863,79 @@ export const useExcelGrid = ({
             rowsToCopy = sortedGridDataRef.current.filter((r) => curSelectedIds.has(r[primaryKey]));
         }
 
-        if (rowsToCopy.length === 0) return;
+        if (rowsToCopy.length === 0) return { matrix: [], tsvData: '', rowsToCopy: [], cellCount: 0 };
 
         const matrix = rowsToCopy.map((rowObj) => {
             const rowVals = [];
             for (let c = minCol; c <= maxCol; c++) {
                 const colKey = columns[c]?.key;
-                rowVals.push(colKey ? rowObj[colKey] ?? '' : '');
+                const rawVal = colKey ? rowObj[colKey] : '';
+                let cellText = '';
+                if (rawVal !== undefined && rawVal !== null) {
+                    if (typeof rawVal === 'object') {
+                        cellText = rawVal.value !== undefined ? String(rawVal.value) : (rawVal.code !== undefined ? String(rawVal.code) : (rawVal.name || ''));
+                    } else {
+                        cellText = String(rawVal);
+                    }
+                }
+                rowVals.push(cleanClipboardText(cellText));
             }
             return rowVals;
         });
 
         const tsvData = stringifyTSV(matrix);
-        internalClipboardRef.current = tsvData;
-        try {
-            if (navigator.clipboard && navigator.clipboard.writeText) {
-                await navigator.clipboard.writeText(tsvData);
-            }
-        } catch (err) {
-            console.warn('Clipboard write error:', err);
-        }
         const cellCount = matrix.length * (maxCol - minCol + 1);
+        return { matrix, tsvData, rowsToCopy, cellCount };
+    }, [columns, primaryKey, getBoundsFromRefs]);
+
+    // Copy to Clipboard (TSV)
+    const executeCopy = useCallback(() => {
+        const { tsvData, rowsToCopy, cellCount } = getSelectedDataMatrix();
+        if (!tsvData) return;
+
+        internalClipboardRef.current = tsvData;
+        window.__manoExcelClipboard = tsvData;
+        internalClipboardRowsRef.current = rowsToCopy.map((r) => JSON.parse(JSON.stringify(r)));
+        window.__manoExcelClipboardRows = internalClipboardRowsRef.current;
+        try {
+            sessionStorage.setItem('__manoExcelClipboard', tsvData);
+            sessionStorage.setItem('__manoExcelClipboardRows', JSON.stringify(internalClipboardRowsRef.current));
+        } catch {}
+
+        const curFocus = selectionFocusRef.current || selectionAnchorRef.current;
+
+        // 1. Synchronous clipboard copy within user gesture
+        try {
+            const textArea = document.createElement('textarea');
+            textArea.value = tsvData;
+            textArea.style.position = 'fixed';
+            textArea.style.left = '-9999px';
+            textArea.style.top = '-9999px';
+            textArea.style.opacity = '0';
+            textArea.setAttribute('readonly', '');
+            document.body.appendChild(textArea);
+            textArea.select();
+            document.execCommand('copy');
+            document.body.removeChild(textArea);
+        } catch (err) {
+            console.warn('execCommand copy fallback error:', err);
+        }
+
+        // 2. Modern async clipboard API in parallel
+        if (navigator.clipboard && navigator.clipboard.writeText) {
+            navigator.clipboard.writeText(tsvData).catch(() => {});
+        }
+
+        if (curFocus) {
+            focusCellElement(curFocus.r, curFocus.c);
+        }
+
         notify(
             'sparkle',
             'Copied',
             cellCount === 1 ? 'Copied 1 cell to clipboard' : `Copied ${cellCount} cells to clipboard`
         );
-    }, [columns, primaryKey, getBoundsFromRefs, notify]);
+    }, [getSelectedDataMatrix, focusCellElement, notify]);
 
     // Cut to Clipboard
     const executeCut = useCallback(async () => {
@@ -588,10 +991,14 @@ export const useExcelGrid = ({
                         textToPaste = await navigator.clipboard.readText();
                     }
                 } catch (err) {
-                    textToPaste = internalClipboardRef.current;
+                    textToPaste = window.__manoExcelClipboard || sessionStorage.getItem('__manoExcelClipboard') || internalClipboardRef.current;
                 }
             }
-            if (!textToPaste) textToPaste = internalClipboardRef.current;
+            if (!textToPaste) {
+                textToPaste = window.__manoExcelClipboard || sessionStorage.getItem('__manoExcelClipboard') || internalClipboardRef.current;
+            }
+
+            textToPaste = cleanClipboardText(textToPaste);
 
             if (!textToPaste || !textToPaste.trim()) {
                 notify('info', 'Clipboard', 'Clipboard is empty');
@@ -603,15 +1010,37 @@ export const useExcelGrid = ({
 
             pushUndoState(gridDataRef.current);
             setCopiedBounds(null);
+            if (editingCellRef.current) {
+                commitEditingCell();
+            }
 
             let startRow = 0;
             let startCol = 0;
             const bounds = getBoundsFromRefs();
             const curSelectedIds = selectedIdsRef.current;
+            const focus = selectionFocusRef.current;
+            const curEdit = editingCellRef.current;
 
             if (forcedStartRow !== undefined && forcedStartCol !== undefined) {
-                startRow = forcedStartRow;
-                startCol = forcedStartCol;
+                const isInsideSelection = bounds &&
+                    forcedStartRow >= bounds.minRow && forcedStartRow <= bounds.maxRow &&
+                    forcedStartCol >= bounds.minCol && forcedStartCol <= bounds.maxCol &&
+                    (bounds.maxRow > bounds.minRow || bounds.maxCol > bounds.minCol);
+
+                if (isInsideSelection) {
+                    startRow = bounds.minRow;
+                    startCol = bounds.minCol;
+                } else {
+                    startRow = forcedStartRow;
+                    startCol = forcedStartCol;
+                }
+            } else if (focus) {
+                startRow = focus.r;
+                startCol = focus.c;
+            } else if (curEdit) {
+                startRow = curEdit.rowIndex;
+                const colIdx = columns.findIndex((c) => c.key === curEdit.colKey);
+                startCol = colIdx !== -1 ? colIdx : 0;
             } else if (bounds) {
                 startRow = bounds.minRow;
                 startCol = bounds.minCol;
@@ -629,8 +1058,7 @@ export const useExcelGrid = ({
             let expandedRows = parsedRows;
             if (
                 bounds &&
-                (bounds.maxRow > bounds.minRow || bounds.maxCol > bounds.minCol) &&
-                forcedStartRow === undefined
+                (bounds.maxRow > bounds.minRow || bounds.maxCol > bounds.minCol)
             ) {
                 const targetRowCount = bounds.maxRow - bounds.minRow + 1;
                 const targetColCount = bounds.maxCol - bounds.minCol + 1;
@@ -651,38 +1079,93 @@ export const useExcelGrid = ({
 
             let numCellsUpdated = 0;
             let newRowsAddedCount = 0;
+            let skippedDuplicatesCount = 0;
+            const pastedDuplicateCodes = [];
+
+            const uniqueKeyCol = getUniqueKeyColumn(columns);
+            const existingUniqueKeys = new Set(
+                gridDataRef.current
+                    .map((row) => getRowUniqueValue(row, uniqueKeyCol))
+                    .filter(Boolean)
+            );
+            const existingCodes = new Set(
+                gridDataRef.current
+                    .map((row) => String(row.code || '').trim().toLowerCase())
+                    .filter(Boolean)
+            );
 
             setGridData((prevGrid) => {
                 const next = [...prevGrid];
 
+                const savedCopiedRows = internalClipboardRowsRef.current?.length
+                    ? internalClipboardRowsRef.current
+                    : window.__manoExcelClipboardRows || [];
+
                 expandedRows.forEach((cells, dr) => {
                     const r = startRow + dr;
                     const targetRowObj = sortedGridDataRef.current[r];
+                    const sourceCopiedRow = savedCopiedRows.length
+                        ? savedCopiedRows[dr % savedCopiedRows.length]
+                        : null;
 
                     if (targetRowObj) {
                         const realIdx = next.findIndex((row) => row[primaryKey] === targetRowObj[primaryKey]);
                         if (realIdx !== -1) {
                             const rowCopy = { ...next[realIdx] };
+                            let rowModified = false;
                             cells.forEach((cellVal, dc) => {
                                 const c = startCol + dc;
                                 if (c < columns.length) {
                                     const col = columns[c];
                                     if (col && !col.readOnly) {
-                                        let finalVal = cellVal ?? '';
+                                        let finalVal = cleanClipboardText(cellVal ?? '');
                                         if (col.type === 'number' && finalVal !== '') {
-                                            const num = Number(finalVal);
+                                            const cleanStr = String(finalVal).replace(/[₹$,\s]/g, '');
+                                            const num = Number(cleanStr);
                                             finalVal = isNaN(num) ? finalVal : num;
                                         } else if (col.type === 'checkbox') {
                                             finalVal = finalVal === true || finalVal === 'true' || finalVal === '1';
+                                        } else if (col.type === 'select' || col.type === 'searchable-select') {
+                                            finalVal = resolveDropdownValue(finalVal, col);
                                         }
+
+                                        const k = (col.key || col.accessor || '').toLowerCase();
+                                        if (k === 'code' || k === 'item_code' || k === 'resource_code' || col.unique) {
+                                            const norm = String(finalVal || '').trim().toLowerCase();
+                                            if (norm) {
+                                                const hasCollision = next.some(
+                                                    (otherRow, oIdx) => oIdx !== realIdx && String(otherRow[col.key] || '').trim().toLowerCase() === norm
+                                                );
+                                                if (hasCollision) {
+                                                    pastedDuplicateCodes.push(String(finalVal).trim());
+                                                }
+                                            }
+                                        }
+
                                         rowCopy[col.key] = finalVal;
                                         numCellsUpdated++;
+                                        rowModified = true;
                                     }
                                 }
                             });
-                            if (rowCopy._status !== 'new') rowCopy._status = 'modified';
-                            rowCopy._errors = validateRow(rowCopy, columns);
-                            next[realIdx] = rowCopy;
+
+                            // ONLY pasted cells are modified in existing rows;
+                            // never alter other corresponding fields (like type, compositions, conversions)
+                            if (rowModified) {
+                                rowCopy._errors = validateRow(rowCopy, columns, next);
+                                const isDup = Boolean(
+                                    rowCopy._errors && Object.values(rowCopy._errors).some(msg =>
+                                        typeof msg === 'string' && (msg.toLowerCase().includes('already exists') || msg.toLowerCase().includes('duplicate') || msg.toLowerCase().includes('strictly unique'))
+                                    )
+                                );
+                                if (isDup) {
+                                    rowCopy._status = 'duplicate';
+                                    if (rowCopy.code) pastedDuplicateCodes.push(String(rowCopy.code).trim());
+                                } else if (rowCopy._status !== 'new') {
+                                    rowCopy._status = 'modified';
+                                }
+                                next[realIdx] = rowCopy;
+                            }
                         }
                     } else {
                         const newRow = {
@@ -698,28 +1181,90 @@ export const useExcelGrid = ({
                             if (c < columns.length) {
                                 const col = columns[c];
                                 if (col && !col.readOnly) {
-                                    let finalVal = cellVal ?? '';
+                                    let finalVal = cleanClipboardText(cellVal ?? '');
                                     if (col.type === 'number' && finalVal !== '') {
-                                        const num = Number(finalVal);
+                                        const cleanStr = String(finalVal).replace(/[₹$,\s]/g, '');
+                                        const num = Number(cleanStr);
                                         finalVal = isNaN(num) ? finalVal : num;
                                     } else if (col.type === 'checkbox') {
                                         finalVal = finalVal === true || finalVal === 'true' || finalVal === '1';
+                                    } else if (col.type === 'select' || col.type === 'searchable-select') {
+                                        finalVal = resolveDropdownValue(finalVal, col);
                                     }
                                     newRow[col.key] = finalVal;
                                     numCellsUpdated++;
                                 }
                             }
                         });
-                        newRow._errors = validateRow(newRow, columns);
+
+                        // Only transfer whole-row recipe/conversion metadata if an entire row was copied
+                        const isFullRowCopy = cells.length >= columns.length;
+                        if (sourceCopiedRow && isFullRowCopy) {
+                            const isSourceItem = String(sourceCopiedRow.type || '').toLowerCase() === 'item';
+                            if (isSourceItem && (!newRow.type || newRow.type === 'material')) {
+                                newRow.type = 'item';
+                            }
+                            const isTargetItem = String(newRow.type || '').toLowerCase() === 'item';
+                            if ((isTargetItem || isSourceItem) && Array.isArray(sourceCopiedRow.compositions) && sourceCopiedRow.compositions.length > 0) {
+                                newRow.compositions = JSON.parse(JSON.stringify(sourceCopiedRow.compositions));
+                            }
+                            if (Array.isArray(sourceCopiedRow.conversions) && sourceCopiedRow.conversions.length > 0) {
+                                newRow.conversions = JSON.parse(JSON.stringify(sourceCopiedRow.conversions));
+                            }
+                        }
+
+                        // Ensure unique name on new row if identifying column collides
+                        const newNorm = getRowUniqueValue(newRow, uniqueKeyCol);
+                        if (newNorm && existingUniqueKeys.has(newNorm)) {
+                            let candidate = newRow[uniqueKeyCol] || '';
+                            let copyIdx = 1;
+                            let suffixed = `${candidate} (Copy)`;
+                            while (existingUniqueKeys.has(suffixed.trim().toLowerCase())) {
+                                copyIdx++;
+                                suffixed = `${candidate} (Copy ${copyIdx})`;
+                            }
+                            newRow[uniqueKeyCol] = suffixed;
+                            existingUniqueKeys.add(suffixed.trim().toLowerCase());
+                        } else if (newNorm) {
+                            existingUniqueKeys.add(newNorm);
+                        }
+
+                        if (newRow.code && String(newRow.code).trim()) {
+                            const normCode = String(newRow.code).trim().toLowerCase();
+                            if (existingCodes.has(normCode)) {
+                                pastedDuplicateCodes.push(String(newRow.code).trim());
+                            } else {
+                                existingCodes.add(normCode);
+                            }
+                        }
+
+                        newRow._errors = validateRow(newRow, columns, next);
+                        const isDup = Boolean(
+                            newRow._errors && Object.values(newRow._errors).some(msg =>
+                                typeof msg === 'string' && (msg.toLowerCase().includes('already exists') || msg.toLowerCase().includes('duplicate') || msg.toLowerCase().includes('strictly unique'))
+                            )
+                        );
+                        if (isDup) {
+                            newRow._status = 'duplicate';
+                        }
                         next.push(newRow);
                         newRowsAddedCount++;
                     }
                 });
 
+                gridDataRef.current = next;
                 return next;
             });
 
-            if (numCellsUpdated > 0) {
+            if (pastedDuplicateCodes.length > 0) {
+                const uniqueSamples = [...new Set(pastedDuplicateCodes)].join(', ');
+                const alertTitle = 'Resource Code Already Exists';
+                const alertMsg = `Resource code already exists: "${uniqueSamples}". Resource code must be strictly unique. Please change it.`;
+                notify('error', alertTitle, alertMsg);
+                customToast.error(alertMsg, alertTitle);
+            }
+
+            if (numCellsUpdated > 0 || newRowsAddedCount > 0) {
                 const endRow = Math.min(
                     startRow + expandedRows.length - 1,
                     sortedGridDataRef.current.length + newRowsAddedCount - 1
@@ -731,12 +1276,49 @@ export const useExcelGrid = ({
                 notify(
                     'sparkle',
                     'Pasted',
-                    `Pasted ${numCellsUpdated} cell(s)${newRowsAddedCount > 0 ? ` (${newRowsAddedCount} new rows)` : ''}`
+                    `Pasted ${numCellsUpdated} cell(s)${newRowsAddedCount > 0 ? ` (${newRowsAddedCount} new row${newRowsAddedCount > 1 ? 's' : ''})` : ''}`
                 );
             }
         },
         [canWrite, columns, primaryKey, getBoundsFromRefs, pushUndoState, notify]
     );
+
+    // High-reliability paste handler across single/multi cells
+    const handlePasteAction = useCallback(
+        async (pastedText = null, forcedStartRow = undefined, forcedStartCol = undefined) => {
+            if (!canWrite) return;
+            let text = pastedText;
+            if (!text) {
+                try {
+                    if (navigator.clipboard && navigator.clipboard.readText) {
+                        text = await navigator.clipboard.readText();
+                    }
+                } catch {}
+            }
+            if (!text) {
+                text = window.__manoExcelClipboard || sessionStorage.getItem('__manoExcelClipboard') || internalClipboardRef.current;
+            }
+
+            if (text) {
+                lastPasteHandledTimestampRef.current = Date.now();
+                if (editingCellRef.current) {
+                    commitEditingCell();
+                }
+                await executePaste(text, forcedStartRow, forcedStartCol);
+                const curFocus = selectionFocusRef.current || selectionAnchorRef.current;
+                const r = forcedStartRow !== undefined ? forcedStartRow : curFocus?.r;
+                const c = forcedStartCol !== undefined ? forcedStartCol : curFocus?.c;
+                if (r != null && c != null) {
+                    focusCellElement(r, c);
+                }
+            } else {
+                notify('info', 'Clipboard', 'Clipboard is empty');
+            }
+        },
+        [canWrite, executePaste, commitEditingCell, focusCellElement, notify]
+    );
+
+    const triggerPasteWithTrap = handlePasteAction;
 
     // Fill Down (Ctrl+D)
     const handleFillDown = useCallback(() => {
@@ -1036,24 +1618,41 @@ export const useExcelGrid = ({
     const undo = useCallback(() => {
         const now = performance.now();
         if (now - lastUndoTimeRef.current < 200) {
-            return; // Ignore duplicate or rapid auto-repeat triggers
+            return;
         }
         lastUndoTimeRef.current = now;
-
+        if (editingCellRef.current) {
+            editingCellRef.current = null;
+            activeEditorValueRef.current = undefined;
+            setActiveEditorValue(undefined);
+            setEditingCell(null);
+            cellEditInitialStateRef.current = null;
+        }
         if (undoStackRef.current.length === 0) return;
-        const previousState = undoStackRef.current.pop();
+        const previousSnapshot = undoStackRef.current.pop();
 
-        redoStackRef.current.push(
-            gridDataRef.current.map((r) => ({
+        redoStackRef.current.push({
+            grid: gridDataRef.current.map((r) => ({
                 ...r,
                 _errors: r._errors ? { ...r._errors } : {}
-            }))
-        );
+            })),
+            deletedIds: new Set(deletedIdsRef.current)
+        });
 
-        setGridData(previousState);
-        setUndoVersion((v) => v + 1);
+        if (previousSnapshot && previousSnapshot.grid) {
+            setGridData(previousSnapshot.grid);
+            setDeletedIds(new Set(previousSnapshot.deletedIds || []));
+        } else if (Array.isArray(previousSnapshot)) {
+            setGridData(previousSnapshot);
+        }
+        setHistoryVersion((v) => v + 1);
         notify('info', 'Undo', 'Reverted last change');
-    }, [notify]);
+
+        const curFocus = selectionFocusRef.current;
+        if (curFocus) {
+            focusCellElement(curFocus.r, curFocus.c);
+        }
+    }, [notify, focusCellElement]);
 
     const redo = useCallback(() => {
         const now = performance.now();
@@ -1061,25 +1660,42 @@ export const useExcelGrid = ({
             return;
         }
         lastRedoTimeRef.current = now;
-
+        if (editingCellRef.current) {
+            editingCellRef.current = null;
+            activeEditorValueRef.current = undefined;
+            setActiveEditorValue(undefined);
+            setEditingCell(null);
+            cellEditInitialStateRef.current = null;
+        }
         if (redoStackRef.current.length === 0) return;
-        const nextState = redoStackRef.current.pop();
+        const nextSnapshot = redoStackRef.current.pop();
 
-        undoStackRef.current.push(
-            gridDataRef.current.map((r) => ({
+        undoStackRef.current.push({
+            grid: gridDataRef.current.map((r) => ({
                 ...r,
                 _errors: r._errors ? { ...r._errors } : {}
-            }))
-        );
+            })),
+            deletedIds: new Set(deletedIdsRef.current)
+        });
 
-        setGridData(nextState);
-        setUndoVersion((v) => v + 1);
+        if (nextSnapshot && nextSnapshot.grid) {
+            setGridData(nextSnapshot.grid);
+            setDeletedIds(new Set(nextSnapshot.deletedIds || []));
+        } else if (Array.isArray(nextSnapshot)) {
+            setGridData(nextSnapshot);
+        }
+        setHistoryVersion((v) => v + 1);
         notify('info', 'Redo', 'Restored change');
-    }, [notify]);
+
+        const curFocus = selectionFocusRef.current;
+        if (curFocus) {
+            focusCellElement(curFocus.r, curFocus.c);
+        }
+    }, [notify, focusCellElement]);
 
     // Add Rows
     const handleAddRows = useCallback(
-        (count = 1, position = 'top') => {
+        (count = 1, position = 'bottom') => {
             pushUndoState(gridDataRef.current);
             const newRows = Array.from({ length: count }).map((_, idx) => {
                 const freshRow = {
@@ -1200,6 +1816,12 @@ export const useExcelGrid = ({
                 _errors: {}
             };
             if (clone.name) clone.name = `${clone.name} (Copy)`;
+            if (Array.isArray(row?.compositions)) {
+                clone.compositions = JSON.parse(JSON.stringify(row.compositions));
+            }
+            if (Array.isArray(row?.conversions)) {
+                clone.conversions = JSON.parse(JSON.stringify(row.conversions));
+            }
 
             let realIdx = gridDataRef.current.length;
             let sortedIdx = sortedGridDataRef.current.length;
@@ -1310,56 +1932,17 @@ export const useExcelGrid = ({
     const handleCellKeyDown = useCallback(
         (e, rowIndex, colKey) => {
             if (!e) return;
-            if (e._excelHandled || e.nativeEvent?._excelHandled || e.defaultPrevented) return;
+            if (e.defaultPrevented || e._excelHandled || (e.nativeEvent && (e.nativeEvent._excelHandled || e.nativeEvent.defaultPrevented))) return;
 
-            const isModifier = e.ctrlKey || e.metaKey;
-
-            const markHandled = () => {
-                e.preventDefault();
-                if (e.stopPropagation) e.stopPropagation();
-                e._excelHandled = true;
-                if (e.nativeEvent) {
-                    e.nativeEvent._excelHandled = true;
-                    if (e.nativeEvent.stopImmediatePropagation) {
-                        e.nativeEvent.stopImmediatePropagation();
-                    }
+            const markHandled = (evt) => {
+                if (!evt) return;
+                evt._excelHandled = true;
+                if (evt.nativeEvent) {
+                    evt.nativeEvent._excelHandled = true;
+                    evt.nativeEvent.stopImmediatePropagation?.();
                 }
+                evt.stopPropagation?.();
             };
-
-            // Ctrl + Z: Undo
-            if (isModifier && e.key.toLowerCase() === 'z' && !e.shiftKey) {
-                markHandled();
-                if (e.repeat) return;
-                if (editingCell) {
-                    setEditingCell(null);
-                }
-                const activeEl = document.activeElement;
-                if (activeEl && typeof activeEl.blur === 'function') {
-                    activeEl.blur();
-                }
-                if (onUndo) onUndo();
-                else undo();
-                return;
-            }
-
-            // Ctrl + Y / Ctrl + Shift + Z: Redo
-            if (
-                (isModifier && e.key.toLowerCase() === 'y') ||
-                (isModifier && e.shiftKey && e.key.toLowerCase() === 'z')
-            ) {
-                markHandled();
-                if (e.repeat) return;
-                if (editingCell) {
-                    setEditingCell(null);
-                }
-                const activeEl = document.activeElement;
-                if (activeEl && typeof activeEl.blur === 'function') {
-                    activeEl.blur();
-                }
-                if (onRedo) onRedo();
-                else redo();
-                return;
-            }
 
             // Deduplicate rapid duplicate navigation events on the same keypress (within 50ms)
             // (Only for normal grid navigation mode, never inside an active text input editor)
@@ -1367,33 +1950,130 @@ export const useExcelGrid = ({
             if (!editingCell && navKeys.includes(e.key)) {
                 const now = performance.now();
                 if (now - lastNavEventRef.current.time < 50 && lastNavEventRef.current.key === e.key) {
-                    markHandled();
+                    markHandled(e);
                     return;
                 }
                 lastNavEventRef.current = { time: now, key: e.key };
             }
 
             const colIndex = columns.findIndex((c) => c.key === colKey);
-            const totalRows = sortedGridData.length;
+            const totalRows = sortedGridDataRef.current.length;
             const totalCols = columns.length;
+            const isModifier = e.ctrlKey || e.metaKey;
+            const curEdit = editingCellRef.current;
+
+            // Ctrl + Z: Undo (works seamlessly whether cell is selected or in edit mode)
+            if (isModifier && e.key.toLowerCase() === 'z' && !e.shiftKey) {
+                e.preventDefault();
+                markHandled(e);
+                if (curEdit) {
+                    commitEditingCell();
+                }
+                if (onUndo) onUndo();
+                else undo();
+                const focus = selectionFocusRef.current || { r: rowIndex, c: colIndex };
+                if (focus) {
+                    focusCellElement(focus.r, focus.c);
+                }
+                return;
+            }
+
+            // Ctrl + Y / Ctrl + Shift + Z: Redo (works seamlessly whether cell is selected or in edit mode)
+            if (
+                (isModifier && e.key.toLowerCase() === 'y') ||
+                (isModifier && e.shiftKey && e.key.toLowerCase() === 'z')
+            ) {
+                e.preventDefault();
+                markHandled(e);
+                if (curEdit) {
+                    commitEditingCell();
+                }
+                if (onRedo) onRedo();
+                else redo();
+                const focus = selectionFocusRef.current || { r: rowIndex, c: colIndex };
+                if (focus) {
+                    focusCellElement(focus.r, focus.c);
+                }
+                return;
+            }
+
+            // Ctrl + C: Copy
+            if (isModifier && e.key.toLowerCase() === 'c') {
+                const activeElem = document.activeElement;
+                const isInput = activeElem && (activeElem.tagName === 'INPUT' || activeElem.tagName === 'TEXTAREA');
+                if (isInput && activeElem.selectionStart !== activeElem.selectionEnd) {
+                    return;
+                }
+                e.preventDefault();
+                markHandled(e);
+                executeCopy();
+                return;
+            }
+
+            // Ctrl + X: Cut
+            if (isModifier && e.key.toLowerCase() === 'x') {
+                const activeElem = document.activeElement;
+                const isInput = activeElem && (activeElem.tagName === 'INPUT' || activeElem.tagName === 'TEXTAREA');
+                if (isInput && activeElem.selectionStart !== activeElem.selectionEnd) {
+                    return;
+                }
+                e.preventDefault();
+                markHandled(e);
+                executeCut();
+                return;
+            }
+
+            // Ctrl + V: Paste
+            if (isModifier && e.key.toLowerCase() === 'v') {
+                const activeElem = document.activeElement;
+                const isInput = activeElem && (activeElem.tagName === 'INPUT' || activeElem.tagName === 'TEXTAREA');
+                if (isInput && curEdit) {
+                    return;
+                }
+                e.preventDefault();
+                markHandled(e);
+                const colIdx = columns.findIndex((c) => c.key === colKey);
+                handlePasteAction(null, rowIndex, colIdx !== -1 ? colIdx : undefined);
+                return;
+            }
 
             // Inside Cell Editing Mode
-            if (editingCell?.rowIndex === rowIndex && editingCell?.colKey === colKey) {
+            if (curEdit?.rowIndex === rowIndex && curEdit?.colKey === colKey) {
                 const inputEl = e.target;
                 const isInput =
                     inputEl?.tagName?.toLowerCase() === 'input' || inputEl?.tagName?.toLowerCase() === 'textarea';
                 const selStart = isInput ? inputEl.selectionStart ?? 0 : 0;
                 const selEnd = isInput ? inputEl.selectionEnd ?? 0 : 0;
                 const valLen = isInput ? inputEl.value?.length ?? 0 : 0;
+                const currentVal = isInput && inputEl ? inputEl.value : activeEditorValueRef.current;
+
+                // Backspace when editing a non-text-input cell (e.g. select dropdown wrapper): clear value
+                if (e.key === 'Backspace' && !isInput) {
+                    e.preventDefault();
+                    markHandled(e);
+                    activeEditorValueRef.current = '';
+                    handleCellChange(rowIndex, colKey, '', false, curEdit.rowId);
+                    return;
+                }
+
+                // Direct typing before input is focused
+                if (!isInput && e.key.length === 1 && !isModifier && !e.altKey) {
+                    const newVal = (activeEditorValueRef.current || '') + e.key;
+                    activeEditorValueRef.current = newVal;
+                    handleCellChange(rowIndex, colKey, newVal, false, curEdit.rowId);
+                    return;
+                }
 
                 // Alt+Enter: Insert newline inside multiline text
                 if (e.altKey && e.key === 'Enter') {
-                    markHandled();
+                    e.preventDefault();
+                    markHandled(e);
                     if (isInput) {
                         const start = selStart;
                         const end = selEnd;
                         const val = inputEl.value || '';
                         const newVal = val.substring(0, start) + '\n' + val.substring(end);
+                        activeEditorValueRef.current = newVal;
                         handleCellChange(rowIndex, colKey, newVal);
                         setTimeout(() => {
                             inputEl.selectionStart = inputEl.selectionEnd = start + 1;
@@ -1404,62 +2084,70 @@ export const useExcelGrid = ({
 
                 // Ctrl+; : Insert Date Stamp
                 if (isModifier && !e.shiftKey && (e.key === ';' || e.key === ':')) {
-                    markHandled();
+                    e.preventDefault();
+                    markHandled(e);
                     const todayStr = new Date().toISOString().slice(0, 10);
+                    activeEditorValueRef.current = todayStr;
                     handleCellChange(rowIndex, colKey, todayStr);
                     return;
                 }
 
                 // Ctrl+Shift+: : Insert Time Stamp
                 if (isModifier && e.shiftKey && (e.key === ';' || e.key === ':')) {
-                    markHandled();
+                    e.preventDefault();
+                    markHandled(e);
                     const timeStr = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+                    activeEditorValueRef.current = timeStr;
                     handleCellChange(rowIndex, colKey, timeStr);
                     return;
                 }
 
                 // Ctrl+' or Ctrl+" : Copy from cell above
                 if (isModifier && (e.key === "'" || e.key === '"')) {
-                    markHandled();
+                    e.preventDefault();
+                    markHandled(e);
                     handleCopyFromAbove();
                     return;
                 }
 
                 // Enter / Shift+Enter
                 if (e.key === 'Enter') {
-                    markHandled();
-                    if (isInput && inputEl) {
-                        handleCellChange(rowIndex, colKey, inputEl.value);
-                    }
-                    handleCellBlur();
+                    e.preventDefault();
+                    markHandled(e);
+                    commitEditingCell(currentVal);
                     if (!e.shiftKey && rowIndex === totalRows - 1 && canWrite) {
-                        handleAddRows(1);
+                        handleAddRows(1, 'bottom');
                         return;
                     }
                     const nextRow = e.shiftKey ? Math.max(0, rowIndex - 1) : Math.min(totalRows - 1, rowIndex + 1);
+                    selectionAnchorRef.current = { r: nextRow, c: colIndex };
+                    selectionFocusRef.current = { r: nextRow, c: colIndex };
                     setSelectionAnchor({ r: nextRow, c: colIndex });
                     setSelectionFocus({ r: nextRow, c: colIndex });
+                    focusCellElement(nextRow, colIndex);
                     return;
                 }
 
                 // Escape: Cancel edit
                 if (e.key === 'Escape') {
-                    markHandled();
+                    e.preventDefault();
+                    markHandled(e);
                     if (cellEditInitialStateRef.current) {
                         setGridData(cellEditInitialStateRef.current);
                         cellEditInitialStateRef.current = null;
                     }
+                    editingCellRef.current = null;
+                    activeEditorValueRef.current = undefined;
                     setEditingCell(null);
+                    focusCellElement(rowIndex, colIndex);
                     return;
                 }
 
                 // Tab / Shift+Tab
                 if (e.key === 'Tab') {
-                    markHandled();
-                    if (isInput && inputEl) {
-                        handleCellChange(rowIndex, colKey, inputEl.value);
-                    }
-                    handleCellBlur();
+                    e.preventDefault();
+                    markHandled(e);
+                    commitEditingCell(currentVal);
                     let nextCol = e.shiftKey ? colIndex - 1 : colIndex + 1;
                     let nextRow = rowIndex;
                     if (nextCol < 0) {
@@ -1474,45 +2162,119 @@ export const useExcelGrid = ({
                             nextRow = rowIndex + 1;
                             nextCol = 0;
                         } else if (canWrite) {
-                            handleAddRows(1);
+                            handleAddRows(1, 'bottom');
                             return;
                         } else {
                             nextCol = totalCols - 1;
                         }
                     }
+                    selectionAnchorRef.current = { r: nextRow, c: nextCol };
+                    selectionFocusRef.current = { r: nextRow, c: nextCol };
                     setSelectionAnchor({ r: nextRow, c: nextCol });
                     setSelectionFocus({ r: nextRow, c: nextCol });
+                    focusCellElement(nextRow, nextCol);
                     return;
                 }
 
                 // ArrowUp / ArrowDown while editing
                 if (e.key === 'ArrowUp') {
-                    markHandled();
-                    if (isInput && inputEl) {
-                        handleCellChange(rowIndex, colKey, inputEl.value);
-                    }
-                    handleCellBlur();
+                    e.preventDefault();
+                    markHandled(e);
+                    commitEditingCell(currentVal);
                     const targetRow = isModifier ? 0 : Math.max(0, rowIndex - 1);
+                    selectionAnchorRef.current = { r: targetRow, c: colIndex };
+                    selectionFocusRef.current = { r: targetRow, c: colIndex };
                     setSelectionAnchor({ r: targetRow, c: colIndex });
                     setSelectionFocus({ r: targetRow, c: colIndex });
+                    focusCellElement(targetRow, colIndex);
                     return;
                 }
 
                 if (e.key === 'ArrowDown') {
-                    markHandled();
-                    if (isInput && inputEl) {
-                        handleCellChange(rowIndex, colKey, inputEl.value);
-                    }
-                    handleCellBlur();
+                    e.preventDefault();
+                    markHandled(e);
+                    commitEditingCell(currentVal);
                     const targetRow = isModifier ? Math.max(0, totalRows - 1) : Math.min(totalRows - 1, rowIndex + 1);
+                    selectionAnchorRef.current = { r: targetRow, c: colIndex };
+                    selectionFocusRef.current = { r: targetRow, c: colIndex };
                     setSelectionAnchor({ r: targetRow, c: colIndex });
                     setSelectionFocus({ r: targetRow, c: colIndex });
+                    focusCellElement(targetRow, colIndex);
                     return;
                 }
 
-                // ArrowLeft / ArrowRight / Home / End: Allow natural cursor movement between letters within text
-                if (e.key === 'ArrowLeft' || e.key === 'ArrowRight' || e.key === 'Home' || e.key === 'End') {
-                    if (e.stopPropagation) e.stopPropagation();
+                // ArrowLeft: If cursor is within text (selStart > 0 and no modifier), allow in-between letter navigation.
+                // Otherwise (at left edge selStart === 0, or modifier key, or non-input), commit edit and navigate to cell on left!
+                if (e.key === 'ArrowLeft') {
+                    if (isInput && !isModifier && selStart > 0) {
+                        // Allow natural cursor movement between letters within input
+                        return;
+                    }
+
+                    // At beginning of text or modifier pressed: commit and move to cell on the left
+                    e.preventDefault();
+                    markHandled(e);
+                    commitEditingCell(currentVal);
+                    const targetCol = isModifier ? 0 : Math.max(0, colIndex - 1);
+                    selectionAnchorRef.current = { r: rowIndex, c: targetCol };
+                    selectionFocusRef.current = { r: rowIndex, c: targetCol };
+                    setSelectionAnchor({ r: rowIndex, c: targetCol });
+                    setSelectionFocus({ r: rowIndex, c: targetCol });
+                    focusCellElement(rowIndex, targetCol);
+                    return;
+                }
+
+                // ArrowRight: If cursor is within text (selEnd < valLen and no modifier), allow in-between letter navigation.
+                // Otherwise (at right edge selEnd === valLen, or modifier key, or non-input), commit edit and navigate to cell on right!
+                if (e.key === 'ArrowRight') {
+                    if (isInput && !isModifier && selEnd < valLen) {
+                        // Allow natural cursor movement between letters within input
+                        return;
+                    }
+
+                    // At end of text or modifier pressed: commit and move to cell on the right
+                    e.preventDefault();
+                    markHandled(e);
+                    commitEditingCell(currentVal);
+                    const targetCol = isModifier ? totalCols - 1 : Math.min(totalCols - 1, colIndex + 1);
+                    selectionAnchorRef.current = { r: rowIndex, c: targetCol };
+                    selectionFocusRef.current = { r: rowIndex, c: targetCol };
+                    setSelectionAnchor({ r: rowIndex, c: targetCol });
+                    setSelectionFocus({ r: rowIndex, c: targetCol });
+                    focusCellElement(rowIndex, targetCol);
+                    return;
+                }
+
+                // Home / End: If modifier (Ctrl+Home / Ctrl+End), navigate grid. Otherwise allow cursor jump to line start/end.
+                if (e.key === 'Home') {
+                    if (isModifier) {
+                        e.preventDefault();
+                        markHandled(e);
+                        commitEditingCell(currentVal);
+                        selectionAnchorRef.current = { r: 0, c: 0 };
+                        selectionFocusRef.current = { r: 0, c: 0 };
+                        setSelectionAnchor({ r: 0, c: 0 });
+                        setSelectionFocus({ r: 0, c: 0 });
+                        focusCellElement(0, 0);
+                        return;
+                    }
+                    return;
+                }
+
+                if (e.key === 'End') {
+                    if (isModifier) {
+                        e.preventDefault();
+                        markHandled(e);
+                        commitEditingCell(currentVal);
+                        const targetR = Math.max(0, totalRows - 1);
+                        const targetC = Math.max(0, totalCols - 1);
+                        selectionAnchorRef.current = { r: targetR, c: targetC };
+                        selectionFocusRef.current = { r: targetR, c: targetC };
+                        setSelectionAnchor({ r: targetR, c: targetC });
+                        setSelectionFocus({ r: targetR, c: targetC });
+                        focusCellElement(targetR, targetC);
+                        return;
+                    }
                     return;
                 }
 
@@ -1520,15 +2282,65 @@ export const useExcelGrid = ({
             }
 
             // Normal Navigation Mode
+            const curFocus = selectionFocusRef.current || selectionFocus || (rowIndex != null && colIndex !== -1 ? { r: rowIndex, c: colIndex } : { r: 0, c: 0 });
+            const curAnchor = selectionAnchorRef.current || selectionAnchor || (rowIndex != null && colIndex !== -1 ? { r: rowIndex, c: colIndex } : { r: 0, c: 0 });
+            const activeBounds = getBoundsFromRefs() || selectionBounds || (curFocus ? { minRow: curFocus.r, maxRow: curFocus.r, minCol: curFocus.c, maxCol: curFocus.c } : null);
 
-            // Delete / Backspace
-            if (e.key === 'Delete' || e.key === 'Backspace') {
-                if (selectionBounds && canWrite) {
-                    markHandled();
-                    const isFullRowSelected = selectionBounds.minCol === 0 && selectionBounds.maxCol === totalCols - 1;
+            const updateSelection = (anchor, focus) => {
+                selectionAnchorRef.current = anchor;
+                selectionFocusRef.current = focus;
+                setSelectionAnchor(anchor);
+                setSelectionFocus(focus);
+                if (focus) {
+                    focusCellElement(focus.r, focus.c);
+                }
+            };
+
+            // Backspace: Delete a single character from the cell and keep editing at the end
+            if (e.key === 'Backspace') {
+                if (canWrite && (activeBounds || curFocus)) {
+                    e.preventDefault();
+                    markHandled(e);
+
+                    const targetRow = curFocus ? curFocus.r : activeBounds.minRow;
+                    const targetColIdx = curFocus ? curFocus.c : activeBounds.minCol;
+                    const targetCol = columns[targetColIdx];
+
+                    if (targetCol && !targetCol.readOnly) {
+                        pushUndoState(gridDataRef.current);
+
+                        if (targetCol.type === 'checkbox') {
+                            const targetRowObj = sortedGridDataRef.current[targetRow] || gridDataRef.current[targetRow];
+                            handleCellChange(targetRow, targetCol.key, false, true, targetRowObj?.[primaryKey]);
+                            return;
+                        }
+
+                        const targetRowObj = sortedGridDataRef.current[targetRow] || gridDataRef.current[targetRow];
+                        const curVal = String(targetRowObj ? (targetRowObj[targetCol.key] ?? '') : '');
+                        // Remove a single character from the end instead of deleting the whole word
+                        const newVal = curVal.length > 0 ? curVal.slice(0, -1) : '';
+
+                        handleStartEditing(targetRow, targetCol.key, newVal);
+
+                        selectionAnchorRef.current = { r: targetRow, c: targetColIdx };
+                        selectionFocusRef.current = { r: targetRow, c: targetColIdx };
+                        setSelectionAnchor({ r: targetRow, c: targetColIdx });
+                        setSelectionFocus({ r: targetRow, c: targetColIdx });
+                    }
+                    return;
+                }
+                return;
+            }
+
+            // Delete: Clear selected cell(s) contents without entering edit mode, or delete full rows if full rows selected
+            if (e.key === 'Delete') {
+                if (canWrite && activeBounds) {
+                    e.preventDefault();
+                    markHandled(e);
+                    const isFullRowSelected = activeBounds.minCol === 0 && activeBounds.maxCol === totalCols - 1;
                     if (isFullRowSelected) {
                         const rowsToDelete = [];
-                        for (let r = selectionBounds.minRow; r <= selectionBounds.maxRow; r++) {
+                        for (let r = activeBounds.minRow; r <= activeBounds.maxRow; r++) {
                             const target = sortedGridDataRef.current[r];
                             if (target) rowsToDelete.push(target);
                         }
@@ -1542,26 +2354,18 @@ export const useExcelGrid = ({
                 return;
             }
 
-            const curFocus = selectionFocusRef.current || selectionFocus || { r: rowIndex, c: colIndex };
-            const curAnchor = selectionAnchorRef.current || selectionAnchor || { r: rowIndex, c: colIndex };
-
-            const updateSelection = (anchor, focus) => {
-                selectionAnchorRef.current = anchor;
-                selectionFocusRef.current = focus;
-                setSelectionAnchor(anchor);
-                setSelectionFocus(focus);
-            };
-
             // Arrow Keys Navigation
             if (e.key === 'ArrowUp') {
-                markHandled();
+                e.preventDefault();
+                markHandled(e);
                 const targetRow = isModifier ? 0 : Math.max(0, curFocus.r - 1);
                 updateSelection(e.shiftKey ? curAnchor : { r: targetRow, c: curFocus.c }, { r: targetRow, c: curFocus.c });
                 return;
             }
 
             if (e.key === 'ArrowDown') {
-                markHandled();
+                e.preventDefault();
+                markHandled(e);
                 const targetRow = isModifier
                     ? Math.max(0, totalRows - 1)
                     : Math.min(Math.max(0, totalRows - 1), curFocus.r + 1);
@@ -1570,14 +2374,16 @@ export const useExcelGrid = ({
             }
 
             if (e.key === 'ArrowLeft') {
-                markHandled();
+                e.preventDefault();
+                markHandled(e);
                 const targetCol = isModifier ? 0 : Math.max(0, curFocus.c - 1);
                 updateSelection(e.shiftKey ? curAnchor : { r: curFocus.r, c: targetCol }, { r: curFocus.r, c: targetCol });
                 return;
             }
 
             if (e.key === 'ArrowRight') {
-                markHandled();
+                e.preventDefault();
+                markHandled(e);
                 const targetCol = isModifier ? totalCols - 1 : Math.min(totalCols - 1, curFocus.c + 1);
                 updateSelection(e.shiftKey ? curAnchor : { r: curFocus.r, c: targetCol }, { r: curFocus.r, c: targetCol });
                 return;
@@ -1585,7 +2391,8 @@ export const useExcelGrid = ({
 
             // Home / End
             if (e.key === 'Home') {
-                markHandled();
+                e.preventDefault();
+                markHandled(e);
                 const targetRow = isModifier ? 0 : curFocus.r;
                 const targetCol = 0;
                 updateSelection(e.shiftKey ? curAnchor : { r: targetRow, c: targetCol }, { r: targetRow, c: targetCol });
@@ -1593,7 +2400,8 @@ export const useExcelGrid = ({
             }
 
             if (e.key === 'End') {
-                markHandled();
+                e.preventDefault();
+                markHandled(e);
                 const targetRow = isModifier ? Math.max(0, totalRows - 1) : curFocus.r;
                 const targetCol = totalCols - 1;
                 updateSelection(e.shiftKey ? curAnchor : { r: targetRow, c: targetCol }, { r: targetRow, c: targetCol });
@@ -1602,22 +2410,22 @@ export const useExcelGrid = ({
 
             // PageUp / PageDown
             if (e.key === 'PageUp') {
-                markHandled();
+                e.preventDefault();
+                markHandled(e);
                 if (e.altKey) {
-                    // Alt+PageUp: jump 5 columns left
                     const targetCol = Math.max(0, curFocus.c - 5);
                     updateSelection(e.shiftKey ? curAnchor : { r: curFocus.r, c: targetCol }, { r: curFocus.r, c: targetCol });
                 } else {
                     const targetRow = Math.max(0, curFocus.r - 10);
-                    updateSelection(e.shiftKey ? curAnchor : { r: targetRow, c: curFocus.c }, { r: targetRow, c: targetCol });
+                    updateSelection(e.shiftKey ? curAnchor : { r: targetRow, c: curFocus.c }, { r: targetRow, c: curFocus.c });
                 }
                 return;
             }
 
             if (e.key === 'PageDown') {
-                markHandled();
+                e.preventDefault();
+                markHandled(e);
                 if (e.altKey) {
-                    // Alt+PageDown: jump 5 columns right
                     const targetCol = Math.min(totalCols - 1, curFocus.c + 5);
                     updateSelection(e.shiftKey ? curAnchor : { r: curFocus.r, c: targetCol }, { r: curFocus.r, c: targetCol });
                 } else {
@@ -1629,7 +2437,8 @@ export const useExcelGrid = ({
 
             // Tab / Shift+Tab
             if (e.key === 'Tab') {
-                markHandled();
+                e.preventDefault();
+                markHandled(e);
                 let nextCol = e.shiftKey ? curFocus.c - 1 : curFocus.c + 1;
                 let nextRow = curFocus.r;
                 if (nextCol < 0) {
@@ -1644,7 +2453,7 @@ export const useExcelGrid = ({
                         nextRow = curFocus.r + 1;
                         nextCol = 0;
                     } else if (canWrite) {
-                        handleAddRows(1);
+                        handleAddRows(1, 'bottom');
                         return;
                     } else {
                         nextCol = totalCols - 1;
@@ -1654,11 +2463,23 @@ export const useExcelGrid = ({
                 return;
             }
 
+            // Alt+ArrowDown or Enter: Open Dropdown in Select Cell
+            if ((e.altKey && e.key === 'ArrowDown') || e.key === 'Enter') {
+                const targetCol = columns[curFocus.c];
+                if (targetCol && (targetCol.type === 'select' || targetCol.type === 'searchable-select') && canWrite && !targetCol.readOnly) {
+                    e.preventDefault();
+                    markHandled(e);
+                    handleStartEditing(curFocus.r, targetCol.key);
+                    return;
+                }
+            }
+
             // Enter / Shift+Enter
             if (e.key === 'Enter') {
-                markHandled();
+                e.preventDefault();
+                markHandled(e);
                 if (!e.shiftKey && curFocus.r === totalRows - 1 && canWrite) {
-                    handleAddRows(1);
+                    handleAddRows(1, 'bottom');
                     return;
                 }
                 const nextRow = e.shiftKey
@@ -1671,7 +2492,8 @@ export const useExcelGrid = ({
             // Spacebar Selection (Shift+Space: Row, Ctrl+Space: Col)
             if (e.key === ' ' || e.key === 'Spacebar') {
                 if (e.shiftKey && !isModifier) {
-                    markHandled();
+                    e.preventDefault();
+                    markHandled(e);
                     const bounds = selectionBounds || { minRow: curFocus.r, maxRow: curFocus.r };
                     const newSelectedIds = new Set();
                     for (let r = bounds.minRow; r <= bounds.maxRow; r++) {
@@ -1679,13 +2501,18 @@ export const useExcelGrid = ({
                         if (target) newSelectedIds.add(target[primaryKey]);
                     }
                     setSelectedIds(newSelectedIds);
+                    selectionAnchorRef.current = { r: bounds.minRow, c: 0 };
+                    selectionFocusRef.current = { r: bounds.maxRow, c: totalCols - 1 };
                     setSelectionAnchor({ r: bounds.minRow, c: 0 });
                     setSelectionFocus({ r: bounds.maxRow, c: totalCols - 1 });
                     return;
                 }
                 if (isModifier && !e.shiftKey) {
-                    markHandled();
+                    e.preventDefault();
+                    markHandled(e);
                     const bounds = selectionBounds || { minCol: curFocus.c, maxCol: curFocus.c };
+                    selectionAnchorRef.current = { r: 0, c: bounds.minCol };
+                    selectionFocusRef.current = { r: Math.max(0, totalRows - 1), c: bounds.maxCol };
                     setSelectionAnchor({ r: 0, c: bounds.minCol });
                     setSelectionFocus({ r: Math.max(0, totalRows - 1), c: bounds.maxCol });
                     return;
@@ -1694,62 +2521,69 @@ export const useExcelGrid = ({
 
             // F2: Start Edit
             if (e.key === 'F2') {
-                markHandled();
+                e.preventDefault();
+                markHandled(e);
                 if (canWrite) {
-                    cellEditInitialStateRef.current = gridDataRef.current.map((r) => ({
-                        ...r,
-                        _errors: r._errors ? { ...r._errors } : {}
-                    }));
-                    setEditingCell({ rowIndex: curFocus.r, colKey });
+                    const col = columns[curFocus.c];
+                    if (col && !col.readOnly) {
+                        handleStartEditing(curFocus.r, col.key);
+                    }
                 }
                 return;
             }
 
             // Ctrl+; : Insert Date Stamp
             if (canWrite && isModifier && !e.shiftKey && (e.key === ';' || e.key === ':')) {
-                markHandled();
+                e.preventDefault();
+                markHandled(e);
                 handleDateStamp();
                 return;
             }
 
             // Ctrl+Shift+: : Insert Time Stamp
             if (canWrite && isModifier && e.shiftKey && (e.key === ';' || e.key === ':')) {
-                markHandled();
+                e.preventDefault();
+                markHandled(e);
                 handleTimeStamp();
                 return;
             }
 
             // Ctrl+' or Ctrl+" : Copy value from cell above
             if (canWrite && isModifier && (e.key === "'" || e.key === '"')) {
-                markHandled();
+                e.preventDefault();
+                markHandled(e);
                 handleCopyFromAbove();
                 return;
             }
 
             // Ctrl+U: UPPERCASE
             if (canWrite && isModifier && e.key.toLowerCase() === 'u') {
-                markHandled();
+                e.preventDefault();
+                markHandled(e);
                 handleTransformCase('uppercase');
                 return;
             }
 
             // Ctrl+L: lowercase
             if (canWrite && isModifier && e.key.toLowerCase() === 'l' && !e.shiftKey) {
-                markHandled();
+                e.preventDefault();
+                markHandled(e);
                 handleTransformCase('lowercase');
                 return;
             }
 
             // Ctrl+K: Title Case
             if (canWrite && isModifier && e.key.toLowerCase() === 'k') {
-                markHandled();
+                e.preventDefault();
+                markHandled(e);
                 handleTransformCase('titlecase');
                 return;
             }
 
             // Ctrl+H: Open Find & Replace
             if (isModifier && e.key.toLowerCase() === 'h') {
-                markHandled();
+                e.preventDefault();
+                markHandled(e);
                 setFindReplaceMode('replace');
                 setIsFindReplaceOpen(true);
                 return;
@@ -1757,14 +2591,16 @@ export const useExcelGrid = ({
 
             // F1: Open Shortcuts Modal
             if (e.key === 'F1') {
-                markHandled();
+                e.preventDefault();
+                markHandled(e);
                 setIsShortcutsModalOpen(true);
                 return;
             }
 
             // Shift+F10 / ContextMenu
             if ((e.shiftKey && e.key === 'F10') || e.key === 'ContextMenu') {
-                markHandled();
+                e.preventDefault();
+                markHandled(e);
                 setContextMenu({
                     x: window.innerWidth / 2,
                     y: window.innerHeight / 2,
@@ -1776,29 +2612,20 @@ export const useExcelGrid = ({
 
             // Character typing directly starts editing
             if (canWrite && e.key.length === 1 && !isModifier && !e.altKey) {
-                const targetCol = columns[colIndex];
+                const targetCol = columns[curFocus.c];
                 if (targetCol && !targetCol.readOnly && targetCol.type !== 'select' && targetCol.type !== 'searchable-select') {
-                    markHandled();
-                    cellEditInitialStateRef.current = gridDataRef.current.map((r) => ({
-                        ...r,
-                        _errors: r._errors ? { ...r._errors } : {}
-                    }));
-                    setEditingCell({ rowIndex: curFocus.r, colKey, initialChar: e.key });
-                    handleCellChange(curFocus.r, colKey, e.key);
-                    return;
+                    markHandled(e);
+                    handleStartEditing(curFocus.r, targetCol.key, e.key);
                 }
             }
         },
         [
             columns,
-            sortedGridData.length,
-            editingCell,
-            selectionFocus,
-            selectionAnchor,
-            selectionBounds,
             canWrite,
+            commitEditingCell,
+            handleStartEditing,
             handleCellChange,
-            handleCellBlur,
+            handleAddRows,
             handleDeleteRows,
             handleClearCells,
             handleDateStamp,
@@ -1806,17 +2633,21 @@ export const useExcelGrid = ({
             handleCopyFromAbove,
             handleTransformCase,
             primaryKey,
+            focusCellElement,
             undo,
             redo,
             onUndo,
-            onRedo
+            onRedo,
+            pushUndoState,
+            getBoundsFromRefs
         ]
     );
 
     // Global KeyDown Listener (Copy, Paste, Cut, Undo, Redo, Fill Down/Right, Shortcuts)
     useEffect(() => {
         const handleGlobalKeyDown = async (e) => {
-            if (e.defaultPrevented || e._excelHandled || e.nativeEvent?._excelHandled) return;
+            if (!e) return;
+            if (e.defaultPrevented || e._excelHandled || (e.nativeEvent && (e.nativeEvent._excelHandled || e.nativeEvent.defaultPrevented))) return;
 
             const activeElem = document.activeElement;
             const isTyping =
@@ -1827,13 +2658,45 @@ export const useExcelGrid = ({
 
             const isCtrlOrCmd = e.ctrlKey || e.metaKey;
 
-            // If user is actively typing in a cell editor or input field:
-            // Let native clipboard events (Ctrl+C, Ctrl+V, Ctrl+X) and typing happen naturally inside the input.
-            if (isTyping) {
-                if (isCtrlOrCmd && (e.key.toLowerCase() === 'c' || e.key.toLowerCase() === 'x' || e.key.toLowerCase() === 'v')) {
+            const isGridElement = Boolean(
+                activeElem?.closest('td[data-excel-cell="true"]') ||
+                activeElem?.closest('[data-excel-grid="true"]') ||
+                activeElem?.closest('[data-excel-select-portal="true"]') ||
+                activeElem?.closest('table')
+            );
+
+            // If user is actively typing in an input field outside the grid:
+            if (isTyping && !isGridElement) {
+                return;
+            }
+
+            // Inside an editing cell input:
+            if (isTyping && isGridElement) {
+                if (isCtrlOrCmd && e.key.toLowerCase() === 'c') {
+                    if (activeElem.selectionStart !== activeElem.selectionEnd) {
+                        return; // user highlighted partial text to copy
+                    }
+                    executeCopy();
                     return;
                 }
-                if (editingCell && !isCtrlOrCmd) {
+                if (isCtrlOrCmd && e.key.toLowerCase() === 'x') {
+                    if (activeElem.selectionStart !== activeElem.selectionEnd) {
+                        return;
+                    }
+                    e.preventDefault();
+                    await executeCut();
+                    return;
+                }
+                if (isCtrlOrCmd && e.key.toLowerCase() === 'v') {
+                    if (activeElem?.closest('[data-excel-select-portal="true"]')) {
+                        // Allow dropdown search input normal typing/pasting
+                        return;
+                    }
+                    const colIdx = curEdit ? columns.findIndex((c) => c.key === curEdit.colKey) : undefined;
+                    triggerPasteWithTrap(curEdit?.rowIndex, colIdx);
+                    return;
+                }
+                if (editingCellRef.current && !isCtrlOrCmd) {
                     return;
                 }
             }
@@ -1863,15 +2726,17 @@ export const useExcelGrid = ({
 
             // Ctrl + C: Copy
             if (isCtrlOrCmd && e.key.toLowerCase() === 'c') {
-                if (!selectionAnchorRef.current && selectedIdsRef.current.size === 0) return;
+                if (isTyping && activeElem?.selectionStart !== activeElem?.selectionEnd) return;
+                if (!selectionAnchorRef.current && !selectionFocusRef.current && selectedIdsRef.current.size === 0 && !editingCellRef.current) return;
                 e.preventDefault();
-                await executeCopy();
+                executeCopy();
                 return;
             }
 
             // Ctrl + X: Cut
             if (isCtrlOrCmd && e.key.toLowerCase() === 'x') {
-                if (!selectionAnchorRef.current && selectedIdsRef.current.size === 0) return;
+                if (isTyping && activeElem?.selectionStart !== activeElem?.selectionEnd) return;
+                if (!selectionAnchorRef.current && !selectionFocusRef.current && selectedIdsRef.current.size === 0 && !editingCellRef.current) return;
                 e.preventDefault();
                 await executeCut();
                 return;
@@ -1879,9 +2744,10 @@ export const useExcelGrid = ({
 
             // Ctrl + V: Paste
             if (isCtrlOrCmd && e.key.toLowerCase() === 'v') {
-                if (!selectionAnchorRef.current && selectedIdsRef.current.size === 0) return;
+                if (isTyping && editingCellRef.current) return;
+                if (!selectionAnchorRef.current && !selectionFocusRef.current && selectedIdsRef.current.size === 0 && !editingCellRef.current) return;
                 e.preventDefault();
-                await executePaste();
+                handlePasteAction();
                 return;
             }
 
@@ -1897,14 +2763,31 @@ export const useExcelGrid = ({
                     activeElem?.closest('[data-excel-formula-bar="true"]');
 
                 if (isTyping && !isInsideExcel) {
-                    return; // Let native browser undo work inside external search/filter inputs
+                    return;
                 }
-                if (isTyping && activeElem) {
-                    activeElem.blur();
+                if (isTyping) {
+                    const val = activeElem.value || '';
+                    const initVal = activeElem.dataset?.initialValue || '';
+                    if (val === '' || val === initVal) {
+                        e.preventDefault();
+                        activeElem.blur();
+                        if (onUndo) onUndo();
+                        else undo();
+                        const curFocus = selectionFocusRef.current;
+                        if (curFocus) {
+                            focusCellElement(curFocus.r, curFocus.c);
+                        }
+                        return;
+                    }
+                    return;
                 }
                 e.preventDefault();
                 if (onUndo) onUndo();
                 else undo();
+                const curFocus = selectionFocusRef.current;
+                if (curFocus) {
+                    focusCellElement(curFocus.r, curFocus.c);
+                }
                 return;
             }
 
@@ -1925,12 +2808,29 @@ export const useExcelGrid = ({
                 if (isTyping && !isInsideExcel) {
                     return;
                 }
-                if (isTyping && activeElem) {
-                    activeElem.blur();
+                if (isTyping) {
+                    const val = activeElem.value || '';
+                    const initVal = activeElem.dataset?.initialValue || '';
+                    if (val === '' || val === initVal) {
+                        e.preventDefault();
+                        activeElem.blur();
+                        if (onRedo) onRedo();
+                        else redo();
+                        const curFocus = selectionFocusRef.current;
+                        if (curFocus) {
+                            focusCellElement(curFocus.r, curFocus.c);
+                        }
+                        return;
+                    }
+                    return;
                 }
                 e.preventDefault();
                 if (onRedo) onRedo();
                 else redo();
+                const curFocus = selectionFocusRef.current;
+                if (curFocus) {
+                    focusCellElement(curFocus.r, curFocus.c);
+                }
                 return;
             }
 
@@ -1979,13 +2879,14 @@ export const useExcelGrid = ({
 
             // Cell Navigation & Keyboard Gestures (When a cell is selected / active)
             const focus = selectionFocusRef.current;
-            if (focus && !editingCell) {
+            if (focus && !editingCellRef.current) {
                 // If user is inside an external modal / search input outside the grid, ignore
                 if (isTyping && !activeElem?.closest('td[data-excel-cell="true"]') && !activeElem?.closest('[data-excel-grid="true"]')) {
                     return;
                 }
 
-                if (e.defaultPrevented || e._excelHandled || e.nativeEvent?._excelHandled) {
+                // If active element is ALREADY a cell, it already handled key events directly in ExcelCell.onKeyDown!
+                if (activeElem?.closest('td[data-excel-cell="true"]')) {
                     return;
                 }
 
@@ -2010,8 +2911,105 @@ export const useExcelGrid = ({
             }
         };
 
+        const handleNativePaste = async (e) => {
+            const now = Date.now();
+            if (now - lastPasteHandledTimestampRef.current < 100) return;
+
+            const active = document.activeElement;
+            const isPortal = Boolean(active?.closest('[data-excel-select-portal="true"]'));
+            const isInput = active && (active.tagName === 'INPUT' || active.tagName === 'TEXTAREA' || active.tagName === 'SELECT');
+            const isInsideCell = Boolean(active?.closest('td[data-excel-cell="true"]'));
+            const isGrid = Boolean(
+                isInsideCell ||
+                active?.closest('[data-excel-grid="true"]') ||
+                isPortal ||
+                active?.closest('table')
+            );
+            if (isInput && !isGrid) return;
+
+            let text = e.clipboardData ? e.clipboardData.getData('text/plain') : null;
+            if (!text) {
+                text = window.__manoExcelClipboard || sessionStorage.getItem('__manoExcelClipboard') || internalClipboardRef.current;
+            }
+
+            if (isInput && editingCellRef.current && !isPortal) {
+                if (text && !text.includes('\t') && !text.includes('\n')) {
+                    return;
+                }
+            }
+
+            const focus = selectionFocusRef.current;
+            const bounds = getBoundsFromRefs();
+            const curSelectedIds = selectedIdsRef.current;
+            const curEdit = editingCellRef.current;
+            if (!focus && !bounds && curSelectedIds.size === 0 && !curEdit) return;
+
+            if (text) {
+                lastPasteHandledTimestampRef.current = now;
+                e.preventDefault();
+                e.stopPropagation();
+                if (editingCellRef.current) {
+                    commitEditingCell();
+                }
+                await executePaste(text);
+            }
+        };
+
+        const handleNativeCopy = (e) => {
+            const active = document.activeElement;
+            const isPortal = Boolean(active?.closest('[data-excel-select-portal="true"]'));
+            const isInput = active && (active.tagName === 'INPUT' || active.tagName === 'TEXTAREA');
+            const isGrid = Boolean(
+                active?.closest('td[data-excel-cell="true"]') ||
+                active?.closest('[data-excel-grid="true"]') ||
+                isPortal ||
+                active?.closest('table')
+            );
+            if (isInput && !isGrid) return;
+            if (isInput && active.selectionStart !== active.selectionEnd) {
+                return;
+            }
+
+            const focus = selectionFocusRef.current;
+            const bounds = getBoundsFromRefs();
+            const curSelectedIds = selectedIdsRef.current;
+            const curEdit = editingCellRef.current;
+            if (!focus && !bounds && curSelectedIds.size === 0 && !curEdit) return;
+
+            const { tsvData, rowsToCopy, cellCount } = getSelectedDataMatrix();
+            if (!tsvData) return;
+
+            if (e && e.clipboardData) {
+                e.preventDefault();
+                e.clipboardData.clearData();
+                e.clipboardData.setData('text/plain', tsvData);
+            }
+
+            internalClipboardRef.current = tsvData;
+            window.__manoExcelClipboard = tsvData;
+            internalClipboardRowsRef.current = rowsToCopy.map((r) => JSON.parse(JSON.stringify(r)));
+            window.__manoExcelClipboardRows = internalClipboardRowsRef.current;
+            try {
+                sessionStorage.setItem('__manoExcelClipboard', tsvData);
+                sessionStorage.setItem('__manoExcelClipboardRows', JSON.stringify(internalClipboardRowsRef.current));
+            } catch {}
+
+            notify(
+                'sparkle',
+                'Copied',
+                cellCount === 1 ? 'Copied 1 cell to clipboard' : `Copied ${cellCount} cells to clipboard`
+            );
+        };
+
         window.addEventListener('keydown', handleGlobalKeyDown);
-        return () => window.removeEventListener('keydown', handleGlobalKeyDown);
+        window.addEventListener('paste', handleNativePaste);
+        window.addEventListener('copy', handleNativeCopy);
+
+        return () => {
+            window.removeEventListener('keydown', handleGlobalKeyDown);
+            window.removeEventListener('paste', handleNativePaste);
+            window.removeEventListener('copy', handleNativeCopy);
+        };
     }, [
         editingCell,
         columns,
@@ -2019,6 +3017,7 @@ export const useExcelGrid = ({
         executeCopy,
         executeCut,
         executePaste,
+        triggerPasteWithTrap,
         undo,
         redo,
         handleFillDown,
@@ -2095,9 +3094,13 @@ export const useExcelGrid = ({
                 return;
             }
             if (!e.target.closest('td[data-excel-cell="true"]') && !e.target.closest('input')) {
+                if (editingCellRef.current) {
+                    commitEditingCell();
+                }
                 setSelectionAnchor(null);
                 setSelectionFocus(null);
-                setEditingCell(null);
+                selectionAnchorRef.current = null;
+                selectionFocusRef.current = null;
                 setActiveDropdownCell(null);
                 setDropdownPortalProps(null);
                 setContextMenu(null);
@@ -2151,7 +3154,7 @@ export const useExcelGrid = ({
                 }
             }
         }
-    }, [selectionFocus, editingCell, columns, currentPage]);
+    }, [selectionFocus, editingCell, columns]);
 
     return {
         gridData,
@@ -2212,20 +3215,29 @@ export const useExcelGrid = ({
         contextMenu,
         setContextMenu,
 
-        // Dirty status & Undo/Redo
+        gridDataRef,
+        activeEditorValue,
+
+        // Dirty status & Undo/Redo & Storage
         isSavingRef,
         hasUnsavedChanges,
         unsavedCount,
         dirtyCounts,
         undoVersion,
-        canUndo: externalCanUndo !== undefined ? externalCanUndo : (undoVersion >= 0 && undoStackRef.current.length > 0),
-        canRedo: externalCanRedo !== undefined ? externalCanRedo : (undoVersion >= 0 && redoStackRef.current.length > 0),
+        historyVersion,
+        canUndo: externalCanUndo !== undefined ? externalCanUndo : ((undoVersion >= 0 || historyVersion >= 0) && undoStackRef.current.length > 0),
+        canRedo: externalCanRedo !== undefined ? externalCanRedo : ((undoVersion >= 0 || historyVersion >= 0) && redoStackRef.current.length > 0),
         undo: onUndo || undo,
         redo: onRedo || redo,
         pushUndoState,
+        clearDraftFromStorage,
+        discardDraft,
+        storageKey,
 
         // Actions
+        commitEditingCell,
         handleStartEditing,
+        handleEditorValueChange,
         handleCellMouseDown,
         handleCellMouseEnter,
         handleCellChange,
@@ -2234,6 +3246,7 @@ export const useExcelGrid = ({
         executeCopy,
         executeCut,
         executePaste,
+        triggerPasteWithTrap,
         handleFillDown,
         handleFillRight,
         handleAutoFillDown,

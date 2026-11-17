@@ -15,8 +15,8 @@ import VendorDetails from './VendorDetails';
 import VendorFilterDropdown from './VendorFilterDropdown';
 import AddEditVendor from './AddEditVendor';
 import ManageMetadataModal from '../../components/ManageMetadataModal';
-import DuplicateResolverModal from '../../components/DuplicateResolverModal';
 import { ExcelGrid } from '../../components/ExcelGrid';
+import { evaluateFormula } from '../../utils/excelFormulaEngine';
 import { useAuth } from '../../context/AuthContext';
 
 const CATEGORY_OPTIONS = [
@@ -330,6 +330,7 @@ export const VendorsList = () => {
                 type: 'select',
                 options: CATEGORY_OPTIONS,
                 defaultValue: '',
+
                 width: '165px',
                 minWidth: '155px',
                 aliases: COLUMN_ALIASES.category,
@@ -350,6 +351,7 @@ export const VendorsList = () => {
                         disabled={!canWrite}
                     />
                 )
+
             },
             {
                 key: 'job_name',
@@ -435,30 +437,36 @@ export const VendorsList = () => {
         ];
     }, [jobOptions, canWrite]);
 
-    // Batch Save Handler
+    // Unified single-transaction batch save connecting to vendorApi
     const handleSaveGridBatch = async (payload) => {
-        const { created, updated, deleted } = payload;
+        const { created = [], updated = [], deleted = [] } = payload;
+
+        const resolveItemValues = (item) => {
+            const clean = { ...item };
+            Object.entries(clean).forEach(([k, v]) => {
+                if (typeof v === 'string' && v.trim().startsWith('=')) {
+                    const evalRes = evaluateFormula(v, item);
+                    clean[k] = evalRes.success ? (evalRes.result ?? '') : v;
+                }
+            });
+            return clean;
+        };
+
+        const resolvedCreated = created
+            .map(resolveItemValues)
+            .filter((item) => item.name && String(item.name).trim());
+
+        const resolvedUpdated = updated
+            .map(resolveItemValues)
+            .filter((item) => item.id && item.name && String(item.name).trim());
 
         const realDeleted = (deleted || []).filter((id) => id && !String(id).startsWith('temp_'));
-        if (realDeleted.length > 0) {
-            await vendorApi.deleteVendors(realDeleted);
-        }
 
-        if (created.length > 0) {
-            for (const item of created) {
-                if (item.name && item.name.trim()) {
-                    await vendorApi.createVendor(item);
-                }
-            }
-        }
-
-        if (updated.length > 0) {
-            for (const item of updated) {
-                if (item.id && item.name && item.name.trim()) {
-                    await vendorApi.updateVendor(item.id, item);
-                }
-            }
-        }
+        await vendorApi.batchSaveVendors({
+            created: resolvedCreated,
+            updated: resolvedUpdated,
+            deleted: realDeleted
+        });
 
         await fetchVendors();
     };
@@ -495,12 +503,6 @@ export const VendorsList = () => {
         }
     };
 
-    // Delete duplicates
-    const handleConfirmDeleteDuplicates = async (idsToDelete) => {
-        if (!idsToDelete || idsToDelete.length === 0) return;
-        await vendorApi.deleteVendors(idsToDelete);
-        fetchVendors();
-    };
 
     return (
         <div className="flex-1 min-h-0 flex flex-col h-full overflow-hidden bg-white dark:bg-[#0d1117]">
@@ -560,6 +562,8 @@ export const VendorsList = () => {
                 isLoading={isLoading}
                 onSave={handleSaveGridBatch}
                 onRefresh={fetchVendors}
+                isDuplicateModalOpen={isDuplicateModalOpen}
+                setIsDuplicateModalOpen={setIsDuplicateModalOpen}
                 onViewRow={handleViewVendorDetails}
                 allowAddColumn={false}
                 emptyMessage="No vendors found in database"
@@ -656,18 +660,6 @@ export const VendorsList = () => {
                     type="job_natures"
                     title="Manage Nature of Jobs"
                     onUpdate={fetchMetadata}
-                />
-            )}
-
-            {/* ─── Duplicate Resolver Modal ─── */}
-            {isDuplicateModalOpen && (
-                <DuplicateResolverModal
-                    isOpen={isDuplicateModalOpen}
-                    onClose={() => setIsDuplicateModalOpen(false)}
-                    onConfirm={handleConfirmDeleteDuplicates}
-                    items={vendors}
-                    primaryKey="name"
-                    entityName="Vendors"
                 />
             )}
         </div>

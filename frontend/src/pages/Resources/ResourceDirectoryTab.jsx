@@ -1,10 +1,12 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useCallback } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import {
     Package,
     Layers,
     Users,
     Plus,
-    CopyCheck
+    CopyCheck,
+    ChevronDown
 } from 'lucide-react';
 import { resourceApi } from '../../services/resourceApi';
 import { toast } from 'react-toastify';
@@ -14,6 +16,9 @@ import { UNIT_OPTIONS, normalizeUnitCode } from './resourceConstants';
 import DuplicateResolverModal from '../../components/DuplicateResolverModal';
 import ResourceFilterDropdown from './ResourceFilterDropdown';
 import { ExcelGrid } from '../../components/ExcelGrid';
+import ResourceCompositionSubGrid from './ResourceCompositionSubGrid';
+import { evaluateFormula } from '../../utils/excelFormulaEngine';
+import { customToast } from '../../utils/toast';
 
 const TYPE_CONFIG = {
     material: { label: 'Material', icon: Package, color: 'text-amber-600 dark:text-amber-400', bg: 'bg-amber-100 dark:bg-amber-900/30' },
@@ -37,6 +42,9 @@ export const ResourceDirectoryTab = ({
     canWrite = true,
     fetchResources
 }) => {
+    const [, setSearchParams] = useSearchParams();
+    const [expandedRowIds, setExpandedRowIds] = useState(new Set());
+
     // Active filters
     const [activeTypeFilters, setActiveTypeFilters] = useState([]);
     const [activeUnitFilters, setActiveUnitFilters] = useState([]);
@@ -46,6 +54,26 @@ export const ResourceDirectoryTab = ({
     const [editingResource, setEditingResource] = useState(null);
     const [viewingResource, setViewingResource] = useState(null);
     const [isDuplicateModalOpen, setIsDuplicateModalOpen] = useState(false);
+
+    const handleToggleExpandRow = useCallback((rowId) => {
+        setExpandedRowIds((prev) => {
+            const next = new Set(prev);
+            const hasIt = next.has(rowId) || next.has(String(rowId)) || (typeof rowId === 'string' && !isNaN(Number(rowId)) && next.has(Number(rowId)));
+            if (hasIt) {
+                next.delete(rowId);
+                next.delete(String(rowId));
+                if (typeof rowId === 'string' && !isNaN(Number(rowId))) next.delete(Number(rowId));
+            } else {
+                next.add(rowId);
+            }
+            return next;
+        });
+    }, []);
+
+    const handleNavigateToRecipes = useCallback((resource) => {
+        if (!resource?.id) return;
+        setSearchParams({ tab: 'recipes', resourceId: String(resource.id) });
+    }, [setSearchParams]);
 
     // Filtered data by type & unit
     const filteredResources = useMemo(() => {
@@ -94,6 +122,7 @@ export const ResourceDirectoryTab = ({
             {
                 key: 'code',
                 label: 'Code',
+                unique: true,
                 width: '130px',
                 minWidth: '120px',
                 aliases: COLUMN_ALIASES.code
@@ -112,19 +141,55 @@ export const ResourceDirectoryTab = ({
                 type: 'select',
                 options: ['material', 'item', 'labour'],
                 defaultValue: 'material',
-                width: '140px',
-                minWidth: '130px',
+                width: '175px',
+                minWidth: '165px',
                 aliases: COLUMN_ALIASES.type,
-                renderCell: (val) => {
-                    const cfg = TYPE_CONFIG[val] || TYPE_CONFIG.material;
+                renderCell: (val, row) => {
+                    const normType = String(val || '').toLowerCase().trim();
+                    const cfg = TYPE_CONFIG[normType] || TYPE_CONFIG.material;
                     const Icon = cfg.icon;
+                    const isItem = normType === 'item' || normType === 'items';
+                    const compCount = Array.isArray(row?.compositions) ? row.compositions.length : 0;
+                    const isExpanded = Boolean(
+                        expandedRowIds && (
+                            expandedRowIds.has(row?.id) ||
+                            expandedRowIds.has(String(row?.id)) ||
+                            (typeof row?.id === 'string' && !isNaN(Number(row?.id)) ? expandedRowIds.has(Number(row?.id)) : false)
+                        )
+                    );
+
                     return (
-                        <span
-                            className={`inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-[10px] font-bold ${cfg.bg} ${cfg.color}`}
-                        >
-                            <Icon size={11} />
-                            <span>{cfg.label}</span>
-                        </span>
+                        <div className="flex items-center gap-1.5 flex-wrap">
+                            <span
+                                className={`inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-[10px] font-bold ${cfg.bg} ${cfg.color}`}
+                            >
+                                <Icon size={11} />
+                                <span>{cfg.label}</span>
+                            </span>
+
+                            {isItem && (
+                                <button
+                                    type="button"
+                                    onClick={(e) => {
+                                        e.stopPropagation();
+                                        handleToggleExpandRow(row?.id);
+                                    }}
+                                    className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-semibold transition cursor-pointer border ${
+                                        isExpanded
+                                            ? 'bg-purple-100 dark:bg-purple-900/40 text-purple-700 dark:text-purple-300 border-purple-300 dark:border-purple-600/40 shadow-xs'
+                                            : 'bg-purple-50 dark:bg-purple-950/20 hover:bg-purple-100 dark:hover:bg-purple-900/40 text-purple-700 dark:text-purple-300 border-purple-200 dark:border-purple-800/40'
+                                    }`}
+                                    title={isExpanded ? 'Collapse Recipe Composition' : 'View / Edit Recipe Composition Dropdown'}
+                                >
+                                    <Layers size={10} className="text-purple-500" />
+                                    <span>{compCount > 0 ? `${compCount} items` : 'Recipe'}</span>
+                                    <ChevronDown
+                                        size={11}
+                                        className={`transition-transform duration-200 ${isExpanded ? 'rotate-180' : ''}`}
+                                    />
+                                </button>
+                            )}
+                        </div>
                     );
                 }
             },
@@ -146,11 +211,16 @@ export const ResourceDirectoryTab = ({
                 width: '130px',
                 minWidth: '120px',
                 aliases: COLUMN_ALIASES.rate,
-                renderCell: (val) => {
+                renderCell: (val, row) => {
                     if (val === undefined || val === null || val === '') {
                         return '';
                     }
-                    const num = Number(val);
+                    let num = Number(val);
+                    if (typeof val === 'string' && val.trim().startsWith('=')) {
+                        const evalRes = evaluateFormula(val, row);
+                        num = evalRes.success ? Number(evalRes.result) : NaN;
+                        if (isNaN(num)) return evalRes.formattedResult;
+                    }
                     return isNaN(num) ? String(val) : `₹${num.toLocaleString('en-IN')}`;
                 }
             },
@@ -169,50 +239,118 @@ export const ResourceDirectoryTab = ({
                 aliases: COLUMN_ALIASES.remarks
             }
         ];
-    }, []);
+    }, [expandedRowIds, handleToggleExpandRow]);
 
-    // Batch Save Handler connecting to resourceApi
+    // Unified single-transaction batch save connecting to resourceApi
     const handleSaveGridBatch = async (payload) => {
-        const { created, updated, deleted } = payload;
+        const { created = [], updated = [], deleted = [] } = payload;
 
-        if (deleted.length > 0) {
-            for (const id of deleted) {
-                await resourceApi.deleteResource(id);
+        // Check for duplicate resource codes before saving
+        const existingCodes = new Map();
+        (resources || []).forEach(r => {
+            if (r.code && String(r.code).trim()) {
+                existingCodes.set(String(r.code).trim().toLowerCase(), { id: r.id, name: r.name, code: String(r.code).trim() });
             }
-        }
+        });
 
-        if (created.length > 0) {
-            for (const item of created) {
-                if (item.name && item.name.trim()) {
-                    const cleanType = (item.type || 'material').toString().toLowerCase().trim();
-                    const finalType = ['material', 'item', 'labour'].includes(cleanType) ? cleanType : 'material';
-                    const finalUnit = normalizeUnitCode(item.base_unit_code || 'Nos');
-                    await resourceApi.createResource({
-                        ...item,
-                        type: finalType,
-                        base_unit_code: finalUnit
-                    });
+        const createdCodes = new Set();
+        for (const item of created) {
+            if (item.code && String(item.code).trim()) {
+                const norm = String(item.code).trim().toLowerCase();
+                if (createdCodes.has(norm)) {
+                    const msg = `Resource code already exists: "${String(item.code).trim()}" is duplicated multiple times in new rows. Resource code must be strictly unique. Please change it.`;
+                    customToast.error(msg, 'Resource Code Already Exists');
+                    throw new Error(msg);
+                }
+                createdCodes.add(norm);
+
+                if (existingCodes.has(norm)) {
+                    const existing = existingCodes.get(norm);
+                    const msg = `Resource code already exists: "${String(item.code).trim()}" (${existing.name || 'existing resource'}). Resource code must be strictly unique. Please change it.`;
+                    customToast.error(msg, 'Resource Code Already Exists');
+                    throw new Error(msg);
                 }
             }
         }
 
-        if (updated.length > 0) {
-            for (const item of updated) {
-                if (item.id && item.name && item.name.trim()) {
-                    const updatePayload = { ...item };
-                    if (item.type) {
-                        const cleanType = item.type.toString().toLowerCase().trim();
-                        updatePayload.type = ['material', 'item', 'labour'].includes(cleanType) ? cleanType : undefined;
+        const updatedCodes = new Set();
+        for (const item of updated) {
+            if (item.code && String(item.code).trim()) {
+                const norm = String(item.code).trim().toLowerCase();
+                if (createdCodes.has(norm) || updatedCodes.has(norm)) {
+                    const msg = `Resource code already exists: "${String(item.code).trim()}" is duplicated in modified rows. Resource code must be strictly unique. Please change it.`;
+                    customToast.error(msg, 'Resource Code Already Exists');
+                    throw new Error(msg);
+                }
+                updatedCodes.add(norm);
+
+                if (existingCodes.has(norm)) {
+                    const existing = existingCodes.get(norm);
+                    if (String(existing.id) !== String(item.id)) {
+                        const msg = `Resource code already exists: "${String(item.code).trim()}" (${existing.name || 'another resource'}). Resource code must be strictly unique. Please change it.`;
+                        customToast.error(msg, 'Resource Code Already Exists');
+                        throw new Error(msg);
                     }
-                    if (item.base_unit_code) {
-                        updatePayload.base_unit_code = normalizeUnitCode(item.base_unit_code);
-                    }
-                    await resourceApi.updateResource(item.id, updatePayload);
                 }
             }
         }
 
-        if (fetchResources) await fetchResources();
+        const resolveNumericRate = (val, row) => {
+            if (val === undefined || val === null || val === '') return undefined;
+            if (typeof val === 'string' && val.trim().startsWith('=')) {
+                const evalRes = evaluateFormula(val, row);
+                return evalRes.success && !isNaN(Number(evalRes.result)) ? Number(evalRes.result) : undefined;
+            }
+            const cleanStr = String(val).replace(/[₹$,\s]/g, '');
+            const num = Number(cleanStr);
+            return !isNaN(num) ? num : undefined;
+        };
+
+        const resolvedCreated = created
+            .filter((item) => item.name && String(item.name).trim())
+            .map((item) => {
+                const cleanType = (item.type || 'material').toString().toLowerCase().trim();
+                const finalType = ['material', 'item', 'labour'].includes(cleanType) ? cleanType : 'material';
+                const finalUnit = normalizeUnitCode(item.base_unit_code || 'Nos');
+                const cleanRate = resolveNumericRate(item.rate, item);
+                return {
+                    ...item,
+                    type: finalType,
+                    base_unit_code: finalUnit,
+                    rate: cleanRate
+                };
+            });
+
+        const resolvedUpdated = updated
+            .filter((item) => item.id && item.name && String(item.name).trim())
+            .map((item) => {
+                const updatePayload = { ...item };
+                if (item.type) {
+                    const cleanType = item.type.toString().toLowerCase().trim();
+                    updatePayload.type = ['material', 'item', 'labour'].includes(cleanType) ? cleanType : undefined;
+                }
+                if (item.base_unit_code) {
+                    updatePayload.base_unit_code = normalizeUnitCode(item.base_unit_code);
+                }
+                if (item.rate !== undefined) {
+                    updatePayload.rate = resolveNumericRate(item.rate, item);
+                }
+                return updatePayload;
+            });
+
+        try {
+            await resourceApi.batchSaveResources({
+                created: resolvedCreated,
+                updated: resolvedUpdated,
+                deleted: deleted || []
+            });
+            customToast.success('Resources saved successfully', 'Saved');
+            if (fetchResources) await fetchResources();
+        } catch (err) {
+            const errorMsg = err.response?.data?.message || err.message || 'Failed to save resources';
+            customToast.error(errorMsg, 'Save Failed');
+            throw err;
+        }
     };
 
     // View Details Drawer
@@ -236,14 +374,18 @@ export const ResourceDirectoryTab = ({
         try {
             if (editingResource) {
                 await resourceApi.updateResource(editingResource.id, formData);
+                customToast.success(`Resource "${formData.name}" updated successfully`, 'Updated');
             } else {
                 await resourceApi.createResource(formData);
+                customToast.success(`Resource "${formData.name}" created successfully`, 'Created');
             }
             setIsAddModalOpen(false);
             setEditingResource(null);
             if (fetchResources) fetchResources();
         } catch (err) {
             console.error('Failed to save resource from modal:', err);
+            const msg = err.response?.data?.message || err.message || 'Failed to save resource';
+            customToast.error(msg, 'Save Failed');
         }
     };
 
@@ -315,7 +457,24 @@ export const ResourceDirectoryTab = ({
                 onSave={handleSaveGridBatch}
                 onRefresh={fetchResources}
                 onViewRow={handleViewResourceDetails}
+                isDuplicateModalOpen={isDuplicateModalOpen}
+                setIsDuplicateModalOpen={setIsDuplicateModalOpen}
                 emptyMessage="No resources found in database"
+                isRowExpandable={(row) => {
+                    const t = String(row?.type || '').toLowerCase().trim();
+                    return t === 'item' || t === 'items';
+                }}
+                expandedRowIds={expandedRowIds}
+                onToggleExpandRow={handleToggleExpandRow}
+                renderExpandedRow={(row, rowIndex, { collapse }) => (
+                    <ResourceCompositionSubGrid
+                        resource={row}
+                        allResources={resources}
+                        onCollapse={collapse}
+                        onNavigateToRecipes={handleNavigateToRecipes}
+                        onRecipeUpdated={fetchResources}
+                    />
+                )}
                 extraFilters={
                     <ResourceFilterDropdown
                         activeTypeFilters={activeTypeFilters}
@@ -375,24 +534,13 @@ export const ResourceDirectoryTab = ({
                 <ResourceForm
                     resource={editingResource}
                     isOpen={isAddModalOpen}
+                    existingResources={resources}
                     onClose={() => {
                         setIsAddModalOpen(false);
                         setEditingResource(null);
                     }}
                     onSave={handleSaveResourceFromModal}
                     initialData={editingResource}
-                />
-            )}
-
-            {/* ─── Duplicate Resolver Modal ─── */}
-            {isDuplicateModalOpen && (
-                <DuplicateResolverModal
-                    isOpen={isDuplicateModalOpen}
-                    onClose={() => setIsDuplicateModalOpen(false)}
-                    onConfirm={handleConfirmDeleteDuplicates}
-                    items={resources}
-                    primaryKey="name"
-                    entityName="Resources"
                 />
             )}
         </div>

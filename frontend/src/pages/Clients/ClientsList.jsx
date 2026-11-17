@@ -15,8 +15,8 @@ import ClientDetails from './ClientDetails';
 import ClientFilterDropdown from './ClientFilterDropdown';
 import AddEditClient from './AddEditClient';
 import ManageMetadataModal from '../../components/ManageMetadataModal';
-import DuplicateResolverModal from '../../components/DuplicateResolverModal';
 import { ExcelGrid } from '../../components/ExcelGrid';
+import { evaluateFormula } from '../../utils/excelFormulaEngine';
 import { useAuth } from '../../context/AuthContext';
 
 const COLUMN_ALIASES = {
@@ -279,41 +279,39 @@ export const ClientsList = () => {
         ];
     }, [jobOptions, sectorOptions]);
 
-    // Batch Save Handler connecting to clientApi
+    // Unified single-transaction batch save connecting to clientApi
     const handleSaveGridBatch = async (payload) => {
-        const { created, updated, deleted } = payload;
+        const { created = [], updated = [], deleted = [] } = payload;
 
-        // 1. Delete rows
+        const resolveItemValues = (item) => {
+            const clean = { ...item };
+            Object.entries(clean).forEach(([k, v]) => {
+                if (typeof v === 'string' && v.trim().startsWith('=')) {
+                    const evalRes = evaluateFormula(v, item);
+                    clean[k] = evalRes.success ? (evalRes.result ?? '') : v;
+                }
+            });
+            if (clean.remarks !== undefined) clean.self_remark = clean.remarks;
+            if (clean.telephone_no !== undefined) clean.contact_no = clean.telephone_no;
+            if (clean.website !== undefined) clean.web_site = clean.website;
+            return clean;
+        };
+
+        const resolvedCreated = created
+            .map(resolveItemValues)
+            .filter((item) => item.name && String(item.name).trim());
+
+        const resolvedUpdated = updated
+            .map(resolveItemValues)
+            .filter((item) => item.id && item.name && String(item.name).trim());
+
         const realDeleted = (deleted || []).filter((id) => id && !String(id).startsWith('temp_'));
-        if (realDeleted.length > 0) {
-            await clientApi.deleteClients(realDeleted);
-        }
 
-        // 2. Create new rows
-        if (created.length > 0) {
-            for (const item of created) {
-                if (item.name && item.name.trim()) {
-                    const payloadItem = { ...item };
-                    if (payloadItem.remarks !== undefined) payloadItem.self_remark = payloadItem.remarks;
-                    if (payloadItem.telephone_no !== undefined) payloadItem.contact_no = payloadItem.telephone_no;
-                    if (payloadItem.website !== undefined) payloadItem.web_site = payloadItem.website;
-                    await clientApi.createClient(payloadItem);
-                }
-            }
-        }
-
-        // 3. Update modified rows
-        if (updated.length > 0) {
-            for (const item of updated) {
-                if (item.id && item.name && item.name.trim()) {
-                    const payloadItem = { ...item };
-                    if (payloadItem.remarks !== undefined) payloadItem.self_remark = payloadItem.remarks;
-                    if (payloadItem.telephone_no !== undefined) payloadItem.contact_no = payloadItem.telephone_no;
-                    if (payloadItem.website !== undefined) payloadItem.web_site = payloadItem.website;
-                    await clientApi.updateClient(payloadItem.id, payloadItem);
-                }
-            }
-        }
+        await clientApi.batchSaveClients({
+            created: resolvedCreated,
+            updated: resolvedUpdated,
+            deleted: realDeleted
+        });
 
         // Reload data
         await fetchClients();
@@ -351,12 +349,6 @@ export const ClientsList = () => {
         }
     };
 
-    // Duplicate Resolver delete
-    const handleConfirmDeleteDuplicates = async (idsToDelete) => {
-        if (!idsToDelete || idsToDelete.length === 0) return;
-        await clientApi.deleteClients(idsToDelete);
-        fetchClients();
-    };
 
     return (
         <div className="flex-1 min-h-0 flex flex-col h-full overflow-hidden bg-white dark:bg-[#0d1117]">
@@ -416,6 +408,8 @@ export const ClientsList = () => {
                 isLoading={isLoading}
                 onSave={handleSaveGridBatch}
                 onRefresh={fetchClients}
+                isDuplicateModalOpen={isDuplicateModalOpen}
+                setIsDuplicateModalOpen={setIsDuplicateModalOpen}
                 onViewRow={handleViewClientDetails}
                 allowAddColumn={false}
                 emptyMessage="No clients found in database"
