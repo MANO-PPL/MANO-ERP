@@ -12,5 +12,7 @@ export { ExcelFindReplaceModal } from './ExcelFindReplaceModal';
 export { ExcelImportModal } from './ExcelImportModal';
 export { ExcelShortcutsModal } from './ExcelShortcutsModal';
 export * from './excelUtils';
+export { ExcelExportButton } from '../common/ExcelExportButton';
+export * from '../../utils/excelExportEngine';
 
 export default ExcelGrid;

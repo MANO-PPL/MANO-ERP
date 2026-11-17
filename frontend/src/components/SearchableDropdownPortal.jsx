@@ -136,11 +136,15 @@ const SearchableDropdownPortal = ({
             onClose?.();
         } else if (e.key === 'ArrowDown') {
             e.preventDefault();
+            e.stopPropagation();
+            if (e.nativeEvent) e.nativeEvent.stopImmediatePropagation?.();
             if (totalSelectableCount > 0) {
                 setActiveIndex((prev) => (prev + 1) % totalSelectableCount);
             }
         } else if (e.key === 'ArrowUp') {
             e.preventDefault();
+            e.stopPropagation();
+            if (e.nativeEvent) e.nativeEvent.stopImmediatePropagation?.();
             if (totalSelectableCount > 0) {
                 setActiveIndex((prev) => (prev - 1 + totalSelectableCount) % totalSelectableCount);
             }

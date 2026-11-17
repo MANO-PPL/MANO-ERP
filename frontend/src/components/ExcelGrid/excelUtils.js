@@ -1,9 +1,48 @@
 import * as XLSX from 'xlsx';
 import Papa from 'papaparse';
+import { evaluateFormula } from '../../utils/excelFormulaEngine';
+import { exportProfessionalExcel, exportProfessionalCSV, downloadProfessionalTemplate } from '../../utils/excelExportEngine';
+
+/**
+ * Strips HTML, SVG, markdown images, and data URLs so clipboard content is pure text only.
+ */
+export const cleanClipboardText = (val) => {
+    if (val === undefined || val === null) return '';
+    let str = String(val);
+    if (str === '[object Object]') return '';
+    // Strip SVG tags and contents
+    if (str.includes('<svg') || str.includes('</svg>')) {
+        str = str.replace(/<svg[\s\S]*?<\/svg>/gi, '');
+    }
+    // Strip picture tags
+    if (str.includes('<picture') || str.includes('</picture>')) {
+        str = str.replace(/<picture[\s\S]*?<\/picture>/gi, '');
+    }
+    // Strip canvas tags
+    if (str.includes('<canvas') || str.includes('</canvas>')) {
+        str = str.replace(/<canvas[\s\S]*?<\/canvas>/gi, '');
+    }
+    // Strip IMG tags
+    if (str.includes('<img') || str.includes('/>')) {
+        str = str.replace(/<img[\s\S]*?>/gi, '');
+    }
+    // Strip general HTML tags
+    if (str.includes('<') && str.includes('>')) {
+        str = str.replace(/<[^>]+>/g, '');
+    }
+    // Remove markdown image syntax ![alt](url)
+    str = str.replace(/!\[.*?\]\(.*?\)/g, '');
+    // Remove data URLs for base64 images
+    str = str.replace(/data:image\/[^;]+;base64,[^\s"']+/gi, '');
+    // Remove blob image URLs
+    str = str.replace(/blob:https?:\/\/[^\s"']+/gi, '');
+    return str.trim();
+};
 
 /**
  * Parse a TSV string (from clipboard paste) into a 2D array matrix.
  * Handles quoted cells with embedded newlines/tabs and both Windows and Unix line breaks.
+ * Guarantees pure text extraction (no images or HTML).
  */
 export const parseTSV = (tsvText) => {
     if (!tsvText || typeof tsvText !== 'string') return [];
@@ -31,16 +70,16 @@ export const parseTSV = (tsvText) => {
                 insideQuotes = !insideQuotes;
             }
         } else if (!insideQuotes && char === delimiter) {
-            currentRow.push(currentCell);
+            currentRow.push(cleanClipboardText(currentCell));
             currentCell = '';
         } else if (!insideQuotes && (char === '\n' || (char === '\r' && nextChar === '\n'))) {
             if (char === '\r') i++;
-            currentRow.push(currentCell);
+            currentRow.push(cleanClipboardText(currentCell));
             rows.push(currentRow);
             currentRow = [];
             currentCell = '';
         } else if (!insideQuotes && char === '\r') {
-            currentRow.push(currentCell);
+            currentRow.push(cleanClipboardText(currentCell));
             rows.push(currentRow);
             currentRow = [];
             currentCell = '';
@@ -48,7 +87,7 @@ export const parseTSV = (tsvText) => {
             currentCell += char;
         }
     }
-    currentRow.push(currentCell);
+    currentRow.push(cleanClipboardText(currentCell));
     rows.push(currentRow);
 
     return rows.filter(r => r.length > 0 && r.some(c => c !== ''));
@@ -56,19 +95,141 @@ export const parseTSV = (tsvText) => {
 
 /**
  * Convert a 2D matrix array into a TSV string for clipboard copy.
+ * Guarantees pure text output (never objects, images, or SVGs).
  */
 export const stringifyTSV = (matrix) => {
     if (!matrix || matrix.length === 0) return '';
     return matrix.map((row) =>
         row.map((val) => {
             if (val === null || val === undefined) return '';
-            const strVal = String(val);
+            let strVal = typeof val === 'object'
+                ? (val.value !== undefined ? String(val.value) : (val.code !== undefined ? String(val.code) : (val.name || '')))
+                : String(val);
+            strVal = cleanClipboardText(strVal);
             if (strVal.includes('\t') || strVal.includes('\n') || strVal.includes('"')) {
                 return `"${strVal.replace(/"/g, '""')}"`;
             }
             return strVal;
         }).join('\t')
     ).join('\n');
+};
+
+/**
+ * Smart resolver for dropdown (select / searchable-select) cells.
+ * Matches pasted text against column options by:
+ * 1. Exact value match
+ * 2. Case-insensitive value match
+ * 3. Exact/case-insensitive label, name, or code match
+ * 4. Parentheses extraction: "Kilogram (kg)" -> "kg", or "kg" -> matches option "Kilogram (kg)"
+ * 5. Prefix match
+ */
+export const resolveDropdownValue = (rawVal, column) => {
+    if (rawVal === undefined || rawVal === null) return '';
+    const strVal = String(rawVal).trim();
+    if (strVal === '') return '';
+
+    const options = column?.options || column?.dropdownOptions;
+    if (!options || !Array.isArray(options) || options.length === 0) {
+        return strVal;
+    }
+
+    const cleanStr = strVal.toLowerCase();
+
+    // 1. Exact value match
+    for (const opt of options) {
+        if (typeof opt === 'object' && opt !== null) {
+            const optVal = opt.value !== undefined ? opt.value : (opt.code !== undefined ? opt.code : opt.id);
+            if (String(optVal) === strVal) return optVal;
+        } else if (String(opt) === strVal) {
+            return opt;
+        }
+    }
+
+    // 2. Case-insensitive value match
+    for (const opt of options) {
+        if (typeof opt === 'object' && opt !== null) {
+            const optVal = opt.value !== undefined ? opt.value : (opt.code !== undefined ? opt.code : opt.id);
+            if (String(optVal).toLowerCase() === cleanStr) return optVal;
+        } else if (String(opt).toLowerCase() === cleanStr) {
+            return opt;
+        }
+    }
+
+    // 3. Exact or case-insensitive label / name / code match
+    for (const opt of options) {
+        if (typeof opt === 'object' && opt !== null) {
+            const optVal = opt.value !== undefined ? opt.value : (opt.code !== undefined ? opt.code : opt.id);
+            const optLabel = opt.label !== undefined ? String(opt.label).trim() : '';
+            const optName = opt.name !== undefined ? String(opt.name).trim() : '';
+            const optCode = opt.code !== undefined ? String(opt.code).trim() : '';
+
+            if (
+                optLabel.toLowerCase() === cleanStr ||
+                optName.toLowerCase() === cleanStr ||
+                optCode.toLowerCase() === cleanStr
+            ) {
+                return optVal;
+            }
+        }
+    }
+
+    // 4. Parentheses matching (e.g. "Kilogram (kg)" -> matches "kg", or "kg" -> matches "Kilogram (kg)")
+    const parenMatch = strVal.match(/\(([^)]+)\)/);
+    const textBeforeParen = strVal.replace(/\s*\([^)]*\).*/, '').trim().toLowerCase();
+    const textInsideParen = parenMatch ? parenMatch[1].trim().toLowerCase() : '';
+
+    for (const opt of options) {
+        if (typeof opt === 'object' && opt !== null) {
+            const optVal = opt.value !== undefined ? opt.value : (opt.code !== undefined ? opt.code : opt.id);
+            const optLabel = opt.label !== undefined ? String(opt.label).trim() : '';
+            const optName = opt.name !== undefined ? String(opt.name).trim() : '';
+            const optCode = opt.code !== undefined ? String(opt.code).trim() : '';
+
+            const optValLower = String(optVal).toLowerCase();
+            const optCodeLower = optCode.toLowerCase();
+            const optNameLower = optName.toLowerCase();
+            const optLabelLower = optLabel.toLowerCase();
+
+            if (textInsideParen && (optValLower === textInsideParen || optCodeLower === textInsideParen)) {
+                return optVal;
+            }
+            if (textBeforeParen && (optNameLower === textBeforeParen || optLabelLower === textBeforeParen)) {
+                return optVal;
+            }
+
+            const optParen = optLabel.match(/\(([^)]+)\)/);
+            if (optParen) {
+                const optInside = optParen[1].trim().toLowerCase();
+                const optBefore = optLabel.replace(/\s*\([^)]*\).*/, '').trim().toLowerCase();
+                if (cleanStr === optInside || cleanStr === optBefore) {
+                    return optVal;
+                }
+            }
+        } else {
+            const optStr = String(opt).trim().toLowerCase();
+            if (textBeforeParen && optStr === textBeforeParen) return opt;
+            if (textInsideParen && optStr === textInsideParen) return opt;
+        }
+    }
+
+    // 5. Prefix match
+    for (const opt of options) {
+        if (typeof opt === 'object' && opt !== null) {
+            const optVal = opt.value !== undefined ? opt.value : (opt.code !== undefined ? opt.code : opt.id);
+            const optLabel = opt.label !== undefined ? String(opt.label).toLowerCase() : '';
+            const optName = opt.name !== undefined ? String(opt.name).toLowerCase() : '';
+            if (optLabel.startsWith(cleanStr) || optName.startsWith(cleanStr)) {
+                return optVal;
+            }
+        } else {
+            const optStr = String(opt).toLowerCase();
+            if (optStr.startsWith(cleanStr)) {
+                return opt;
+            }
+        }
+    }
+
+    return strVal;
 };
 
 /**
@@ -319,31 +480,14 @@ export const generateDemoSampleRows = (columns = [], entityName = 'Data') => {
 /**
  * Downloads a starter Excel template file (.xlsx) prefilled with sample demo rows.
  */
-export const downloadExcelTemplate = (columns = [], entityName = 'Data', includeSampleRows = true) => {
+export const downloadExcelTemplate = async (columns = [], entityName = 'Data', includeSampleRows = true) => {
     const activeCols = columns.filter(c => !c.readOnly && c.key !== 'permissions_access' && c.key !== 'permissions_action');
-    const headers = activeCols.map(c => c.label || c.key);
-    
-    let aoa = [headers];
-    if (includeSampleRows) {
-        const sampleRows = generateDemoSampleRows(activeCols, entityName);
-        const dataRows = sampleRows.map(row => activeCols.map(c => row[c.key] ?? ''));
-        aoa = [headers, ...dataRows];
-    }
-
-    const ws = XLSX.utils.aoa_to_sheet(aoa);
-
-    ws['!cols'] = activeCols.map(c => {
-        let width = 20;
-        if (c.width) {
-            const parsed = parseInt(c.width, 10);
-            if (!isNaN(parsed)) width = Math.max(14, Math.round(parsed / 8));
-        }
-        return { wch: width };
+    const sampleRows = includeSampleRows ? generateDemoSampleRows(activeCols, entityName) : [];
+    return downloadProfessionalTemplate({
+        columns: activeCols,
+        entityName,
+        sampleRows
     });
-
-    const wb = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(wb, ws, `${entityName} Template`);
-    XLSX.writeFile(wb, `${entityName}_Demo_Template.xlsx`);
 };
 
 /**
@@ -351,14 +495,13 @@ export const downloadExcelTemplate = (columns = [], entityName = 'Data', include
  */
 export const downloadCSVTemplate = (columns = [], entityName = 'Data', includeSampleRows = true) => {
     const activeCols = columns.filter(c => !c.readOnly && c.key !== 'permissions_access' && c.key !== 'permissions_action');
-    const headers = activeCols.map(c => c.label || c.key);
-    
     let dataRows = [];
     if (includeSampleRows) {
         const sampleRows = generateDemoSampleRows(activeCols, entityName);
         dataRows = sampleRows.map(row => activeCols.map(c => row[c.key] ?? ''));
     }
 
+    const headers = activeCols.map(c => c.label || c.key);
     const csvContent = Papa.unparse({
         fields: headers,
         data: dataRows
@@ -376,54 +519,26 @@ export const downloadCSVTemplate = (columns = [], entityName = 'Data', includeSa
 };
 
 /**
- * Exports current grid data to Microsoft Excel (.xlsx) file.
+ * Exports current grid data to Microsoft Excel (.xlsx) file with real formula support,
+ * executive theme styling, and auto-adjusted column widths.
  */
-export const exportToExcelFile = (gridData = [], columns = [], entityName = 'Data') => {
-    const headers = columns.map(c => c.label || c.key);
-    const dataRows = gridData.map(row =>
-        columns.map(c => row[c.key] ?? '')
-    );
-
-    const aoa = [headers, ...dataRows];
-    const ws = XLSX.utils.aoa_to_sheet(aoa);
-
-    ws['!cols'] = columns.map(c => {
-        let width = 20;
-        if (c.width) {
-            const parsed = parseInt(c.width, 10);
-            if (!isNaN(parsed)) width = Math.max(12, Math.round(parsed / 8));
-        }
-        return { wch: width };
+export const exportToExcelFile = async (gridData = [], columns = [], entityName = 'Data') => {
+    return exportProfessionalExcel({
+        data: gridData,
+        columns,
+        entityName
     });
-
-    const wb = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(wb, ws, entityName);
-    XLSX.writeFile(wb, `${entityName}_Export_${new Date().toISOString().slice(0, 10)}.xlsx`);
 };
 
 /**
- * Exports current grid data to CSV (.csv) file via PapaParse.
+ * Exports current grid data to CSV (.csv) file via PapaParse with evaluated formula results.
  */
 export const exportToCSVFile = (gridData = [], columns = [], entityName = 'Data') => {
-    const headers = columns.map(c => c.label || c.key);
-    const dataRows = gridData.map(row =>
-        columns.map(c => row[c.key] ?? '')
-    );
-
-    const csvContent = Papa.unparse({
-        fields: headers,
-        data: dataRows
+    return exportProfessionalCSV({
+        data: gridData,
+        columns,
+        entityName
     });
-
-    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `${entityName}_Export_${new Date().toISOString().slice(0, 10)}.csv`;
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
-    URL.revokeObjectURL(url);
 };
 
 /**
@@ -432,8 +547,9 @@ export const exportToCSVFile = (gridData = [], columns = [], entityName = 'Data'
 export const parseRawRowsToEntities = (rawRows = [], columns = [], primaryKey = 'id') => {
     if (!rawRows || rawRows.length === 0) return [];
 
-    let headerRowIndex = -1;
-    let colIndexMap = {};
+    let bestHeaderRowIndex = -1;
+    let bestColIndexMap = {};
+    let maxMatchedCols = 0;
 
     for (let r = 0; r < Math.min(rawRows.length, 10); r++) {
         const row = rawRows[r];
@@ -452,12 +568,15 @@ export const parseRawRowsToEntities = (rawRows = [], columns = [], primaryKey = 
             }
         });
 
-        if (matchedCols >= Math.min(2, columns.length)) {
-            headerRowIndex = r;
-            colIndexMap = tempMap;
-            break;
+        if (matchedCols > maxMatchedCols) {
+            maxMatchedCols = matchedCols;
+            bestHeaderRowIndex = r;
+            bestColIndexMap = tempMap;
         }
     }
+
+    let headerRowIndex = maxMatchedCols > 0 ? bestHeaderRowIndex : -1;
+    let colIndexMap = maxMatchedCols > 0 ? bestColIndexMap : {};
 
     if (headerRowIndex === -1) {
         colIndexMap = {};
@@ -498,7 +617,8 @@ export const parseRawRowsToEntities = (rawRows = [], columns = [], primaryKey = 
             }
 
             if (col.type === 'number' && val !== '') {
-                const num = Number(val);
+                const cleanStr = String(val).replace(/[₹$€£,\s]/g, '');
+                const num = Number(cleanStr);
                 entity[col.key] = isNaN(num) ? val : num;
             } else {
                 entity[col.key] = val;
@@ -553,8 +673,22 @@ export const validateCell = (value, colDef, rowData) => {
         if (result === false) return `Invalid ${colDef.label || colDef.key}`;
     }
 
-    if (value && colDef.type === 'number' && isNaN(Number(value))) {
-        return 'Must be a valid number';
+    if (value !== undefined && value !== null && value !== '') {
+        const strVal = String(value).trim();
+        if (strVal.startsWith('=')) {
+            const evalRes = evaluateFormula(strVal, rowData);
+            if (!evalRes.success) {
+                return evalRes.error || 'Formula syntax error';
+            }
+            if (colDef.type === 'number' && isNaN(Number(evalRes.result))) {
+                return 'Formula must evaluate to a valid number';
+            }
+            return null;
+        }
+
+        if (colDef.type === 'number' && isNaN(Number(value))) {
+            return 'Must be a valid number';
+        }
     }
 
     return null;
@@ -563,12 +697,39 @@ export const validateCell = (value, colDef, rowData) => {
 /**
  * Validate an entire row object against columns schema.
  */
-export const validateRow = (row, columns = []) => {
+export const validateRow = (row, columns = [], allRows = []) => {
     const errors = {};
     columns.forEach(col => {
         const err = validateCell(row[col.key], col, row);
         if (err) errors[col.key] = err;
     });
+
+    if (Array.isArray(allRows) && allRows.length > 0 && row) {
+        columns.forEach(col => {
+            const k = (col.key || col.accessor || '').toLowerCase();
+            const isCode = k === 'code' || k === 'item_code' || k === 'resource_code';
+            const isUnique = col.unique === true || col.isUnique === true || isCode;
+            if (isUnique) {
+                const colKey = col.key || col.accessor;
+                const val = row[colKey];
+                const normVal = String(val || '').trim().toLowerCase();
+                if (normVal) {
+                    const rowId = row.id;
+                    const hasDup = allRows.some(r =>
+                        r !== row &&
+                        (rowId == null || String(r.id) !== String(rowId)) &&
+                        String(r[colKey] || '').trim().toLowerCase() === normVal
+                    );
+                    if (hasDup) {
+                        errors[colKey] = isCode
+                            ? `Resource code already exists: "${val}". Resource code must be strictly unique. Please change it.`
+                            : `${col.label || colKey} already exists: "${val}". Must be unique.`;
+                    }
+                }
+            }
+        });
+    }
+
     return errors;
 };
 
@@ -590,7 +751,10 @@ export const calculateAutoFitWidth = (colKey, colLabel, rows = []) => {
 export const generateBatchPayload = (currentRows, originalDataMap, primaryKey = 'id', deletedIdsSet = new Set(), columns = []) => {
     const created = [];
     const updated = [];
-    const deleted = Array.from(deletedIdsSet).filter(id => !String(id).startsWith('temp_'));
+    const presentIds = new Set((currentRows || []).map((r) => String(r[primaryKey])));
+    const deleted = Array.from(deletedIdsSet).filter(
+        (id) => !String(id).startsWith('temp_') && !presentIds.has(String(id))
+    );
 
     currentRows.forEach((row) => {
         const id = row[primaryKey];
@@ -625,3 +789,168 @@ export const generateBatchPayload = (currentRows, originalDataMap, primaryKey = 
 
     return { created, updated, deleted, allRows: currentRows };
 };
+
+/**
+ * Determine the identifying column that should remain unique across sheet rows.
+ */
+export const getUniqueKeyColumn = (columns = []) => {
+    if (!columns || columns.length === 0) return 'name';
+    const explicitlyUnique = columns.find((c) => c.unique === true);
+    if (explicitlyUnique) return explicitlyUnique.key || explicitlyUnique.accessor;
+
+    const commonKeys = ['name', 'item_name', 'company_name', 'party_name', 'title', 'code', 'category_name'];
+    for (const key of commonKeys) {
+        const found = columns.find((c) => c.key === key || c.accessor === key);
+        if (found) return found.key || found.accessor;
+    }
+
+    const firstTextCol = columns.find(
+        (c) =>
+            !c.readOnly &&
+            c.key !== 'id' &&
+            c.key !== 'created_at' &&
+            c.key !== 'updated_at' &&
+            c.type !== 'number' &&
+            c.type !== 'checkbox' &&
+            c.type !== 'date'
+    );
+    return firstTextCol?.key || 'name';
+};
+
+/**
+ * Extract normalized unique string value from a row object.
+ */
+export const getRowUniqueValue = (row, keyCol) => {
+    if (!row || !keyCol) return '';
+    const val = row[keyCol];
+    if (val === null || val === undefined) return '';
+    return String(val).trim().toLowerCase();
+};
+
+/**
+ * Detect all duplicate groups in rows data based on identifying column.
+ */
+export const findDuplicateGroups = (rows = [], keyCol = 'name', primaryKey = 'id') => {
+    if (!rows || rows.length === 0 || !keyCol) return [];
+
+    const groupsMap = new Map();
+    rows.forEach((row) => {
+        const rawVal = row[keyCol];
+        if (rawVal === null || rawVal === undefined) return;
+        const normKey = String(rawVal).trim().toLowerCase();
+        if (!normKey) return; // Blank rows do not count as duplicates of each other
+
+        if (!groupsMap.has(normKey)) {
+            groupsMap.set(normKey, []);
+        }
+        groupsMap.get(normKey).push(row);
+    });
+
+    const duplicateGroups = [];
+    groupsMap.forEach((matchedRows, normKey) => {
+        if (matchedRows.length > 1) {
+            duplicateGroups.push({
+                key: normKey,
+                label: matchedRows[0][keyCol] || normKey,
+                original: matchedRows[0],
+                duplicates: matchedRows.slice(1),
+                allRows: matchedRows
+            });
+        }
+    });
+
+    return duplicateGroups;
+};
+
+/**
+ * Detect all duplicate groups across all unique/identifying columns (e.g., name, code).
+ */
+export const findAllDuplicateGroups = (rows = [], columns = [], primaryKey = 'id') => {
+    if (!rows || rows.length === 0) return [];
+    const uniqueCols = [];
+    const primaryCol = getUniqueKeyColumn(columns);
+    if (primaryCol) uniqueCols.push(primaryCol);
+
+    (columns || []).forEach((col) => {
+        const k = col.key || col.accessor;
+        if (!k) return;
+        const lowerK = k.toLowerCase();
+        if (
+            (col.unique === true || col.isUnique === true || lowerK === 'code' || lowerK === 'item_code' || lowerK === 'resource_code') &&
+            !uniqueCols.includes(k)
+        ) {
+            uniqueCols.push(k);
+        }
+    });
+
+    const allGroups = [];
+    const seenGroupKeys = new Set();
+
+    uniqueCols.forEach((colKey) => {
+        const groups = findDuplicateGroups(rows, colKey, primaryKey);
+        groups.forEach((g) => {
+            const compositeKey = `${colKey}::${g.key}`;
+            if (!seenGroupKeys.has(compositeKey)) {
+                seenGroupKeys.add(compositeKey);
+                allGroups.push({ ...g, columnKey: colKey });
+            }
+        });
+    });
+
+    return allGroups;
+};
+
+/**
+ * Consolidate duplicate rows into a single Master record.
+ * Fills any blank fields in masterRow from duplicateRows, and returns merged row + duplicate row IDs.
+ */
+export const mergeDuplicateGroup = (masterRow, duplicateRows = [], columns = [], primaryKey = 'id') => {
+    const merged = { ...masterRow };
+    const duplicateRowIds = [];
+
+    duplicateRows.forEach((dup) => {
+        const dupId = dup[primaryKey];
+        if (dupId !== undefined && dupId !== null) {
+            duplicateRowIds.push(dupId);
+        }
+
+        // Fill empty / missing columns from duplicate row
+        columns.forEach((col) => {
+            const key = col.key;
+            if (key === primaryKey || key.startsWith('_')) return;
+
+            const masterVal = merged[key];
+            const dupVal = dup[key];
+
+            const isMasterEmpty = masterVal === null || masterVal === undefined || String(masterVal).trim() === '';
+            const isDupValid = dupVal !== null && dupVal !== undefined && String(dupVal).trim() !== '';
+
+            if (isMasterEmpty && isDupValid) {
+                merged[key] = dupVal;
+            }
+        });
+
+        // Merge remarks / notes if both contain unique text
+        if (dup.remarks && merged.remarks && !merged.remarks.includes(dup.remarks)) {
+            merged.remarks = `${merged.remarks}; ${dup.remarks}`;
+        } else if (dup.remarks && !merged.remarks) {
+            merged.remarks = dup.remarks;
+        }
+
+        if (dup.description && !merged.description) {
+            merged.description = dup.description;
+        }
+    });
+
+    // Mark merged record as modified unless it's a new row
+    if (merged._status !== 'new') {
+        merged._status = 'modified';
+    }
+    merged._errors = {};
+
+    return {
+        mergedMasterRow: merged,
+        duplicateRowIds
+    };
+};
+
