@@ -53,6 +53,12 @@ export const vendorApi = {
     bulkCreateVendors: async (vendors) => {
         const response = await api.post('/vendors/bulk-json', { vendors });
         return response.data;
+    },
+
+    // ─── Unified Batch Save (create, update, delete in 1 request) ─────────────
+    batchSaveVendors: async (payload) => {
+        const response = await api.post('/vendors/batch-save', payload);
+        return response.data;
     }
 };
 

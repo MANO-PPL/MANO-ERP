@@ -37,6 +37,9 @@ export const resourceApi = {
     createResource: (data) => unwrap(api.post('/resources', data)),
 
     // ─── Bulk Resource Operations ──────────────────────────────────────────────
+    // Unified single-transaction batch save (create, update, delete)
+    batchSaveResources: (payload) => unwrap(api.post('/resources/batch-save', payload)),
+
     // Dry-run validate resource records before inserting
     bulkValidate: (resources) => unwrap(api.post('/resources/bulk-validate', { resources })),
 

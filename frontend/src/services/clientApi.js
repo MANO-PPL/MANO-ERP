@@ -53,6 +53,12 @@ export const clientApi = {
     bulkCreateClients: async (clients) => {
         const response = await api.post('/clients/bulk-json', { clients });
         return response.data;
+    },
+
+    // ─── Unified Batch Save (create, update, delete in 1 request) ─────────────
+    batchSaveClients: async (payload) => {
+        const response = await api.post('/clients/batch-save', payload);
+        return response.data;
     }
 };
 
