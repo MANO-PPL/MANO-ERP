@@ -105,12 +105,23 @@ export const bulkJson = catchAsync(async (req, res) => {
     res.json({ success: true, report: results });
 });
 
+export const batchSave = catchAsync(async (req, res) => {
+    const { created = [], updated = [], deleted = [] } = req.body;
+    const result = await vendorService.batchSaveVendors(req.user.org_id, { created, updated, deleted });
+    res.json({
+        success: true,
+        message: 'Vendors batch save completed successfully',
+        ...result
+    });
+});
+
 export default {
     listVendors,
     getVendor,
     createVendor,
     updateVendor,
     deleteVendors,
+    batchSave,
     bulkUpload,
     bulkValidate,
     bulkJson

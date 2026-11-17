@@ -12,6 +12,7 @@ router.use(requireSystemPermission('clients'));
 
 // Publicly readable/writable based on none/view/edit permission settings
 router.get('/', clientController.listClients);
+router.post('/batch-save', clientController.batchSave);
 router.post('/bulk', upload.single('file'), clientController.bulkUpload);
 router.post('/bulk-validate', clientController.bulkValidate);
 router.post('/bulk-json', clientController.bulkJson);

@@ -16,6 +16,7 @@ router.get('/:id', vendorController.getVendor);
 // Restrict modifications and bulk operations to users with 'vendors' system permission
 router.use(requireSystemPermission('vendors'));
 
+router.post('/batch-save', vendorController.batchSave);
 router.post('/bulk', upload.single('file'), vendorController.bulkUpload);
 router.post('/bulk-validate', vendorController.bulkValidate);
 router.post('/bulk-json', vendorController.bulkJson);

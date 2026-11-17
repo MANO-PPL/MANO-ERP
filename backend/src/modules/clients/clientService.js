@@ -203,6 +203,17 @@ export async function createClient(orgId, data, options = {}) {
         throw new AppError('Client name is required', 400);
     }
 
+    if (options.skipDuplicateCheck !== true) {
+        const existing = await connection('crm_contacts')
+            .where({ org_id: orgId })
+            .whereRaw('LOWER(TRIM(name)) = ?', [String(data.name).trim().toLowerCase()])
+            .whereRaw('LOWER(??) = ?', ['category', 'client'])
+            .first();
+        if (existing) {
+            throw new AppError(`Data already exists: A client with the name "${data.name.trim()}" already exists`, 409);
+        }
+    }
+
     const insertData = {
         org_id: orgId,
         name: data.name,
@@ -555,9 +566,22 @@ export async function batchSaveClients(orgId, payload = {}) {
         }
 
         // 3. Process Created
+        const existingClients = await trx('crm_contacts')
+            .where({ org_id: orgId })
+            .whereRaw('LOWER(??) = ?', ['category', 'client'])
+            .select('name');
+        const existingNames = new Set(existingClients.map((c) => String(c.name || '').trim().toLowerCase()));
+        const batchNames = new Set();
+
         for (const item of created) {
             const clientName = item.name || item.company;
-            if (!clientName) continue;
+            if (!clientName || !String(clientName).trim()) continue;
+
+            const normName = String(clientName).trim().toLowerCase();
+            if (existingNames.has(normName) || batchNames.has(normName)) {
+                throw new AppError(`Data already exists: A client with the name "${clientName.trim()}" already exists`, 409);
+            }
+            batchNames.add(normName);
 
             let jobNatureId = item.job_nature_id || item.job_id || null;
             if (!jobNatureId && (item.job_name || item.job_nature)) {
@@ -587,6 +611,7 @@ export async function batchSaveClients(orgId, payload = {}) {
                 remarks: (item.remarks !== undefined ? item.remarks : (item.remark !== undefined ? item.remark : item.self_remark)) || null
             });
         }
+
 
         return {
             createdCount: created.length,
@@ -837,6 +862,7 @@ export async function promoteContactToMaster(orgId, contactId) {
         .update({ scope: 'master', updated_at: db.fn.now() });
     return getScopedContact(db, contactIdValue, orgId);
 }
+
 
 export default {
     getClients,

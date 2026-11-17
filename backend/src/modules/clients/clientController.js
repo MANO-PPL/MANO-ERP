@@ -175,6 +175,16 @@ export const promoteContact = catchAsync(async (req, res) => {
     res.json({ success: true, contact });
 });
 
+export const batchSave = catchAsync(async (req, res) => {
+    const { created = [], updated = [], deleted = [] } = req.body;
+    const result = await clientService.batchSaveClients(req.user.org_id, { created, updated, deleted });
+    res.json({
+        success: true,
+        message: 'Clients batch save completed successfully',
+        ...result
+    });
+});
+
 export default {
     listClients,
     getClient,
@@ -182,6 +192,7 @@ export default {
     updateClient,
     deleteClient,
     deleteClients,
+    batchSave,
     bulkUpload,
     bulkValidate,
     bulkJson,
