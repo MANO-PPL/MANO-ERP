@@ -33,10 +33,12 @@ router.post('/users/bulk-json', adminController.bulkJson);
 
 // Departments
 router.post('/departments', adminController.createDepartment);
+router.put('/departments/:id', adminController.renameDepartment);
 router.delete('/departments/:id', adminController.deleteDepartment);
 
 // Designations
 router.post('/designations', adminController.createDesignation);
+router.put('/designations/:id', adminController.renameDesignation);
 router.delete('/designations/:id', adminController.deleteDesignation);
 
 // Sectors

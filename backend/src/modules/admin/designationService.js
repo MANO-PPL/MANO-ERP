@@ -15,6 +15,20 @@ export async function createDesignation(orgId, desg_name) {
     return newId;
 }
 
+export async function renameDesignation(orgId, id, value) {
+    const name = typeof value === 'string' ? value.trim() : '';
+    if (!name) throw new AppError('Designation name is required', 400);
+    const table = 'iam_designations';
+    await db.transaction(async trx => {
+        const record = await trx(table).where({ org_id: orgId, id }).forUpdate().first();
+        if (!record) throw new AppError('Designation not found', 404);
+        if (record.desg_name === name) return;
+        const duplicate = await trx(table).where({ org_id: orgId, desg_name: name }).whereNot('id', id).first();
+        if (duplicate) throw new AppError('Designation already exists', 409);
+        await trx(table).where({ org_id: orgId, id }).update({ desg_name: name });
+    });
+}
+
 export async function deleteDesignation(orgId, desgId) {
     if (!desgId) throw new AppError('Designation ID is required', 400);
     // Check if in use
@@ -27,5 +41,6 @@ export async function deleteDesignation(orgId, desgId) {
 export default {
     getDesignations,
     createDesignation,
+    renameDesignation,
     deleteDesignation
 };
