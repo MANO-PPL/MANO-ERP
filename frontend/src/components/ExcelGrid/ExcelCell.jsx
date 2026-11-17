@@ -228,6 +228,8 @@ export const ExcelCell = ({
                         onChangeValue(rowIndex, column.key, newVal, true);
                     }}
                     onBlur={() => handleBlur()}
+                    onMouseDown={(e) => e.stopPropagation()}
+                    onClick={(e) => e.stopPropagation()}
                     onKeyDown={(e) => onKeyDown && onKeyDown(e, rowIndex, column.key)}
                     className="w-full h-full px-2 py-0.5 bg-white dark:bg-[#161b22] text-gray-900 dark:text-white border border-blue-500 rounded text-xs outline-none focus:ring-1 focus:ring-blue-500 cursor-pointer"
                 >
@@ -261,7 +263,16 @@ export const ExcelCell = ({
                     value={displayVal}
                     onChange={(e) => updateLocalValue(e.target.value)}
                     onBlur={() => handleBlur()}
-                    onKeyDown={(e) => onKeyDown && onKeyDown(e, rowIndex, column.key)}
+                    onMouseDown={(e) => e.stopPropagation()}
+                    onClick={(e) => e.stopPropagation()}
+                    onDoubleClick={(e) => e.stopPropagation()}
+                    onKeyDown={(e) => {
+                        if (e.key === 'ArrowLeft' || e.key === 'ArrowRight' || e.key === 'Home' || e.key === 'End') {
+                            e.stopPropagation();
+                            return;
+                        }
+                        if (onKeyDown) onKeyDown(e, rowIndex, column.key);
+                    }}
                     className="w-full min-w-0 bg-transparent border-0 outline-none p-0 text-xs font-semibold text-gray-900 dark:text-white text-right font-mono [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
                 />
             );
@@ -277,7 +288,16 @@ export const ExcelCell = ({
                     value={displayVal}
                     onChange={(e) => updateLocalValue(e.target.value)}
                     onBlur={() => handleBlur()}
-                    onKeyDown={(e) => onKeyDown && onKeyDown(e, rowIndex, column.key)}
+                    onMouseDown={(e) => e.stopPropagation()}
+                    onClick={(e) => e.stopPropagation()}
+                    onDoubleClick={(e) => e.stopPropagation()}
+                    onKeyDown={(e) => {
+                        if (e.key === 'ArrowLeft' || e.key === 'ArrowRight' || e.key === 'Home' || e.key === 'End') {
+                            e.stopPropagation();
+                            return;
+                        }
+                        if (onKeyDown) onKeyDown(e, rowIndex, column.key);
+                    }}
                     className="w-full min-w-0 bg-transparent border-0 outline-none p-0 text-xs font-semibold text-gray-900 dark:text-white"
                 />
             );
@@ -292,7 +312,16 @@ export const ExcelCell = ({
                 value={displayVal}
                 onChange={(e) => updateLocalValue(e.target.value)}
                 onBlur={() => handleBlur()}
-                onKeyDown={(e) => onKeyDown && onKeyDown(e, rowIndex, column.key)}
+                onMouseDown={(e) => e.stopPropagation()}
+                onClick={(e) => e.stopPropagation()}
+                onDoubleClick={(e) => e.stopPropagation()}
+                onKeyDown={(e) => {
+                    if (e.key === 'ArrowLeft' || e.key === 'ArrowRight' || e.key === 'Home' || e.key === 'End') {
+                        e.stopPropagation();
+                        return;
+                    }
+                    if (onKeyDown) onKeyDown(e, rowIndex, column.key);
+                }}
                 className="w-full min-w-0 bg-transparent border-0 outline-none p-0 text-xs font-semibold text-gray-900 dark:text-white"
             />
         );

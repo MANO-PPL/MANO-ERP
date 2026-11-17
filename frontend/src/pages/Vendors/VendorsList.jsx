@@ -45,7 +45,8 @@ const COLUMN_ALIASES = {
     email: ['email id', 'email', 'e-mail', 'mail', 'email address', 'mail id'],
     address: ['address', 'office address', 'site address', 'full address', 'street'],
     location: ['location', 'city', 'state', 'area', 'branch'],
-    remarks: ['remarks', 'notes', 'comments', 'description', 'remark', 'note']
+    remarks: ['remarks', 'notes', 'comments', 'description', 'remark', 'note'],
+    created_at: ['created at', 'created_at', 'created on', 'creation date', 'date created', 'created']
 };
 
 /**
@@ -408,6 +409,28 @@ export const VendorsList = () => {
                 width: '200px',
                 minWidth: '180px',
                 aliases: COLUMN_ALIASES.remarks
+            },
+            {
+                key: 'created_at',
+                label: 'Created At',
+                width: '150px',
+                minWidth: '130px',
+                readOnly: true,
+                aliases: COLUMN_ALIASES.created_at,
+                renderCell: (val) => {
+                    if (!val) return <span className="text-gray-400 italic text-xs">—</span>;
+                    try {
+                        const d = new Date(val);
+                        if (isNaN(d.getTime())) return <span className="text-xs text-gray-500">{String(val)}</span>;
+                        return (
+                            <span className="text-xs text-gray-600 dark:text-gray-400 font-medium" title={d.toLocaleString()}>
+                                {d.toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' })}
+                            </span>
+                        );
+                    } catch {
+                        return <span className="text-xs text-gray-500">{String(val)}</span>;
+                    }
+                }
             }
         ];
     }, [jobOptions, canWrite]);

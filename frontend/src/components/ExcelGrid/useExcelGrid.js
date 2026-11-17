@@ -1362,8 +1362,9 @@ export const useExcelGrid = ({
             }
 
             // Deduplicate rapid duplicate navigation events on the same keypress (within 50ms)
+            // (Only for normal grid navigation mode, never inside an active text input editor)
             const navKeys = ['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'Tab', 'Enter', 'PageUp', 'PageDown', 'Home', 'End'];
-            if (navKeys.includes(e.key)) {
+            if (!editingCell && navKeys.includes(e.key)) {
                 const now = performance.now();
                 if (now - lastNavEventRef.current.time < 50 && lastNavEventRef.current.key === e.key) {
                     markHandled();
@@ -1509,28 +1510,9 @@ export const useExcelGrid = ({
                     return;
                 }
 
-                // ArrowLeft / ArrowRight at edge
-                if (e.key === 'ArrowLeft' && (isModifier || (selStart === 0 && selEnd === 0))) {
-                    markHandled();
-                    if (isInput && inputEl) {
-                        handleCellChange(rowIndex, colKey, inputEl.value);
-                    }
-                    handleCellBlur();
-                    const targetCol = isModifier ? 0 : Math.max(0, colIndex - 1);
-                    setSelectionAnchor({ r: rowIndex, c: targetCol });
-                    setSelectionFocus({ r: rowIndex, c: targetCol });
-                    return;
-                }
-
-                if (e.key === 'ArrowRight' && (isModifier || (selStart === valLen && selEnd === valLen))) {
-                    markHandled();
-                    if (isInput && inputEl) {
-                        handleCellChange(rowIndex, colKey, inputEl.value);
-                    }
-                    handleCellBlur();
-                    const targetCol = isModifier ? totalCols - 1 : Math.min(totalCols - 1, colIndex + 1);
-                    setSelectionAnchor({ r: rowIndex, c: targetCol });
-                    setSelectionFocus({ r: rowIndex, c: targetCol });
+                // ArrowLeft / ArrowRight / Home / End: Allow natural cursor movement between letters within text
+                if (e.key === 'ArrowLeft' || e.key === 'ArrowRight' || e.key === 'Home' || e.key === 'End') {
+                    if (e.stopPropagation) e.stopPropagation();
                     return;
                 }
 
