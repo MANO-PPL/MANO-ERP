@@ -8,6 +8,7 @@ router.use(authenticateJWT);
 router.use(requireSystemPermission('materials'));
 
 // Bulk Endpoints
+router.post('/batch-save', resourceController.batchSave);
 router.post('/bulk-validate', resourceController.bulkValidate);
 router.post('/bulk-json', resourceController.bulkJson);
 router.put('/bulk', resourceController.bulkUpdateResources);

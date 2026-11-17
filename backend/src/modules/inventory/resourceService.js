@@ -1248,6 +1248,27 @@ export async function createResource(orgId, {
     const normalizedBaseUnitCode = normalizeUnitCode(base_unit_code || 'Nos');
     const unit = getUnit(normalizedBaseUnitCode);
 
+    const existing = await db('res_resources')
+        .where({ org_id: orgId })
+        .whereRaw('LOWER(TRIM(name)) = ?', [name.trim().toLowerCase()])
+        .where({ type: normalizedType })
+        .first();
+    if (existing) {
+        throw new AppError(`Data already exists: A resource with the name "${name.trim()}" already exists`, 409);
+    }
+
+    if (code && String(code).trim()) {
+        const trimmedCode = String(code).trim();
+        const existingCode = await db('res_resources')
+            .where({ org_id: orgId })
+            .whereNull('project_id')
+            .whereRaw('LOWER(TRIM(code)) = ?', [trimmedCode.toLowerCase()])
+            .first();
+        if (existingCode) {
+            throw new AppError(`Resource code already exists: A resource with code "${trimmedCode}" already exists. Resource code must be strictly unique.`, 409);
+        }
+    }
+
     const insertId = await db.transaction(async (trx) => {
         const [id] = await trx('res_resources').insert({
             org_id: orgId,
@@ -1332,8 +1353,39 @@ export async function updateResource(orgId, id, {
 
     await db.transaction(async (trx) => {
         const updates = {};
-        if (name !== undefined) updates.name = name;
-        if (code !== undefined) updates.code = code;
+        if (name !== undefined) {
+            const trimmedName = String(name).trim();
+            const checkType = type || resource.type;
+            const existingName = await trx('res_resources')
+                .where({ org_id: orgId })
+                .whereNot({ id })
+                .whereNull('project_id')
+                .whereRaw('LOWER(TRIM(name)) = ?', [trimmedName.toLowerCase()])
+                .where({ type: checkType })
+                .first();
+            if (existingName) {
+                throw new AppError(`Data already exists: A resource with the name "${trimmedName}" already exists`, 409);
+            }
+            updates.name = trimmedName;
+        }
+
+        if (code !== undefined) {
+            if (code !== null && String(code).trim()) {
+                const trimmedCode = String(code).trim();
+                const existingCode = await trx('res_resources')
+                    .where({ org_id: orgId })
+                    .whereNot({ id })
+                    .whereNull('project_id')
+                    .whereRaw('LOWER(TRIM(code)) = ?', [trimmedCode.toLowerCase()])
+                    .first();
+                if (existingCode) {
+                    throw new AppError(`Resource code already exists: A resource with code "${trimmedCode}" already exists. Resource code must be strictly unique.`, 409);
+                }
+                updates.code = trimmedCode;
+            } else {
+                updates.code = null;
+            }
+        }
         
         let activeType = resource.type;
         if (type !== undefined && type !== resource.type) {
@@ -1919,6 +1971,17 @@ export async function bulkInsertResources(orgId, resources) {
                 // App-level validation
                 const unit = getUnit(base_unit_code);
 
+                if (code) {
+                    const existingCode = await trx('res_resources')
+                        .where({ org_id: orgId })
+                        .whereNull('project_id')
+                        .whereRaw('LOWER(TRIM(code)) = ?', [code.toLowerCase()])
+                        .first();
+                    if (existingCode) {
+                        throw new Error(`Data already exists: A resource with code "${code}" already exists. Resource code must be strictly unique.`);
+                    }
+                }
+
                 // Insert resource
                 const [insertId] = await trx('res_resources').insert({
                     org_id: orgId,
@@ -2046,6 +2109,7 @@ export async function bulkValidateResources(orgId, resources) {
 
     const existingNameSet = new Set(existingResources.map(r => r.name?.toLowerCase()).filter(Boolean));
     const existingCodeSet = new Set(existingResources.map(r => r.code?.toLowerCase()).filter(Boolean));
+    const seenBatchCodes = new Set();
 
     resources.forEach((r, index) => {
         const rowNum = index + 1;
@@ -2064,9 +2128,16 @@ export async function bulkValidateResources(orgId, resources) {
             response.duplicates.push({ row: rowNum, name, reason: `Resource with name "${name}" already exists` });
             hasError = true;
         }
-        if (code && existingCodeSet.has(code.toLowerCase())) {
-            response.duplicates.push({ row: rowNum, code, reason: `Resource with code "${code}" already exists` });
-            hasError = true;
+        if (code) {
+            const normCode = code.toLowerCase();
+            if (existingCodeSet.has(normCode)) {
+                response.duplicates.push({ row: rowNum, code, reason: `Resource code already exists: "${code}". Resource code must be strictly unique.` });
+                hasError = true;
+            } else if (seenBatchCodes.has(normCode)) {
+                response.duplicates.push({ row: rowNum, code, reason: `Resource code already exists: "${code}" is duplicated within this batch. Resource code must be strictly unique.` });
+                hasError = true;
+            }
+            seenBatchCodes.add(normCode);
         }
 
         if (!hasError) {
@@ -2119,7 +2190,23 @@ export async function bulkUpdateResources(orgId, resources) {
 
                 const updates = {};
                 if (name !== undefined) updates.name = name;
-                if (code !== undefined) updates.code = code || null;
+                if (code !== undefined) {
+                    if (code !== null && String(code).trim()) {
+                        const trimmedCode = String(code).trim();
+                        const existingCode = await trx('res_resources')
+                            .where({ org_id: orgId })
+                            .whereNot({ id })
+                            .whereNull('project_id')
+                            .whereRaw('LOWER(TRIM(code)) = ?', [trimmedCode.toLowerCase()])
+                            .first();
+                        if (existingCode) {
+                            throw new Error(`Data already exists: A resource with code "${trimmedCode}" already exists. Resource code must be strictly unique.`);
+                        }
+                        updates.code = trimmedCode;
+                    } else {
+                        updates.code = null;
+                    }
+                }
                 
                 let activeType = existing.type;
                 if (type !== undefined && type !== existing.type) {
@@ -2347,6 +2434,239 @@ export async function clearManualRate(orgId, resourceId, effectiveFrom, projectI
     });
 }
 
+export async function batchSaveResources(orgId, { created = [], updated = [], deleted = [] }) {
+    return await db.transaction(async (trx) => {
+        let deletedCount = 0;
+        let createdCount = 0;
+        let updatedCount = 0;
+
+        // 1. Process Deletions
+        if (deleted && Array.isArray(deleted) && deleted.length > 0) {
+            const compositionColumns = await getCompositionColumns(trx);
+            for (const rawId of deleted) {
+                const id = parseInt(rawId, 10);
+                if (isNaN(id) || id <= 0) continue;
+
+                const resource = await trx('res_resources').where({ id, org_id: orgId }).first();
+                if (!resource) continue;
+
+                const used = await trx('res_compositions')
+                    .where(compositionColumns.component, id)
+                    .count('id as cnt')
+                    .first();
+                if (parseInt(used?.cnt || 0) > 0) {
+                    throw new AppError(`Cannot delete "${resource.name}": used in item compositions`, 400);
+                }
+
+                await trx('res_compositions').where(compositionColumns.item, id).del();
+                await trx('res_conversions').where('resource_id', id).del();
+                await trx('res_rates').where('resource_id', id).del();
+                await trx('res_resources').where({ id, org_id: orgId }).del();
+                deletedCount++;
+            }
+        }
+
+        // 2. Process Creations
+        if (created && Array.isArray(created) && created.length > 0) {
+            const existingRes = await trx('res_resources')
+                .where({ org_id: orgId })
+                .whereNull('project_id')
+                .select('name', 'type', 'code');
+            const existingKeys = new Set(existingRes.map((r) => `${String(r.name || '').trim().toLowerCase()}::${r.type}`));
+            const existingCodes = new Set(existingRes.map((r) => r.code ? String(r.code).trim().toLowerCase() : null).filter(Boolean));
+            const batchKeys = new Set();
+            const batchCodes = new Set();
+
+            for (const item of created) {
+                const resourceName = item.name || item.item_name;
+                if (!item || !resourceName || !String(resourceName).trim()) continue;
+
+                // Code uniqueness validation
+                if (item.code && String(item.code).trim()) {
+                    const trimmedCode = String(item.code).trim();
+                    const normCode = trimmedCode.toLowerCase();
+                    if (existingCodes.has(normCode) || batchCodes.has(normCode)) {
+                        throw new AppError(`Resource code already exists: A resource with code "${trimmedCode}" already exists. Resource code must be strictly unique.`, 409);
+                    }
+                    batchCodes.add(normCode);
+                }
+
+                let rawType = item.type || item.category || 'material';
+                let normalizedType = rawType.toString().toLowerCase().trim();
+                if (normalizedType === 'materials' || normalizedType === 'raw material') normalizedType = 'material';
+                if (normalizedType === 'items') normalizedType = 'item';
+                if (normalizedType === 'labor' || normalizedType === 'labours') normalizedType = 'labour';
+                if (!['material', 'item', 'labour'].includes(normalizedType)) {
+                    normalizedType = 'material';
+                }
+
+                const normKey = `${String(resourceName).trim().toLowerCase()}::${normalizedType}`;
+                if (existingKeys.has(normKey) || batchKeys.has(normKey)) {
+                    throw new AppError(`Data already exists: A resource with the name "${String(resourceName).trim()}" already exists`, 409);
+                }
+                batchKeys.add(normKey);
+
+                const rawUnit = item.base_unit_code || item.unit || 'Nos';
+                const normalizedBaseUnitCode = normalizeUnitCode(rawUnit);
+                let unit;
+                try {
+                    unit = getUnit(normalizedBaseUnitCode);
+                } catch {
+                    unit = getUnit('Nos');
+                }
+
+
+                const [newId] = await trx('res_resources').insert({
+                    org_id: orgId,
+                    project_id: null,
+                    parent_id: null,
+                    name: String(resourceName).trim(),
+                    code: item.code ? String(item.code).trim() : null,
+                    type: normalizedType,
+                    base_unit_code: unit.code || normalizedBaseUnitCode,
+                    description: item.description || null,
+                    remarks: item.remarks || null
+                });
+
+                if (Array.isArray(item.conversions) && item.conversions.length > 0) {
+                    await _replaceConversions(orgId, newId, item.conversions, unit, trx);
+                }
+
+                const rawRate = item.rate !== undefined && item.rate !== null && item.rate !== '' 
+                    ? item.rate 
+                    : (item.standard_rate !== undefined && item.standard_rate !== null && item.standard_rate !== '' ? item.standard_rate : null);
+
+                if (rawRate !== null) {
+                    const numRate = Number(rawRate);
+                    if (!isNaN(numRate)) {
+                        await _writeManualRateVersion(orgId, {
+                            id: newId,
+                            type: normalizedType,
+                            base_unit_code: unit.code || normalizedBaseUnitCode
+                        }, {
+                            rate: numRate,
+                            unit_code: item.rate_unit_code ? normalizeUnitCode(item.rate_unit_code) : (unit.code || normalizedBaseUnitCode),
+                            effective_from: item.effective_from || item.rate_effective_from || null,
+                            remarks: item.rate_remarks || item.remarks || null
+                        }, trx);
+                    }
+                }
+
+                if (normalizedType === 'item' && Array.isArray(item.compositions) && item.compositions.length > 0) {
+                    await _replaceCompositions(orgId, newId, item.compositions, trx, item.effective_from);
+                }
+
+                createdCount++;
+            }
+        }
+
+        // 3. Process Updates
+        if (updated && Array.isArray(updated) && updated.length > 0) {
+            const updatedBatchCodes = new Map();
+
+            for (const item of updated) {
+                const id = parseInt(item.id, 10);
+                if (isNaN(id) || id <= 0) continue;
+
+                const existing = await trx('res_resources').where({ id, org_id: orgId }).first();
+                if (!existing) continue;
+
+                const updates = {};
+                const resourceName = item.name || item.item_name;
+                if (resourceName !== undefined && String(resourceName).trim()) updates.name = String(resourceName).trim();
+                if (item.code !== undefined) {
+                    if (item.code !== null && String(item.code).trim()) {
+                        const trimmedCode = String(item.code).trim();
+                        const normCode = trimmedCode.toLowerCase();
+
+                        if (updatedBatchCodes.has(normCode) && updatedBatchCodes.get(normCode) !== id) {
+                            throw new AppError(`Data already exists: A resource with code "${trimmedCode}" already exists in this batch. Resource code must be strictly unique.`, 409);
+                        }
+                        updatedBatchCodes.set(normCode, id);
+
+                        const duplicateCode = await trx('res_resources')
+                            .where({ org_id: orgId })
+                            .whereNot({ id })
+                            .whereNull('project_id')
+                            .whereRaw('LOWER(TRIM(code)) = ?', [normCode])
+                            .first();
+                        if (duplicateCode) {
+                            throw new AppError(`Resource code already exists: A resource with code "${trimmedCode}" already exists. Resource code must be strictly unique.`, 409);
+                        }
+                        updates.code = trimmedCode;
+                    } else {
+                        updates.code = null;
+                    }
+                }
+
+                let activeType = existing.type;
+                const rawType = item.type || item.category;
+                if (rawType !== undefined && rawType !== existing.type) {
+                    let normalizedType = rawType.toString().toLowerCase().trim();
+                    if (normalizedType === 'materials' || normalizedType === 'raw material') normalizedType = 'material';
+                    if (normalizedType === 'items') normalizedType = 'item';
+                    if (normalizedType === 'labor' || normalizedType === 'labours') normalizedType = 'labour';
+                    if (['material', 'item', 'labour'].includes(normalizedType)) {
+                        if (existing.type === 'item' && normalizedType !== 'item') {
+                            const compositionColumns = await getCompositionColumns(trx);
+                            await trx('res_compositions').where(compositionColumns.item, id).del();
+                        }
+                        updates.type = normalizedType;
+                        activeType = normalizedType;
+                    }
+                }
+
+                let activeBaseUnitCode = existing.base_unit_code;
+                const rawUnit = item.base_unit_code || item.unit;
+                if (rawUnit !== undefined && rawUnit !== existing.base_unit_code) {
+                    const normalized = normalizeUnitCode(rawUnit);
+                    updates.base_unit_code = normalized;
+                    activeBaseUnitCode = normalized;
+                }
+                if (item.description !== undefined) updates.description = item.description || null;
+                if (item.remarks !== undefined) updates.remarks = item.remarks || null;
+
+                if (Object.keys(updates).length > 0) {
+                    await trx('res_resources').where({ id, org_id: orgId }).update(updates);
+                }
+
+                if (Array.isArray(item.conversions)) {
+                    const baseUnit = getUnit(activeBaseUnitCode);
+                    await _replaceConversions(orgId, id, item.conversions, baseUnit, trx);
+                }
+
+                if (Array.isArray(item.compositions)) {
+                    await _forceReplaceCompositions(orgId, id, item.compositions, trx, item.effective_from);
+                }
+
+                const rawRate = item.rate !== undefined && item.rate !== null && item.rate !== '' 
+                    ? item.rate 
+                    : (item.standard_rate !== undefined && item.standard_rate !== null && item.standard_rate !== '' ? item.standard_rate : null);
+
+                if (rawRate !== null) {
+                    const numRate = Number(rawRate);
+                    if (!isNaN(numRate)) {
+                        await _writeManualRateVersion(orgId, {
+                            id,
+                            type: activeType,
+                            base_unit_code: activeBaseUnitCode
+                        }, {
+                            rate: numRate,
+                            unit_code: item.rate_unit_code ? normalizeUnitCode(item.rate_unit_code) : activeBaseUnitCode,
+                            effective_from: item.rate_effective_from || item.effective_from || null,
+                            remarks: item.rate_remarks || item.remarks || null
+                        }, trx);
+                    }
+                }
+
+                updatedCount++;
+            }
+        }
+
+        return { success: true, createdCount, updatedCount, deletedCount };
+    });
+}
+
 export default {
     getResources,
     getResourceById,
@@ -2358,6 +2678,7 @@ export default {
     createResource,
     updateResource,
     deleteResource,
+    batchSaveResources,
     initializeResourceSchema,
     findOrCreateProjectResource,
     importResourceToProject,

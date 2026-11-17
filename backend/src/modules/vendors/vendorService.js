@@ -178,6 +178,20 @@ export async function createVendor(orgId, data, options = {}) {
         throw new AppError('Vendor name is required', 400);
     }
 
+    if (options.skipDuplicateCheck !== true) {
+        const existing = await connection('crm_contacts')
+            .where({ org_id: orgId })
+            .whereRaw('LOWER(TRIM(name)) = ?', [String(data.name).trim().toLowerCase()])
+            .where(function () {
+                this.whereNull('category')
+                    .orWhereRaw('LOWER(??) NOT IN (?, ?)', ['category', 'client', 'pmc']);
+            })
+            .first();
+        if (existing) {
+            throw new AppError(`Data already exists: A vendor with the name "${data.name.trim()}" already exists`, 409);
+        }
+    }
+
     const insertData = {
         org_id: orgId,
         name: data.name,
@@ -420,12 +434,71 @@ export async function bulkValidateVendors(orgId, vendors) {
     return response;
 }
 
+export async function batchSaveVendors(orgId, { created = [], updated = [], deleted = [] }) {
+    return await db.transaction(async (trx) => {
+        let deletedCount = 0;
+        let createdCount = 0;
+        let updatedCount = 0;
+
+        if (deleted && Array.isArray(deleted) && deleted.length > 0) {
+            const validIds = deleted.map(id => parseInt(id, 10)).filter(id => !isNaN(id) && id > 0);
+            if (validIds.length > 0) {
+                await trx('crm_interactions').whereIn('contact_id', validIds).andWhere('org_id', orgId).delete();
+                deletedCount = await trx('crm_contacts')
+                    .whereIn('id', validIds)
+                    .where({ org_id: orgId })
+                    .where(function () {
+                        this.whereNull('category')
+                            .orWhereRaw('LOWER(??) NOT IN (?, ?)', ['category', 'client', 'pmc']);
+                    })
+                    .delete();
+            }
+        }
+
+        if (created && Array.isArray(created) && created.length > 0) {
+            const existingVendors = await trx('crm_contacts')
+                .where({ org_id: orgId })
+                .where(function () {
+                    this.whereNull('category')
+                        .orWhereRaw('LOWER(??) NOT IN (?, ?)', ['category', 'client', 'pmc']);
+                })
+                .select('name');
+            const existingNames = new Set(existingVendors.map((v) => String(v.name || '').trim().toLowerCase()));
+            const batchNames = new Set();
+
+            for (const item of created) {
+                if (!item || !item.name || !String(item.name).trim()) continue;
+                const normName = String(item.name).trim().toLowerCase();
+                if (existingNames.has(normName) || batchNames.has(normName)) {
+                    throw new AppError(`Data already exists: A vendor with the name "${item.name.trim()}" already exists`, 409);
+                }
+                batchNames.add(normName);
+                await createVendor(orgId, item, { transaction: trx, skipDuplicateCheck: true });
+                createdCount++;
+            }
+        }
+
+
+        if (updated && Array.isArray(updated) && updated.length > 0) {
+            for (const item of updated) {
+                const id = parseInt(item.id, 10);
+                if (isNaN(id) || id <= 0) continue;
+                await updateVendor(orgId, id, item, { transaction: trx });
+                updatedCount++;
+            }
+        }
+
+        return { success: true, createdCount, updatedCount, deletedCount };
+    });
+}
+
 export default {
     getVendors,
     getVendorById,
     createVendor,
     updateVendor,
     deleteVendors,
+    batchSaveVendors,
     bulkInsertVendors,
     bulkValidateVendors,
     createInteraction

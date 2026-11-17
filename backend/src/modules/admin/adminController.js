@@ -75,10 +75,20 @@ export const deleteJobNature = catchAsync(async (req, res) => {
     res.json({ success: true, message: 'Job Nature deleted successfully' });
 });
 
+export const renameDepartment = catchAsync(async (req, res) => {
+    await departmentService.renameDepartment(req.user.org_id, req.params.id, req.body?.dept_name);
+    res.json({ success: true });
+});
+
 export const deleteDepartment = catchAsync(async (req, res) => {
     const { id } = req.params;
     await departmentService.deleteDepartment(req.user.org_id, id);
     res.json({ success: true, message: 'Department deleted successfully' });
+});
+
+export const renameDesignation = catchAsync(async (req, res) => {
+    await designationService.renameDesignation(req.user.org_id, req.params.id, req.body?.desg_name);
+    res.json({ success: true });
 });
 
 export const deleteDesignation = catchAsync(async (req, res) => {
@@ -259,7 +269,9 @@ export default {
     createJobNature,
     deleteSector,
     deleteJobNature,
+    renameDepartment,
     deleteDepartment,
+    renameDesignation,
     deleteDesignation,
     createUser,
     updateUser,

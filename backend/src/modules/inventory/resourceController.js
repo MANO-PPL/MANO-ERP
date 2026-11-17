@@ -348,12 +348,23 @@ export const updateRate = catchAsync(async (req, res) => {
     res.json({ success: true, message: 'Rate updated successfully', rate: updated });
 });
 
+export const batchSave = catchAsync(async (req, res) => {
+    const { created = [], updated = [], deleted = [] } = req.body;
+    const result = await resourceService.batchSaveResources(req.user.org_id, { created, updated, deleted });
+    res.json({
+        success: true,
+        message: 'Batch save completed successfully',
+        ...result
+    });
+});
+
 export default {
     listResources,
     getResolvedRates,
     getResource,
     getResolvedRate,
     createResource,
+    batchSave,
     bulkValidate,
     bulkJson,
     updateResource,
