@@ -21,7 +21,7 @@ export default function useMobileProjectContext({ projectId, projectService = pr
                 if (!response?.success) throw new Error(response?.message || 'Project could not be loaded');
                 if (!guardRef.current.isCurrent(token)) return;
                 const project = response.project;
-                setState({ project, permissions: normalizeProjectPermissions(response.projectPermissions || {}), loading: false, error: null });
+                setState({ projectId, project, permissions: normalizeProjectPermissions(response.projectPermissions || {}), loading: false, error: null });
                 try {
                     sessionStorage.setItem(`active_project_info_${projectId}`, JSON.stringify({ name: project?.name, project_code: project?.project_code }));
                     window.dispatchEvent(new CustomEvent('active-project-updated', { detail: { id: projectId, name: project?.name, project_code: project?.project_code } }));
@@ -47,5 +47,6 @@ export default function useMobileProjectContext({ projectId, projectService = pr
         load();
     }, [load]);
 
+    if (state.project && state.projectId !== projectId) return { project: null, permissions: null, loading: true, refresh: load };
     return { ...state, refresh: load };
 }

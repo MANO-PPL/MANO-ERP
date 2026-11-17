@@ -4,7 +4,7 @@ export const APPROVAL_MAIN_SECTIONS = Object.freeze(['Tasks', 'WIP', 'Reports', 
 export const GENERAL_DOCUMENT_SECTIONS = Object.freeze(['Project Vendor List', 'Project Directory', 'Staff Roles', 'Project Summary', 'Agenda of Meeting', 'Minutes of Meeting', 'Organisation Chart', 'Daily Progress Report (DPR)']);
 export const APPROVAL_CONFIG_SECTIONS = Object.freeze([...APPROVAL_MAIN_SECTIONS.filter((item) => item !== 'General Documents'), ...GENERAL_DOCUMENT_SECTIONS]);
 export const EPISODIC_WORKFLOWS = Object.freeze(['Agenda of Meeting', 'Minutes of Meeting', 'Daily Progress Report (DPR)']);
-export const PROJECT_PERMISSION_PAGES = Object.freeze(['Tasks', 'WIP', 'Reports', 'General Documents', 'Spreadsheets', 'Drawings', 'Planning', 'Phases', 'Contracts', 'Quality', 'Safety', 'Billing', 'Material Management', 'Transactions', 'Approvals']);
+export const PROJECT_PERMISSION_PAGES = Object.freeze(['Dashboard', 'Tasks', 'WIP', 'Reports', 'General Documents', 'Spreadsheets', 'Drawings', 'Planning', 'Phases', 'Contracts', 'Quality', 'Safety', 'Billing', 'Material Management', 'Transactions', 'Approvals', 'Settings']);
 
 export const resolvePlanningReport = (value) => PLANNING_REPORTS.includes(value) ? value : 'hub';
 export const resolveManpowerView = (value) => MANPOWER_VIEWS.includes(value) ? value : 'histogram';
