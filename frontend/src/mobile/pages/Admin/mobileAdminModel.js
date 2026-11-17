@@ -74,13 +74,13 @@ export function createEmployeePayload(form = {}) {
         user_type: form.user_type === 'admin' ? 'admin' : 'employee',
         password: form.password || undefined,
         system_permissions: serializeSystemPermissions(form.system_permissions),
-        project_ids: (form.project_ids || []).map(Number).filter(Number.isFinite),
-        project_permissions: {},
     };
 }
 
 export function updateEmployeePayload(form = {}) {
     const payload = createEmployeePayload(form);
+    payload.dept_id = form.dept_id ?? undefined;
+    payload.desg_id = form.desg_id ?? undefined;
     delete payload.password;
     if (form.password) payload.user_password = form.password;
     return payload;
