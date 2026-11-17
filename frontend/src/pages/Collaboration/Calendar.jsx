@@ -6,7 +6,7 @@ import {
     CAL_EVENTS, MONTHS, DAYS
 } from './constants';
 
-export default function Calendar({ activeTab, setActiveTab }) {
+export default function Calendar({ activeTab, setActiveTab, tabs }) {
     const today = new Date();
     const [year, setYear] = useState(today.getFullYear());
     const [month, setMonth] = useState(today.getMonth());
@@ -48,7 +48,7 @@ export default function Calendar({ activeTab, setActiveTab }) {
                 {/* Tab Bar Integration */}
                 <div className="flex-shrink-0 px-6 pt-5 pb-3 bg-white dark:bg-[#0d1117]">
                     <div className="inline-flex p-0.5 bg-gray-100 dark:bg-white/5 border border-gray-200 dark:border-white/10 rounded-lg">
-                        {['chat', 'calendar'].map(tabId => (
+                        {tabs.map(tabId => (
                             <button
                                 key={tabId}
                                 onClick={() => setActiveTab(tabId)}

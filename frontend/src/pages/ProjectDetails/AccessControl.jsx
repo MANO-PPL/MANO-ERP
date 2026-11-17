@@ -11,6 +11,7 @@ import { projectApi } from '../../services/projectApi';
 import { adminApi } from '../../services/adminApi';
 
 const PROJECT_PAGES = [
+    { id: 'Dashboard', label: 'Dashboard' },
     { id: 'Tasks', label: 'Tasks' },
     { id: 'WIP', label: 'Work In Progress (WIP)' },
     { id: 'Reports', label: 'Reports & Analytics' },
@@ -25,7 +26,8 @@ const PROJECT_PAGES = [
     { id: 'Billing', label: 'Billing & Invoicing' },
     { id: 'Material Management', label: 'Material Management' },
     { id: 'Transactions', label: 'Transactions & Ledger' },
-    { id: 'Approvals', label: 'Workflow Approvals' }
+    { id: 'Approvals', label: 'Workflow Approvals' },
+    { id: 'Settings', label: 'Settings' }
 ];
 
 const ACCESS_LEVELS = ['None', 'Read', 'Write'];
