@@ -16,6 +16,7 @@ import {
 import Papa from 'papaparse';
 import * as XLSX from 'xlsx';
 import { toast } from 'react-toastify';
+import { customToast } from '../../utils/toast';
 import { resourceApi } from '../../services/resourceApi';
 
 const ResourceBulkUpload = () => {
@@ -79,9 +80,10 @@ const ResourceBulkUpload = () => {
                 const remarks = (row['Remarks'] || row['remarks'] || '').toString().trim();
 
                 const errors = [];
-                if (duplicateRows.has(rowNum)) {
+                const isDup = duplicateRows.has(rowNum);
+                if (isDup) {
                     const dup = (report.duplicates || []).find(d => d.row === rowNum);
-                    errors.push(dup?.reason || 'Duplicate resource');
+                    errors.push(dup?.reason || (code ? `Resource code already exists: "${code}"` : 'Duplicate resource'));
                 }
                 if (missingFieldRows.has(rowNum)) {
                     errors.push(missingFieldRows.get(rowNum));
@@ -94,7 +96,8 @@ const ResourceBulkUpload = () => {
                 if (!unit) errors.push('Missing Base Unit');
                 if (type && !['material', 'item', 'labour'].includes(type)) errors.push('Invalid type (must be material, item, or labour)');
 
-                const status = errors.length > 0 ? 'Error' : 'Valid';
+                const isDuplicate = isDup || errors.some(e => typeof e === 'string' && (e.toLowerCase().includes('already exists') || e.toLowerCase().includes('duplicate') || e.toLowerCase().includes('strictly unique')));
+                const status = isDuplicate ? 'Duplicate' : (errors.length > 0 ? 'Error' : 'Valid');
 
                 return {
                     ...row,
@@ -114,6 +117,14 @@ const ResourceBulkUpload = () => {
 
             setPreviewData(processed);
             setStep(2);
+
+            if (report.duplicates && report.duplicates.length > 0) {
+                const sampleDup = report.duplicates.find(d => d.code)?.code || report.duplicates[0]?.name || '';
+                const alertMsg = sampleDup
+                    ? `Resource code already exists: "${sampleDup}". Resource code must be strictly unique. Please change duplicate codes.`
+                    : 'Resource code already exists in file or database. Resource code must be strictly unique. Please change it.';
+                customToast.error(alertMsg, 'Resource Code Already Exists');
+            }
         } catch (error) {
             console.error('Validation Error:', error);
             toast.error("Failed to validate resource file against database.");
@@ -353,12 +364,16 @@ const ResourceBulkUpload = () => {
                             </thead>
                             <tbody className="divide-y divide-slate-100 dark:divide-white/5">
                                 {previewData.map((row, idx) => (
-                                    <tr key={idx} className={row.status === 'Error' ? 'bg-red-50/50 dark:bg-red-950/20' : 'hover:bg-slate-50/50 dark:hover:bg-white/5'}>
+                                    <tr key={idx} className={row.status === 'Duplicate' ? 'bg-purple-50/40 dark:bg-purple-950/20' : row.status === 'Error' ? 'bg-red-50/50 dark:bg-red-950/20' : 'hover:bg-slate-50/50 dark:hover:bg-white/5'}>
                                         <td className="px-3 py-2 font-mono text-slate-400">{row.rowNum}</td>
                                         <td className="px-3 py-2">
                                             {row.status === 'Valid' ? (
                                                 <span className="inline-flex items-center gap-1 text-emerald-600 dark:text-emerald-400 font-semibold">
                                                     <CheckCircle size={14} /> Valid
+                                                </span>
+                                            ) : row.status === 'Duplicate' ? (
+                                                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-bold bg-purple-100 text-purple-800 dark:bg-purple-950/60 dark:text-purple-300 border border-purple-300 dark:border-purple-600/40 shadow-xs" title={row.errorMsg || 'Resource code already exists. Please change it.'}>
+                                                    <AlertCircle size={13} /> DUPLICATE
                                                 </span>
                                             ) : (
                                                 <span className="inline-flex items-center gap-1 text-red-600 dark:text-red-400 font-semibold" title={row.errorMsg}>

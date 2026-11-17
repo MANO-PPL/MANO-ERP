@@ -1,18 +1,21 @@
-import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import {
     UserPlus, Search, MoreHorizontal, Filter, Download,
     Mail, Shield, Calendar, X, Upload, FileText,
     CheckCircle2, AlertCircle, FileCode, Check, Lock,
-    ChevronRight, Eye, Edit3, Trash2, Info, Users,
+    ChevronRight, Eye, EyeOff, Edit3, Trash2, Info, Users,
     LayoutDashboard, Briefcase, Map, MessageSquare, Settings, ChevronDown, Loader2,
     Package, ArrowLeftRight, GripVertical, UploadCloud, Sparkles, Layers,
     Plus, Sliders, FolderKey, Copy, FileSpreadsheet
 } from 'lucide-react';
 import { toast } from 'react-toastify';
 import { adminApi } from '../../services/adminApi';
-import { projectApi } from '../../services/projectApi';
-import { ExcelGrid } from '../../components/ExcelGrid';
+
+import EmployeeDirectory from './EmployeeDirectory';
+import { AssignmentFields, ReferenceManager } from './ReferenceManager';
 import { useAuth } from '../../context/AuthContext';
+import { downloadEmployeeTemplate } from '../../utils/employeeTemplate';
+import EmployeeBulkUpload from './EmployeeBulkUpload';
 
 // ─── Base Page Tree Structure (System Modules) ─────────────────────────────
 const BASE_PAGE_TREE = [
@@ -35,6 +38,7 @@ const BASE_PAGE_TREE = [
 const ACCESS_LEVELS = ['None', 'Read', 'Write'];
 
 const PROJECT_MODULES_LIST = [
+    { id: 'Dashboard', label: 'Dashboard' },
     { id: 'Tasks', label: 'Tasks' },
     { id: 'WIP', label: 'Work In Progress (WIP)' },
     { id: 'Reports', label: 'Reports & Analytics' },
@@ -49,23 +53,9 @@ const PROJECT_MODULES_LIST = [
     { id: 'Billing', label: 'Billing & Invoicing' },
     { id: 'Material Management', label: 'Material Management' },
     { id: 'Transactions', label: 'Transactions & Ledger' },
-    { id: 'Approvals', label: 'Workflow Approvals' }
+    { id: 'Approvals', label: 'Workflow Approvals' },
+    { id: 'Settings', label: 'Settings' }
 ];
-
-const getDynamicPageTree = (projectsList) => {
-    return BASE_PAGE_TREE.map(node => {
-        if (node.id === 'projects') {
-            return {
-                ...node,
-                children: (projectsList || []).map(p => ({
-                    id: `project_${p.id}`,
-                    label: p.name
-                }))
-            };
-        }
-        return node;
-    });
-};
 
 const defaultPermissions = () => {
     const p = {};
@@ -81,7 +71,7 @@ const DeleteConfirmationModal = ({ open, onClose, onConfirm, user, isDeleting })
     if (!open || !user) return null;
     return (
         <div className="fixed inset-0 bg-black/50 backdrop-blur-xs z-[9999] flex items-center justify-center p-4">
-            <div className="bg-white dark:bg-[#161b22] border border-gray-200 dark:border-white/10 rounded-md w-full max-w-md shadow-2xl overflow-hidden animate-in fade-in zoom-in-95 duration-200">
+            <div className="bg-white dark:bg-[#161b22] border border-gray-200 dark:border-white/10 rounded-2xl w-full max-w-md shadow-2xl overflow-hidden animate-in fade-in zoom-in-95 duration-200">
                 <div className="p-6 text-center space-y-4">
                     <div className="w-12 h-12 bg-red-50 dark:bg-red-950/40 text-red-500 rounded-md flex items-center justify-center mx-auto border border-red-200/50 dark:border-red-500/30 shadow-xs">
                         <AlertCircle size={24} />
@@ -133,7 +123,7 @@ const DeleteTemplateModal = ({ open, onClose, onConfirm, template, isDeleting })
     if (!open || !template) return null;
     return (
         <div className="fixed inset-0 bg-black/50 backdrop-blur-xs z-[9999] flex items-center justify-center p-4">
-            <div className="bg-white dark:bg-[#161b22] border border-gray-200 dark:border-white/10 rounded-md w-full max-w-md shadow-2xl overflow-hidden animate-in fade-in zoom-in-95 duration-200">
+            <div className="bg-white dark:bg-[#161b22] border border-gray-200 dark:border-white/10 rounded-2xl w-full max-w-md shadow-2xl overflow-hidden animate-in fade-in zoom-in-95 duration-200">
                 <div className="p-6 text-center space-y-4">
                     <div className="w-12 h-12 bg-amber-50 dark:bg-amber-950/40 text-amber-500 rounded-md flex items-center justify-center mx-auto border border-amber-200/50 dark:border-amber-500/30 shadow-xs">
                         <AlertCircle size={24} />
@@ -570,10 +560,10 @@ const Avatar = ({ name }) => {
 };
 
 // ─── Add User Drawer ──────────────────────────────────────────────────────────
-const AddUserDrawer = ({ open, onClose, onAdd, onBulkUpload, allProjects = [], backendTemplates = [], initialTab = 'form' }) => {
+const AddUserDrawer = ({ open, onClose, onAdd, onBulkUpload, onRefreshUsers, backendTemplates = [], initialTab = 'form' }) => {
     const [tab, setTab] = useState(initialTab);
     const [userType, setUserType] = useState('employee');
-    const [form, setForm] = useState({ name: '', email: '', department: '', password: '', phone_no: '' });
+    const [form, setForm] = useState({ name: '', email: '', dept_id: '', password: '', phone_no: '', desg_id: '' });
     const [showPw, setShowPw] = useState(false);
     const [file, setFile] = useState(null);
     const [dragging, setDragging] = useState(false);
@@ -583,11 +573,11 @@ const AddUserDrawer = ({ open, onClose, onAdd, onBulkUpload, allProjects = [], b
     const [showPerms, setShowPerms] = useState(true);
     const [isSubmitting, setIsSubmitting] = useState(false);
 
-    const dynamicPageTree = getDynamicPageTree(allProjects);
+    const dynamicPageTree = BASE_PAGE_TREE;
 
     useEffect(() => {
         setTab(initialTab);
-    }, [initialTab]);
+    }, [initialTab, open]);
 
     const handleApplyTemplate = (tpl) => {
         const sysPerms = tpl.system_permissions || tpl.permissions || {};
@@ -605,35 +595,33 @@ const AddUserDrawer = ({ open, onClose, onAdd, onBulkUpload, allProjects = [], b
 
     const handleSubmitForm = async (e) => {
         e.preventDefault();
-        if (!form.name || !form.email || !form.password) {
+        if (!form.phone_no.trim()) {
+            document.getElementById('new-employee-phone')?.focus();
+            toast.error('Enter a mobile number to create this employee.');
+            return;
+        }
+        if (!form.name.trim() || !form.email.trim() || !form.password) {
             toast.error('Please fill in Name, Email, and Password');
             return;
         }
 
         setIsSubmitting(true);
         try {
-            const selectedProjIds = [];
-            const projPerms = {};
-            for (const [k, v] of Object.entries(permissions)) {
-                if (k.startsWith('project_') && v > 0) {
-                    const pid = parseInt(k.replace('project_', ''), 10);
-                    if (!isNaN(pid)) selectedProjIds.push(pid);
-                }
-            }
-
             await onAdd({
-                name: form.name,
-                email: form.email,
-                department: form.department,
-                phone_no: form.phone_no,
+                name: form.name.trim(),
+                email: form.email.trim(),
+                dept_id: form.dept_id || undefined,
+                desg_id: form.desg_id || undefined,
+                phone_no: form.phone_no.trim(),
                 password: form.password,
                 user_type: userType,
                 system_permissions: permissions,
-                project_ids: selectedProjIds,
-                project_permissions: projPerms
             });
 
-            setForm({ name: '', email: '', department: '', password: '', phone_no: '' });
+            setPermissions(defaultPermissions());
+            setUserType('employee');
+            setShowPw(false);
+            setForm({ name: '', email: '', dept_id: '', password: '', phone_no: '', desg_id: '' });
             onClose();
         } catch (error) {
             console.error(error);
@@ -664,7 +652,7 @@ const AddUserDrawer = ({ open, onClose, onAdd, onBulkUpload, allProjects = [], b
     return (
         <>
             <div className="fixed inset-0 bg-black/40 backdrop-blur-xs z-[4000]" onClick={onClose} />
-            <div className="fixed inset-y-0 right-0 w-full max-w-xl bg-white dark:bg-[#161b22] shadow-2xl z-[4001] flex flex-col border-l border-gray-200 dark:border-white/10 animate-in slide-in-from-right duration-300">
+            <div className={`fixed inset-y-0 right-0 w-full ${tab === 'bulk' ? 'max-w-3xl' : 'max-w-xl'} bg-white dark:bg-[#161b22] shadow-2xl z-[4001] flex flex-col border-l border-gray-200 dark:border-white/10 animate-in slide-in-from-right duration-300 transition-all`}>
                 {/* Header */}
                 <div className="px-6 py-4 border-b border-gray-100 dark:border-white/10 flex items-center justify-between shrink-0 bg-gray-50/50 dark:bg-[#0d1117]">
                     <div className="flex items-center gap-3">
@@ -736,17 +724,13 @@ const AddUserDrawer = ({ open, onClose, onAdd, onBulkUpload, allProjects = [], b
 
                             <div className="grid grid-cols-2 gap-3">
                                 <div>
-                                    <label className="block text-[10px] font-bold text-gray-500 dark:text-gray-400 mb-1.5 uppercase tracking-wide">Department</label>
-                                    <input type="text" placeholder="e.g. Engineering" value={form.department} onChange={e => setForm(p => ({ ...p, department: e.target.value }))}
-                                        className="w-full px-3.5 py-2 bg-gray-50 dark:bg-[#0d1117] border border-gray-200 dark:border-white/10 rounded-xl text-xs focus:outline-none focus:ring-2 focus:ring-blue-500/40 font-medium" />
-                                </div>
-                                <div>
-                                    <label className="block text-[10px] font-bold text-gray-500 dark:text-gray-400 mb-1.5 uppercase tracking-wide">Mobile Number</label>
-                                    <input type="text" placeholder="+91 9876543210" value={form.phone_no} onChange={e => setForm(p => ({ ...p, phone_no: e.target.value }))}
+                                    <label htmlFor="new-employee-phone" className="block text-[10px] font-bold text-gray-500 dark:text-gray-400 mb-1.5 uppercase tracking-wide">Mobile Number *</label>
+                                    <input id="new-employee-phone" type="tel" autoComplete="tel" required placeholder="+91 9876543210" value={form.phone_no} onChange={e => setForm(p => ({ ...p, phone_no: e.target.value }))}
                                         className="w-full px-3.5 py-2 bg-gray-50 dark:bg-[#0d1117] border border-gray-200 dark:border-white/10 rounded-xl text-xs focus:outline-none focus:ring-2 focus:ring-blue-500/40 font-medium" />
                                 </div>
                             </div>
 
+                            <AssignmentFields value={form} onChange={(field, value) => setForm(prev => ({ ...prev, [field]: value }))} />
                             <div>
                                 <label className="block text-[10px] font-bold text-gray-500 dark:text-gray-400 mb-1.5 uppercase tracking-wide">Password *</label>
                                 <div className="relative">
@@ -775,7 +759,7 @@ const AddUserDrawer = ({ open, onClose, onAdd, onBulkUpload, allProjects = [], b
                                         className="w-full flex items-center justify-between px-4 py-3 bg-gray-50 dark:bg-[#161b22] hover:bg-gray-100 dark:hover:bg-white/5 transition-all"
                                     >
                                         <div className="flex items-center gap-2 text-xs font-bold text-gray-800 dark:text-gray-200">
-                                            <Shield size={14} className="text-blue-500" /> Assign Page & Project Access
+                                            <Shield size={14} className="text-blue-500" /> Assign ERP Page Access
                                         </div>
                                         <ChevronDown size={14} className={`text-gray-400 transition-transform ${showPerms ? 'rotate-180' : ''}`} />
                                     </button>
@@ -853,75 +837,82 @@ const AddUserDrawer = ({ open, onClose, onAdd, onBulkUpload, allProjects = [], b
                             )}
                         </div>
                     ) : (
-                        /* Bulk Upload Tab */
-                        <div className="space-y-5">
-                            <div
-                                onDragOver={e => { e.preventDefault(); setDragging(true); }}
-                                onDragLeave={() => setDragging(false)}
-                                onDrop={e => { e.preventDefault(); setDragging(false); if (e.dataTransfer.files?.[0]) setFile(e.dataTransfer.files[0]); }}
-                                className={`p-8 border-2 border-dashed rounded-2xl text-center transition-all ${dragging ? 'border-blue-500 bg-blue-50/50 dark:bg-blue-900/20' : 'border-gray-200 dark:border-white/10 bg-gray-50/50 dark:bg-[#0d1117]'}`}
-                            >
-                                <UploadCloud size={36} className="mx-auto text-blue-500 mb-3" />
-                                <h4 className="text-xs font-bold text-gray-900 dark:text-white">Drag and drop CSV/Excel file</h4>
-                                <p className="text-[11px] text-gray-400 dark:text-gray-500 mt-1">Supports .csv, .xlsx formats with employee name, email, department columns</p>
-                                <label className="mt-4 inline-block px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold rounded-xl cursor-pointer shadow-md transition-all">
-                                    Browse File
-                                    <input type="file" accept=".csv,.xlsx" onChange={e => { if (e.target.files?.[0]) setFile(e.target.files[0]); }} className="hidden" />
-                                </label>
-                                {file && (
-                                    <div className="mt-4 p-3 bg-blue-50 dark:bg-blue-900/30 rounded-xl border border-blue-200/50 dark:border-blue-500/30 flex items-center justify-between text-xs font-semibold text-blue-700 dark:text-blue-300">
-                                        <div className="flex items-center gap-2">
-                                            <FileText size={15} /> {file.name}
-                                        </div>
-                                        <button onClick={() => setFile(null)} className="text-red-500 hover:underline text-[11px]">Remove</button>
-                                    </div>
-                                )}
+                        /* Bulk Upload Tab - Multi-step Workflow */
+                        <div className="space-y-4">
+                            <div className="flex items-center justify-between pb-2 border-b border-gray-100 dark:border-white/10">
+                                <span className="text-xs font-semibold text-gray-500 dark:text-gray-400">
+                                    Employee Batch Import Engine
+                                </span>
+                                <a
+                                    href="/employees/bulk"
+                                    onClick={(e) => {
+                                        e.preventDefault();
+                                        onClose();
+                                        window.location.href = '/employees/bulk';
+                                    }}
+                                    className="text-xs text-indigo-600 dark:text-indigo-400 font-semibold hover:underline flex items-center gap-1 cursor-pointer"
+                                >
+                                    <span>Open Full Screen Page</span>
+                                    <ChevronRight size={12} />
+                                </a>
                             </div>
+
+                            <EmployeeBulkUpload
+                                isEmbedded={true}
+                                onNavigateBack={onClose}
+                                onComplete={() => {
+                                    onRefreshUsers?.();
+                                }}
+                            />
                         </div>
                     )}
                 </div>
 
-                {/* Footer */}
-                <div className="px-6 py-4 border-t border-gray-100 dark:border-white/10 flex gap-3 shrink-0 bg-white dark:bg-[#161b22]">
-                    <button
-                        onClick={onClose}
-                        disabled={isSubmitting}
-                        className="flex-1 py-2.5 border border-gray-200 dark:border-white/10 rounded-xl text-xs font-bold text-gray-600 dark:text-gray-400 hover:bg-gray-50 transition-all disabled:opacity-50"
-                    >
-                        Cancel
-                    </button>
-                    <button
-                        onClick={tab === 'form' ? handleSubmitForm : handleBulkSubmit}
-                        disabled={isSubmitting}
-                        className="flex-1 py-2.5 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-bold transition-all shadow-md shadow-blue-500/20 disabled:opacity-50 flex items-center justify-center gap-2"
-                    >
-                        {isSubmitting ? (
-                            <>
-                                <Loader2 size={14} className="animate-spin" /> Processing...
-                            </>
-                        ) : tab === 'form' ? (
-                            'Create Employee Account'
-                        ) : (
-                            'Upload & Import Batch'
-                        )}
-                    </button>
-                </div>
+                {/* Footer (shown for single employee form creation) */}
+                {tab === 'form' && (
+                    <div className="px-6 py-4 border-t border-gray-100 dark:border-white/10 flex gap-3 shrink-0 bg-white dark:bg-[#161b22]">
+                        <button
+                            onClick={onClose}
+                            disabled={isSubmitting}
+                            className="flex-1 py-2.5 border border-gray-200 dark:border-white/10 rounded-xl text-xs font-bold text-gray-600 dark:text-gray-400 hover:bg-gray-50 transition-all disabled:opacity-50 cursor-pointer"
+                        >
+                            Cancel
+                        </button>
+                        <button
+                            onClick={handleSubmitForm}
+                            disabled={isSubmitting}
+                            className="flex-1 py-2.5 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-bold transition-all shadow-md shadow-blue-500/20 disabled:opacity-50 flex items-center justify-center gap-2 cursor-pointer"
+                        >
+                            {isSubmitting ? (
+                                <>
+                                    <Loader2 size={14} className="animate-spin" /> Processing...
+                                </>
+                            ) : (
+                                'Create Employee Account'
+                            )}
+                        </button>
+                    </div>
+                )}
             </div>
         </>
     );
 };
 
 // ─── User Detail Drawer (View & Edit Employee) ───────────────────────────────
-const UserDetailDrawer = ({ user, open, onClose, onUpdate, onDelete, initialEditing = false, allProjects = [], backendTemplates = [] }) => {
+const UserDetailDrawer = ({ canWrite, user, open, onClose, onUpdate, onDelete, initialEditing = false, backendTemplates = [] }) => {
     const [editing, setEditing] = useState(initialEditing);
     const [localUser, setLocalUser] = useState(null);
     const [permExpanded, setPermExpanded] = useState({ projects: true });
     const [isSaving, setIsSaving] = useState(false);
+    const [newPassword, setNewPassword] = useState('');
+    const [showPassword, setShowPassword] = useState(false);
 
-    const dynamicPageTree = getDynamicPageTree(allProjects);
+    const dynamicPageTree = BASE_PAGE_TREE;
 
     useEffect(() => {
         setEditing(initialEditing);
+        setNewPassword('');
+        setShowPassword(false);
     }, [initialEditing, open]);
 
     useEffect(() => {
@@ -964,18 +955,12 @@ const UserDetailDrawer = ({ user, open, onClose, onUpdate, onDelete, initialEdit
     const handleSave = async () => {
         setIsSaving(true);
         try {
-            const selectedProjIds = [];
-            for (const [k, v] of Object.entries(localUser.system_permissions || {})) {
-                if (k.startsWith('project_') && v > 0) {
-                    const pid = parseInt(k.replace('project_', ''), 10);
-                    if (!isNaN(pid)) selectedProjIds.push(pid);
-                }
+            const payload = { ...localUser };
+            if (newPassword && newPassword.trim() !== '') {
+                payload.password = newPassword.trim();
             }
-
-            await onUpdate({
-                ...localUser,
-                project_ids: selectedProjIds
-            });
+            await onUpdate(payload);
+            setNewPassword('');
             setEditing(false);
         } catch (error) {
             console.error(error);
@@ -1030,22 +1015,32 @@ const UserDetailDrawer = ({ user, open, onClose, onUpdate, onDelete, initialEdit
                     <div className="flex items-center gap-3">
                         <Avatar name={localUser.name} />
                         <div>
-                            <h2 className="text-sm font-bold text-gray-900 dark:text-white">{localUser.name}</h2>
+                            {editing ? (
+                                <input
+                                    type="text"
+                                    value={localUser.name || ''}
+                                    onChange={e => setLocalUser(u => ({ ...u, name: e.target.value }))}
+                                    className="px-2 py-0.5 text-sm font-bold text-gray-900 dark:text-white bg-white dark:bg-[#161b22] border border-gray-300 dark:border-gh-border rounded-md focus:outline-none focus:ring-1 focus:ring-blue-500"
+                                    placeholder="Employee Name"
+                                />
+                            ) : (
+                                <h2 className="text-sm font-bold text-gray-900 dark:text-white">{localUser.name}</h2>
+                            )}
                             <p className="text-[11px] text-gray-500 dark:text-gray-400">{localUser.email}</p>
                         </div>
                     </div>
                     <div className="flex items-center gap-2">
-                        {!editing ? (
+                        {!canWrite ? null : !editing ? (
                             <>
                                 <button
                                     onClick={() => setEditing(true)}
-                                    className="px-3 py-1.5 rounded-xl text-xs font-bold bg-blue-50 dark:bg-blue-900/20 text-blue-600 dark:text-blue-400 hover:bg-blue-600 hover:text-white transition-all flex items-center gap-1.5 border border-blue-200/50 dark:border-blue-500/20"
+                                    className="px-3 py-1.5 rounded-xl text-xs font-bold bg-blue-50 dark:bg-blue-900/20 text-blue-600 dark:text-blue-400 hover:bg-blue-600 hover:text-white transition-all flex items-center gap-1.5 border border-blue-200/50 dark:border-blue-500/20 cursor-pointer"
                                 >
                                     <Edit3 size={14} /> Edit Access
                                 </button>
                                 <button
                                     onClick={() => onDelete(localUser)}
-                                    className="p-1.5 text-gray-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-950/30 rounded-lg transition-all"
+                                    className="p-1.5 text-gray-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-950/30 rounded-lg transition-all cursor-pointer"
                                 >
                                     <Trash2 size={16} />
                                 </button>
@@ -1055,7 +1050,7 @@ const UserDetailDrawer = ({ user, open, onClose, onUpdate, onDelete, initialEdit
                                 <Edit3 size={12} /> Editing Mode
                             </span>
                         )}
-                        <button onClick={onClose} className="p-1.5 text-gray-400 hover:text-gray-600 dark:hover:text-white rounded-lg">
+                        <button onClick={onClose} className="p-1.5 text-gray-400 hover:text-gray-600 dark:hover:text-white rounded-lg cursor-pointer">
                             <X size={18} />
                         </button>
                     </div>
@@ -1063,41 +1058,136 @@ const UserDetailDrawer = ({ user, open, onClose, onUpdate, onDelete, initialEdit
 
                 {/* Body */}
                 <div className="flex-1 overflow-y-auto custom-scrollbar p-6 space-y-6">
-                    {/* User Metadata */}
-                    <div className="grid grid-cols-3 gap-3 p-3.5 bg-gray-50/50 dark:bg-[#0d1117] rounded-2xl border border-gray-100 dark:border-white/5">
-                        <div>
-                            <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">Account Type</p>
-                            {editing ? (
-                                <CustomSelect
-                                    value={localUser.user_type}
-                                    options={[
-                                        { value: 'employee', label: 'Employee' },
-                                        { value: 'admin', label: 'Admin' }
-                                    ]}
-                                    onChange={val => setLocalUser(u => ({ ...u, user_type: val }))}
-                                    className="mt-1"
+                    {/* Employee Profile & Credentials */}
+                    <div className="p-4 bg-gray-50/70 dark:bg-[#0d1117] rounded-2xl border border-gray-200/80 dark:border-white/5 space-y-4">
+                        {/* Row 1: Account Type & Status */}
+                        <div className="grid grid-cols-2 gap-4">
+                            <div>
+                                <label className="block text-[10px] font-bold text-gray-400 uppercase tracking-wider mb-1.5">
+                                    Account Type
+                                </label>
+                                {editing ? (
+                                    <CustomSelect
+                                        value={localUser.user_type}
+                                        options={[
+                                            { value: 'employee', label: 'Employee' },
+                                            { value: 'admin', label: 'Admin' }
+                                        ]}
+                                        onChange={val => setLocalUser(u => ({ ...u, user_type: val }))}
+                                    />
+                                ) : (
+                                    <p className="text-xs font-bold text-blue-600 dark:text-blue-400 capitalize">
+                                        {localUser.user_type}
+                                    </p>
+                                )}
+                            </div>
+                            <div>
+                                <label className="block text-[10px] font-bold text-gray-400 uppercase tracking-wider mb-1.5">
+                                    Account Status
+                                </label>
+                                <div className="mt-0.5">
+                                    <StatusBadge status={localUser.status || 'Active'} />
+                                </div>
+                            </div>
+                        </div>
+
+                        {/* Row 2: Department & Designation */}
+                        {editing ? (
+                            <div className="pt-3 border-t border-gray-200/60 dark:border-white/5">
+                                <AssignmentFields
+                                    value={localUser}
+                                    onChange={(field, value) => setLocalUser(prev => ({ ...prev, department: undefined, [field]: value }))}
                                 />
-                            ) : (
-                                <p className="text-xs font-bold text-blue-600 dark:text-blue-400 mt-1 capitalize">{localUser.user_type}</p>
-                            )}
+                            </div>
+                        ) : (
+                            <div className="pt-3 border-t border-gray-200/60 dark:border-white/5 grid grid-cols-2 gap-4">
+                                <div>
+                                    <span className="text-[10px] font-bold text-gray-400 uppercase tracking-wider block">Department</span>
+                                    <p className="text-xs font-semibold text-gray-800 dark:text-gray-200 mt-0.5">
+                                        {localUser.department || localUser.dept_name || 'Unassigned'}
+                                    </p>
+                                </div>
+                                <div>
+                                    <span className="text-[10px] font-bold text-gray-400 uppercase tracking-wider block">Designation</span>
+                                    <p className="text-xs font-semibold text-gray-800 dark:text-gray-200 mt-0.5">
+                                        {localUser.desg_name || 'Unassigned'}
+                                    </p>
+                                </div>
+                            </div>
+                        )}
+
+                        {/* Row 3: Contact Details (Email & Phone) */}
+                        <div className="pt-3 border-t border-gray-200/60 dark:border-white/5 grid grid-cols-1 sm:grid-cols-2 gap-4">
+                            <div>
+                                <label className="block text-[10px] font-bold text-gray-400 uppercase tracking-wider mb-1.5">
+                                    Email Address
+                                </label>
+                                {editing ? (
+                                    <input
+                                        type="email"
+                                        placeholder="user@company.com"
+                                        value={localUser.email || ''}
+                                        onChange={e => setLocalUser(u => ({ ...u, email: e.target.value }))}
+                                        className="w-full px-3 py-2 bg-white dark:bg-[#161b22] border border-gray-300 dark:border-gh-border rounded-lg text-xs font-mono text-slate-800 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-blue-500/30"
+                                    />
+                                ) : (
+                                    <p className="text-xs font-semibold font-mono text-gray-800 dark:text-gray-200 truncate" title={localUser.email}>
+                                        {localUser.email || '—'}
+                                    </p>
+                                )}
+                            </div>
+                            <div>
+                                <label className="block text-[10px] font-bold text-gray-400 uppercase tracking-wider mb-1.5">
+                                    Phone Number
+                                </label>
+                                {editing ? (
+                                    <input
+                                        type="tel"
+                                        placeholder="Enter mobile number"
+                                        value={localUser.phone_no || ''}
+                                        onChange={e => setLocalUser(u => ({ ...u, phone_no: e.target.value }))}
+                                        className="w-full px-3 py-2 bg-white dark:bg-[#161b22] border border-gray-300 dark:border-gh-border rounded-lg text-xs font-medium text-slate-800 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-blue-500/30"
+                                    />
+                                ) : (
+                                    <p className="text-xs font-semibold text-gray-800 dark:text-gray-200">
+                                        {localUser.phone_no || '—'}
+                                    </p>
+                                )}
+                            </div>
                         </div>
-                        <div>
-                            <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">Department</p>
-                            {editing ? (
-                                <input
-                                    type="text"
-                                    value={localUser.department || ''}
-                                    onChange={e => setLocalUser(u => ({ ...u, department: e.target.value }))}
-                                    className="mt-1 w-full px-2 py-1 bg-white dark:bg-[#161b22] border border-gray-200 dark:border-white/10 rounded-lg text-xs font-medium"
-                                />
-                            ) : (
-                                <p className="text-xs font-semibold text-gray-800 dark:text-gray-200 mt-1">{localUser.department || '-'}</p>
-                            )}
-                        </div>
-                        <div>
-                            <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">Status</p>
-                            <div className="mt-1"><StatusBadge status={localUser.status || 'Active'} /></div>
-                        </div>
+
+                        {/* Row 4: Change Password (In Edit Mode) */}
+                        {editing && (
+                            <div className="pt-3 border-t border-gray-200/60 dark:border-white/5">
+                                <div className="flex items-center justify-between mb-1.5">
+                                    <label className="block text-[10px] font-bold text-gray-400 uppercase tracking-wider">
+                                        Change Password
+                                    </label>
+                                    <span className="text-[10px] text-gray-400 italic">Optional</span>
+                                </div>
+                                <div className="relative">
+                                    <input
+                                        type={showPassword ? 'text' : 'password'}
+                                        autoComplete="new-password"
+                                        placeholder="Enter new password (leave blank to keep current)"
+                                        value={newPassword}
+                                        onChange={e => setNewPassword(e.target.value)}
+                                        className="w-full px-3 py-2 pr-10 bg-white dark:bg-[#161b22] border border-gray-300 dark:border-gh-border rounded-lg text-xs font-medium text-slate-800 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-blue-500/30 font-mono"
+                                    />
+                                    <button
+                                        type="button"
+                                        onClick={() => setShowPassword(p => !p)}
+                                        className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 cursor-pointer"
+                                        title={showPassword ? 'Hide password' : 'Show password'}
+                                    >
+                                        {showPassword ? <EyeOff size={15} /> : <Eye size={15} />}
+                                    </button>
+                                </div>
+                                <p className="text-[10px] text-gray-400 mt-1">
+                                    Type a new password to reset it for this employee. Leave empty to keep existing.
+                                </p>
+                            </div>
+                        )}
                     </div>
 
                     {/* Template Selection when Editing */}
@@ -1121,7 +1211,7 @@ const UserDetailDrawer = ({ user, open, onClose, onUpdate, onDelete, initialEdit
                         <div>
                             <div className="flex items-center justify-between mb-3">
                                 <h3 className="text-xs font-bold text-gray-900 dark:text-white uppercase tracking-wider flex items-center gap-1.5">
-                                    <Shield size={14} className="text-blue-500" /> Page & Project Access Control
+                                    <Shield size={14} className="text-blue-500" /> ERP Page Access Control
                                 </h3>
                                 {editing && (
                                     <span className="text-[10px] text-blue-500 font-semibold bg-blue-50 dark:bg-blue-900/20 px-2 py-0.5 rounded-lg">Click levels to change</span>
@@ -1584,31 +1674,18 @@ const PermissionTemplatesTab = ({
     );
 };
 
-// ─── Employee Column Aliases for Excel Paste & Import ────────────────────────
-const EMPLOYEE_COLUMN_ALIASES = {
-    name: ['employee name', 'name', 'full name', 'user name', 'staff name', 'member', 'employee'],
-    email: ['email', 'email id', 'e-mail', 'mail', 'email address', 'official email'],
-    user_type: ['account type', 'role', 'user type', 'type', 'access role', 'privilege', 'user_type'],
-    department: ['department', 'dept', 'division', 'team', 'unit', 'function'],
-    phone_no: ['mobile', 'phone', 'contact', 'mobile no', 'phone no', 'contact number', 'telephone', 'mobile number', 'cell', 'phone_no'],
-    status: ['status', 'account status', 'active status', 'state', 'user_status'],
-    joined: ['joined date', 'date of joining', 'created at', 'joining date', 'created on', 'joined on', 'joined']
-};
-
 // ─── MAIN ADMIN / EMPLOYEES PAGE COMPONENT ────────────────────────────────────
 const AdminPage = () => {
-    const { hasPermission, isAdmin } = useAuth();
-    const canWrite = isAdmin || hasPermission('admin', 2);
+    const { isAdmin } = useAuth();
+    const canWrite = isAdmin;
 
+    const [manageReferences, setManageReferences] = useState(false);
     const [mainTab, setMainTab] = useState('employees'); // 'employees' or 'templates'
     const [users, setUsers] = useState([]);
-    const [projects, setProjects] = useState([]);
+
     const [templates, setTemplates] = useState([]);
     const [isLoadingUsers, setIsLoadingUsers] = useState(true);
     const [isLoadingTemplates, setIsLoadingTemplates] = useState(true);
-    // Employee Filters
-    const [activeFilters, setActiveFilters] = useState({ userTypes: [], departments: [] });
-    const [isFilterDropdownOpen, setIsFilterDropdownOpen] = useState(false);
     const [drawerTab, setDrawerTab] = useState('form');
 
     // User Modals & Drawers
@@ -1626,18 +1703,6 @@ const AdminPage = () => {
     const [isSavingTemplate, setIsSavingTemplate] = useState(false);
     const [isDeletingTemplate, setIsDeletingTemplate] = useState(false);
     const [templateSearchQuery, setTemplateSearchQuery] = useState('');
-
-    const filterDropdownRef = useRef(null);
-
-    useEffect(() => {
-        const handleClickOutside = (event) => {
-            if (filterDropdownRef.current && !filterDropdownRef.current.contains(event.target)) {
-                setIsFilterDropdownOpen(false);
-            }
-        };
-        document.addEventListener('mousedown', handleClickOutside);
-        return () => document.removeEventListener('mousedown', handleClickOutside);
-    }, []);
 
     const fetchUsers = async () => {
         setIsLoadingUsers(true);
@@ -1678,26 +1743,14 @@ const AdminPage = () => {
         }
     };
 
-    const fetchInitialData = async () => {
-        try {
-            const projRes = await projectApi.listProjects();
-            if (projRes.success && projRes.projects) {
-                setProjects(projRes.projects);
-            }
-        } catch (err) {
-            console.error('Failed to load projects:', err);
-        }
-    };
-
     useEffect(() => {
         fetchUsers();
-        fetchTemplates();
-        fetchInitialData();
-    }, []);
+        if (isAdmin) fetchTemplates();
+    }, [isAdmin]);
 
     const openViewUser = (user, startEditing = false) => {
         setSelectedUser(user);
-        setEditMode(startEditing);
+        setEditMode(isAdmin && startEditing);
     };
 
     const handleAddUser = async (formData) => {
@@ -1705,6 +1758,7 @@ const AdminPage = () => {
             const backendPerms = {};
             const map = { 0: 'none', 1: 'view', 2: 'edit' };
             for (const [k, v] of Object.entries(formData.system_permissions || {})) {
+                if (k.toLowerCase() === 'dashboard' || k.startsWith('project_')) continue;
                 backendPerms[k] = typeof v === 'number' ? (map[v] || 'none') : v;
             }
 
@@ -1743,11 +1797,13 @@ const AdminPage = () => {
             const backendPerms = {};
             const map = { 0: 'none', 1: 'view', 2: 'edit' };
             for (const [k, v] of Object.entries(updated.system_permissions || {})) {
+                if (k.toLowerCase() === 'dashboard' || k.startsWith('project_')) continue;
                 backendPerms[k] = typeof v === 'number' ? (map[v] || 'none') : v;
             }
 
             await adminApi.updateUser(updated.id, {
                 ...updated,
+                department: undefined,
                 system_permissions: backendPerms
             });
             toast.success(`Employee "${updated.name}" updated successfully`);
@@ -1755,7 +1811,7 @@ const AdminPage = () => {
             setSelectedUser(null);
         } catch (error) {
             console.error(error);
-            toast.error('Failed to update employee access');
+            toast.error(error?.response?.data?.message || error?.message || 'Failed to update employee');
             throw error;
         }
     };
@@ -1824,6 +1880,7 @@ const AdminPage = () => {
             const backendPerms = {};
             const map = { 0: 'none', 1: 'view', 2: 'edit', 'none': 'none', 'view': 'view', 'read': 'view', 'edit': 'edit', 'write': 'edit' };
             for (const [k, v] of Object.entries(parsedPerms)) {
+                if (k.toLowerCase() === 'dashboard' || k.startsWith('project_')) continue;
                 backendPerms[k] = typeof v === 'number' ? (map[v] || 'none') : (map[v] || 'none');
             }
 
@@ -1847,221 +1904,6 @@ const AdminPage = () => {
         }
     };
 
-    // Filters for Employees
-    const allDepartments = useMemo(() => {
-        return Array.from(new Set(users.map(u => u.department).filter(Boolean)));
-    }, [users]);
-
-    const stats = useMemo(() => {
-        const total = users.length;
-        const active = users.filter(u => (u.status || '').toLowerCase() === 'active').length;
-        const admins = users.filter(u => (u.user_type || '').toLowerCase() === 'admin').length;
-        const depts = new Set(users.map(u => u.department).filter(Boolean)).size;
-        return { total, active, admins, depts };
-    }, [users]);
-
-    const columns = useMemo(() => {
-        const deptOptions = Array.from(new Set([
-            'Engineering',
-            'Operations',
-            'Project Management',
-            'Finance & Accounts',
-            'Procurement & Stores',
-            'Quality & Safety',
-            'Human Resources',
-            'Administration',
-            'Executive / Management',
-            ...allDepartments
-        ])).filter(Boolean);
-
-        return [
-            {
-                key: 'name',
-                label: 'Employee Name',
-                width: '210px',
-                minWidth: '180px',
-                required: true,
-                aliases: EMPLOYEE_COLUMN_ALIASES.name
-            },
-            {
-                key: 'email',
-                label: 'Email ID',
-                width: '230px',
-                minWidth: '200px',
-                required: true,
-                aliases: EMPLOYEE_COLUMN_ALIASES.email,
-                validate: (val) => {
-                    if (!val) return 'Email is required';
-                    if (!/\S+@\S+\.\S+/.test(val)) return 'Invalid email format';
-                    return null;
-                }
-            },
-            {
-                key: 'user_type',
-                label: 'Account Type',
-                width: '140px',
-                minWidth: '130px',
-                type: 'select',
-                options: ['Employee', 'Admin'],
-                defaultValue: 'Employee',
-                aliases: EMPLOYEE_COLUMN_ALIASES.user_type
-            },
-            {
-                key: 'department',
-                label: 'Department',
-                width: '180px',
-                minWidth: '150px',
-                type: 'select',
-                options: deptOptions,
-                defaultValue: 'Engineering',
-                aliases: EMPLOYEE_COLUMN_ALIASES.department
-            },
-            {
-                key: 'phone_no',
-                label: 'Mobile Number',
-                width: '150px',
-                minWidth: '140px',
-                aliases: EMPLOYEE_COLUMN_ALIASES.phone_no
-            },
-            {
-                key: 'status',
-                label: 'Status',
-                width: '120px',
-                minWidth: '110px',
-                type: 'select',
-                options: ['Active', 'Inactive', 'Suspended'],
-                defaultValue: 'Active',
-                aliases: EMPLOYEE_COLUMN_ALIASES.status
-            },
-            {
-                key: 'permissions_access',
-                label: 'Permissions & Access Control',
-                width: '270px',
-                minWidth: '250px',
-                renderCell: (val, row) => {
-                    const isAdminUser = (row.user_type || '').toLowerCase() === 'admin';
-
-                    let accessLabel = 'Standard Access';
-                    if (isAdminUser) {
-                        accessLabel = 'Admin Privileges';
-                    } else if (row.template_name) {
-                        accessLabel = row.template_name;
-                    } else if (row.system_permissions || row.permissions) {
-                        try {
-                            const raw = typeof (row.system_permissions || row.permissions) === 'string'
-                                ? JSON.parse(row.system_permissions || row.permissions)
-                                : (row.system_permissions || row.permissions);
-                            const activeCount = Object.values(raw || {}).filter(v => Number(v) > 0).length;
-                            if (activeCount > 0) {
-                                accessLabel = `${activeCount} Modules`;
-                            }
-                        } catch (e) {
-                            accessLabel = 'Custom Access';
-                        }
-                    }
-
-                    return (
-                        <div className="flex items-center justify-between w-full gap-2 px-1 py-0.5">
-                            <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md text-[11px] font-bold whitespace-nowrap border shrink-0 ${isAdminUser
-                                    ? 'bg-purple-50 dark:bg-purple-950/40 text-purple-700 dark:text-purple-300 border-purple-200 dark:border-purple-800/50 shadow-2xs'
-                                    : 'bg-blue-50 dark:bg-blue-950/40 text-blue-700 dark:text-blue-300 border-blue-200 dark:border-blue-800/50 shadow-2xs'
-                                }`}>
-                                <Shield size={12} className={isAdminUser ? 'text-purple-500' : 'text-blue-500'} />
-                                <span>{accessLabel}</span>
-                            </span>
-
-                            <button
-                                type="button"
-                                onClick={(e) => {
-                                    e.stopPropagation();
-                                    openViewUser(row, true);
-                                }}
-                                className="px-2.5 py-1 rounded-md bg-blue-600 hover:bg-blue-700 text-white text-[11px] font-bold transition-all shadow-xs flex items-center gap-1.5 cursor-pointer shrink-0 whitespace-nowrap active:scale-95"
-                                title="Configure Module Access & Project Assignments"
-                            >
-                                <Sliders size={12} />
-                                <span>Edit Access</span>
-                            </button>
-                        </div>
-                    );
-                }
-            },
-            {
-                key: 'joined',
-                label: 'Joined Date',
-                width: '130px',
-                minWidth: '120px',
-                readOnly: true,
-                aliases: EMPLOYEE_COLUMN_ALIASES.joined
-            }
-        ];
-    }, [allDepartments]);
-
-    const handleSaveGridBatch = async (payload) => {
-        const { created, updated, deleted } = payload;
-
-        if (deleted.length > 0) {
-            for (const id of deleted) {
-                await adminApi.deleteUser(id);
-            }
-        }
-
-        if (created.length > 0) {
-            for (const item of created) {
-                if (item.name && item.email) {
-                    await adminApi.createUser({
-                        name: item.name,
-                        email: item.email,
-                        department: item.department || '',
-                        phone_no: item.phone_no || '',
-                        password: item.password || 'Mano@1234',
-                        user_type: item.user_type || 'employee',
-                        status: item.status || 'Active',
-                        system_permissions: defaultPermissions()
-                    });
-                }
-            }
-        }
-
-        if (updated.length > 0) {
-            for (const item of updated) {
-                if (item.id && item.name) {
-                    await adminApi.updateUser(item.id, {
-                        name: item.name,
-                        email: item.email,
-                        department: item.department,
-                        phone_no: item.phone_no,
-                        user_type: item.user_type,
-                        status: item.status
-                    });
-                }
-            }
-        }
-
-        toast.success('Employee grid changes saved successfully!');
-        await fetchUsers();
-    };
-
-    const toggleFilter = (type, val) => {
-        setActiveFilters(prev => {
-            const list = prev[type] || [];
-            const next = list.includes(val) ? list.filter(v => v !== val) : [...list, val];
-            return { ...prev, [type]: next };
-        });
-    };
-
-    const activeFilterCount = (activeFilters.userTypes?.length || 0) + (activeFilters.departments?.length || 0);
-
-    const filteredUsers = useMemo(() => {
-        return users
-            .filter(u => {
-                const matchesType = !activeFilters.userTypes?.length || activeFilters.userTypes.includes(u.user_type);
-                const matchesDept = !activeFilters.departments?.length || activeFilters.departments.includes(u.department);
-                return matchesType && matchesDept;
-            })
-            .sort((a, b) => (a.name || '').localeCompare(b.name || '', undefined, { sensitivity: 'base' }));
-    }, [users, activeFilters]);
-
     return (
         <div className="flex flex-col h-full bg-white dark:bg-[#0d1117] text-gray-900 dark:text-gray-100 overflow-hidden font-sans">
             {/* Top Navigation Switcher Header */}
@@ -2077,13 +1919,13 @@ const AdminPage = () => {
                                     : 'text-gray-600 dark:text-gray-400 hover:text-gray-900'
                                 }`}
                         >
-                            <span>Employees Management</span>
+                            <span>Employees</span>
                             <span className="px-1.5 py-0.2 bg-blue-100 dark:bg-blue-900/40 text-blue-600 dark:text-blue-400 text-[10px] rounded-md font-extrabold">
                                 {users.length}
                             </span>
                         </button>
 
-                        <button
+                        {canWrite && <button
                             type="button"
                             onClick={() => setMainTab('templates')}
                             className={`flex items-center gap-2 px-3 py-1.5 rounded-md text-xs font-bold transition-all cursor-pointer ${mainTab === 'templates'
@@ -2095,7 +1937,7 @@ const AdminPage = () => {
                             <span className="px-1.5 py-0.2 bg-purple-100 dark:bg-purple-900/40 text-purple-600 dark:text-purple-400 text-[10px] rounded-md font-extrabold">
                                 {templates.length}
                             </span>
-                        </button>
+                        </button>}
                     </div>
                 </div>
 
@@ -2130,159 +1972,11 @@ const AdminPage = () => {
 
             {/* TAB CONTENT */}
             {mainTab === 'employees' ? (
-                /* EMPLOYEES TAB WITH UNIFIED EXCEL GRID & MERGED EMPLOYEE TOOLS */
-                <div className="flex-1 min-h-0 flex flex-col h-full overflow-hidden bg-white dark:bg-[#0d1117]">
-                    {/* Top Stats Banner */}
-                    <div className="px-3 pt-1.5 pb-1.5 border-b border-gray-200 dark:border-white/5 shrink-0">
-                        <div className="grid grid-cols-4 gap-2">
-                            {[
-                                {
-                                    id: 'total',
-                                    label: 'Total Employees',
-                                    value: stats.total,
-                                    color: 'text-gray-900 dark:text-white',
-                                    bg: 'bg-gray-50 dark:bg-white/[0.03]'
-                                },
-                                {
-                                    id: 'active',
-                                    label: 'Active Accounts',
-                                    value: stats.active,
-                                    color: 'text-emerald-600 dark:text-emerald-400',
-                                    bg: 'bg-emerald-50 dark:bg-emerald-900/10'
-                                },
-                                {
-                                    id: 'admins',
-                                    label: 'Admin Privileges',
-                                    value: stats.admins,
-                                    color: 'text-purple-600 dark:text-purple-400',
-                                    bg: 'bg-purple-50 dark:bg-purple-900/10'
-                                },
-                                {
-                                    id: 'depts',
-                                    label: 'Departments',
-                                    value: stats.depts,
-                                    color: 'text-blue-600 dark:text-blue-400',
-                                    bg: 'bg-blue-50 dark:bg-blue-900/10'
-                                }
-                            ].map((s) => (
-                                <div
-                                    key={s.id}
-                                    className={`${s.bg} rounded-lg p-2 px-3 border border-gray-100 dark:border-white/5`}
-                                >
-                                    <p className="text-[10px] font-bold text-gray-500 dark:text-gray-400 uppercase tracking-wider">
-                                        {s.label}
-                                    </p>
-                                    <p className={`text-xl font-black mt-0.5 ${s.color}`}>{s.value}</p>
-                                </div>
-                            ))}
-                        </div>
-                    </div>
-
-                    {/* Centralized & Unified ExcelGrid Component */}
-                    <ExcelGrid
-                        data={filteredUsers}
-                        columns={columns}
-                        primaryKey="id"
-                        entityName="Employees"
-                        canWrite={canWrite}
-                        isLoading={isLoadingUsers}
-                        onSave={handleSaveGridBatch}
-                        onRefresh={fetchUsers}
-                        onViewRow={(row) => openViewUser(row, true)}
-                        emptyMessage="No employees found in database"
-                        showFormulaBar={false}
-                        extraFilters={
-                            <div className="relative" ref={filterDropdownRef}>
-                                <button
-                                    type="button"
-                                    onClick={() => setIsFilterDropdownOpen(!isFilterDropdownOpen)}
-                                    className={`flex items-center space-x-1.5 px-2.5 py-1.5 border rounded-lg text-xs font-bold transition-all cursor-pointer ${activeFilterCount > 0
-                                            ? 'border-blue-500 bg-blue-500/10 text-blue-600 dark:text-blue-400'
-                                            : 'border-gray-200 dark:border-white/10 bg-white dark:bg-[#161b22] text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-white/5'
-                                        }`}
-                                >
-                                    <Filter size={13} />
-                                    <span>Filter</span>
-                                    {activeFilterCount > 0 && (
-                                        <span className="bg-blue-600 text-white text-[10px] w-4 h-4 rounded-md flex items-center justify-center font-bold">
-                                            {activeFilterCount}
-                                        </span>
-                                    )}
-                                    <ChevronDown size={12} className={`transition-transform duration-200 ${isFilterDropdownOpen ? 'rotate-180' : ''}`} />
-                                </button>
-
-                                {isFilterDropdownOpen && (
-                                    <div className="absolute left-0 mt-1.5 w-80 bg-white dark:bg-[#161b22] border border-gray-200 dark:border-white/10 rounded-xl shadow-2xl z-[5000] p-4 space-y-4 text-xs animate-in fade-in zoom-in-95">
-                                        <div className="flex justify-between items-center pb-2 border-b border-gray-100 dark:border-white/10">
-                                            <h4 className="font-bold text-gray-900 dark:text-white flex items-center gap-1.5">
-                                                <Filter size={14} className="text-blue-500" /> Filter Employees
-                                            </h4>
-                                            {activeFilterCount > 0 && (
-                                                <button
-                                                    type="button"
-                                                    onClick={() => setActiveFilters({ userTypes: [], departments: [] })}
-                                                    className="text-[11px] text-blue-600 dark:text-blue-400 font-bold hover:underline cursor-pointer"
-                                                >
-                                                    Clear All ({activeFilterCount})
-                                                </button>
-                                            )}
-                                        </div>
-
-                                        {/* Account Type */}
-                                        <div>
-                                            <label className="block text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-1.5">Account Type</label>
-                                            <div className="flex flex-wrap gap-1.5">
-                                                {['Admin', 'Employee'].map(type => {
-                                                    const isChecked = activeFilters.userTypes?.includes(type);
-                                                    return (
-                                                        <button
-                                                            key={type}
-                                                            type="button"
-                                                            onClick={() => toggleFilter('userTypes', type)}
-                                                            className={`px-2.5 py-1 rounded-md text-[11px] font-bold border transition-all cursor-pointer ${isChecked
-                                                                    ? 'bg-blue-600 text-white border-blue-600 shadow-xs'
-                                                                    : 'bg-gray-50 dark:bg-white/5 border-gray-200 dark:border-white/10 text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-white/10'
-                                                                }`}
-                                                        >
-                                                            {type}
-                                                        </button>
-                                                    );
-                                                })}
-                                            </div>
-                                        </div>
-
-                                        {/* Departments */}
-                                        {allDepartments.length > 0 && (
-                                            <div>
-                                                <label className="block text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-1.5">Department</label>
-                                                <div className="flex flex-wrap gap-1.5 max-h-36 overflow-y-auto custom-scrollbar">
-                                                    {allDepartments.map(dept => {
-                                                        const isChecked = activeFilters.departments?.includes(dept);
-                                                        return (
-                                                            <button
-                                                                key={dept}
-                                                                type="button"
-                                                                onClick={() => toggleFilter('departments', dept)}
-                                                                className={`px-2.5 py-1 rounded-md text-[11px] font-bold border transition-all cursor-pointer ${isChecked
-                                                                        ? 'bg-blue-600 text-white border-blue-600 shadow-xs'
-                                                                        : 'bg-gray-50 dark:bg-white/5 border-gray-200 dark:border-white/10 text-gray-600 dark:text-gray-400 hover:bg-gray-100'
-                                                                    }`}
-                                                            >
-                                                                {dept}
-                                                            </button>
-                                                        );
-                                                    })}
-                                                </div>
-                                            </div>
-                                        )}
-                                    </div>
-                                )}
-                            </div>
-                        }
-                    />
-                </div>
+                <EmployeeDirectory onManage={() => setManageReferences(true)} users={users} loading={isLoadingUsers} canWrite={canWrite}
+                    onOpen={openViewUser} onDelete={setDeletingUser}
+                    onCreate={() => { setDrawerTab('form'); setAddOpen(true); }}
+                    onBulk={() => { setDrawerTab('bulk'); setAddOpen(true); }} />
             ) : (
-                /* PERMISSION TEMPLATES TAB */
                 <PermissionTemplatesTab
                     templates={templates}
                     users={users}
@@ -2305,25 +1999,26 @@ const AdminPage = () => {
                 />
             )}
 
+            {manageReferences && canWrite && <ReferenceManager onClose={() => setManageReferences(false)} onChanged={fetchUsers} />}
             {/* Employee Drawers & Modals */}
             <AddUserDrawer
                 open={addOpen}
                 onClose={() => setAddOpen(false)}
                 onAdd={handleAddUser}
                 onBulkUpload={handleBulkUpload}
-                allProjects={projects}
+                onRefreshUsers={fetchUsers}
                 backendTemplates={templates}
                 initialTab={drawerTab}
             />
 
             <UserDetailDrawer
+                canWrite={canWrite}
                 user={selectedUser}
                 open={!!selectedUser}
-                onClose={() => setSelectedUser(null)}
+                onClose={() => { setSelectedUser(null); setEditMode(false); }}
                 onUpdate={handleUpdateUser}
                 onDelete={(u) => setDeletingUser(u)}
                 initialEditing={editMode}
-                allProjects={projects}
                 backendTemplates={templates}
             />
 
