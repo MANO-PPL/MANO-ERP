@@ -92,7 +92,7 @@ const DrawingCategoryDetail = ({ category, projectId, onBack, setExtraBreadcrumb
 
     const handlePreviewDwg = (url, name) => {
         toast.info(`Launching WebCAD Viewer for ${name}...`);
-        const targetUrl = `/drawing-viewer?url=${encodeURIComponent(url)}&name=${encodeURIComponent(name)}`;
+        const targetUrl = `/drawing-viewer?projectId=${encodeURIComponent(projectId)}&url=${encodeURIComponent(url)}&name=${encodeURIComponent(name)}`;
         window.open(targetUrl, '_blank');
     };
 

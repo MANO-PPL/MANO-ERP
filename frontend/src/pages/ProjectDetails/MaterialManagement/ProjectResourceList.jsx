@@ -888,7 +888,7 @@ const ProjectResourceList = ({
         if (!canWrite) return;
         if (deleted && deleted.length > 0) {
             for (const item of deleted) {
-                const resId = item.resource_id || item.id;
+                const resId = typeof item === 'object' && item !== null ? (item.resource_id || item.id) : item;
                 if (resId && !String(resId).startsWith('temp_')) {
                     try {
                         await projectApi.removeProjectResource(projectId, resId);
@@ -898,6 +898,21 @@ const ProjectResourceList = ({
                 }
             }
         }
+
+        const allCodeItems = [...(created || []), ...(updated || [])];
+        const seenCodes = new Set();
+        for (const item of allCodeItems) {
+            if (item.code && String(item.code).trim()) {
+                const norm = String(item.code).trim().toLowerCase();
+                if (seenCodes.has(norm)) {
+                    const msg = `Resource code already exists: "${String(item.code).trim()}". Resource code must be strictly unique. Please change it.`;
+                    customToast.error(msg, 'Resource Code Already Exists');
+                    throw new Error(msg);
+                }
+                seenCodes.add(norm);
+            }
+        }
+
         if (created && created.length > 0) {
             for (const item of created) {
                 if (item.name) {
@@ -914,6 +929,10 @@ const ProjectResourceList = ({
                         }
                     } catch (e) {
                         console.error('Failed to create resource inline:', e);
+                        const msg = e.response?.data?.message || e.message || 'Failed to create resource';
+                        const isDup = msg.toLowerCase().includes('already exists') || msg.toLowerCase().includes('duplicate') || msg.toLowerCase().includes('strictly unique');
+                        customToast.error(msg, isDup ? 'Resource Code Already Exists' : 'Save Error');
+                        throw e;
                     }
                 }
             }
@@ -932,6 +951,10 @@ const ProjectResourceList = ({
                         });
                     } catch (e) {
                         console.error('Failed to update resource inline:', e);
+                        const msg = e.response?.data?.message || e.message || 'Failed to update resource';
+                        const isDup = msg.toLowerCase().includes('already exists') || msg.toLowerCase().includes('duplicate') || msg.toLowerCase().includes('strictly unique');
+                        customToast.error(msg, isDup ? 'Resource Code Already Exists' : 'Save Error');
+                        throw e;
                     }
                 }
             }
@@ -944,7 +967,7 @@ const ProjectResourceList = ({
     const projectColumns = useMemo(() => {
         const unitValues = (UNIT_OPTIONS || []).map((u) => u.value || u.code || u);
         return [
-            { key: 'code', label: 'Item Code', width: '130px', minWidth: '120px', aliases: ['code', 'item_code'] },
+            { key: 'code', label: 'Item Code', width: '130px', minWidth: '120px', unique: true, aliases: ['code', 'item_code'] },
             { key: 'name', label: 'Item Name', required: true, width: '240px', minWidth: '200px', aliases: ['name', 'item_name'] },
             {
                 key: 'type',

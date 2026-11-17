@@ -40,7 +40,7 @@ export default function MobileSidebar({ open, onClose, onNavigate, loadProjects 
     const closeButtonRef = useRef(null);
     const drawerRef = useRef(null);
     const navItems = useMemo(() => filterMobileNavigation(MOBILE_NAV_ITEMS, hasPermission), [hasPermission]);
-    const { projects, loading, error } = useRecentProjects({ enabled: open, loadProjects });
+    const { projects, loading, error } = useRecentProjects({ enabled: open && hasPermission('projects'), loadProjects });
 
     useEffect(() => {
         if (!open) return undefined;
@@ -128,7 +128,7 @@ export default function MobileSidebar({ open, onClose, onNavigate, loadProjects 
                         })}
                     </nav>
 
-                    <section className="mt-4" aria-labelledby="mobile-recent-projects-heading">
+                    {hasPermission('projects') && <section className="mt-4" aria-labelledby="mobile-recent-projects-heading">
                         <h2 id="mobile-recent-projects-heading" className="px-2.5 text-[10px] font-semibold uppercase tracking-wider text-gray-400 dark:text-gray-500">
                             Recent projects
                         </h2>
@@ -148,7 +148,7 @@ export default function MobileSidebar({ open, onClose, onNavigate, loadProjects 
                                 </NavLink>
                             ))}
                         </div>
-                    </section>
+                    </section>}
                 </div>
 
                 <div className="flex items-center gap-2.5 border-t border-gray-200 px-3 py-2.5 dark:border-gh-border">

@@ -266,8 +266,13 @@ const QualityMatrix = ({ project, canWrite, onBack }) => {
     const [undoStack, setUndoStack] = useState([]);
     const [redoStack, setRedoStack] = useState([]);
 
-    // Clipboard for Ctrl+C / Ctrl+V
-    const [copiedBuffer, setCopiedBuffer] = useState(null); // { type: 'MATERIAL_BLOCK' | 'TEST_ROW', data: obj }
+    // Clipboard for cell-level Ctrl+C / Ctrl+V
+    const [copiedCellText, setCopiedCellText] = useState('');
+    const copiedCellTextRef = useRef('');
+    const activeCellRef = useRef(activeCell);
+    activeCellRef.current = activeCell;
+    const matrixItemsRef = useRef(matrixItems);
+    matrixItemsRef.current = matrixItems;
 
     const [draggedTest, setDraggedTest] = useState(null);
     const [dragOverTarget, setDragOverTarget] = useState(null);
@@ -363,88 +368,236 @@ const QualityMatrix = ({ project, canWrite, onBack }) => {
         toast.info('Redo action (Ctrl+Y)');
     }, [redoStack, matrixItems]);
 
-    // ─── Copy & Paste Handlers ─────────────────────────────────────────────────
-    const handleCopy = useCallback(() => {
-        if (!activeCell.matId) return;
-        const currentMat = matrixItems.find(i => i.id === activeCell.matId);
-        if (!currentMat) return;
+    // Helper to get raw text content of the currently focused cell
+    const getCellValue = useCallback((items, cell) => {
+        if (!cell || !cell.matId) return '';
+        const item = items.find(i => i.id === cell.matId);
+        if (!item) return '';
 
-        if (activeCell.colKey === 'material') {
-            setCopiedBuffer({
-                type: 'MATERIAL_BLOCK',
-                data: JSON.parse(JSON.stringify(currentMat))
-            });
-            toast.success(`Copied entire material "${currentMat.title}"! Press Ctrl+V to duplicate.`);
-        } else {
-            let testRow = null;
-            if (!currentMat.hasSubdivisions) {
-                testRow = currentMat.tests?.find(t => t.id === activeCell.testId);
-            } else if (activeCell.subId) {
-                const sub = currentMat.subdivisions?.find(s => s.id === activeCell.subId);
-                testRow = sub?.tests?.find(t => t.id === activeCell.testId);
+        if (item.type === 'category') {
+            return item.title || '';
+        }
+
+        const { colKey, testId, subId } = cell;
+
+        if (colKey === 'material') {
+            if (subId && item.hasSubdivisions) {
+                const sub = item.subdivisions?.find(s => s.id === subId);
+                return sub?.title || '';
             }
+            return item.title || '';
+        }
 
-            if (testRow) {
-                setCopiedBuffer({
-                    type: 'TEST_ROW',
-                    data: JSON.parse(JSON.stringify(testRow))
-                });
-                toast.success(`Copied test "${testRow.name}"! Press Ctrl+V to paste into material.`);
+        if (colKey === 'reference') {
+            if (subId && item.hasSubdivisions) {
+                const sub = item.subdivisions?.find(s => s.id === subId);
+                return sub?.reference || item.reference || '';
+            }
+            return item.reference || '';
+        }
+
+        if (colKey === 'remarks') {
+            if (subId && item.hasSubdivisions) {
+                const sub = item.subdivisions?.find(s => s.id === subId);
+                return sub?.remarks || item.remarks || '';
+            }
+            return item.remarks || '';
+        }
+
+        // Test-level columns: 'test', 'result', 'interval'
+        let testRow = null;
+        if (!item.hasSubdivisions) {
+            testRow = item.tests?.find(t => t.id === testId);
+        } else if (subId) {
+            const sub = item.subdivisions?.find(s => s.id === subId);
+            testRow = sub?.tests?.find(t => t.id === testId);
+        }
+
+        if (colKey === 'test') {
+            return testRow?.name || '';
+        }
+        if (colKey === 'result') {
+            return testRow?.result || '';
+        }
+        if (colKey === 'interval') {
+            return testRow?.interval || '';
+        }
+
+        return '';
+    }, []);
+
+    // ─── Cell-Only Copy & Paste Handlers ───────────────────────────────────────
+    // Copies ONLY the text of the selected cell to clipboard and local state
+    const handleCopy = useCallback(async (event = null) => {
+        const curCell = activeCellRef.current;
+        if (!curCell || !curCell.matId) return;
+
+        const cellValue = getCellValue(matrixItemsRef.current, curCell);
+
+        if (event && event.clipboardData) {
+            event.preventDefault();
+            event.clipboardData.setData('text/plain', cellValue);
+        }
+
+        try {
+            if (navigator.clipboard && navigator.clipboard.writeText) {
+                await navigator.clipboard.writeText(cellValue);
+            }
+        } catch {
+            try {
+                const textArea = document.createElement('textarea');
+                textArea.value = cellValue;
+                textArea.style.position = 'fixed';
+                textArea.style.left = '-9999px';
+                textArea.style.top = '-9999px';
+                textArea.style.opacity = '0';
+                textArea.setAttribute('readonly', '');
+                document.body.appendChild(textArea);
+                textArea.select();
+                document.execCommand('copy');
+                document.body.removeChild(textArea);
+            } catch {}
+        }
+
+        copiedCellTextRef.current = cellValue;
+        setCopiedCellText(cellValue);
+
+        const preview = cellValue.length > 25 ? `${cellValue.slice(0, 25)}...` : cellValue;
+        toast.success(`Copied cell: "${preview || '(empty)'}"`);
+    }, [getCellValue]);
+
+    // Pastes ONLY into the active cell without modifying other cells or duplicating rows
+    const handlePaste = useCallback(async (pastedTextFromEvent = null) => {
+        const curCell = activeCellRef.current;
+        if (!curCell || !curCell.matId) return;
+
+        let textToPaste = typeof pastedTextFromEvent === 'string' ? pastedTextFromEvent : null;
+        if (textToPaste === null) {
+            try {
+                if (navigator.clipboard && navigator.clipboard.readText) {
+                    textToPaste = await navigator.clipboard.readText();
+                }
+            } catch (err) {
+                console.warn('Clipboard readText failed:', err);
             }
         }
-    }, [activeCell, matrixItems]);
 
-    const handlePaste = useCallback(() => {
-        if (!copiedBuffer || !activeCell.matId) return;
+        if (textToPaste === null || textToPaste === undefined) {
+            textToPaste = copiedCellTextRef.current ?? copiedCellText ?? '';
+        }
 
-        pushUndoState(matrixItems);
+        const cleanText = typeof textToPaste === 'string' ? textToPaste.replace(/\r?\n$/, '') : String(textToPaste || '');
 
-        if (copiedBuffer.type === 'MATERIAL_BLOCK') {
-            const sourceMat = copiedBuffer.data;
-            const newMatId = `mat_${Date.now()}`;
+        pushUndoState(matrixItemsRef.current);
 
-            const clonedMat = {
-                ...sourceMat,
-                id: newMatId,
-                title: `${sourceMat.title} (Copy)`,
-                tests: sourceMat.tests?.map((t, idx) => ({ ...t, id: `t_${Date.now()}_${idx}` })),
-                subdivisions: sourceMat.subdivisions?.map((sub, sIdx) => ({
-                    ...sub,
-                    id: `sub_${Date.now()}_${sIdx}`,
-                    tests: sub.tests?.map((t, idx) => ({ ...t, id: `t_${Date.now()}_${sIdx}_${idx}` }))
-                }))
-            };
+        const { matId, subId, testId, colKey } = curCell;
+        const isTestField = colKey === 'test' || colKey === 'result' || colKey === 'interval';
+        const field = colKey === 'material' ? 'title' : (colKey === 'test' ? 'name' : colKey);
+        const testIdToUse = isTestField ? testId : null;
+        const subIdToUse = subId || null;
 
-            const targetIdx = matrixItems.findIndex(i => i.id === activeCell.matId);
-            const updated = [...matrixItems];
-            updated.splice(targetIdx !== -1 ? targetIdx + 1 : matrixItems.length, 0, clonedMat);
-            setMatrixItems(updated);
-            setActiveCell({ matId: newMatId, subId: null, testId: clonedMat.tests?.[0]?.id || null, colKey: 'material', isEditing: false });
-            toast.success(`Duplicated material block "${clonedMat.title}"!`);
-        } else if (copiedBuffer.type === 'TEST_ROW') {
-            const sourceTest = copiedBuffer.data;
-            const newTestId = `t_${Date.now()}`;
-            const clonedTest = { ...sourceTest, id: newTestId, name: `${sourceTest.name} (Copy)` };
+        setMatrixItems(prev => prev.map(item => {
+            if (item.id !== matId) return item;
 
-            setMatrixItems(prev => prev.map(item => {
-                if (item.id === activeCell.matId) {
-                    if (!item.hasSubdivisions) {
-                        return { ...item, tests: [...item.tests, clonedTest] };
-                    } else if (activeCell.subId) {
-                        const updatedSubs = item.subdivisions.map(sub => {
-                            if (sub.id === activeCell.subId) {
-                                return { ...sub, tests: [...sub.tests, clonedTest] };
-                            }
-                            return sub;
-                        });
-                        return { ...item, subdivisions: updatedSubs };
-                    }
+            if (item.type === 'category') {
+                return { ...item, title: cleanText };
+            }
+
+            if (isTestField) {
+                if (!item.hasSubdivisions && testIdToUse) {
+                    const updatedTests = (item.tests || []).map(t =>
+                        t.id === testIdToUse ? { ...t, [field]: cleanText } : t
+                    );
+                    return { ...item, tests: updatedTests };
+                }
+                if (item.hasSubdivisions && subIdToUse && testIdToUse) {
+                    const updatedSubs = (item.subdivisions || []).map(sub => {
+                        if (sub.id === subIdToUse) {
+                            const updatedTests = (sub.tests || []).map(t =>
+                                t.id === testIdToUse ? { ...t, [field]: cleanText } : t
+                            );
+                            return { ...sub, tests: updatedTests };
+                        }
+                        return sub;
+                    });
+                    return { ...item, subdivisions: updatedSubs };
                 }
                 return item;
-            }));
-            toast.success(`Pasted test parameter "${clonedTest.name}"!`);
+            }
+
+            if (subIdToUse && item.hasSubdivisions) {
+                const updatedSubs = (item.subdivisions || []).map(sub =>
+                    sub.id === subIdToUse ? { ...sub, [field]: cleanText } : sub
+                );
+                return { ...item, subdivisions: updatedSubs };
+            }
+
+            return { ...item, [field]: cleanText };
+        }));
+
+        const preview = cleanText.length > 25 ? `${cleanText.slice(0, 25)}...` : cleanText;
+        toast.success(`Pasted into cell: "${preview || '(empty)'}"`);
+    }, [copiedCellText, pushUndoState]);
+
+    // Explicit row and material duplication (dedicated buttons, separate from cell copy/paste)
+    const handleDuplicateMaterial = useCallback((matId) => {
+        pushUndoState(matrixItemsRef.current);
+        const sourceMat = matrixItemsRef.current.find(i => i.id === matId);
+        if (!sourceMat) return;
+        const newMatId = `mat_${Date.now()}`;
+        const clonedMat = {
+            ...sourceMat,
+            id: newMatId,
+            title: `${sourceMat.title} (Copy)`,
+            tests: sourceMat.tests?.map((t, idx) => ({ ...t, id: `t_${Date.now()}_${idx}` })),
+            subdivisions: sourceMat.subdivisions?.map((sub, sIdx) => ({
+                ...sub,
+                id: `sub_${Date.now()}_${sIdx}`,
+                tests: sub.tests?.map((t, idx) => ({ ...t, id: `t_${Date.now()}_${sIdx}_${idx}` }))
+            }))
+        };
+        const targetIdx = matrixItemsRef.current.findIndex(i => i.id === matId);
+        const updated = [...matrixItemsRef.current];
+        updated.splice(targetIdx !== -1 ? targetIdx + 1 : matrixItemsRef.current.length, 0, clonedMat);
+        setMatrixItems(updated);
+        toast.success(`Duplicated material block "${clonedMat.title}"!`);
+    }, [pushUndoState]);
+
+    const handleDuplicateTestRow = useCallback((matId, testId, subId = null) => {
+        pushUndoState(matrixItemsRef.current);
+        const sourceMat = matrixItemsRef.current.find(i => i.id === matId);
+        if (!sourceMat) return;
+
+        let sourceTest = null;
+        if (!sourceMat.hasSubdivisions) {
+            sourceTest = sourceMat.tests?.find(t => t.id === testId);
+        } else if (subId) {
+            const sub = sourceMat.subdivisions?.find(s => s.id === subId);
+            sourceTest = sub?.tests?.find(t => t.id === testId);
         }
-    }, [copiedBuffer, activeCell, matrixItems, pushUndoState]);
+        if (!sourceTest) return;
+
+        const newTestId = `t_${Date.now()}`;
+        const clonedTest = { ...sourceTest, id: newTestId, name: `${sourceTest.name} (Copy)` };
+
+        setMatrixItems(prev => prev.map(item => {
+            if (item.id === matId) {
+                if (!item.hasSubdivisions) {
+                    return { ...item, tests: [...item.tests, clonedTest] };
+                } else if (subId) {
+                    const updatedSubs = item.subdivisions.map(sub => {
+                        if (sub.id === subId) {
+                            return { ...sub, tests: [...sub.tests, clonedTest] };
+                        }
+                        return sub;
+                    });
+                    return { ...item, subdivisions: updatedSubs };
+                }
+            }
+            return item;
+        }));
+        toast.success(`Duplicated test row "${clonedTest.name}"!`);
+    }, [pushUndoState]);
 
     // ─── Global Keyboard Shortcuts Listener ────────────────────────────────────
     useEffect(() => {
@@ -467,7 +620,7 @@ const QualityMatrix = ({ project, canWrite, onBack }) => {
                 return;
             }
 
-            // Copy / Paste
+            // Cell Copy / Paste (Ctrl+C / Ctrl+V when cell is selected and not in input editing mode)
             if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'c' && !activeCell.isEditing) {
                 e.preventDefault();
                 handleCopy();
@@ -511,8 +664,45 @@ const QualityMatrix = ({ project, canWrite, onBack }) => {
             }
         };
 
+        const handleNativePaste = (e) => {
+            const currentCell = activeCellRef.current;
+            if (!currentCell || currentCell.isEditing || !currentCell.matId) return;
+
+            const activeElem = document.activeElement;
+            if (activeElem && (activeElem.tagName === 'INPUT' || activeElem.tagName === 'TEXTAREA' || activeElem.isContentEditable)) {
+                return;
+            }
+
+            const text = e.clipboardData ? e.clipboardData.getData('text/plain') : null;
+            if (text !== null && text !== undefined) {
+                e.preventDefault();
+                e.stopPropagation();
+                handlePaste(text);
+            }
+        };
+
+        const handleNativeCopy = (e) => {
+            const currentCell = activeCellRef.current;
+            if (!currentCell || currentCell.isEditing || !currentCell.matId) return;
+
+            const activeElem = document.activeElement;
+            if (activeElem && (activeElem.tagName === 'INPUT' || activeElem.tagName === 'TEXTAREA')) {
+                return;
+            }
+
+            e.preventDefault();
+            e.stopPropagation();
+            handleCopy(e);
+        };
+
         window.addEventListener('keydown', handleKeyDown);
-        return () => window.removeEventListener('keydown', handleKeyDown);
+        window.addEventListener('paste', handleNativePaste);
+        window.addEventListener('copy', handleNativeCopy);
+        return () => {
+            window.removeEventListener('keydown', handleKeyDown);
+            window.removeEventListener('paste', handleNativePaste);
+            window.removeEventListener('copy', handleNativeCopy);
+        };
     }, [activeCell, handleCopy, handlePaste, handleUndo, handleRedo, navigateRow]);
 
     // ─── Add Category (A, B, C...) ─────────────────────────────────────────────
@@ -994,6 +1184,15 @@ const QualityMatrix = ({ project, canWrite, onBack }) => {
                                                                         </button>
 
                                                                         <button
+                                                                            onClick={(e) => { e.stopPropagation(); handleDuplicateMaterial(item.id); }}
+                                                                            className="text-[10px] text-emerald-600 dark:text-emerald-400 font-semibold hover:underline flex items-center space-x-1 ml-2"
+                                                                            title="Duplicate entire material block"
+                                                                        >
+                                                                            <Copy size={11} />
+                                                                            <span>Duplicate Material</span>
+                                                                        </button>
+
+                                                                        <button
                                                                             onClick={(e) => { e.stopPropagation(); handleConvertToSubdivisions(item.id); }}
                                                                             className="text-[10px] text-purple-600 dark:text-purple-400 font-semibold hover:underline flex items-center space-x-1 ml-2"
                                                                         >
@@ -1106,23 +1305,32 @@ const QualityMatrix = ({ project, canWrite, onBack }) => {
                                                     {/* Actions */}
                                                     {canWrite && (
                                                         <td className="py-2.5 px-2 text-center align-top">
-                                                            {totalRows > 1 ? (
+                                                            <div className="flex items-center justify-center space-x-1">
                                                                 <button
-                                                                    onClick={() => handleDeleteTestRow(item.id, test.id)}
-                                                                    className="text-gray-400 hover:text-red-500 transition-colors p-1 cursor-pointer"
-                                                                    title="Delete Row"
+                                                                    onClick={() => handleDuplicateTestRow(item.id, test.id)}
+                                                                    className="text-gray-400 hover:text-blue-500 transition-colors p-1 cursor-pointer"
+                                                                    title="Duplicate Test Row"
                                                                 >
-                                                                    <Trash2 size={13} />
+                                                                    <Copy size={13} />
                                                                 </button>
-                                                            ) : index === 0 ? (
-                                                                <button
-                                                                    onClick={() => handleDeleteItem(item.id)}
-                                                                    className="text-gray-400 hover:text-red-500 transition-colors p-1 cursor-pointer"
-                                                                    title="Delete Material"
-                                                                >
-                                                                    <Trash2 size={14} />
-                                                                </button>
-                                                            ) : null}
+                                                                {totalRows > 1 ? (
+                                                                    <button
+                                                                        onClick={() => handleDeleteTestRow(item.id, test.id)}
+                                                                        className="text-gray-400 hover:text-red-500 transition-colors p-1 cursor-pointer"
+                                                                        title="Delete Row"
+                                                                    >
+                                                                        <Trash2 size={13} />
+                                                                    </button>
+                                                                ) : index === 0 ? (
+                                                                    <button
+                                                                        onClick={() => handleDeleteItem(item.id)}
+                                                                        className="text-gray-400 hover:text-red-500 transition-colors p-1 cursor-pointer"
+                                                                        title="Delete Material"
+                                                                    >
+                                                                        <Trash2 size={14} />
+                                                                    </button>
+                                                                ) : null}
+                                                            </div>
                                                         </td>
                                                     )}
                                                 </tr>
@@ -1155,13 +1363,23 @@ const QualityMatrix = ({ project, canWrite, onBack }) => {
                                                                 className="font-black text-gray-900 dark:text-white uppercase"
                                                             />
                                                             {canWrite && (
-                                                                <button
-                                                                    onClick={(e) => { e.stopPropagation(); handleAddSubdivision(item.id); }}
-                                                                    className="text-[11px] text-purple-600 dark:text-purple-400 font-bold hover:underline flex items-center space-x-1 shrink-0 ml-4"
-                                                                >
-                                                                    <Plus size={13} />
-                                                                    <span>+ Add Sub-division (a, b...)</span>
-                                                                </button>
+                                                                <div className="flex items-center space-x-2 shrink-0 ml-4">
+                                                                    <button
+                                                                        onClick={(e) => { e.stopPropagation(); handleDuplicateMaterial(item.id); }}
+                                                                        className="text-[11px] text-emerald-600 dark:text-emerald-400 font-bold hover:underline flex items-center space-x-1"
+                                                                        title="Duplicate Material Group"
+                                                                    >
+                                                                        <Copy size={12} />
+                                                                        <span>Duplicate Group</span>
+                                                                    </button>
+                                                                    <button
+                                                                        onClick={(e) => { e.stopPropagation(); handleAddSubdivision(item.id); }}
+                                                                        className="text-[11px] text-purple-600 dark:text-purple-400 font-bold hover:underline flex items-center space-x-1"
+                                                                    >
+                                                                        <Plus size={13} />
+                                                                        <span>+ Add Sub-division (a, b...)</span>
+                                                                    </button>
+                                                                </div>
                                                             )}
                                                         </div>
                                                     </td>
@@ -1314,13 +1532,22 @@ const QualityMatrix = ({ project, canWrite, onBack }) => {
                                                                 {/* Actions */}
                                                                 {canWrite && (
                                                                     <td className="py-2 px-2 text-center align-top">
-                                                                        <button
-                                                                            onClick={() => handleDeleteTestRow(item.id, t.id, sub.id)}
-                                                                            className="text-gray-400 hover:text-red-500 transition-colors p-1 cursor-pointer"
-                                                                            title="Delete Sub-division Row"
-                                                                        >
-                                                                            <Trash2 size={13} />
-                                                                        </button>
+                                                                        <div className="flex items-center justify-center space-x-1">
+                                                                            <button
+                                                                                onClick={() => handleDuplicateTestRow(item.id, t.id, sub.id)}
+                                                                                className="text-gray-400 hover:text-purple-500 transition-colors p-1 cursor-pointer"
+                                                                                title="Duplicate Sub-test Row"
+                                                                            >
+                                                                                <Copy size={13} />
+                                                                            </button>
+                                                                            <button
+                                                                                onClick={() => handleDeleteTestRow(item.id, t.id, sub.id)}
+                                                                                className="text-gray-400 hover:text-red-500 transition-colors p-1 cursor-pointer"
+                                                                                title="Delete Sub-division Row"
+                                                                            >
+                                                                                <Trash2 size={13} />
+                                                                            </button>
+                                                                        </div>
                                                                     </td>
                                                                 )}
                                                             </tr>

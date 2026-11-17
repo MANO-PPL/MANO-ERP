@@ -28,6 +28,11 @@ import ProjectSpreadsheets from './Spreadsheets/ProjectSpreadsheets';
 
 const ProjectDetails = () => {
     const { id } = useParams();
+    return <ProjectWorkspace key={id} />;
+};
+
+const ProjectWorkspace = () => {
+    const { id } = useParams();
     const navigate = useNavigate();
     const { user, isAdmin } = useAuth();
     const [searchParams, setSearchParams] = useSearchParams();
@@ -45,37 +50,7 @@ const ProjectDetails = () => {
     }, [extraBreadcrumbs, activeTab]);
 
     const loadProject = async () => {
-        // Seed initial project data from cached project list for instant UI load
-        const cachedList = sessionStorage.getItem('crm_projects_list');
-        if (cachedList && !project) {
-            try {
-                const projectsArr = JSON.parse(cachedList);
-                const found = projectsArr.find(p => String(p.dbId) === String(id) || String(p.id) === String(id));
-                if (found) {
-                    const foundProj = {
-                        id: found.dbId,
-                        name: found.name,
-                        project_code: found.id,
-                        location: found.location,
-                        status: found.status?.toLowerCase() || 'active',
-                        metadata: found.metadata
-                    };
-                    setProject(foundProj);
-                    try {
-                        sessionStorage.setItem(`active_project_info_${id}`, JSON.stringify({ name: foundProj.name, project_code: foundProj.project_code }));
-                        window.dispatchEvent(new CustomEvent('active-project-updated', { detail: { id, name: foundProj.name, project_code: foundProj.project_code } }));
-                    } catch (e) { }
-                    setLoading(false);
-                } else {
-                    setLoading(true);
-                }
-            } catch (e) {
-                setLoading(true);
-            }
-        } else if (!project) {
-            setLoading(true);
-        }
-
+        setLoading(true);
         try {
             const res = await projectApi.getProject(id);
             if (res.success) {
@@ -127,7 +102,7 @@ const ProjectDetails = () => {
 
     const allowedTabs = allTabs.filter(tab => {
         // Dashboard is always visible to any project member
-        if (tab === 'Dashboard') return true;
+
         // Admins see everything
         if (isAdmin) return true;
         // If no permissions object at all, or it's empty → only Dashboard is accessible
@@ -154,6 +129,9 @@ const ProjectDetails = () => {
             </div>
         );
     }
+
+    if (!project || !allowedTabs.length) return <p className="p-6">No project pages are available to this account.</p>;
+    if (!allowedTabs.includes(activeTab)) return null;
 
     const renderTabContent = () => {
         const tabKey = activeTab;
