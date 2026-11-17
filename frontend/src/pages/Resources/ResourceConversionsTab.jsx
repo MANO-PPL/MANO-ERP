@@ -13,12 +13,27 @@ import { formatOrdinalDate } from '../../utils/dateUtils';
 
 const ResourceConversionsTab = ({
     initialResourceId,
-    resources = [],
+    resources: propResources = [],
     onRefreshResources,
     showToast
 }) => {
     const { hasPermission } = useAuth();
     const canWrite = hasPermission('resources', 2);
+
+    const [fetchedResources, setFetchedResources] = useState([]);
+
+    useEffect(() => {
+        if (!propResources || propResources.length === 0) {
+            resourceApi.getResources({ limit: 50000 })
+                .then(res => {
+                    const list = res.resources || res.data || [];
+                    setFetchedResources(list);
+                })
+                .catch(err => console.error('Failed to load resources in ConversionsTab:', err));
+        }
+    }, [propResources]);
+
+    const resources = propResources.length > 0 ? propResources : fetchedResources;
 
     const [selectedResourceId, setSelectedResourceId] = useState(initialResourceId ? String(initialResourceId) : '');
     const [searchQuery, setSearchQuery] = useState('');

@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import {
     Plus, Trash2, Save, RefreshCw, AlertCircle, ArrowRight,
-    Search, Calendar, RotateCcw, Copy, WandSparkles, Loader2
+    Search, Calendar, RotateCcw, Copy, WandSparkles, Loader2, Layers
 } from 'lucide-react';
 import { motion } from 'framer-motion';
 import { resourceApi } from '../../services/resourceApi';
@@ -17,7 +17,7 @@ const dateOnly = (val) => (val ? String(val).slice(0, 10) : new Date().toISOStri
 
 const ResourceRecipesTab = ({
     initialResourceId,
-    resources = [],
+    resources: propResources = [],
     availableComponents = [],
     initialProjectId = '',
     onRefreshResources,
@@ -26,6 +26,21 @@ const ResourceRecipesTab = ({
     const { hasPermission } = useAuth();
     const canWrite = hasPermission('resources', 2);
 
+    const [fetchedResources, setFetchedResources] = useState([]);
+
+    // Auto-fetch resources if not provided by parent component
+    useEffect(() => {
+        if (!propResources || propResources.length === 0) {
+            resourceApi.getResources({ limit: 50000 })
+                .then(res => {
+                    const list = res.resources || res.data || [];
+                    setFetchedResources(list);
+                })
+                .catch(err => console.error('Failed to load resources in RecipesTab:', err));
+        }
+    }, [propResources]);
+
+    const resources = propResources.length > 0 ? propResources : fetchedResources;
     const itemsList = useMemo(() => resources.filter(r => r.type === 'item'), [resources]);
     const rawComponents = useMemo(() => (availableComponents && availableComponents.length > 0 ? availableComponents : resources).filter(r => r.type === 'material' || r.type === 'labour'), [availableComponents, resources]);
 
@@ -490,8 +505,26 @@ const ResourceRecipesTab = ({
             {/* Right Workspace: Recipe Builder & Timeline */}
             <div className="flex-1 flex flex-col overflow-hidden bg-white dark:bg-[#0d1117]">
                 {!selectedItem ? (
-                    <div className="flex-1 flex items-center justify-center p-8 text-center text-gray-400">
-                        <p className="text-xs font-medium">Select a composite item resource to configure its recipe composition.</p>
+                    <div className="flex-1 flex flex-col items-center justify-center p-8 text-center text-gray-400 gap-3">
+                        <div className="p-3 bg-purple-50 dark:bg-purple-950/30 rounded-full text-purple-600 dark:text-purple-400 border border-purple-200 dark:border-purple-800/40">
+                            <Layers size={32} />
+                        </div>
+                        <div>
+                            <p className="text-sm font-bold text-gray-800 dark:text-gray-200">Select a Composite Item</p>
+                            <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5 max-w-sm">
+                                Choose an assembly from the list or dropdown below to configure ingredients and bill of materials.
+                            </p>
+                        </div>
+                        {itemsList.length > 0 && (
+                            <div className="w-72 mt-1">
+                                <CustomSelect
+                                    value={selectedItemId}
+                                    onChange={e => setSelectedItemId(e.target.value)}
+                                    options={itemsList.map(i => ({ label: `${i.name} (${i.base_unit_code})`, value: String(i.id) }))}
+                                    placeholder="Choose an Item Assembly..."
+                                />
+                            </div>
+                        )}
                     </div>
                 ) : (
                     <form onSubmit={handleSaveRecipe} className="flex-1 flex flex-col overflow-hidden">
@@ -517,6 +550,19 @@ const ResourceRecipesTab = ({
                             </div>
 
                             <div className="flex items-center justify-end gap-2 shrink-0">
+                                {/* Top Item Dropdown Selector */}
+                                <div className="hidden lg:flex items-center gap-1.5">
+                                    <span className="text-[10px] font-bold text-gray-400 uppercase shrink-0">Item:</span>
+                                    <div className="w-52">
+                                        <CustomSelect
+                                            value={selectedItemId}
+                                            onChange={e => setSelectedItemId(e.target.value)}
+                                            options={itemsList.map(i => ({ label: `${i.name} (${i.base_unit_code})`, value: String(i.id) }))}
+                                            placeholder="Select Composite Item..."
+                                        />
+                                    </div>
+                                </div>
+
                                 <div className="flex items-center gap-1.5">
                                     <span className="text-[10px] font-bold text-gray-400 uppercase shrink-0">Scope:</span>
                                     <div className="w-40">

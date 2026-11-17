@@ -5,6 +5,7 @@ import { UNIT_OPTIONS, UNIT_REGISTRY, UNIT_GROUPS } from './resourceConstants';
 import { motion } from 'framer-motion';
 import ConfirmModal from '../../components/ConfirmModal';
 import CustomDatePicker from '../../components/CustomDatePicker';
+import { customToast } from '../../utils/toast';
 
 const unitTypeLabel = { weight: 'Weight', volume: 'Volume', length: 'Length', area: 'Area', count: 'Count', time: 'Time' };
 const today = () => new Date().toISOString().slice(0, 10);
@@ -25,7 +26,7 @@ const FormField = ({ label, required, children, hint }) => (
     </div>
 );
 
-const ResourceForm = ({ resource, onClose, onSave }) => {
+const ResourceForm = ({ resource, onClose, onSave, existingResources = [] }) => {
     const isEditing = !!resource;
 
     const [formData, setFormData] = useState({
@@ -41,6 +42,7 @@ const ResourceForm = ({ resource, onClose, onSave }) => {
     const [compositionEffectiveFrom, setCompositionEffectiveFrom] = useState(today());
     const [compositionChanged, setCompositionChanged] = useState(false);
     const [conversions, setConversions] = useState([]);
+    const [allCatalogResources, setAllCatalogResources] = useState(existingResources || []);
     const [allResources, setAllResources] = useState([]);
     const [isLoading, setIsLoading] = useState(false);
     const [error, setError] = useState('');
@@ -91,7 +93,9 @@ const ResourceForm = ({ resource, onClose, onSave }) => {
         const fetchMaterials = async () => {
             try {
                 const res = await resourceApi.getResources({ include_details: false, include_rates: false });
-                const components = (res.resources || []).filter(r => r.type === 'material' || r.type === 'labour');
+                const all = res.resources || [];
+                setAllCatalogResources(all);
+                const components = all.filter(r => r.type === 'material' || r.type === 'labour');
                 setAllResources(components);
             } catch (err) {
                 console.error('Failed to fetch components', err);
@@ -100,9 +104,28 @@ const ResourceForm = ({ resource, onClose, onSave }) => {
         fetchMaterials();
     }, [resource]);
 
+    const handleCodeBlur = () => {
+        const rawCode = formData.code ? String(formData.code).trim() : '';
+        if (!rawCode) return;
+        const normCode = rawCode.toLowerCase();
+        const catalog = allCatalogResources.length > 0 ? allCatalogResources : existingResources;
+        const dup = catalog.find(r => 
+            (!resource || String(r.id) !== String(resource.id)) &&
+            r.code && String(r.code).trim().toLowerCase() === normCode
+        );
+        if (dup) {
+            const msg = `Resource code already exists: "${rawCode}" (${dup.name || 'another resource'}). Resource code must be strictly unique. Please change it.`;
+            customToast.error(msg, 'Resource Code Already Exists');
+            setError(msg);
+        }
+    };
+
     const handleChange = (e) => {
         const { name, value } = e.target;
         setFormData(prev => ({ ...prev, [name]: value }));
+        if (name === 'code' && error && error.toLowerCase().includes('code')) {
+            setError('');
+        }
     };
 
     // ─── Compositions ────────────────────────────────────────────────────────────
@@ -176,6 +199,23 @@ const ResourceForm = ({ resource, onClose, onSave }) => {
     const handleSubmit = async (e) => {
         e.preventDefault();
         setError('');
+
+        const rawCode = formData.code ? String(formData.code).trim() : '';
+        if (rawCode) {
+            const normCode = rawCode.toLowerCase();
+            const catalog = allCatalogResources.length > 0 ? allCatalogResources : existingResources;
+            const dup = catalog.find(r => 
+                (!resource || String(r.id) !== String(resource.id)) &&
+                r.code && String(r.code).trim().toLowerCase() === normCode
+            );
+            if (dup) {
+                const msg = `Resource code already exists: "${rawCode}" (${dup.name || 'another resource'}). Resource code must be strictly unique. Please change it.`;
+                setError(msg);
+                customToast.error(msg, 'Resource Code Already Exists');
+                return;
+            }
+        }
+
         setIsLoading(true);
 
         try {
@@ -214,7 +254,9 @@ const ResourceForm = ({ resource, onClose, onSave }) => {
             }
             onSave();
         } catch (err) {
-            setError(err.response?.data?.message || err.message || 'Failed to save resource');
+            const msg = err.response?.data?.message || err.message || 'Failed to save resource';
+            setError(msg);
+            customToast.error(msg, 'Save Error');
         } finally {
             setIsLoading(false);
         }
@@ -296,14 +338,19 @@ const ResourceForm = ({ resource, onClose, onSave }) => {
                                             className="w-full bg-white dark:bg-[#0d1117] border border-gray-300 dark:border-white/10 rounded-xl px-3 py-2.5 text-sm text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500/50 transition"
                                         />
                                     </FormField>
-                                    <FormField label="Code" hint="Optional short identifier (e.g. CEM-OPC)">
+                                    <FormField label="Code" hint="Must be strictly unique across all resources (e.g. CEM-OPC)">
                                         <input
                                             type="text"
                                             name="code"
                                             value={formData.code}
                                             onChange={handleChange}
+                                            onBlur={handleCodeBlur}
                                             placeholder="e.g. CEM-OPC"
-                                            className="w-full bg-white dark:bg-[#0d1117] border border-gray-300 dark:border-white/10 rounded-xl px-3 py-2.5 text-sm text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500/50 transition"
+                                            className={`w-full bg-white dark:bg-[#0d1117] border ${
+                                                error && error.toLowerCase().includes('code')
+                                                    ? 'border-red-500 focus:ring-red-500/50'
+                                                    : 'border-gray-300 dark:border-white/10 focus:ring-blue-500/50'
+                                            } rounded-xl px-3 py-2.5 text-sm text-gray-900 dark:text-white focus:outline-none focus:ring-2 transition`}
                                         />
                                     </FormField>
                                 </div>

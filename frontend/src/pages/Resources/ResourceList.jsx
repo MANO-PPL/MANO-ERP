@@ -77,21 +77,36 @@ export const ResourceList = () => {
             {/* Tab 2: Item Recipes (BOM) */}
             {activeTab === 'recipes' && (
                 <div className="flex-1 overflow-auto">
-                    <ResourceRecipesTab canWrite={canWrite} />
+                    <ResourceRecipesTab
+                        resources={resources}
+                        canWrite={canWrite}
+                        initialResourceId={searchParams.get('resourceId')}
+                        onRefreshResources={fetchResources}
+                    />
                 </div>
             )}
 
             {/* Tab 3: Rate History */}
             {activeTab === 'rates' && (
                 <div className="flex-1 overflow-auto">
-                    <ResourceRatesTab canWrite={canWrite} />
+                    <ResourceRatesTab
+                        resources={resources}
+                        canWrite={canWrite}
+                        initialResourceId={searchParams.get('resourceId')}
+                        onRefreshResources={fetchResources}
+                    />
                 </div>
             )}
 
             {/* Tab 4: Unit Conversions */}
             {activeTab === 'conversions' && (
                 <div className="flex-1 overflow-auto">
-                    <ResourceConversionsTab canWrite={canWrite} />
+                    <ResourceConversionsTab
+                        resources={resources}
+                        canWrite={canWrite}
+                        initialResourceId={searchParams.get('resourceId')}
+                        onRefreshResources={fetchResources}
+                    />
                 </div>
             )}
         </div>
