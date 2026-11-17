@@ -18,7 +18,8 @@ import {
     Download,
     Keyboard,
     X,
-    Sparkles
+    Sparkles,
+    GitMerge
 } from 'lucide-react';
 
 /**
@@ -34,6 +35,7 @@ export const ExcelToolbar = ({
     isSaving,
     lastSavedTime,
     onSave,
+    onDiscardDraft = null,
     canUndo,
     canRedo,
     onUndo,
@@ -49,12 +51,16 @@ export const ExcelToolbar = ({
     onExportExcel,
     onOpenShortcutsModal,
     onOpenAddColumn,
+    onOpenFormulaAssistant,
+    onOpenDuplicateModal = null,
+    duplicateCount = 0,
     canWrite = true,
     customActions = null,
     extraTools = null,
     bulkActions = null,
     extraFilters = null
 }) => {
+
     const [isAddDropdownOpen, setIsAddDropdownOpen] = useState(false);
     const [isExcelDropdownOpen, setIsExcelDropdownOpen] = useState(false);
     const addDropdownRef = useRef(null);
@@ -111,6 +117,27 @@ export const ExcelToolbar = ({
                         </>
                     )}
                 </button>
+
+                {hasUnsavedChanges && onDiscardDraft && (
+                    <button
+                        type="button"
+                        onClick={onDiscardDraft}
+                        className="p-1.5 text-gray-400 hover:text-rose-600 dark:hover:text-rose-400 rounded-lg hover:bg-rose-50 dark:hover:bg-rose-950/20 border border-transparent hover:border-rose-200 dark:hover:border-rose-800/40 transition-colors cursor-pointer"
+                        title="Discard unsaved draft & reload from cloud"
+                    >
+                        <RotateCcw size={13} />
+                    </button>
+                )}
+
+                {hasUnsavedChanges && (
+                    <span
+                        className="hidden md:inline-flex items-center gap-1.5 text-[10px] text-amber-700 dark:text-amber-300 font-semibold bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800/40 px-2 py-0.5 rounded-full select-none"
+                        title="Your uncommitted edits and new rows are preserved locally in the browser across refreshes until you click Save Changes."
+                    >
+                        <span className="w-1.5 h-1.5 rounded-full bg-amber-500 animate-pulse" />
+                        Draft saved in browser
+                    </span>
+                )}
 
                 {/* Undo / Redo */}
                 {canWrite && (
@@ -263,6 +290,19 @@ export const ExcelToolbar = ({
                     </div>
                 )}
 
+                {/* Duplicate Merge Quick Action Badge */}
+                {duplicateCount > 0 && onOpenDuplicateModal && (
+                    <button
+                        type="button"
+                        onClick={onOpenDuplicateModal}
+                        className="flex items-center gap-1.5 px-2.5 py-1.5 bg-amber-500/15 hover:bg-amber-500/25 text-amber-700 dark:text-amber-300 border border-amber-400/40 dark:border-amber-500/30 rounded-lg text-xs font-bold transition-all shadow-xs cursor-pointer animate-pulse"
+                        title="Duplicate records detected. Click to open Merge Sidebar."
+                    >
+                        <GitMerge size={13} className="text-amber-600 dark:text-amber-400" />
+                        <span>Merge Duplicates ({duplicateCount})</span>
+                    </button>
+                )}
+
                 {/* Excel Tools Dropdown (Import, Export, Template, Shortcuts) */}
                 <div className="relative inline-flex" ref={excelDropdownRef}>
                     <button
@@ -279,7 +319,20 @@ export const ExcelToolbar = ({
                     </button>
 
                     {isExcelDropdownOpen && (
-                        <div className="absolute right-0 top-full mt-1 w-52 bg-white dark:bg-[#161b22] border border-gray-200 dark:border-white/10 rounded-lg shadow-xl z-50 py-1 text-xs text-gray-700 dark:text-gray-200 font-sans animate-in fade-in zoom-in-95">
+                        <div className="absolute right-0 top-full mt-1 w-56 bg-white dark:bg-[#161b22] border border-gray-200 dark:border-white/10 rounded-lg shadow-xl z-50 py-1 text-xs text-gray-700 dark:text-gray-200 font-sans animate-in fade-in zoom-in-95">
+                            {onOpenDuplicateModal && (
+                                <button
+                                    onClick={() => {
+                                        onOpenDuplicateModal();
+                                        setIsExcelDropdownOpen(false);
+                                    }}
+                                    className="w-full text-left px-3 py-1.5 hover:bg-amber-50 dark:hover:bg-amber-950/30 flex items-center gap-2 font-semibold text-amber-700 dark:text-amber-400 cursor-pointer"
+                                >
+                                    <GitMerge size={13} className="text-amber-500" />
+                                    <span>Resolve & Merge Duplicates {duplicateCount > 0 ? `(${duplicateCount})` : ''}</span>
+                                </button>
+                            )}
+
                             {canWrite && onOpenAddColumn && (
                                 <button
                                     onClick={() => {
@@ -292,6 +345,7 @@ export const ExcelToolbar = ({
                                     <span>Add Custom Column</span>
                                 </button>
                             )}
+
 
                             {canWrite && onOpenImportModal && (
                                 <>
@@ -352,6 +406,19 @@ export const ExcelToolbar = ({
                                 >
                                     <FileText size={13} className="text-blue-500" />
                                     <span>Export CSV (.csv)</span>
+                                </button>
+                            )}
+
+                            {onOpenFormulaAssistant && (
+                                <button
+                                    onClick={() => {
+                                        onOpenFormulaAssistant();
+                                        setIsExcelDropdownOpen(false);
+                                    }}
+                                    className="w-full text-left px-3 py-1.5 hover:bg-purple-50 dark:hover:bg-purple-950/30 flex items-center gap-2 font-semibold text-purple-600 dark:text-purple-400 cursor-pointer"
+                                >
+                                    <Sparkles size={13} className="text-purple-500" />
+                                    <span>Formula Assistant (fx)</span>
                                 </button>
                             )}
 

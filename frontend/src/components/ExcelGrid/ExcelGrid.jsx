@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useCallback } from 'react';
+import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import { useExcelGrid } from './useExcelGrid';
 import { ExcelToolbar } from './ExcelToolbar';
 import { ExcelFormulaBar } from './ExcelFormulaBar';
@@ -9,14 +9,21 @@ import { ExcelAddColumnModal } from './ExcelAddColumnModal';
 import { ExcelFindReplaceModal } from './ExcelFindReplaceModal';
 import { ExcelImportModal } from './ExcelImportModal';
 import { ExcelShortcutsModal } from './ExcelShortcutsModal';
+import { ExcelFormulaAssistantModal } from '../common/ExcelFormulas';
 import {
     downloadExcelTemplate,
     exportToExcelFile,
     exportToCSVFile,
-    generateBatchPayload
+    generateBatchPayload,
+    findDuplicateGroups,
+    findAllDuplicateGroups,
+    getUniqueKeyColumn,
+    getRowUniqueValue
 } from './excelUtils';
 import ConfirmModal from '../ConfirmModal';
+import DuplicateResolverModal from '../DuplicateResolverModal';
 import Toast from '../Toast';
+import { customToast } from '../../utils/toast';
 import { ChevronDown, ChevronLeft, ChevronRight, Check } from 'lucide-react';
 
 /**
@@ -100,7 +107,10 @@ export const ExcelGrid = ({
     canUndo = undefined,
     canRedo = undefined,
     onAddRows = null,
-    onCellChange = null
+    onCellChange = null,
+    storageKey = null,
+    isDuplicateModalOpen: externalIsDuplicateModalOpen = undefined,
+    setIsDuplicateModalOpen: externalSetIsDuplicateModalOpen = undefined
 }) => {
     const [toast, setToast] = useState(null);
     const showToast = useCallback((type, title, message, duration = 3000) => {
@@ -113,9 +123,21 @@ export const ExcelGrid = ({
     const [importModalTab, setImportModalTab] = useState('upload');
     const [extraColumns, setExtraColumns] = useState([]);
     const [isAddColumnModalOpen, setIsAddColumnModalOpen] = useState(false);
+    const [isFormulaAssistantOpen, setIsFormulaAssistantOpen] = useState(false);
     const [findHighlightConfig, setFindHighlightConfig] = useState(null);
 
     const mergedColumns = useMemo(() => [...columns, ...extraColumns], [columns, extraColumns]);
+    const [internalIsDuplicateModalOpen, setInternalIsDuplicateModalOpen] = useState(false);
+    const isDuplicateModalOpen = externalIsDuplicateModalOpen !== undefined ? externalIsDuplicateModalOpen : internalIsDuplicateModalOpen;
+    const setIsDuplicateModalOpen = externalSetIsDuplicateModalOpen || setInternalIsDuplicateModalOpen;
+
+    // Browser persistence storage key scoped to entity & page path
+    const computedStorageKey = useMemo(() => {
+        if (storageKey) return `mano_excel_draft_${storageKey}`;
+        const cleanEntity = entityName ? entityName.toLowerCase().replace(/[^a-z0-9_-]/g, '_') : 'sheet';
+        const cleanPath = typeof window !== 'undefined' ? window.location.pathname.replace(/[^a-z0-9_-]/g, '_') : 'root';
+        return `mano_excel_draft_${cleanEntity}_${cleanPath}`;
+    }, [storageKey, entityName]);
 
     // Confirmation Modal
     const [confirmModal, setConfirmModal] = useState({
@@ -143,8 +165,140 @@ export const ExcelGrid = ({
         onRedo,
         canUndo,
         canRedo,
-        onCellChange
+        onCellChange,
+        storageKey: computedStorageKey
     });
+
+    // Compute duplicate groups across active spreadsheet rows (including code & unique columns)
+    const duplicateGroups = useMemo(() => {
+        return findAllDuplicateGroups(grid.gridData, mergedColumns, primaryKey);
+    }, [grid.gridData, mergedColumns, primaryKey]);
+
+    // Discard unsaved draft changes
+    const handleRequestDiscardDraft = useCallback(() => {
+        setConfirmModal({
+            isOpen: true,
+            title: 'Discard Unsaved Changes?',
+            message: 'Are you sure you want to discard your unsaved draft and reload from cloud? This will erase any uncommitted local edits.',
+            confirmText: 'Discard Draft',
+            cancelText: 'Keep Editing',
+            variant: 'danger',
+            onConfirm: () => {
+                if (grid.discardDraft) {
+                    grid.discardDraft();
+                }
+                closeConfirmModal();
+            }
+        });
+    }, [grid]);
+
+    // Merge a single duplicate group into a Master record
+    const handleMergeDuplicateGroup = useCallback(
+        (mergedMasterRow, duplicateRowIds) => {
+            grid.pushUndoState(grid.gridData);
+            const dupIdSet = new Set(duplicateRowIds.map(String));
+
+            const persistentIds = duplicateRowIds.filter((id) => !String(id).startsWith('temp_'));
+            if (persistentIds.length > 0) {
+                grid.setDeletedIds((prev) => {
+                    const next = new Set(prev);
+                    persistentIds.forEach((id) => next.add(id));
+                    return next;
+                });
+            }
+
+            grid.setGridData((prev) => {
+                return prev
+                    .filter((r) => !dupIdSet.has(String(r[primaryKey])))
+                    .map((r) =>
+                        String(r[primaryKey]) === String(mergedMasterRow[primaryKey])
+                            ? mergedMasterRow
+                            : r
+                    );
+            });
+
+            showToast(
+                'success',
+                'Merged into Single Record',
+                `Successfully merged ${duplicateRowIds.length} duplicate copy/copies into "${mergedMasterRow.name || 'Master Record'}". Click "Save Changes" to apply.`
+            );
+            customToast.success(
+                `Successfully merged ${duplicateRowIds.length} duplicate copy/copies into "${mergedMasterRow.name || 'Master Record'}". Click "Save Changes" to apply.`,
+                'Duplicates Merged'
+            );
+        },
+        [grid, primaryKey, showToast]
+    );
+
+    // Merge all duplicate groups into single records
+    const handleMergeAllDuplicates = useCallback(
+        (mergedMasterRows, allDuplicateRowIds) => {
+            grid.pushUndoState(grid.gridData);
+            const dupIdSet = new Set(allDuplicateRowIds.map(String));
+            const masterMap = new Map();
+            mergedMasterRows.forEach((r) => masterMap.set(String(r[primaryKey]), r));
+
+            const persistentIds = allDuplicateRowIds.filter((id) => !String(id).startsWith('temp_'));
+            if (persistentIds.length > 0) {
+                grid.setDeletedIds((prev) => {
+                    const next = new Set(prev);
+                    persistentIds.forEach((id) => next.add(id));
+                    return next;
+                });
+            }
+
+            grid.setGridData((prev) => {
+                return prev
+                    .filter((r) => !dupIdSet.has(String(r[primaryKey])))
+                    .map((r) =>
+                        masterMap.has(String(r[primaryKey]))
+                            ? masterMap.get(String(r[primaryKey]))
+                            : r
+                    );
+            });
+
+            showToast(
+                'sparkle',
+                'All Duplicates Merged',
+                `Successfully merged ${allDuplicateRowIds.length} duplicate copy/copies into ${mergedMasterRows.length} consolidated record(s). Click "Save Changes" to save to database.`
+            );
+            customToast.success(
+                `Successfully merged ${allDuplicateRowIds.length} duplicate copy/copies into ${mergedMasterRows.length} consolidated record(s). Click "Save Changes" to save to database.`,
+                'All Duplicates Merged'
+            );
+        },
+        [grid, primaryKey, showToast]
+    );
+
+    // Delete redundant duplicate copies
+    const handleDeleteDuplicates = useCallback(
+        (idsToDelete) => {
+            grid.pushUndoState(grid.gridData);
+            const delSet = new Set(idsToDelete.map(String));
+            const persistentIds = idsToDelete.filter((id) => !String(id).startsWith('temp_'));
+
+            if (persistentIds.length > 0) {
+                grid.setDeletedIds((prev) => {
+                    const next = new Set(prev);
+                    persistentIds.forEach((id) => next.add(id));
+                    return next;
+                });
+            }
+
+            grid.setGridData((prev) => prev.filter((r) => !delSet.has(String(r[primaryKey]))));
+
+            showToast(
+                'success',
+                'Duplicates Removed',
+                `Removed ${idsToDelete.length} duplicate copy/copies locally. Click "Save Changes" to apply to database.`
+            );
+            customToast.success(
+                `Removed ${idsToDelete.length} duplicate copy/copies locally. Click "Save Changes" to apply to database.`,
+                'Duplicates Removed'
+            );
+        },
+        [grid, primaryKey, showToast]
+    );
 
     const handleAddColumn = useCallback(
         (newCol) => {
@@ -165,6 +319,30 @@ export const ExcelGrid = ({
     // Save batch changes
     const handleSaveBatch = async () => {
         if (!onSave || !canWrite) return;
+        if (grid.commitEditingCell) {
+            grid.commitEditingCell();
+        }
+
+        // Check for duplicate records before saving to prevent duplicate insertion
+        if (duplicateGroups.length > 0) {
+            const hasDuplicateCode = duplicateGroups.some((g) => {
+                const k = (g.columnKey || '').toLowerCase();
+                return k === 'code' || k === 'item_code' || k === 'resource_code';
+            });
+            const dupCodeSample = hasDuplicateCode
+                ? duplicateGroups.find((g) => ['code', 'item_code', 'resource_code'].includes((g.columnKey || '').toLowerCase()))?.label
+                : null;
+
+            const alertTitle = hasDuplicateCode ? 'Resource Code Already Exists' : 'Duplicate Records Detected';
+            const alertMsg = hasDuplicateCode
+                ? `Cannot save: Resource code already exists: "${dupCodeSample || ''}". Resource code must be strictly unique. Please change it.`
+                : `Cannot save: Found ${duplicateGroups.length} duplicate group(s). Please merge duplicates in the sidebar before saving.`;
+
+            showToast('error', alertTitle, alertMsg, 6000);
+            customToast.error(alertMsg, alertTitle);
+            setIsDuplicateModalOpen(true);
+            return;
+        }
 
         const hasErrors = grid.gridData.some((r) => {
             if (!r._errors || Object.keys(r._errors).length === 0) return false;
@@ -182,15 +360,16 @@ export const ExcelGrid = ({
             return;
         }
 
+        const currentData = grid.gridDataRef?.current || grid.gridData;
         const payload = {
             ...generateBatchPayload(
-                grid.gridData,
+                currentData,
                 grid.originalDataMap,
                 primaryKey,
                 grid.deletedIds,
                 mergedColumns
             ),
-            allCurrentRows: grid.gridData
+            allCurrentRows: currentData
         };
 
         setIsSaving(true);
@@ -206,6 +385,14 @@ export const ExcelGrid = ({
                     _errors: {}
                 }))
             );
+            if (grid.clearDraftFromStorage) {
+                grid.clearDraftFromStorage();
+            }
+            if (computedStorageKey && typeof window !== 'undefined') {
+                try {
+                    window.localStorage.removeItem(computedStorageKey);
+                } catch (_) {}
+            }
             showToast('success', 'Saved', 'All spreadsheet changes saved successfully');
             if (onRefresh) onRefresh();
         } catch (err) {
@@ -265,20 +452,57 @@ export const ExcelGrid = ({
         });
     };
 
-    // Commit import from modal
+    // Commit import from modal with duplicate prevention
     const handleCommitImport = (importedRows, mode = 'append') => {
         grid.pushUndoState(grid.gridData);
+
+        const uniqueCol = getUniqueKeyColumn(mergedColumns);
+        const existingUniqueKeys = new Set(
+            (mode === 'append' ? grid.gridData : [])
+                .map((row) => getRowUniqueValue(row, uniqueCol))
+                .filter(Boolean)
+        );
+
+        const validImportRows = [];
+        let duplicateSkippedCount = 0;
+
+        importedRows.forEach((row) => {
+            const rowKey = getRowUniqueValue(row, uniqueCol);
+            if (rowKey && existingUniqueKeys.has(rowKey)) {
+                duplicateSkippedCount++;
+                return;
+            }
+            if (rowKey) {
+                existingUniqueKeys.add(rowKey);
+            }
+            validImportRows.push(row);
+        });
+
         if (mode === 'append') {
-            grid.setGridData((prev) => [...importedRows, ...prev]);
+            grid.setGridData((prev) => [...validImportRows, ...prev]);
         } else {
-            grid.setGridData(importedRows);
+            grid.setGridData(validImportRows);
         }
+
+        if (duplicateSkippedCount > 0) {
+            showToast(
+                'warning',
+                'Duplicate Data Skipped',
+                `Data already exists! Skipped ${duplicateSkippedCount} duplicate record(s) already in the sheet.`
+            );
+            customToast.warning(
+                `Data already exists! Skipped ${duplicateSkippedCount} duplicate record(s) already in the sheet.`,
+                'Duplicate Data Skipped'
+            );
+        }
+
         showToast(
             'sparkle',
             'Imported',
-            `Successfully imported ${importedRows.length} ${entityName.toLowerCase()} row(s). Click "Save Changes" to save to cloud.`
+            `Successfully imported ${validImportRows.length} ${entityName.toLowerCase()} row(s). Click "Save Changes" to save to cloud.`
         );
     };
+
 
     const totalCount = grid.sortedGridData.length;
     const startIdx =
@@ -342,7 +566,10 @@ export const ExcelGrid = ({
                 const inp = cellEl.querySelector('input, select, textarea');
                 if (inp) {
                     inp.focus();
-                    if (inp.select) inp.select();
+                    try {
+                        const len = inp.value ? inp.value.length : 0;
+                        inp.setSelectionRange?.(len, len);
+                    } catch {}
                     return;
                 }
             }
@@ -383,6 +610,7 @@ export const ExcelGrid = ({
                 isSaving={isSaving}
                 lastSavedTime={lastSavedTime}
                 onSave={handleSaveBatch}
+                onDiscardDraft={handleRequestDiscardDraft}
                 canUndo={canUndo !== undefined ? canUndo : grid.canUndo}
                 canRedo={canRedo !== undefined ? canRedo : grid.canRedo}
                 onUndo={onUndo || grid.undo}
@@ -406,6 +634,9 @@ export const ExcelGrid = ({
                 onExportCSV={() => exportToCSVFile(grid.sortedGridData, mergedColumns, entityName)}
                 onExportExcel={() => exportToExcelFile(grid.sortedGridData, mergedColumns, entityName)}
                 onOpenShortcutsModal={() => grid.setIsShortcutsModalOpen(true)}
+                onOpenFormulaAssistant={() => setIsFormulaAssistantOpen(true)}
+                onOpenDuplicateModal={() => setIsDuplicateModalOpen(true)}
+                duplicateCount={duplicateGroups.length}
                 canWrite={canWrite}
                 customActions={customActions}
                 extraTools={extraTools}
@@ -419,6 +650,9 @@ export const ExcelGrid = ({
                     selectionFocus={grid.selectionFocus}
                     columns={mergedColumns}
                     sortedGridData={grid.sortedGridData}
+                    primaryKey={primaryKey}
+                    editingCell={grid.editingCell}
+                    activeEditorValue={grid.activeEditorValue}
                     onChangeValue={grid.handleCellChange}
                     onOpenFindReplace={() => {
                         grid.setFindReplaceMode('find');
@@ -475,11 +709,13 @@ export const ExcelGrid = ({
                 onSelectColumnHeader={grid.handleSelectColumnHeader}
                 onColumnHeaderMouseEnter={grid.handleColumnHeaderMouseEnter}
                 onSelectAllCells={grid.handleSelectAllCells}
-                onOpenAddColumn={allowAddColumn ? () => setIsAddColumnModalOpen(true) : null}
+onOpenAddColumn={allowAddColumn ? () => setIsAddColumnModalOpen(true) : null}
                 onStartEditing={grid.handleStartEditing || ((rowIndex, colKey) => grid.setEditingCell({ rowIndex, colKey }))}
                 onStopEditing={grid.handleCellBlur}
                 onChangeValue={grid.handleCellChange}
                 onCellKeyDown={grid.handleCellKeyDown}
+                onEditorValueChange={grid.handleEditorValueChange}
+                onPasteCell={grid.executePaste}
                 onContextMenu={(e, rowIndex, colIndex) => {
                     e.preventDefault();
                     e.stopPropagation();
@@ -687,6 +923,37 @@ export const ExcelGrid = ({
             <ExcelShortcutsModal
                 isOpen={grid.isShortcutsModalOpen}
                 onClose={() => grid.setIsShortcutsModalOpen(false)}
+            />
+
+            {/* Global Excel Formula Assistant Modal */}
+            <ExcelFormulaAssistantModal
+                isOpen={isFormulaAssistantOpen}
+                onClose={() => setIsFormulaAssistantOpen(false)}
+                onInsertFormula={(insertedFormula) => {
+                    if (grid.selectionFocus && canWrite) {
+                        const activeCol = mergedColumns[grid.selectionFocus.c];
+                        if (activeCol && !activeCol.readOnly) {
+                            grid.handleCellChange(grid.selectionFocus.r, activeCol.key, insertedFormula, true);
+                        }
+                    }
+                }}
+            />
+
+            {/* Centralized Duplicate Records & Merge Sidebar Drawer */}
+            <DuplicateResolverModal
+                isOpen={isDuplicateModalOpen}
+                onClose={() => setIsDuplicateModalOpen(false)}
+                items={grid.gridData}
+                columns={mergedColumns}
+                primaryKey={primaryKey}
+                entityName={entityName}
+                onMergeGroup={handleMergeDuplicateGroup}
+                onMergeAll={handleMergeAllDuplicates}
+                onDeleteDuplicates={handleDeleteDuplicates}
+                onViewRow={onViewRow}
+                onUpdateCell={(rowIndex, colKey, value, isAtomic, rowId) =>
+                    grid.handleCellChange(rowIndex, colKey, value, isAtomic, rowId)
+                }
             />
         </div>
     );

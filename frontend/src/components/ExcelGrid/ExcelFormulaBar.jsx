@@ -16,6 +16,9 @@ export const ExcelFormulaBar = ({
     selectionFocus,
     columns = [],
     sortedGridData = [],
+    primaryKey = 'id',
+    editingCell = null,
+    activeEditorValue = undefined,
     onChangeValue,
     onOpenFindReplace,
     canWrite = true,
@@ -26,7 +29,16 @@ export const ExcelFormulaBar = ({
     const activeCol = selectionFocus ? columns[selectionFocus.c] : null;
     const activeValue = activeRow && activeCol ? activeRow[activeCol.key] ?? '' : '';
 
-    const [formulaValue, setFormulaValue] = useState(activeValue);
+    const isEditingThisCell = Boolean(
+        editingCell &&
+        selectionFocus &&
+        editingCell.rowIndex === selectionFocus.r &&
+        editingCell.colKey === activeCol?.key
+    );
+
+    const liveValue = isEditingThisCell && activeEditorValue !== undefined ? activeEditorValue : activeValue;
+
+    const [formulaValue, setFormulaValue] = useState(liveValue);
     const [isFocused, setIsFocused] = useState(false);
     const [showFormulaModal, setShowFormulaModal] = useState(false);
     const inputRef = useRef(null);
@@ -34,17 +46,17 @@ export const ExcelFormulaBar = ({
 
     useEffect(() => {
         if (!isFocused) {
-            setFormulaValue(activeValue);
+            setFormulaValue(liveValue);
         }
-    }, [activeValue, isFocused]);
+    }, [liveValue, isFocused]);
 
     const a1Address = selectionFocus ? getA1Notation(selectionFocus.r, selectionFocus.c) : '';
     const colName = activeCol ? activeCol.label || activeCol.key : '';
 
     const handleCommit = () => {
-        const target = targetCellRef.current || (selectionFocus && activeCol ? { r: selectionFocus.r, colKey: activeCol.key } : null);
+const target = targetCellRef.current || (selectionFocus && activeCol ? { r: selectionFocus.r, colKey: activeCol.key, rowId: activeRow ? activeRow[primaryKey] : null } : null);
         if (target && canWrite) {
-            onChangeValue(target.r, target.colKey, formulaValue, true);
+            onChangeValue(target.r, target.colKey, formulaValue, true, target.rowId);
         }
     };
 
@@ -145,7 +157,7 @@ export const ExcelFormulaBar = ({
                     onChange={(e) => setFormulaValue(e.target.value)}
                     onFocus={() => {
                         setIsFocused(true);
-                        targetCellRef.current = selectionFocus && activeCol ? { r: selectionFocus.r, colKey: activeCol.key } : null;
+                        targetCellRef.current = selectionFocus && activeCol ? { r: selectionFocus.r, colKey: activeCol.key, rowId: activeRow ? activeRow[primaryKey] : null } : null;
                     }}
                     onBlur={() => {
                         handleCommit();
@@ -186,7 +198,8 @@ export const ExcelFormulaBar = ({
                 onInsertFormula={(insertedFormula) => {
                     setFormulaValue(insertedFormula);
                     if (selectionFocus && activeCol && canWrite) {
-                        onChangeValue(selectionFocus.r, activeCol.key, insertedFormula, true);
+                        const rowId = activeRow ? activeRow[primaryKey] : null;
+                        onChangeValue(selectionFocus.r, activeCol.key, insertedFormula, true, rowId);
                     }
                 }}
             />

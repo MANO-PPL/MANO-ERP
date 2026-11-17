@@ -57,6 +57,8 @@ export const ExcelTable = ({
     onStartFillDrag,
     onAutoFillDown,
     onOpenDropdownPortal,
+    onEditorValueChange,
+    onPasteCell = null,
     onViewRow = null,
     onDeleteRow = null,
     emptyMessage = 'No records found',
@@ -80,8 +82,14 @@ export const ExcelTable = ({
         } else {
             setInternalExpandedIds((prev) => {
                 const next = new Set(prev);
-                if (next.has(rowId)) next.delete(rowId);
-                else next.add(rowId);
+                const hasIt = next.has(rowId) || next.has(String(rowId)) || (typeof rowId === 'string' && !isNaN(Number(rowId)) && next.has(Number(rowId)));
+                if (hasIt) {
+                    next.delete(rowId);
+                    next.delete(String(rowId));
+                    if (typeof rowId === 'string' && !isNaN(Number(rowId))) next.delete(Number(rowId));
+                } else {
+                    next.add(rowId);
+                }
                 return next;
             });
         }
@@ -161,6 +169,16 @@ export const ExcelTable = ({
         <div
             data-excel-grid="true"
             tabIndex={0}
+            onPaste={(e) => {
+                const text = e.clipboardData?.getData('text/plain');
+                if (text) {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    if (onPasteCell) {
+                        onPasteCell(text);
+                    }
+                }
+            }}
             className="flex-1 min-h-0 relative z-0 overflow-auto scrollbar-thin table-scrollbar theme-scrollbar bg-white dark:bg-[#0d1117] outline-none"
         >
             <table className="w-full border-collapse text-left table-fixed">
@@ -327,12 +345,40 @@ export const ExcelTable = ({
                                 }
                                 seenRowKeys.add(rowKey);
                                 const rowId = rawRowId;
-                                const isNew = row._status === 'new' || (row._status !== 'saved' && String(rowId).startsWith('temp_'));
-                                const isError = row._status === 'error' || (row._errors && Object.keys(row._errors).length > 0);
-                                const isModified = row._status === 'modified';
+                                const codeVal = String(row.code || row.item_code || row.resource_code || '').trim().toLowerCase();
+                                const hasCodeCollision = Boolean(
+                                    codeVal &&
+                                    sortedGridData.some((other) => {
+                                        if (!other || other === row) return false;
+                                        const otherId = other.id != null ? other.id : (primaryKey ? other[primaryKey] : null);
+                                        if (rowId != null && otherId != null && String(otherId) === String(rowId)) return false;
+                                        const otherCode = String(other.code || other.item_code || other.resource_code || '').trim().toLowerCase();
+                                        return otherCode === codeVal;
+                                    })
+                                );
+                                const hasDuplicateError = Boolean(
+                                    row._errors &&
+                                    Object.values(row._errors).some(
+                                        (msg) =>
+                                            typeof msg === 'string' &&
+                                            (msg.toLowerCase().includes('already exists') ||
+                                             msg.toLowerCase().includes('duplicate') ||
+                                             msg.toLowerCase().includes('strictly unique'))
+                                    )
+                                );
+                                const isDuplicate = row._status === 'duplicate' || hasDuplicateError || hasCodeCollision;
+                                const isNew = !isDuplicate && (row._status === 'new' || (row._status !== 'saved' && String(rowId).startsWith('temp_')));
+                                const isError = !isDuplicate && (row._status === 'error' || (row._errors && Object.keys(row._errors).length > 0));
+                                const isModified = !isDuplicate && row._status === 'modified';
                                 const isRowSelected = selectedIds.has(rowId);
                                 const originalRow = originalDataMap.get(rowId);
-                                const isRowExpanded = effectiveExpandedIds.has(rowId);
+                                const isRowExpanded = Boolean(
+                                    effectiveExpandedIds && (
+                                        effectiveExpandedIds.has(rowId) ||
+                                        effectiveExpandedIds.has(String(rowId)) ||
+                                        (typeof rowId === 'string' && !isNaN(Number(rowId)) ? effectiveExpandedIds.has(Number(rowId)) : false)
+                                    )
+                                );
                                 const canExpandThisRow = Boolean(renderExpandedRow && (!isRowExpandable || isRowExpandable(row)));
 
                                 return (
@@ -341,7 +387,9 @@ export const ExcelTable = ({
                                         onContextMenu={(e) => onContextMenu(e, rowIndex, 0)}
                                         className={`hover:bg-blue-50/20 dark:hover:bg-white/[0.02] transition-colors group/row text-gray-700 dark:text-gray-300 ${
                                             isRowSelected ? 'bg-blue-50/30 dark:bg-blue-900/10' : ''
-                                        } ${isRowExpanded ? 'bg-blue-50/15 dark:bg-blue-950/20' : ''}`}
+                                        } ${isRowExpanded ? 'bg-blue-50/15 dark:bg-blue-950/20' : ''} ${
+                                            isDuplicate ? 'bg-purple-50/35 dark:bg-purple-950/25 ring-1 ring-inset ring-purple-300/40 dark:ring-purple-600/30' : ''
+                                        }`}
                                     >
                                         {/* Checkbox */}
                                         <td className="px-3 py-2 text-center border-r border-gray-100 dark:border-white/5 select-none">
@@ -384,7 +432,14 @@ export const ExcelTable = ({
 
                                         {/* Status Badge */}
                                         <td className="px-1 py-2 text-center border-r border-gray-100 dark:border-white/5 select-none">
-                                            {isNew ? (
+                                            {isDuplicate ? (
+                                                <span
+                                                    className="inline-flex items-center justify-center px-1.5 py-0.5 rounded text-[9px] font-black tracking-wide bg-purple-100 text-purple-800 dark:bg-purple-950/70 dark:text-purple-300 border border-purple-300 dark:border-purple-600/50 whitespace-nowrap cursor-help shadow-xs"
+                                                    title={row._errors?.code || (codeVal ? `Resource code already exists: "${row.code || row.item_code || row.resource_code}". Code must be strictly unique, please change it.` : "Resource code or value already exists in this sheet.")}
+                                                >
+                                                    DUPLICATE
+                                                </span>
+                                            ) : isNew ? (
                                                 <span className="inline-flex items-center justify-center px-1.5 py-0.5 rounded text-[9px] font-bold bg-blue-50 text-blue-600 dark:bg-blue-950/30 dark:text-blue-400 border border-blue-200 dark:border-blue-500/20 whitespace-nowrap">
                                                     NEW
                                                 </span>
@@ -468,6 +523,8 @@ export const ExcelTable = ({
                                                     onStartFillDrag={onStartFillDrag}
                                                     onAutoFillDown={onAutoFillDown}
                                                     onOpenDropdownPortal={onOpenDropdownPortal}
+                                                    onEditorValueChange={onEditorValueChange}
+                                                    onPasteCell={onPasteCell}
                                                     isFindMatch={isFindMatch}
                                                     isFindCurrentMatch={isFindCurrentMatch}
                                                     findHighlightQuery={findHighlightConfig?.query}

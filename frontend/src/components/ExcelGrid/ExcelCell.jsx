@@ -1,5 +1,7 @@
-import React, { useRef, useEffect, useState } from 'react';
+import React, { useRef, useEffect, useState, useMemo } from 'react';
 import { AlertCircle, ChevronUp, ChevronDown } from 'lucide-react';
+import { evaluateFormula } from '../../utils/excelFormulaEngine';
+import { ExcelCellSelectDropdown } from './ExcelCellSelectDropdown';
 
 export const ExcelCell = ({
     value,
@@ -27,11 +29,14 @@ export const ExcelCell = ({
     onStartFillDrag,
     onAutoFillDown,
     onOpenDropdownPortal,
+    onEditorValueChange,
+    onPasteCell,
     isFindMatch = false,
     isFindCurrentMatch = false,
     findHighlightQuery = '',
     findHighlightMatchCase = false
 }) => {
+    const cellRef = useRef(null);
     const inputRef = useRef(null);
     const [localValue, setLocalValue] = useState(value ?? '');
     const localValueRef = useRef(value ?? '');
@@ -45,7 +50,9 @@ export const ExcelCell = ({
     const rowId = row?.id || row?._id || (column.primaryKey ? row[column.primaryKey] : null);
     const isEditing = Boolean(
         editingCell &&
-        (editingCell.rowId && rowId ? editingCell.rowId === rowId : editingCell.rowIndex === rowIndex) &&
+        (editingCell.rowId != null && rowId != null
+            ? String(editingCell.rowId) === String(rowId)
+            : editingCell.rowIndex === rowIndex) &&
         editingCell.colKey === column.key
     );
     const isFillHandleCell = selectionBounds &&
@@ -63,52 +70,82 @@ export const ExcelCell = ({
         if (!isEditing) {
             setLocalValue(value ?? '');
             localValueRef.current = value ?? '';
-        } else if (initialChar !== undefined) {
-            setLocalValue(initialChar);
-            localValueRef.current = initialChar;
+        } else {
+            // When editing starts, check if editingCell provided an initial character or starting value
+            const initVal = editingCell?.initialValue !== undefined
+                ? editingCell.initialValue
+                : (editingCell?.initialChar !== undefined ? editingCell.initialChar : (initialChar !== undefined ? initialChar : (value ?? '')));
+            setLocalValue(initVal);
+            localValueRef.current = initVal;
+            if (onEditorValueChange) {
+                onEditorValueChange(initVal);
+            }
         }
-    }, [value, isEditing, initialChar]);
+    }, [value, isEditing, editingCell?.initialValue, editingCell?.initialChar, initialChar, onEditorValueChange]);
 
     const updateLocalValue = (newVal) => {
         localValueRef.current = newVal;
         setLocalValue(newVal);
+        if (onEditorValueChange) {
+            onEditorValueChange(newVal);
+        }
     };
 
     useEffect(() => {
         if (isEditing) {
-            const timer = setTimeout(() => {
+            const focusAndSelect = () => {
                 if (inputRef.current) {
                     inputRef.current.focus({ preventScroll: false });
                     try {
                         inputRef.current.scrollIntoView?.({ block: 'nearest', inline: 'nearest' });
                     } catch {}
-                    if (column.type === 'select') {
+                    if (inputRef.current && column.type !== 'select' && column.type !== 'searchable-select' && column.type !== 'checkbox') {
+                        const valLen = inputRef.current.value ? inputRef.current.value.length : 0;
                         try {
-                            inputRef.current.showPicker?.();
-                        } catch {
-                            // Ignore if showPicker is unsupported or not permitted
-                        }
-                    } else if (initialChar !== undefined) {
-                        // Direct typing: position cursor at end, DO NOT select all so next keystroke appends
-                        const len = String(inputRef.current.value || initialChar).length;
-                        try {
-                            inputRef.current.setSelectionRange?.(len, len);
+                            // Place cursor at the end so Backspace deletes character-by-character instead of wiping the whole word
+                            inputRef.current.setSelectionRange(valLen, valLen);
                         } catch {}
-                    } else if (inputRef.current.select && column.type !== 'checkbox') {
-                        inputRef.current.select();
                     }
                 }
-            }, 0);
+            };
+
+            // Immediate attempt if element already mounted
+            focusAndSelect();
+
+            // Next-tick fallback for fresh DOM mount
+            const timer = setTimeout(focusAndSelect, 0);
             return () => clearTimeout(timer);
         }
-    }, [isEditing, column.type, initialChar]);
+    }, [isEditing, column.type, editingCell?.isDirectTyping, editingCell?.initialChar, initialChar]);
 
     const handleBlur = (overrideVal) => {
         const valToCommit = overrideVal !== undefined ? overrideVal : (inputRef.current?.value ?? localValueRef.current);
-        if (String(valToCommit ?? '').trim() !== String(value ?? '').trim()) {
-            onChangeValue(rowIndex, column.key, valToCommit);
+        if (onStopEditing) {
+            onStopEditing(valToCommit);
+        } else if (onChangeValue) {
+            if (String(valToCommit ?? '').trim() !== String(value ?? '').trim()) {
+                onChangeValue(rowIndex, column.key, valToCommit, false, rowId);
+            }
         }
-        onStopEditing();
+    };
+
+    const handleInputKeyDown = (e) => {
+        const isCtrlOrCmd = e.ctrlKey || e.metaKey;
+        const keyLower = e.key.toLowerCase();
+        // Allow standard copy, cut, paste, undo, redo to pass through to grid listeners
+        if (isCtrlOrCmd && ['c', 'x', 'v', 'z', 'y'].includes(keyLower)) {
+            if (onKeyDown) {
+                onKeyDown(e, rowIndex, column.key);
+            }
+            return;
+        }
+        e.stopPropagation();
+        if (e.nativeEvent) {
+            e.nativeEvent.stopImmediatePropagation?.();
+        }
+        if (onKeyDown) {
+            onKeyDown(e, rowIndex, column.key);
+        }
     };
 
     const widthStyle = customColWidth
@@ -125,16 +162,45 @@ export const ExcelCell = ({
                         type="checkbox"
                         checked={Boolean(value)}
                         disabled={!canWrite || column.readOnly}
-                        onChange={(e) => onChangeValue(rowIndex, column.key, e.target.checked, true)}
+                        onChange={(e) => onChangeValue(rowIndex, column.key, e.target.checked, true, rowId)}
                         className="rounded border-gray-300 dark:border-white/20 text-blue-600 focus:ring-blue-500 cursor-pointer"
                     />
                 </div>
             );
         }
 
-        const displayVal = value !== undefined && value !== null && String(value).trim() !== ''
+        const isFormula = typeof value === 'string' && value.trim().startsWith('=');
+        let displayVal = value !== undefined && value !== null && String(value).trim() !== ''
             ? String(value)
             : '';
+
+        let formulaResult = null;
+        let formulaError = null;
+
+        if (isFormula) {
+            const evalRes = evaluateFormula(value, row);
+            if (evalRes.success) {
+                displayVal = evalRes.formattedResult || String(evalRes.result);
+                formulaResult = evalRes.result;
+            } else {
+                displayVal = evalRes.formattedResult || '#ERROR!';
+                formulaError = evalRes.error;
+            }
+        }
+
+        if ((column.type === 'select' || column.type === 'searchable-select') && !isFormula && displayVal) {
+            const opts = column.options || [];
+            const matchedOpt = opts.find((opt) => {
+                if (typeof opt === 'object' && opt !== null) {
+                    const optVal = opt.value !== undefined ? opt.value : (opt.code !== undefined ? opt.code : opt.id);
+                    return String(optVal) === String(displayVal);
+                }
+                return String(opt) === String(displayVal);
+            });
+            if (matchedOpt && typeof matchedOpt === 'object') {
+                displayVal = matchedOpt.label !== undefined ? matchedOpt.label : (matchedOpt.name || displayVal);
+            }
+        }
 
         let contentNode = displayVal;
         if (isFindMatch && findHighlightQuery && displayVal) {
@@ -158,22 +224,47 @@ export const ExcelCell = ({
             }
         }
 
+        let renderedCustomCell = null;
         if (column.renderCell && typeof column.renderCell === 'function') {
-            return column.renderCell(
-                value,
+            const cellValToPass = isFormula && formulaResult !== null && formulaResult !== undefined
+                ? formulaResult
+                : value;
+            renderedCustomCell = column.renderCell(
+                cellValToPass,
                 row,
                 column,
-                (newVal) => onChangeValue && onChangeValue(rowIndex, column.key, newVal, true),
+                (newVal) => onChangeValue && onChangeValue(rowIndex, column.key, newVal, true, rowId),
                 rowIndex,
                 () => onStartEditing && onStartEditing(rowIndex, column.key)
             );
+            if (column.type !== 'select' && column.type !== 'searchable-select') {
+                return renderedCustomCell;
+            }
         }
 
-        const cellBody = contentNode || (column.type === 'select' || column.type === 'searchable-select' ? <span className="text-gray-400 font-normal italic text-[11px]">Select...</span> : '');
+        const cellBody = renderedCustomCell || contentNode || (column.type === 'select' || column.type === 'searchable-select' ? <span className="text-gray-400 font-normal italic text-[11px]">{column.placeholder || 'Select...'}</span> : '');
 
         if (column.type === 'select' || column.type === 'searchable-select') {
             return (
-                <div className="flex items-center justify-between w-full gap-1.5 min-w-0">
+                <div
+                    className="flex items-center justify-between w-full gap-1.5 min-w-0"
+                    onClick={(e) => {
+                        if (isAnchor && canWrite && !column.readOnly) {
+                            e.stopPropagation();
+                            onStartEditing(rowIndex, column.key);
+                        }
+                    }}
+                    onPaste={(e) => {
+                        const text = e.clipboardData?.getData('text/plain');
+                        if (text) {
+                            e.preventDefault();
+                            e.stopPropagation();
+                            if (onPasteCell) {
+                                onPasteCell(text, rowIndex, colIndex);
+                            }
+                        }
+                    }}
+                >
                     <div className="truncate flex-1 min-w-0 text-xs font-semibold text-gray-800 dark:text-gray-200">
                         {cellBody}
                     </div>
@@ -182,13 +273,9 @@ export const ExcelCell = ({
                             type="button"
                             onClick={(e) => {
                                 e.stopPropagation();
-                                if (column.type === 'searchable-select' && onOpenDropdownPortal) {
-                                    onOpenDropdownPortal(rowIndex, column.key);
-                                } else {
-                                    onStartEditing(rowIndex, column.key);
-                                }
+                                onStartEditing(rowIndex, column.key);
                             }}
-                            className="p-0.5 rounded text-gray-400 hover:text-blue-600 dark:hover:text-blue-400 hover:bg-gray-100 dark:hover:bg-white/10 shrink-0 transition-colors cursor-pointer"
+                            className="p-1 rounded text-gray-400 hover:text-blue-600 dark:hover:text-blue-400 hover:bg-gray-100 dark:hover:bg-white/10 shrink-0 transition-colors cursor-pointer"
                             title="Open dropdown"
                         >
                             <ChevronDown className="w-3.5 h-3.5" />
@@ -199,7 +286,10 @@ export const ExcelCell = ({
         }
 
         return (
-            <div className={`truncate w-full text-xs font-semibold text-gray-800 dark:text-gray-200 ${column.align === 'right' ? 'text-right font-mono' : column.align === 'center' ? 'text-center' : 'text-left'}`}>
+            <div
+                title={isFormula ? `Formula: ${value} (Result: ${displayVal})${formulaError ? `\nError: ${formulaError}` : ''}` : undefined}
+                className={`truncate w-full text-xs font-semibold text-gray-800 dark:text-gray-200 relative ${column.align === 'right' ? 'text-right font-mono' : column.align === 'center' ? 'text-center' : 'text-left'}`}
+            >
                 {cellBody}
             </div>
         );
@@ -212,43 +302,69 @@ export const ExcelCell = ({
             return column.renderEditor(displayVal, row, column, updateLocalValue, handleBlur, rowIndex, onChangeValue);
         }
 
-        if (column.type === 'select') {
+        if (column.type === 'select' || column.type === 'searchable-select') {
             const opts = column.options || [];
-            const getOptValue = (opt) => (typeof opt === 'object' && opt !== null ? (opt.value !== undefined ? opt.value : (opt.code !== undefined ? opt.code : opt.id)) : opt);
-            const getOptLabel = (opt) => (typeof opt === 'object' && opt !== null ? (opt.label !== undefined ? opt.label : (opt.name ? `${opt.name} (${opt.code || opt.symbol || opt.value || ''})` : (opt.code || opt.value || ''))) : opt);
-            const hasCurrentVal = !displayVal || opts.some(opt => String(getOptValue(opt)) === String(displayVal));
+
+            let activeDisplayNode = null;
+            if (column.renderCell && typeof column.renderCell === 'function') {
+                activeDisplayNode = column.renderCell(
+                    localValue,
+                    row,
+                    column,
+                    (newVal) => onChangeValue && onChangeValue(rowIndex, column.key, newVal, true, rowId),
+                    rowIndex,
+                    () => {}
+                );
+            } else if (localValue) {
+                const getOptValue = (opt) => (typeof opt === 'object' && opt !== null ? (opt.value !== undefined ? opt.value : (opt.code !== undefined ? opt.code : opt.id)) : opt);
+                const getOptLabel = (opt) => (typeof opt === 'object' && opt !== null ? (opt.label !== undefined ? opt.label : (opt.name ? `${opt.name} (${opt.code || opt.symbol || opt.value || ''})` : (opt.code || opt.value || ''))) : opt);
+                const matched = opts.find((o) => String(getOptValue(o)) === String(localValue));
+                const labelText = matched ? getOptLabel(matched) : localValue;
+                activeDisplayNode = <span className="truncate text-xs font-semibold text-gray-800 dark:text-gray-200">{labelText}</span>;
+            } else {
+                activeDisplayNode = <span className="text-gray-400 italic text-xs">{column.placeholder || '-- Select --'}</span>;
+            }
+
             return (
-                <select
+                <div
                     ref={inputRef}
-                    autoFocus
-                    value={displayVal}
-                    onChange={(e) => {
-                        const newVal = e.target.value;
-                        updateLocalValue(newVal);
-                        onChangeValue(rowIndex, column.key, newVal, true);
+
+                    tabIndex={0}
+                    onKeyDown={handleInputKeyDown}
+                    onPaste={(e) => {
+                        const text = e.clipboardData?.getData('text/plain');
+                        if (text) {
+                            e.preventDefault();
+                            e.stopPropagation();
+                            if (onPasteCell) {
+                                onPasteCell(text, rowIndex, colIndex);
+                            }
+                        }
                     }}
-                    onBlur={() => handleBlur()}
                     onMouseDown={(e) => e.stopPropagation()}
                     onClick={(e) => e.stopPropagation()}
-                    onKeyDown={(e) => onKeyDown && onKeyDown(e, rowIndex, column.key)}
-                    className="w-full h-full px-2 py-0.5 bg-white dark:bg-[#161b22] text-gray-900 dark:text-white border border-blue-500 rounded text-xs outline-none focus:ring-1 focus:ring-blue-500 cursor-pointer"
+                    className="flex items-center justify-between w-full h-full px-1 text-xs outline-none select-none"
                 >
-                    <option value="" className="text-gray-900 dark:text-white dark:bg-[#161b22]">-- Select --</option>
-                    {!hasCurrentVal && (
-                        <option value={displayVal} className="text-gray-900 dark:text-white dark:bg-[#161b22]">
-                            {displayVal}
-                        </option>
-                    )}
-                    {opts.map((opt, idx) => {
-                        const optVal = getOptValue(opt);
-                        const optLabel = getOptLabel(opt);
-                        return (
-                            <option key={optVal !== undefined && optVal !== null ? String(optVal) : idx} value={optVal} className="text-gray-900 dark:text-white dark:bg-[#161b22]">
-                                {optLabel}
-                            </option>
-                        );
-                    })}
-                </select>
+                    <div className="truncate flex-1 min-w-0 pr-1">
+                        {activeDisplayNode}
+                    </div>
+                    <ChevronDown className="w-3.5 h-3.5 text-blue-500 shrink-0 rotate-180 transition-transform duration-200" />
+                    <ExcelCellSelectDropdown
+                        anchorEl={cellRef.current}
+                        value={localValue}
+                        options={opts}
+                        placeholder={column.placeholder || 'Select or search...'}
+                        renderOption={column.renderOption}
+                        onSelect={(selectedVal) => {
+                            updateLocalValue(selectedVal);
+                            onChangeValue(rowIndex, column.key, selectedVal, true, rowId);
+                            handleBlur(selectedVal);
+                        }}
+                        onClose={() => {
+                            handleBlur(localValueRef.current);
+                        }}
+                    />
+                </div>
             );
         }
 
@@ -256,22 +372,26 @@ export const ExcelCell = ({
             return (
                 <input
                     ref={inputRef}
-                    type="number"
                     autoFocus
+                    type="text"
                     data-initial-value={value ?? ''}
-                    step={column.step || 'any'}
-                    value={displayVal}
+                    inputMode={String(localValue || '').startsWith('=') ? 'text' : 'decimal'}
+                    value={localValue}
                     onChange={(e) => updateLocalValue(e.target.value)}
                     onBlur={() => handleBlur()}
                     onMouseDown={(e) => e.stopPropagation()}
                     onClick={(e) => e.stopPropagation()}
                     onDoubleClick={(e) => e.stopPropagation()}
-                    onKeyDown={(e) => {
-                        if (e.key === 'ArrowLeft' || e.key === 'ArrowRight' || e.key === 'Home' || e.key === 'End') {
+                    onKeyDown={handleInputKeyDown}
+                    onPaste={(e) => {
+                        const text = e.clipboardData?.getData('text/plain');
+                        if (text && (text.includes('\n') || text.includes('\t'))) {
+                            e.preventDefault();
                             e.stopPropagation();
-                            return;
+                            if (onPasteCell) {
+                                onPasteCell(text, rowIndex, colIndex);
+                            }
                         }
-                        if (onKeyDown) onKeyDown(e, rowIndex, column.key);
                     }}
                     className="w-full min-w-0 bg-transparent border-0 outline-none p-0 text-xs font-semibold text-gray-900 dark:text-white text-right font-mono [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
                 />
@@ -291,12 +411,16 @@ export const ExcelCell = ({
                     onMouseDown={(e) => e.stopPropagation()}
                     onClick={(e) => e.stopPropagation()}
                     onDoubleClick={(e) => e.stopPropagation()}
-                    onKeyDown={(e) => {
-                        if (e.key === 'ArrowLeft' || e.key === 'ArrowRight' || e.key === 'Home' || e.key === 'End') {
+                    onKeyDown={handleInputKeyDown}
+                    onPaste={(e) => {
+                        const text = e.clipboardData?.getData('text/plain');
+                        if (text && (text.includes('\n') || text.includes('\t'))) {
+                            e.preventDefault();
                             e.stopPropagation();
-                            return;
+                            if (onPasteCell) {
+                                onPasteCell(text, rowIndex, colIndex);
+                            }
                         }
-                        if (onKeyDown) onKeyDown(e, rowIndex, column.key);
                     }}
                     className="w-full min-w-0 bg-transparent border-0 outline-none p-0 text-xs font-semibold text-gray-900 dark:text-white"
                 />
@@ -315,12 +439,16 @@ export const ExcelCell = ({
                 onMouseDown={(e) => e.stopPropagation()}
                 onClick={(e) => e.stopPropagation()}
                 onDoubleClick={(e) => e.stopPropagation()}
-                onKeyDown={(e) => {
-                    if (e.key === 'ArrowLeft' || e.key === 'ArrowRight' || e.key === 'Home' || e.key === 'End') {
+                onKeyDown={handleInputKeyDown}
+                onPaste={(e) => {
+                    const text = e.clipboardData?.getData('text/plain');
+                    if (text && (text.includes('\n') || text.includes('\t'))) {
+                        e.preventDefault();
                         e.stopPropagation();
-                        return;
+                        if (onPasteCell) {
+                            onPasteCell(text, rowIndex, colIndex);
+                        }
                     }
-                    if (onKeyDown) onKeyDown(e, rowIndex, column.key);
                 }}
                 className="w-full min-w-0 bg-transparent border-0 outline-none p-0 text-xs font-semibold text-gray-900 dark:text-white"
             />
@@ -329,6 +457,7 @@ export const ExcelCell = ({
 
     return (
         <td
+            ref={cellRef}
             id={`excel-cell-${rowIndex}-${column.key}`}
             data-excel-cell="true"
             data-row-idx={rowIndex}
@@ -339,11 +468,16 @@ export const ExcelCell = ({
                 if (e.target.closest('.z-\\[6000\\]') || e.target.closest('button') || e.target.closest('select') || e.target.closest('input')) return;
                 if (isEditing) return;
 
+                try {
+                    e.currentTarget.focus({ preventScroll: true });
+                } catch {}
+
                 if (onCellMouseDown) {
                     onCellMouseDown(rowIndex, colIndex, e.shiftKey, e.ctrlKey || e.metaKey);
                 } else if (onSelectCell) {
                     onSelectCell(rowIndex, colIndex, e.shiftKey);
                 }
+
 
                 if (column.type === 'searchable-select' && onOpenDropdownPortal) {
                     onOpenDropdownPortal(rowIndex, column.key);
@@ -366,7 +500,7 @@ export const ExcelCell = ({
                 }
             }}
             onDoubleClick={(e) => {
-                if (canWrite && !column.readOnly && (!column.renderCell || column.renderEditor)) {
+                if (canWrite && !column.readOnly) {
                     if (column.type === 'searchable-select' && onOpenDropdownPortal) {
                         onOpenDropdownPortal(rowIndex, column.key);
                     } else {
@@ -377,6 +511,16 @@ export const ExcelCell = ({
             onContextMenu={(e) => onContextMenu(e, rowIndex, colIndex)}
             tabIndex={-1}
             onKeyDown={(e) => onKeyDown && onKeyDown(e, rowIndex, column.key)}
+            onPaste={(e) => {
+                const text = e.clipboardData?.getData('text/plain');
+                if (text) {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    if (onPasteCell) {
+                        onPasteCell(text, rowIndex, colIndex);
+                    }
+                }
+            }}
             className={`px-3 py-1.5 border-r border-b border-gray-100 dark:border-white/5 relative outline-none select-none cursor-pointer overflow-hidden transition-colors ${
                 isEditing
                     ? 'bg-white dark:bg-[#161b22]'
