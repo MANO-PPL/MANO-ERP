@@ -2692,6 +2692,7 @@ export const useExcelGrid = ({
                         // Allow dropdown search input normal typing/pasting
                         return;
                     }
+                    const curEdit = editingCellRef.current;
                     const colIdx = curEdit ? columns.findIndex((c) => c.key === curEdit.colKey) : undefined;
                     triggerPasteWithTrap(curEdit?.rowIndex, colIdx);
                     return;

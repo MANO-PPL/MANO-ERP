@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import {
     TrendingUp, Download, ChevronRight,
@@ -218,30 +218,29 @@ const AISuggestionsPanel = ({ sectionId, sections, slabArea, gstRate, onClose })
     const open = !!sectionId;
     const sec = sectionId && sectionId !== 'all' ? sections.find(s => s.id === sectionId) : null;
 
+    const fetchInsights = useCallback(async () => {
+        setLoading(true);
+        setError(null);
+        try {
+            const res = await api.post('/ai/analyze-budget', {
+                budgetData: sectionId === 'all' ? sections : sections.filter(s => s.id === sectionId),
+                slabArea,
+                gstRate,
+                sectionId
+            });
+            setInsights(res.data.data.insights || []);
+        } catch (err) {
+            console.error(err);
+            setError('Could not fetch AI Suggestions. Please try again.');
+        } finally {
+            setLoading(false);
+        }
+    }, [sectionId, sections, slabArea, gstRate]);
+
     useEffect(() => {
         if (!open) return;
-        
-        const fetchInsights = async () => {
-            setLoading(true);
-            setError(null);
-            try {
-                const res = await api.post('/ai/analyze-budget', {
-                    budgetData: sectionId === 'all' ? sections : sections.filter(s => s.id === sectionId),
-                    slabArea,
-                    gstRate,
-                    sectionId
-                });
-                setInsights(res.data.data.insights || []);
-            } catch (err) {
-                console.error(err);
-                setError('Could not fetch AI Suggestions. Please try again.');
-            } finally {
-                setLoading(false);
-            }
-        };
-
         fetchInsights();
-    }, [open, sectionId, sections, slabArea, gstRate]);
+    }, [open, fetchInsights]);
 
     return (
         <>
@@ -282,7 +281,7 @@ const AISuggestionsPanel = ({ sectionId, sections, slabArea, gstRate, onClose })
                         <div className="flex flex-col items-center justify-center h-full text-center gap-3">
                             <AlertTriangle size={32} className="text-red-400" />
                             <p className="text-sm text-gray-500">{error}</p>
-                            <button onClick={() => { setInsights([]); setError(null); setAiSectionId(null); setTimeout(() => setAiSectionId(sectionId), 0); }} className="mt-2 px-4 py-2 bg-gray-100 dark:bg-white/10 rounded-lg text-xs font-semibold hover:bg-gray-200 dark:hover:bg-white/20 transition-all">Retry</button>
+                            <button onClick={fetchInsights} className="mt-2 px-4 py-2 bg-gray-100 dark:bg-white/10 rounded-lg text-xs font-semibold hover:bg-gray-200 dark:hover:bg-white/20 transition-all">Retry</button>
                         </div>
                     ) : insights.length === 0 ? (
                         <div className="flex flex-col items-center justify-center h-full text-center gap-3 opacity-50">

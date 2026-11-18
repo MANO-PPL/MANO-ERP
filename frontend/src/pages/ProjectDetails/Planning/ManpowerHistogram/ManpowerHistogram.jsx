@@ -412,7 +412,7 @@ const StackedBarChart = ({ data, activeTrades, hoveredMonth, setHoveredMonth, sh
                         <p className="text-xs font-black text-gray-900 dark:text-white mb-2 uppercase tracking-wider">{MONTHS[hoveredMonth]} 2026</p>
                         <div className="space-y-1">
                             {activeTrades.map(tid => {
-                                const d = DEMO_DATA[tid]?.[hoveredMonth];
+                                const d = data[tid]?.[hoveredMonth];
                                 const trade = TRADES.find(t => t.id === tid);
                                 if (!d || (d.planned === 0 && d.actual === 0)) return null;
                                 return (

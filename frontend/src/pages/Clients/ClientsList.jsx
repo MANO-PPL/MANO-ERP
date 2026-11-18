@@ -15,7 +15,6 @@ import ClientDetails from './ClientDetails';
 import ClientFilterDropdown from './ClientFilterDropdown';
 import AddEditClient from './AddEditClient';
 import ManageMetadataModal from '../../components/ManageMetadataModal';
-import DuplicateResolverModal from '../../components/DuplicateResolverModal';
 import { ExcelGrid } from '../../components/ExcelGrid';
 import { evaluateFormula } from '../../utils/excelFormulaEngine';
 import { useAuth } from '../../context/AuthContext';
@@ -555,18 +554,6 @@ export const ClientsList = () => {
                     type="sectors"
                     title="Manage Sectors"
                     onUpdate={fetchMetadata}
-                />
-            )}
-
-            {/* ─── Duplicate Resolver Modal ─── */}
-            {isDuplicateModalOpen && (
-                <DuplicateResolverModal
-                    isOpen={isDuplicateModalOpen}
-                    onClose={() => setIsDuplicateModalOpen(false)}
-                    onConfirm={handleConfirmDeleteDuplicates}
-                    items={clients}
-                    primaryKey="name"
-                    entityName="Clients"
                 />
             )}
         </div>

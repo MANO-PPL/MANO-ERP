@@ -35,6 +35,7 @@ const DrawingCategoryDetail = ({ category, projectId, onBack, setExtraBreadcrumb
     const [selectedDrawing, setSelectedDrawing] = useState(null);
     const [activeLogIndex, setActiveLogIndex] = useState(0);
     const [isDrawerEditingTitle, setIsDrawerEditingTitle] = useState(false);
+    const [drawerTitleInput, setDrawerTitleInput] = useState('');
     // Confirmation Modal States
     const [drawingToDelete, setDrawingToDelete] = useState(null);
     const [plannedToDelete, setPlannedToDelete] = useState(null);
