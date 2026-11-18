@@ -19,6 +19,7 @@ router.use((req, res, next) => {
 router.get('/units', catalogController.listUnits);
 router.post('/units', catalogController.createUnit);
 router.put('/units/:id', catalogController.updateUnit);
+router.delete('/units/:id', catalogController.deleteUnit);
 router.get('/convert', catalogController.convertUnits);
 router.post('/units/convert', catalogController.convertUnits); // Compatibility alias
 

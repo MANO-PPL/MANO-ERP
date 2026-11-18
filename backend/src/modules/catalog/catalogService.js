@@ -120,8 +120,47 @@ function dayBefore(dateStr) {
     return dt.toISOString().slice(0, 10);
 }
 
+export const BUSINESS_TIMEZONE = 'Asia/Kolkata';
+
+let testClockFn = null;
+
+export function __setClockForTests(fn) {
+    if (process.env.NODE_ENV !== 'test') {
+        throw new CatalogError(
+            CatalogErrorCodes.CAT_INVALID_VALUE,
+            '__setClockForTests is only permitted in test environment'
+        );
+    }
+    testClockFn = typeof fn === 'function' ? fn : null;
+}
+
+function formatInstantInTimeZone(instant) {
+    const d = instant instanceof Date ? instant : new Date(instant);
+    const parts = new Intl.DateTimeFormat('en-US', {
+        timeZone: BUSINESS_TIMEZONE,
+        year: 'numeric',
+        month: '2-digit',
+        day: '2-digit',
+    }).formatToParts(d);
+    const y = parts.find(p => p.type === 'year').value;
+    const m = parts.find(p => p.type === 'month').value;
+    const day = parts.find(p => p.type === 'day').value;
+    return `${y}-${m}-${day}`;
+}
+
+export function getToday(instant = null) {
+    if (process.env.NODE_ENV === 'test' && testClockFn) {
+        const val = testClockFn();
+        if (typeof val === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(val)) {
+            return val;
+        }
+        return formatInstantInTimeZone(val || new Date());
+    }
+    return formatInstantInTimeZone(instant || new Date());
+}
+
 function todayStr() {
-    return new Date().toISOString().slice(0, 10);
+    return getToday();
 }
 
 function formatRateRow(r) {
@@ -459,7 +498,7 @@ export async function deleteUnit(id, externalTrx = null) {
 }
 
 async function loadResourceConversions(trx, resourceId) {
-    return trx('cat_resource_conversion as c')
+    const list = await trx('cat_resource_conversion as c')
         .join('cat_unit as fu', 'fu.id', 'c.from_unit_id')
         .join('cat_unit as tu', 'tu.id', 'c.to_unit_id')
         .where('c.resource_id', resourceId)
@@ -474,6 +513,29 @@ async function loadResourceConversions(trx, resourceId) {
             'tu.category as to_unit_category',
             'tu.to_base_factor as to_unit_to_base_factor'
         );
+
+    if (list.length > 0) return list;
+
+    // Fallback to parent master resource conversions if project copy has not overridden them
+    const res = await trx('cat_resource').where({ id: resourceId }).first();
+    if (res?.parent_id) {
+        return trx('cat_resource_conversion as c')
+            .join('cat_unit as fu', 'fu.id', 'c.from_unit_id')
+            .join('cat_unit as tu', 'tu.id', 'c.to_unit_id')
+            .where('c.resource_id', res.parent_id)
+            .select(
+                'c.*',
+                'fu.code as from_unit_code',
+                'fu.name as from_unit_name',
+                'fu.category as from_unit_category',
+                'fu.to_base_factor as from_unit_to_base_factor',
+                'tu.code as to_unit_code',
+                'tu.name as to_unit_name',
+                'tu.category as to_unit_category',
+                'tu.to_base_factor as to_unit_to_base_factor'
+            );
+    }
+    return [];
 }
 
 /**
@@ -1473,7 +1535,8 @@ export async function removeRate(rateId, reason, options = {}, externalTrx = nul
         throw new CatalogError(CatalogErrorCodes.CAT_INVALID_VALUE, 'A reason is required when removing a future rate');
     }
 
-    const { userId = null, today = todayStr() } = options || {};
+    const { userId = null } = options || {};
+    const today = getToday();
 
     return withTransaction(externalTrx, async trx => {
         const existing = await trx('cat_rate').where({ id: rateId }).first();
@@ -1996,16 +2059,22 @@ export async function setNorm(activityId, resourceId, qtyPerUnit, unitId, effect
     });
 }
 
-export async function getNorms(activityId, date, externalTrx = null) {
-    const asOfDate = toDateStr(date, 'date');
+export async function getNorms(activityId, date = null, externalTrx = null) {
+    const asOfDate = date ? toDateStr(date, 'date') : null;
     return withTransaction(externalTrx, async trx => {
-        const rows = await trx('cat_activity_norm as n')
+        let query = trx('cat_activity_norm as n')
             .join('cat_resource as r', 'r.id', 'n.resource_id')
             .join('cat_unit as u', 'u.id', 'n.unit_id')
             .join('cat_unit as bu', 'bu.id', 'r.base_unit_id')
-            .where('n.activity_id', activityId)
-            .where('n.effective_from', '<=', asOfDate)
-            .where(q => q.whereNull('n.effective_to').orWhere('n.effective_to', '>=', asOfDate))
+            .where('n.activity_id', activityId);
+
+        if (asOfDate) {
+            query = query
+                .where('n.effective_from', '<=', asOfDate)
+                .where(q => q.whereNull('n.effective_to').orWhere('n.effective_to', '>=', asOfDate));
+        }
+
+        const rows = await query
             .select(
                 'n.*',
                 'r.code as resource_code',
@@ -2130,7 +2199,8 @@ export async function removeNorm(normId, reason, options = {}, externalTrx = nul
     if (!reason || typeof reason !== 'string' || !reason.trim()) {
         throw new CatalogError(CatalogErrorCodes.CAT_INVALID_VALUE, 'A reason is required when removing a future norm');
     }
-    const { userId = null, today = todayStr() } = options || {};
+    const { userId = null } = options || {};
+    const today = getToday();
 
     return withTransaction(externalTrx, async trx => {
         const existing = await trx('cat_activity_norm').where({ id: normId }).first();
@@ -2690,8 +2760,8 @@ export async function acceptSync(idOrEntity, selectionOrId, optionsOrSelection =
 // 6. Computation (Activity Cost & Expected Usage)
 // =========================================================================
 
-export async function computeActivityCost(activityId, date, externalTrx = null) {
-    const asOfDate = toDateStr(date, 'date');
+export async function computeActivityCost(activityId, date = null, externalTrx = null) {
+    const asOfDate = date ? toDateStr(date, 'date') : toDateStr(new Date(), 'date');
 
     return withTransaction(externalTrx, async trx => {
         const activity = await trx('cat_activity as a')
@@ -2803,12 +2873,12 @@ export async function computeActivityCost(activityId, date, externalTrx = null) 
     });
 }
 
-export async function expectedUsage(activityId, outputQty, date, externalTrx = null) {
+export async function expectedUsage(activityId, outputQty, date = null, externalTrx = null) {
     parseDecimal(outputQty);
     if (cmpDec(outputQty, '0') < 0) {
         throw new CatalogError(CatalogErrorCodes.CAT_INVALID_VALUE, 'outputQty must be 0 or greater');
     }
-    const asOfDate = toDateStr(date, 'date');
+    const asOfDate = date ? toDateStr(date, 'date') : toDateStr(new Date(), 'date');
 
     return withTransaction(externalTrx, async trx => {
         const activity = await trx('cat_activity as a')

@@ -3,8 +3,10 @@ import http from 'http';
 import express from 'express';
 import db from '../../config/database.js';
 import catalogRoutes from './catalogRoutes.js';
+import catalogLabRoutes from './catalogLabRoutes.js';
 import * as catalogService from './catalogService.js';
 import { CatalogErrorCodes } from './catalogErrors.js';
+import { isDevLabEnabled } from '../../middleware/devLabGuard.js';
 
 process.env.NODE_ENV = 'test';
 
@@ -38,6 +40,7 @@ const CLIENT_USER = {
 
 let server;
 let baseUrl;
+let serverOrigin;
 
 async function cleanupTestData() {
     catalogService.clearUsageChecks();
@@ -72,15 +75,20 @@ async function cleanupTestData() {
 }
 
 async function startServer() {
+    process.env.ENABLE_DEV_LAB = 'true';
+    process.env.DEV_LAB_ALLOWED_USERS = '99901,99902,99903,99999';
+
     return new Promise(resolve => {
         const app = express();
         app.use(express.json());
         app.use('/api/catalog', catalogRoutes);
+        app.use('/api/dev/catalog', catalogLabRoutes);
 
         server = http.createServer(app);
         server.listen(0, '127.0.0.1', () => {
             const port = server.address().port;
-            baseUrl = `http://127.0.0.1:${port}/api/catalog`;
+            serverOrigin = `http://127.0.0.1:${port}`;
+            baseUrl = `${serverOrigin}/api/catalog`;
             resolve();
         });
     });
@@ -93,7 +101,11 @@ async function stopServer() {
 }
 
 async function api(method, path, { user = ADMIN_USER, body = null, query = null } = {}) {
-    let url = `${baseUrl}${path}`;
+    let url = path.startsWith('/api/')
+        ? `${serverOrigin}${path}`
+        : path.startsWith('/dev/catalog')
+            ? `${serverOrigin}/api${path}`
+            : `${baseUrl}${path}`;
     if (query) {
         const sp = new URLSearchParams();
         for (const [k, v] of Object.entries(query)) {
@@ -371,6 +383,35 @@ export async function runCatalogApiTestSuite({ closeDb = false } = {}) {
                 body: { reason: 'Forecast cancelled' },
             });
             assert.strictEqual(delRes.status, 200);
+        });
+
+        await test('4.7 DELETE /rates/:id on a past rate returns 422 even with today in query and body', async () => {
+            const resForPast = await api('POST', '/resources', {
+                body: {
+                    code: 'API-MAT-PAST-RATE',
+                    name: 'Past Rate Resource',
+                    kind: 'material',
+                    baseUnitId: u.kg.id,
+                },
+            });
+            assert.strictEqual(resForPast.status, 201);
+            const pastResId = resForPast.body.data.id;
+
+            const pastRate = await api('POST', `/resources/${pastResId}/rates`, {
+                body: {
+                    rate: '350.0000',
+                    unitId: u.kg.id,
+                    effectiveFrom: '2025-01-01',
+                },
+            });
+            assert.strictEqual(pastRate.status, 201);
+
+            // Caller tries to bypass past-rate guard by providing today in query and body
+            const delRes = await api('DELETE', `/rates/${pastRate.body.data.id}?today=2024-01-01`, {
+                body: { reason: 'Try deleting past rate', today: '2024-01-01' },
+            });
+            assert.strictEqual(delRes.status, 422);
+            assert.strictEqual(delRes.body.error.code, 'CAT_INVALID_VALUE');
         });
 
         // ═════════════════════════════════════════════════════════════════════
@@ -807,6 +848,66 @@ export async function runCatalogApiTestSuite({ closeDb = false } = {}) {
             // Double check in raw database
             const dbRow = await db('cat_resource').where({ id: res.body.data.id }).first();
             assert.strictEqual(Number(dbRow.org_id), TEST_ORG_1);
+        });
+
+        await test('10.5 DevLab Guard: isDevLabEnabled() is false when NODE_ENV=production even with ENABLE_DEV_LAB=true', () => {
+            const origEnv = process.env.NODE_ENV;
+            const origLab = process.env.ENABLE_DEV_LAB;
+            try {
+                process.env.NODE_ENV = 'production';
+                process.env.ENABLE_DEV_LAB = 'true';
+                assert.strictEqual(isDevLabEnabled(), false);
+
+                process.env.NODE_ENV = 'development';
+                assert.strictEqual(isDevLabEnabled(), true);
+            } finally {
+                process.env.NODE_ENV = origEnv;
+                process.env.ENABLE_DEV_LAB = origLab;
+            }
+        });
+
+        await test('10.6 DevLab: request from user with no org_id gets 403 and writes nothing', async () => {
+            const noOrgUser = {
+                id: 99999,
+                email: 'no_org_admin@test.com',
+                user_type: 'admin',
+                // org_id is explicitly undefined
+            };
+
+            const testCode = 'LAB-NO-ORG-LEAK-TEST';
+            const res = await api('POST', '/dev/catalog/resources', {
+                user: noOrgUser,
+                body: {
+                    code: testCode,
+                    name: 'Should Not Be Created',
+                    kind: 'material',
+                    baseUnitId: u.kg.id,
+                },
+            });
+
+            assert.strictEqual(res.status, 403);
+            assert.strictEqual(res.body.error.code, 'FORBIDDEN');
+            assert.match(res.body.error.message, /Valid organization context/i);
+
+            // Verify NOTHING was written to database
+            const dbCheck = await db('cat_resource').where({ code: testCode }).first();
+            assert.strictEqual(dbCheck, undefined);
+        });
+
+        await test('10.7 DevLab: request with non-positive or invalid org_id gets 403', async () => {
+            const invalidOrgUser = {
+                id: 99999,
+                email: 'no_org_admin@test.com',
+                user_type: 'admin',
+                org_id: 0,
+            };
+
+            const res = await api('GET', '/dev/catalog/units', {
+                user: invalidOrgUser,
+            });
+
+            assert.strictEqual(res.status, 403);
+            assert.strictEqual(res.body.error.code, 'FORBIDDEN');
         });
 
         console.log('\n----------------------------------------------------');

@@ -22,6 +22,15 @@ function ensureSimulatorHooks() {
 ensureSimulatorHooks();
 
 function handleError(res, err) {
+    if (err.statusCode === 403 || err.status === 403) {
+        return res.status(403).json({
+            error: {
+                code: err.code || 'FORBIDDEN',
+                message: err.message,
+                details: err.details || {},
+            },
+        });
+    }
     if (err instanceof CatalogError) {
         return res.status(err.statusCode).json({
             error: {
@@ -41,12 +50,24 @@ function handleError(res, err) {
         });
     }
     console.error('Catalog Lab Controller Error:', err);
-    return res.status(500).json({
+    return res.status(err.statusCode || 500).json({
         error: {
-            code: 'INTERNAL_SERVER_ERROR',
+            code: err.code || 'INTERNAL_SERVER_ERROR',
             message: err.message || 'An unexpected error occurred',
         },
     });
+}
+
+export function getOrgId(req) {
+    const raw = req?.user?.org_id;
+    const orgId = Number(raw);
+    if (!raw || !Number.isInteger(orgId) || orgId <= 0) {
+        const err = new Error('Access denied: Valid organization context (positive integer org_id) is required');
+        err.statusCode = 403;
+        err.code = 'FORBIDDEN';
+        throw err;
+    }
+    return orgId;
 }
 
 async function verifyProjectInOrg(projectId, orgId) {
@@ -78,7 +99,7 @@ async function verifyEntityInOrg(table, id, orgId) {
 
 export async function listUnits(req, res) {
     try {
-        const orgId = req.user.org_id || 1;
+        const orgId = getOrgId(req);
         const data = await catalogService.listUnits(orgId);
         res.json({ success: true, data });
     } catch (err) {
@@ -88,7 +109,7 @@ export async function listUnits(req, res) {
 
 export async function seedUnits(req, res) {
     try {
-        const orgId = req.user.org_id || 1;
+        const orgId = getOrgId(req);
         const data = await catalogService.seedDefaultUnits(orgId);
         res.json({ success: true, data });
     } catch (err) {
@@ -98,7 +119,7 @@ export async function seedUnits(req, res) {
 
 export async function createUnit(req, res) {
     try {
-        const orgId = req.user.org_id || 1;
+        const orgId = getOrgId(req);
         const data = await catalogService.createUnit({ ...req.body, orgId });
         res.status(201).json({ success: true, data });
     } catch (err) {
@@ -108,7 +129,7 @@ export async function createUnit(req, res) {
 
 export async function updateUnit(req, res) {
     try {
-        const orgId = req.user.org_id || 1;
+        const orgId = getOrgId(req);
         await verifyEntityInOrg('cat_unit', Number(req.params.id), orgId);
         const data = await catalogService.updateUnit(Number(req.params.id), req.body);
         res.json({ success: true, data });
@@ -119,6 +140,7 @@ export async function updateUnit(req, res) {
 
 export async function convertUnits(req, res) {
     try {
+        const orgId = getOrgId(req);
         const { qty, fromUnitId, toUnitId, resourceId } = req.body;
         const result = await catalogService.convert(
             qty,
@@ -134,7 +156,7 @@ export async function convertUnits(req, res) {
 
 export async function listConversions(req, res) {
     try {
-        const orgId = req.user.org_id || 1;
+        const orgId = getOrgId(req);
         await verifyEntityInOrg('cat_resource', Number(req.params.id), orgId);
         const data = await catalogService.listConversions(Number(req.params.id));
         res.json({ success: true, data });
@@ -145,7 +167,7 @@ export async function listConversions(req, res) {
 
 export async function setConversion(req, res) {
     try {
-        const orgId = req.user.org_id || 1;
+        const orgId = getOrgId(req);
         await verifyEntityInOrg('cat_resource', Number(req.params.id), orgId);
         const data = await catalogService.setConversion(
             Number(req.params.id),
@@ -162,6 +184,7 @@ export async function setConversion(req, res) {
 
 export async function removeConversion(req, res) {
     try {
+        const orgId = getOrgId(req);
         const data = await catalogService.removeConversion(Number(req.params.conversionId), {
             userId: req.user.id,
             reason: req.body?.reason,
@@ -178,7 +201,7 @@ export async function removeConversion(req, res) {
 
 export async function listResources(req, res) {
     try {
-        const orgId = req.user.org_id || 1;
+        const orgId = getOrgId(req);
         const scope = req.query.scope;
         const projectId = req.query.projectId !== undefined && req.query.projectId !== ''
             ? (req.query.projectId === 'null' ? null : Number(req.query.projectId))
@@ -201,7 +224,7 @@ export async function listResources(req, res) {
 
 export async function getResource(req, res) {
     try {
-        const orgId = req.user.org_id || 1;
+        const orgId = getOrgId(req);
         await verifyEntityInOrg('cat_resource', Number(req.params.id), orgId);
         const data = await catalogService.getResource(Number(req.params.id));
         res.json({ success: true, data });
@@ -212,7 +235,7 @@ export async function getResource(req, res) {
 
 export async function createResource(req, res) {
     try {
-        const orgId = req.user.org_id || 1;
+        const orgId = getOrgId(req);
         const projectId = req.body.projectId !== undefined && req.body.projectId !== '' && req.body.projectId !== null
             ? Number(req.body.projectId)
             : null;
@@ -232,7 +255,7 @@ export async function createResource(req, res) {
 
 export async function updateResource(req, res) {
     try {
-        const orgId = req.user.org_id || 1;
+        const orgId = getOrgId(req);
         await verifyEntityInOrg('cat_resource', Number(req.params.id), orgId);
         ensureSimulatorHooks();
         const data = await catalogService.updateResource(Number(req.params.id), {
@@ -247,7 +270,7 @@ export async function updateResource(req, res) {
 
 export async function archiveResource(req, res) {
     try {
-        const orgId = req.user.org_id || 1;
+        const orgId = getOrgId(req);
         await verifyEntityInOrg('cat_resource', Number(req.params.id), orgId);
         const data = await catalogService.archiveResource(Number(req.params.id), {
             userId: req.user.id,
@@ -261,7 +284,7 @@ export async function archiveResource(req, res) {
 
 export async function restoreResource(req, res) {
     try {
-        const orgId = req.user.org_id || 1;
+        const orgId = getOrgId(req);
         await verifyEntityInOrg('cat_resource', Number(req.params.id), orgId);
         const data = await catalogService.restoreResource(Number(req.params.id), {
             userId: req.user.id,
@@ -275,7 +298,7 @@ export async function restoreResource(req, res) {
 
 export async function deleteResource(req, res) {
     try {
-        const orgId = req.user.org_id || 1;
+        const orgId = getOrgId(req);
         await verifyEntityInOrg('cat_resource', Number(req.params.id), orgId);
         ensureSimulatorHooks();
         const data = await catalogService.deleteResource(Number(req.params.id), {
@@ -291,7 +314,7 @@ export async function deleteResource(req, res) {
 
 export async function importResource(req, res) {
     try {
-        const orgId = req.user.org_id || 1;
+        const orgId = getOrgId(req);
         const { masterId, projectId, asNewVariant, code, name } = req.body;
         await verifyEntityInOrg('cat_resource', Number(masterId), orgId);
         await verifyProjectInOrg(Number(projectId), orgId);
@@ -309,7 +332,7 @@ export async function importResource(req, res) {
 
 export async function getResourceSyncStatus(req, res) {
     try {
-        const orgId = req.user.org_id || 1;
+        const orgId = getOrgId(req);
         await verifyEntityInOrg('cat_resource', Number(req.params.id), orgId);
         const data = await catalogService.getResourceSyncStatus(Number(req.params.id));
         res.json({ success: true, data });
@@ -320,7 +343,7 @@ export async function getResourceSyncStatus(req, res) {
 
 export async function getResourceSyncDiff(req, res) {
     try {
-        const orgId = req.user.org_id || 1;
+        const orgId = getOrgId(req);
         await verifyEntityInOrg('cat_resource', Number(req.params.id), orgId);
         const data = await catalogService.getResourceSyncDiff(Number(req.params.id));
         res.json({ success: true, data });
@@ -331,7 +354,7 @@ export async function getResourceSyncDiff(req, res) {
 
 export async function acceptResourceSync(req, res) {
     try {
-        const orgId = req.user.org_id || 1;
+        const orgId = getOrgId(req);
         await verifyEntityInOrg('cat_resource', Number(req.params.id), orgId);
         const data = await catalogService.acceptResourceSync(
             Number(req.params.id),
@@ -350,7 +373,7 @@ export async function acceptResourceSync(req, res) {
 
 export async function listRates(req, res) {
     try {
-        const orgId = req.user.org_id || 1;
+        const orgId = getOrgId(req);
         await verifyEntityInOrg('cat_resource', Number(req.params.id), orgId);
         const data = await catalogService.listRates(Number(req.params.id));
         res.json({ success: true, data });
@@ -361,7 +384,7 @@ export async function listRates(req, res) {
 
 export async function getRate(req, res) {
     try {
-        const orgId = req.user.org_id || 1;
+        const orgId = getOrgId(req);
         await verifyEntityInOrg('cat_resource', Number(req.params.id), orgId);
         const data = await catalogService.getRate(
             Number(req.params.id),
@@ -376,7 +399,7 @@ export async function getRate(req, res) {
 
 export async function setRate(req, res) {
     try {
-        const orgId = req.user.org_id || 1;
+        const orgId = getOrgId(req);
         await verifyEntityInOrg('cat_resource', Number(req.params.id), orgId);
         const { rate, unitId, effectiveFrom, note } = req.body;
         const data = await catalogService.setRate(
@@ -395,6 +418,7 @@ export async function setRate(req, res) {
 
 export async function correctRate(req, res) {
     try {
+        const orgId = getOrgId(req);
         const { patch, reason, ...rest } = req.body;
         const data = await catalogService.correctRate(
             Number(req.params.rateId),
@@ -410,6 +434,7 @@ export async function correctRate(req, res) {
 
 export async function removeRate(req, res) {
     try {
+        const orgId = getOrgId(req);
         const reason = req.body?.reason || req.query?.reason;
         const data = await catalogService.removeRate(Number(req.params.rateId), reason, {
             userId: req.user.id,
@@ -426,7 +451,7 @@ export async function removeRate(req, res) {
 
 export async function listActivities(req, res) {
     try {
-        const orgId = req.user.org_id || 1;
+        const orgId = getOrgId(req);
         const scope = req.query.scope;
         const projectId = req.query.projectId !== undefined && req.query.projectId !== ''
             ? (req.query.projectId === 'null' ? null : Number(req.query.projectId))
@@ -448,7 +473,7 @@ export async function listActivities(req, res) {
 
 export async function getActivity(req, res) {
     try {
-        const orgId = req.user.org_id || 1;
+        const orgId = getOrgId(req);
         await verifyEntityInOrg('cat_activity', Number(req.params.id), orgId);
         const data = await catalogService.getActivity(Number(req.params.id));
         res.json({ success: true, data });
@@ -459,7 +484,7 @@ export async function getActivity(req, res) {
 
 export async function createActivity(req, res) {
     try {
-        const orgId = req.user.org_id || 1;
+        const orgId = getOrgId(req);
         const projectId = req.body.projectId !== undefined && req.body.projectId !== '' && req.body.projectId !== null
             ? Number(req.body.projectId)
             : null;
@@ -479,7 +504,7 @@ export async function createActivity(req, res) {
 
 export async function updateActivity(req, res) {
     try {
-        const orgId = req.user.org_id || 1;
+        const orgId = getOrgId(req);
         await verifyEntityInOrg('cat_activity', Number(req.params.id), orgId);
         ensureSimulatorHooks();
         const data = await catalogService.updateActivity(Number(req.params.id), {
@@ -494,7 +519,7 @@ export async function updateActivity(req, res) {
 
 export async function archiveActivity(req, res) {
     try {
-        const orgId = req.user.org_id || 1;
+        const orgId = getOrgId(req);
         await verifyEntityInOrg('cat_activity', Number(req.params.id), orgId);
         const data = await catalogService.archiveActivity(Number(req.params.id), {
             userId: req.user.id,
@@ -508,7 +533,7 @@ export async function archiveActivity(req, res) {
 
 export async function restoreActivity(req, res) {
     try {
-        const orgId = req.user.org_id || 1;
+        const orgId = getOrgId(req);
         await verifyEntityInOrg('cat_activity', Number(req.params.id), orgId);
         const data = await catalogService.restoreActivity(Number(req.params.id), {
             userId: req.user.id,
@@ -522,7 +547,7 @@ export async function restoreActivity(req, res) {
 
 export async function deleteActivity(req, res) {
     try {
-        const orgId = req.user.org_id || 1;
+        const orgId = getOrgId(req);
         await verifyEntityInOrg('cat_activity', Number(req.params.id), orgId);
         ensureSimulatorHooks();
         const data = await catalogService.deleteActivity(Number(req.params.id), {
@@ -538,7 +563,7 @@ export async function deleteActivity(req, res) {
 
 export async function importActivity(req, res) {
     try {
-        const orgId = req.user.org_id || 1;
+        const orgId = getOrgId(req);
         const { masterId, projectId, asNewVariant, code, name } = req.body;
         await verifyEntityInOrg('cat_activity', Number(masterId), orgId);
         await verifyProjectInOrg(Number(projectId), orgId);
@@ -556,7 +581,7 @@ export async function importActivity(req, res) {
 
 export async function getActivitySyncStatus(req, res) {
     try {
-        const orgId = req.user.org_id || 1;
+        const orgId = getOrgId(req);
         await verifyEntityInOrg('cat_activity', Number(req.params.id), orgId);
         const data = await catalogService.getActivitySyncStatus(Number(req.params.id));
         res.json({ success: true, data });
@@ -567,7 +592,7 @@ export async function getActivitySyncStatus(req, res) {
 
 export async function getActivitySyncDiff(req, res) {
     try {
-        const orgId = req.user.org_id || 1;
+        const orgId = getOrgId(req);
         await verifyEntityInOrg('cat_activity', Number(req.params.id), orgId);
         const data = await catalogService.getActivitySyncDiff(Number(req.params.id));
         res.json({ success: true, data });
@@ -578,7 +603,7 @@ export async function getActivitySyncDiff(req, res) {
 
 export async function acceptActivitySync(req, res) {
     try {
-        const orgId = req.user.org_id || 1;
+        const orgId = getOrgId(req);
         await verifyEntityInOrg('cat_activity', Number(req.params.id), orgId);
         const data = await catalogService.acceptActivitySync(
             Number(req.params.id),
@@ -593,7 +618,7 @@ export async function acceptActivitySync(req, res) {
 
 export async function setNorm(req, res) {
     try {
-        const orgId = req.user.org_id || 1;
+        const orgId = getOrgId(req);
         await verifyEntityInOrg('cat_activity', Number(req.params.id), orgId);
         const { resourceId, qtyPerUnit, unitId, effectiveFrom, note, wastagePct, wastage_pct } = req.body;
         const data = await catalogService.setNorm(
@@ -613,7 +638,7 @@ export async function setNorm(req, res) {
 
 export async function getNorms(req, res) {
     try {
-        const orgId = req.user.org_id || 1;
+        const orgId = getOrgId(req);
         await verifyEntityInOrg('cat_activity', Number(req.params.id), orgId);
         const data = await catalogService.getNorms(Number(req.params.id), req.query.date);
         res.json({ success: true, data });
@@ -624,6 +649,7 @@ export async function getNorms(req, res) {
 
 export async function correctNorm(req, res) {
     try {
+        const orgId = getOrgId(req);
         const { patch, reason, ...rest } = req.body;
         const data = await catalogService.correctNorm(
             Number(req.params.normId),
@@ -639,6 +665,7 @@ export async function correctNorm(req, res) {
 
 export async function removeNorm(req, res) {
     try {
+        const orgId = getOrgId(req);
         const reason = req.body?.reason || req.query?.reason;
         const data = await catalogService.removeNorm(Number(req.params.normId), reason, {
             userId: req.user.id,
@@ -655,7 +682,7 @@ export async function removeNorm(req, res) {
 
 export async function computeActivityCost(req, res) {
     try {
-        const orgId = req.user.org_id || 1;
+        const orgId = getOrgId(req);
         await verifyEntityInOrg('cat_activity', Number(req.params.id), orgId);
         const data = await catalogService.computeActivityCost(Number(req.params.id), req.query.date);
         res.json({ success: true, data });
@@ -666,7 +693,7 @@ export async function computeActivityCost(req, res) {
 
 export async function expectedUsage(req, res) {
     try {
-        const orgId = req.user.org_id || 1;
+        const orgId = getOrgId(req);
         await verifyEntityInOrg('cat_activity', Number(req.params.id), orgId);
         const data = await catalogService.expectedUsage(
             Number(req.params.id),
@@ -681,6 +708,7 @@ export async function expectedUsage(req, res) {
 
 export async function getChangeLog(req, res) {
     try {
+        const orgId = getOrgId(req);
         const data = await catalogService.getChangeLog(req.params.entity, Number(req.params.id));
         res.json({ success: true, data });
     } catch (err) {
@@ -690,7 +718,7 @@ export async function getChangeLog(req, res) {
 
 export async function checkIntegrity(req, res) {
     try {
-        const orgId = req.user.org_id || 1;
+        const orgId = getOrgId(req);
         const data = await catalogService.checkIntegrity({ orgId });
         res.json({ success: true, data });
     } catch (err) {
@@ -752,6 +780,7 @@ export async function runTests(req, res) {
 
 export async function repairUnits(req, res) {
     try {
+        const orgId = getOrgId(req);
         const data = await catalogService.repairSystemUnits();
         res.json({ success: true, data });
     } catch (err) {

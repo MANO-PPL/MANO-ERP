@@ -220,6 +220,7 @@ function App() {
               } />
               <Route path="resource-rate" element={<Navigate to="/resources?tab=rates" replace />} />
               <Route path="units" element={<ProtectedRoute pageId="units"><Suspense fallback={<PageSkeleton />}><UnitsList /></Suspense></ProtectedRoute>} />
+              <Route path="catalog" element={<ProtectedRoute><Suspense fallback={<PageSkeleton variant="table" />}>{React.createElement(window._CatPage || (window._CatPage = lazyWithRetry(() => import('./pages/Catalog/CatalogPage'), 'catalog')))}</Suspense></ProtectedRoute>} />
               <Route path="spreadsheets" element={
                 <ProtectedRoute pageId="spreadsheets">
                   <Suspense fallback={<PageSkeleton variant="table" />}>

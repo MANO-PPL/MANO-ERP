@@ -25,6 +25,7 @@ import Approvals from './Approvals/Approvals';
 import ProjectSettings from './Settings/ProjectSettings';
 import Transactions from './Transactions/TransactionsIndex';
 import ProjectSpreadsheets from './Spreadsheets/ProjectSpreadsheets';
+import ProjectCatalog from '../Catalog/ProjectCatalog';
 
 const ProjectDetails = () => {
     const { id } = useParams();
@@ -96,7 +97,7 @@ const ProjectWorkspace = () => {
 
     const allTabs = [
         'Dashboard', 'Tasks', 'WIP', 'Reports', 'General Documents', 'Spreadsheets', 'Drawings', 
-        'Planning', 'Phases', 'Contracts', 'Quality', 'Safety', 'Billing', 'Material Management',
+        'Planning', 'Phases', 'Contracts', 'Quality', 'Safety', 'Billing', 'Material Management', 'Catalog',
         'Transactions', 'Approvals', 'Settings'
     ];
 
@@ -110,7 +111,8 @@ const ProjectWorkspace = () => {
         // Check the permission level for this tab (try exact key, lowercase, and underscore variant)
         const lvl = projectPermissions?.[tab]
             ?? projectPermissions?.[tab.toLowerCase()]
-            ?? projectPermissions?.[tab.replace(/\s+/g, '_').toLowerCase()];
+            ?? projectPermissions?.[tab.replace(/\s+/g, '_').toLowerCase()]
+            ?? (tab === 'Catalog' ? (projectPermissions?.['Material Management'] ?? projectPermissions?.['material_management'] ?? 1) : undefined);
         // If the key is not present at all, deny (explicit grant required)
         if (lvl === undefined || lvl === null) return false;
         return lvl >= 1;
@@ -169,6 +171,8 @@ const ProjectWorkspace = () => {
                 return <Billing {...props} />;
             case 'Material Management':
                 return <MaterialManagement {...props} />;
+            case 'Catalog':
+                return <ProjectCatalog projectId={id} project={project} {...props} />;
             case 'Transactions':
                 return <Transactions {...props} />;
             case 'Approvals':
@@ -221,21 +225,31 @@ const ProjectWorkspace = () => {
                     <ChevronRight size={12} className="text-gray-400 dark:text-gray-600" />
                     {/* Active Main Tab Breadcrumb */}
                     <span
-                        className={`transition-colors ${sanitizedExtraBreadcrumbs.length === 0 ? 'text-gray-900 dark:text-white font-semibold' : 'text-blue-600 dark:text-blue-400 font-medium cursor-pointer'}`}
+                        className={`transition-colors ${(sanitizedExtraBreadcrumbs.length === 0 && !(activeTab === 'Catalog' && searchParams.get('res'))) ? 'text-gray-900 dark:text-white font-semibold' : 'text-blue-600 dark:text-blue-400 font-medium cursor-pointer'}`}
                         onClick={() => {
-                            if (sanitizedExtraBreadcrumbs.length > 0) {
+                            if (sanitizedExtraBreadcrumbs.length > 0 || (activeTab === 'Catalog' && searchParams.get('res'))) {
                                 setExtraBreadcrumbs([]);
                                 const newParams = new URLSearchParams(searchParams);
                                 newParams.delete('view');
                                 newParams.delete('report');
                                 newParams.delete('aid');
                                 newParams.delete('mid');
+                                newParams.delete('res');
                                 setSearchParams(newParams);
                             }
                         }}
                     >
                         {activeTab}
                     </span>
+                    {/* Direct Catalog Resource breadcrumb */}
+                    {activeTab === 'Catalog' && searchParams.get('res') && (
+                        <React.Fragment>
+                            <ChevronRight size={12} className="text-gray-400 dark:text-gray-600" />
+                            <span className="text-gray-900 dark:text-white font-semibold font-mono">
+                                {searchParams.get('res')}
+                            </span>
+                        </React.Fragment>
+                    )}
                     {sanitizedExtraBreadcrumbs.map((bc, index) => (
                         <React.Fragment key={index}>
                             <ChevronRight size={12} className="text-gray-400 dark:text-gray-600" />

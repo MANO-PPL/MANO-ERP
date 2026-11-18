@@ -3,6 +3,8 @@ import db from '../../config/database.js';
 import * as catalogService from './catalogService.js';
 import { CatalogError, CatalogErrorCodes } from './catalogErrors.js';
 
+process.env.NODE_ENV = 'test';
+
 const TEST_ORG_1 = 9991;
 const TEST_ORG_2 = 9992;
 const TEST_PROJECT_1 = 8881;
@@ -46,9 +48,10 @@ async function cleanupTestData() {
  */
 export async function runCatalogTestSuite({ targetCase = null, closeDb = false } = {}) {
     const targetNum = targetCase && targetCase !== 'all' ? Number(targetCase) : null;
+    const TOTAL_CASES = 48;
     const headerTitle = targetNum
         ? `RUNNING MODULE 2: CATALOG SPEC TEST (CASE ${targetNum})`
-        : `RUNNING MODULE 2: CATALOG SPEC TEST SUITE (44 CASES)`;
+        : `RUNNING MODULE 2: CATALOG SPEC TEST SUITE (${TOTAL_CASES} CASES)`;
 
     console.log('====================================================');
     console.log(`🧪 ${headerTitle}`);
@@ -452,6 +455,12 @@ export async function runCatalogTestSuite({ targetCase = null, closeDb = false }
 
             await assert.rejects(
                 () => catalogService.removeRate(pastRate.id, 'Try removing past'),
+                err => err instanceof CatalogError && err.code === CatalogErrorCodes.CAT_INVALID_VALUE
+            );
+
+            // Per-call today override is ignored: removeRate still rejects past rate
+            await assert.rejects(
+                () => catalogService.removeRate(pastRate.id, 'Try removing past with earlier today', { today: '2024-01-01' }),
                 err => err instanceof CatalogError && err.code === CatalogErrorCodes.CAT_INVALID_VALUE
             );
 
@@ -1366,6 +1375,93 @@ export async function runCatalogTestSuite({ targetCase = null, closeDb = false }
             assert.strictEqual(diffAfter.norms.changed, false);
         });
 
+        // Case 45: getToday() returns IST date for fixed instant in Asia/Kolkata
+        await runTestCase(45, 'getToday() returns IST date in Asia/Kolkata for fixed instant', async () => {
+            // 2026-11-14T20:00:00Z in UTC is 2026-11-15 01:30:00 in Asia/Kolkata
+            const instant = new Date('2026-11-14T20:00:00Z');
+            const istDate = catalogService.getToday(instant);
+            assert.strictEqual(istDate, '2026-11-15');
+
+            try {
+                catalogService.__setClockForTests(() => instant);
+                assert.strictEqual(catalogService.getToday(), '2026-11-15');
+            } finally {
+                catalogService.__setClockForTests(null);
+            }
+        });
+
+        // Case 46: __setClockForTests throws when NODE_ENV is not 'test'
+        await runTestCase(46, '__setClockForTests throws when NODE_ENV is not test', async () => {
+            const origEnv = process.env.NODE_ENV;
+            try {
+                process.env.NODE_ENV = 'production';
+                assert.throws(
+                    () => catalogService.__setClockForTests(() => '2026-01-01'),
+                    err => err instanceof CatalogError && err.code === CatalogErrorCodes.CAT_INVALID_VALUE
+                );
+
+                process.env.NODE_ENV = 'development';
+                assert.throws(
+                    () => catalogService.__setClockForTests(() => '2026-01-01'),
+                    err => err instanceof CatalogError && err.code === CatalogErrorCodes.CAT_INVALID_VALUE
+                );
+            } finally {
+                process.env.NODE_ENV = origEnv;
+            }
+        });
+
+        // Case 47: correctRate on a past rate works, requires reason, and logs before/after
+        await runTestCase(47, 'correctRate on a past rate works, requires reason, and logs before/after', async () => {
+            const res = await catalogService.createResource({
+                orgId: TEST_ORG_1,
+                kind: 'material',
+                code: 'RATE-PAST-47',
+                name: 'Past Test Rebar',
+                baseUnitId: u.kg.id,
+            });
+
+            const pastRate = await catalogService.setRate(res.id, '50.0000', u.kg.id, '2024-01-01', 'Initial 2024 price');
+
+            // Reason is required: throws CAT_INVALID_VALUE if missing or whitespace
+            await assert.rejects(
+                () => catalogService.correctRate(pastRate.id, { rate: '55.0000' }, ''),
+                err => err instanceof CatalogError && err.code === CatalogErrorCodes.CAT_INVALID_VALUE
+            );
+
+            // Correction with reason succeeds on a past-dated rate
+            const corrected = await catalogService.correctRate(
+                pastRate.id,
+                { rate: '55.0000', note: 'Audit adjustment for 2024 tax' },
+                'Correction of historical invoice baseline'
+            );
+            assert.strictEqual(corrected.rate, '55.0000');
+            assert.strictEqual(corrected.note, 'Audit adjustment for 2024 tax');
+
+            // Verify audit trail in cat_change_log
+            const log = await db('cat_change_log')
+                .where({ entity: 'rate', entity_id: pastRate.id, action: 'correct' })
+                .orderBy('id', 'desc')
+                .first();
+            assert.ok(log);
+            assert.strictEqual(log.reason, 'Correction of historical invoice baseline');
+            const beforeData = typeof log.before_data === 'string' ? JSON.parse(log.before_data) : log.before_data;
+            const afterData = typeof log.after_data === 'string' ? JSON.parse(log.after_data) : log.after_data;
+            assert.strictEqual(beforeData.rate, '50.0000');
+            assert.strictEqual(afterData.rate, '55.0000');
+        });
+
+        // Case 48: getOrgId rejects missing or non-positive org_id with 403
+        await runTestCase(48, 'getOrgId rejects missing or non-positive org_id with 403', async () => {
+            const { getOrgId } = await import('./catalogLabController.js');
+            assert.throws(() => getOrgId({ user: {} }), err => err.statusCode === 403);
+            assert.throws(() => getOrgId({ user: { org_id: null } }), err => err.statusCode === 403);
+            assert.throws(() => getOrgId({ user: { org_id: 0 } }), err => err.statusCode === 403);
+            assert.throws(() => getOrgId({ user: { org_id: -5 } }), err => err.statusCode === 403);
+            assert.throws(() => getOrgId({ user: { org_id: 'invalid' } }), err => err.statusCode === 403);
+            assert.strictEqual(getOrgId({ user: { org_id: 10 } }), 10);
+            assert.strictEqual(getOrgId({ user: { org_id: '15' } }), 15);
+        });
+
         // Final integrity verification on the test tenant before cleanup
         const finalViolations = await catalogService.checkIntegrity({ orgId: TEST_ORG_1 });
         if (finalViolations.length > 0) {
@@ -1373,14 +1469,14 @@ export async function runCatalogTestSuite({ targetCase = null, closeDb = false }
         }
 
         console.log('====================================================');
-        console.log(`📊 TEST RESULTS: ${passedCount}/${targetNum ? 1 : 44} PASSED, ${failedCount} FAILED`);
+        console.log(`📊 TEST RESULTS: ${passedCount}/${targetNum ? 1 : TOTAL_CASES} PASSED, ${failedCount} FAILED`);
         console.log('====================================================');
 
         await cleanupTestData();
         if (closeDb) await db.destroy();
 
         return {
-            total: targetNum ? 1 : 44,
+            total: targetNum ? 1 : TOTAL_CASES,
             passed: passedCount,
             failed: failedCount,
             targetCase: targetNum || 'all',

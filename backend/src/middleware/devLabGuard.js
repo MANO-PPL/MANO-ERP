@@ -1,8 +1,25 @@
 import AppError from '../utils/AppError.js';
 import { isAdmin } from '../utils/userUtils.js';
 
+let hasWarnedProductionLab = false;
+
+export function __resetDevLabWarningForTests() {
+    hasWarnedProductionLab = false;
+}
+
 export function isDevLabEnabled() {
-    return process.env.ENABLE_DEV_LAB === 'true';
+    const isExplicitlyTrue = process.env.ENABLE_DEV_LAB === 'true';
+    const isProduction = process.env.NODE_ENV === 'production';
+
+    if (isExplicitlyTrue && isProduction) {
+        if (!hasWarnedProductionLab) {
+            console.warn('[SECURITY WARNING] ENABLE_DEV_LAB=true was ignored: Developer Lab is strictly disabled in production environments.');
+            hasWarnedProductionLab = true;
+        }
+        return false;
+    }
+
+    return isExplicitlyTrue && !isProduction;
 }
 
 export function requireDevLabClearance(req, res, next) {

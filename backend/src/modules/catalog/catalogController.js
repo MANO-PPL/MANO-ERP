@@ -208,6 +208,16 @@ export async function updateUnit(req, res) {
     }
 }
 
+export async function deleteUnit(req, res) {
+    try {
+        assertMasterWritePermission(req);
+        const data = await catalogService.deleteUnit(Number(req.params.id));
+        res.json({ success: true, data });
+    } catch (err) {
+        handleCatalogError(res, err);
+    }
+}
+
 export async function convertUnits(req, res) {
     try {
         const orgId = req.user?.org_id;
