@@ -25,6 +25,7 @@ import ResourceDetailPage from './ResourceDetailPage';
 import ImportMasterDialog from './ImportMasterDialog';
 import SyncReviewModal from './SyncReviewModal';
 import ReasonModal from './ReasonModal';
+import CatalogToolbar from './CatalogToolbar';
 
 export default function ResourcesTab({
     scope = 'master',
@@ -328,82 +329,69 @@ export default function ResourcesTab({
     }
 
     return (
-        <div className="space-y-3">
+        <div className="space-y-4">
             {/* Top Toolbar */}
-            <div className="flex flex-col sm:flex-row gap-2.5 items-center justify-between bg-white dark:bg-[#161b22] p-3 rounded-xl border border-gray-200 dark:border-gh-border shadow-xs">
-                {/* Instant Real-Time Search & Frontend Filters */}
-                <div className="flex flex-wrap items-center gap-2 w-full sm:w-auto">
-                    <div className="relative w-full sm:w-60">
-                        <Search size={14} className="absolute left-3 top-2.5 text-gray-400" />
-                        <input
-                            type="text"
-                            value={searchTerm}
-                            onChange={(e) => setSearchTerm(e.target.value)}
-                            placeholder="Filter code or name..."
-                            className="w-full pl-9 pr-3 py-1.5 text-xs border rounded-lg bg-gray-50 dark:bg-gh-subtle border-gray-300 dark:border-gh-border text-gray-900 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-blue-500/50"
-                        />
-                    </div>
+            <CatalogToolbar
+                searchTerm={searchTerm}
+                onSearchChange={setSearchTerm}
+                searchPlaceholder="Search code, name, description..."
+                filters={(
+                    <>
+                        {/* Kind Filter */}
+                        <select
+                            value={kindFilter}
+                            onChange={(e) => setKindFilter(e.target.value)}
+                            className="px-2.5 py-1.5 text-xs border rounded-lg bg-gray-50 dark:bg-gh-subtle border-gray-300 dark:border-gh-border text-gray-900 dark:text-gray-100 cursor-pointer"
+                        >
+                            <option value="all">All Kinds</option>
+                            <option value="material">Materials</option>
+                            <option value="labour">Labour</option>
+                            <option value="equipment">Equipment</option>
+                        </select>
 
-                    {/* Kind Filter */}
-                    <select
-                        value={kindFilter}
-                        onChange={(e) => setKindFilter(e.target.value)}
-                        className="px-2.5 py-1.5 text-xs border rounded-lg bg-gray-50 dark:bg-gh-subtle border-gray-300 dark:border-gh-border text-gray-900 dark:text-gray-100 cursor-pointer"
-                    >
-                        <option value="all">All Kinds</option>
-                        <option value="material">Materials</option>
-                        <option value="labour">Labour</option>
-                        <option value="equipment">Equipment</option>
-                    </select>
+                        {/* Status Filter */}
+                        <select
+                            value={statusFilter}
+                            onChange={(e) => setStatusFilter(e.target.value)}
+                            className="px-2.5 py-1.5 text-xs border rounded-lg bg-gray-50 dark:bg-gh-subtle border-gray-300 dark:border-gh-border text-gray-900 dark:text-gray-100 cursor-pointer"
+                        >
+                            <option value="active">Active Only</option>
+                            <option value="archived">Archived Only</option>
+                            <option value="all">All Statuses</option>
+                        </select>
+                    </>
+                )}
+                onRefresh={handleRefresh}
+                refreshing={refreshing}
+                totalCount={resources.length}
+                filteredCount={filteredResources.length}
+                actions={(
+                    <>
+                        {scope === 'project' && (
+                            <button
+                                type="button"
+                                onClick={() => setIsImportModalOpen(true)}
+                                className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-lg bg-gray-100 dark:bg-gh-hover text-gray-700 dark:text-gray-200 hover:bg-gray-200 dark:hover:bg-gh-subtle border border-gray-300 dark:border-gh-border transition-colors shadow-xs cursor-pointer"
+                            >
+                                <Download size={14} className="text-blue-500" />
+                                Import from Master
+                            </button>
+                        )}
 
-                    {/* Status Filter */}
-                    <select
-                        value={statusFilter}
-                        onChange={(e) => setStatusFilter(e.target.value)}
-                        className="px-2.5 py-1.5 text-xs border rounded-lg bg-gray-50 dark:bg-gh-subtle border-gray-300 dark:border-gh-border text-gray-900 dark:text-gray-100 cursor-pointer"
-                    >
-                        <option value="active">Active Only</option>
-                        <option value="archived">Archived Only</option>
-                        <option value="all">All Statuses</option>
-                    </select>
-
-                    <button
-                        type="button"
-                        onClick={handleRefresh}
-                        disabled={refreshing}
-                        className="p-1.5 rounded-lg text-gray-500 hover:text-blue-600 hover:bg-gray-100 dark:hover:bg-gh-hover transition-colors"
-                        title="Reload from database"
-                    >
-                        <RefreshCw size={14} className={refreshing ? 'animate-spin' : ''} />
-                    </button>
-                </div>
-
-                {/* Action Buttons */}
-                <div className="flex items-center gap-2 w-full sm:w-auto justify-end">
-                    {scope === 'project' && (
                         <button
                             type="button"
-                            onClick={() => setIsImportModalOpen(true)}
-                            className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-lg bg-gray-100 dark:bg-gh-hover text-gray-700 dark:text-gray-200 hover:bg-gray-200 dark:hover:bg-gh-subtle border border-gray-300 dark:border-gh-border transition-colors shadow-xs"
+                            onClick={() => {
+                                setEditingResource(null);
+                                setIsDrawerOpen(true);
+                            }}
+                            className="flex items-center gap-1.5 px-3.5 py-1.5 text-xs font-semibold rounded-lg bg-blue-600 hover:bg-blue-700 text-white transition-colors shadow-xs cursor-pointer"
                         >
-                            <Download size={14} className="text-blue-500" />
-                            Import from Master
+                            <Plus size={14} />
+                            New Resource
                         </button>
-                    )}
-
-                    <button
-                        type="button"
-                        onClick={() => {
-                            setEditingResource(null);
-                            setIsDrawerOpen(true);
-                        }}
-                        className="flex items-center gap-1.5 px-3.5 py-1.5 text-xs font-semibold rounded-lg bg-blue-600 hover:bg-blue-700 text-white transition-colors shadow-xs"
-                    >
-                        <Plus size={14} />
-                        New Resource
-                    </button>
-                </div>
-            </div>
+                    </>
+                )}
+            />
 
             {/* Resources Table */}
             <div className="bg-white dark:bg-[#161b22] border border-gray-200 dark:border-gh-border rounded-xl shadow-xs overflow-hidden">
@@ -482,6 +470,8 @@ export default function ResourcesTab({
                                                             / {currentRate.unit_code}
                                                         </span>
                                                     </div>
+                                                ) : currentRate === undefined ? (
+                                                    <span className="text-gray-400 italic font-mono text-[11px]">Loading...</span>
                                                 ) : (
                                                     <span className="text-gray-400 italic">No active rate</span>
                                                 )}

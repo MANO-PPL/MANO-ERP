@@ -27,16 +27,12 @@ export function getCatalogErrorMessage(err, fallback = 'Operation failed. Please
 
     const data = err.response?.data;
     const code = data?.code || err.code;
+    const message = data?.message || data?.error || err.message;
 
-    if (code && CATALOG_ERROR_MESSAGES[code]) {
-        return CATALOG_ERROR_MESSAGES[code];
-    }
-
-    const message = data?.message || err.message;
-    if (typeof message === 'string') {
+    // If backend provided a specific human-readable message, verify it is safe and prefer it
+    if (typeof message === 'string' && message.trim()) {
         const lower = message.toLowerCase();
-        // Shield against raw SQL, stack traces, or internal paths
-        if (
+        const isRawInternal = (
             lower.includes('sql') ||
             lower.includes('select ') ||
             lower.includes('insert into') ||
@@ -45,10 +41,14 @@ export function getCatalogErrorMessage(err, fallback = 'Operation failed. Please
             lower.includes('errno') ||
             lower.includes('stack') ||
             lower.includes('at ')
-        ) {
-            return fallback;
+        );
+        if (!isRawInternal) {
+            return message.trim();
         }
-        return message;
+    }
+
+    if (code && CATALOG_ERROR_MESSAGES[code]) {
+        return CATALOG_ERROR_MESSAGES[code];
     }
 
     return fallback;

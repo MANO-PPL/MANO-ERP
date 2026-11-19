@@ -51,7 +51,7 @@ export default function ResourceDetailPanel({
 
     // Rates State
     const [rates, setRates] = useState([]);
-    const [ratesLoading, setRatesLoading] = useState(false);
+    const [ratesLoading, setRatesLoading] = useState(true);
     const [newRateValue, setNewRateValue] = useState('');
     const [newRateUnitId, setNewRateUnitId] = useState('');
     const [newRateFrom, setNewRateFrom] = useState(getTodayDateStr());
@@ -71,7 +71,7 @@ export default function ResourceDetailPanel({
 
     // Conversions State
     const [conversions, setConversions] = useState([]);
-    const [conversionsLoading, setConversionsLoading] = useState(false);
+    const [conversionsLoading, setConversionsLoading] = useState(true);
     const [fromUnitId, setFromUnitId] = useState('');
     const [toUnitId, setToUnitId] = useState('');
     const [conversionFactor, setConversionFactor] = useState('');

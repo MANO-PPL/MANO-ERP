@@ -225,9 +225,9 @@ const ProjectWorkspace = () => {
                     <ChevronRight size={12} className="text-gray-400 dark:text-gray-600" />
                     {/* Active Main Tab Breadcrumb */}
                     <span
-                        className={`transition-colors ${(sanitizedExtraBreadcrumbs.length === 0 && !(activeTab === 'Catalog' && searchParams.get('res'))) ? 'text-gray-900 dark:text-white font-semibold' : 'text-blue-600 dark:text-blue-400 font-medium cursor-pointer'}`}
+                        className={`transition-colors ${(sanitizedExtraBreadcrumbs.length === 0 && !(activeTab === 'Catalog' && (searchParams.get('res') || searchParams.get('act')))) ? 'text-gray-900 dark:text-white font-semibold' : 'text-blue-600 dark:text-blue-400 font-medium cursor-pointer'}`}
                         onClick={() => {
-                            if (sanitizedExtraBreadcrumbs.length > 0 || (activeTab === 'Catalog' && searchParams.get('res'))) {
+                            if (sanitizedExtraBreadcrumbs.length > 0 || (activeTab === 'Catalog' && (searchParams.get('res') || searchParams.get('act')))) {
                                 setExtraBreadcrumbs([]);
                                 const newParams = new URLSearchParams(searchParams);
                                 newParams.delete('view');
@@ -235,18 +235,19 @@ const ProjectWorkspace = () => {
                                 newParams.delete('aid');
                                 newParams.delete('mid');
                                 newParams.delete('res');
+                                newParams.delete('act');
                                 setSearchParams(newParams);
                             }
                         }}
                     >
                         {activeTab}
                     </span>
-                    {/* Direct Catalog Resource breadcrumb */}
-                    {activeTab === 'Catalog' && searchParams.get('res') && (
+                    {/* Direct Catalog Resource / Activity breadcrumb */}
+                    {activeTab === 'Catalog' && (searchParams.get('res') || searchParams.get('act')) && (
                         <React.Fragment>
                             <ChevronRight size={12} className="text-gray-400 dark:text-gray-600" />
                             <span className="text-gray-900 dark:text-white font-semibold font-mono">
-                                {searchParams.get('res')}
+                                {searchParams.get('res') || searchParams.get('act')}
                             </span>
                         </React.Fragment>
                     )}

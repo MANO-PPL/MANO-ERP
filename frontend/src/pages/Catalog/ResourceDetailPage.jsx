@@ -12,7 +12,12 @@ import {
     Plus,
     Loader2,
     GitCompare,
-    X
+    X,
+    ChevronDown,
+    ChevronUp,
+    Save,
+    CheckCircle2,
+    AlertTriangle
 } from 'lucide-react';
 import catalogApi from '../../services/catalogApi';
 import { showCatalogErrorToast } from './catalogErrors';
@@ -33,6 +38,7 @@ export default function ResourceDetailPage({
 }) {
     const [resource, setResource] = useState(initialResource);
     const [activeTab, setActiveTab] = useState('rates'); // 'rates' | 'packaging' | 'history'
+    const [showDetails, setShowDetails] = useState(true); // Toggle to collapse/expand resource details panel
 
     // Units cache
     const [availableUnits, setAvailableUnits] = useState(units || []);
@@ -47,7 +53,7 @@ export default function ResourceDetailPage({
 
     // ─── Rates State ──────────────────────────────────────────────────────────
     const [rates, setRates] = useState([]);
-    const [ratesLoading, setRatesLoading] = useState(false);
+    const [ratesLoading, setRatesLoading] = useState(true);
     const [rateInspectDate, setRateInspectDate] = useState(getTodayDateStr());
 
     // Add Rate Form State
@@ -71,7 +77,7 @@ export default function ResourceDetailPage({
 
     // ─── Conversions State ────────────────────────────────────────────────────
     const [conversions, setConversions] = useState([]);
-    const [conversionsLoading, setConversionsLoading] = useState(false);
+    const [conversionsLoading, setConversionsLoading] = useState(true);
 
     // Add Conversion Form State
     const [showAddConvForm, setShowAddConvForm] = useState(false);
@@ -325,83 +331,126 @@ export default function ResourceDetailPage({
 
     return (
         <div className="flex-1 min-h-0 flex flex-col space-y-4 animate-fade-in">
-            {/* ─── SINGLE UNIFIED RESOURCE CARD (DETAILS & TABS IN ONE CARD) ─── */}
-            <div className="bg-white dark:bg-[#161b22] border border-gray-200 dark:border-gh-border rounded-xl shadow-xs overflow-hidden">
-                <div className="p-4 sm:p-5 space-y-3">
-                    {/* Header Row: Title & Action Buttons */}
-                    <div className="flex flex-wrap items-center justify-between gap-3">
-                        <div className="flex items-center gap-2.5">
-                            {onBack && (
-                                <button
-                                    type="button"
-                                    onClick={onBack}
-                                    className="p-1 rounded-md text-gray-400 hover:text-blue-600 dark:hover:text-blue-400 hover:bg-gray-100 dark:hover:bg-gh-hover transition-colors cursor-pointer"
-                                    title="Back to Resources list"
-                                >
-                                    <ArrowLeft size={16} />
-                                </button>
-                            )}
-                            <h1 className="text-lg sm:text-xl font-bold text-gray-900 dark:text-gray-100 leading-tight">
+            {/* ─── OPEN & MODERN RESOURCE HEADER (NO CARD) ─── */}
+            <div className="space-y-3">
+                {/* Header Row: Title & Action Buttons */}
+                <div className="flex flex-wrap items-center justify-between gap-3">
+                    <div className="flex items-center gap-3">
+                        {onBack && (
+                            <button
+                                type="button"
+                                onClick={onBack}
+                                className="p-1.5 rounded-lg text-gray-500 hover:text-gray-900 dark:text-gray-400 dark:hover:text-gray-100 hover:bg-gray-100 dark:hover:bg-gh-hover transition-colors cursor-pointer"
+                                title="Back to Resources list"
+                            >
+                                <ArrowLeft size={18} />
+                            </button>
+                        )}
+                        <div className="flex flex-wrap items-center gap-2.5">
+                            <h1 className="text-xl sm:text-2xl font-bold text-gray-900 dark:text-gray-100 leading-tight">
                                 {resource.name}
                             </h1>
-                        </div>
-
-                        {/* Top-Right Action Buttons */}
-                        <div className="flex items-center gap-2">
-                            {scope === 'project' && isBehind && onSync && (
-                                <button
-                                    type="button"
-                                    onClick={() => onSync(resource)}
-                                    className="inline-flex items-center gap-1.5 px-3 py-1 text-xs font-semibold rounded-lg bg-amber-500 hover:bg-amber-600 text-white transition-colors cursor-pointer shadow-xs animate-pulse"
-                                >
-                                    <GitCompare size={12} /> Sync with Master
-                                </button>
-                            )}
-
-                            {!isEditing && (
-                                <button
-                                    type="button"
-                                    onClick={() => setIsEditing(true)}
-                                    className="flex items-center gap-1.5 px-3 py-1 text-xs font-semibold rounded-lg bg-blue-600 hover:bg-blue-700 text-white transition-colors cursor-pointer shadow-xs"
-                                >
-                                    <Edit2 size={12} />
-                                    Edit
-                                </button>
-                            )}
-
-                            {onAction && !isEditing && (
-                                resource.status === 'active' ? (
-                                    <button
-                                        type="button"
-                                        onClick={() => onAction(resource, 'archive')}
-                                        className="p-1 rounded text-gray-400 hover:text-amber-600 hover:bg-gray-100 dark:hover:bg-gh-hover transition-colors cursor-pointer"
-                                        title="Archive Resource"
-                                    >
-                                        <Archive size={15} />
-                                    </button>
-                                ) : (
-                                    <button
-                                        type="button"
-                                        onClick={() => onAction(resource, 'restore')}
-                                        className="p-1 rounded text-gray-400 hover:text-teal-600 hover:bg-gray-100 dark:hover:bg-gh-hover transition-colors cursor-pointer"
-                                        title="Restore Resource"
-                                    >
-                                        <RotateCcw size={15} />
-                                    </button>
-                                )
-                            )}
+                            <span className="font-mono font-bold text-xs text-gray-600 dark:text-gray-300 bg-gray-100 dark:bg-gh-subtle px-2 py-0.5 rounded border border-gray-200 dark:border-gh-border">
+                                {resource.code}
+                            </span>
+                            <span className="capitalize font-semibold text-xs px-2 py-0.5 rounded bg-blue-50 text-blue-700 dark:bg-blue-950/40 dark:text-blue-300 border border-blue-200/60 dark:border-blue-800/40">
+                                {resource.kind}
+                            </span>
+                            <span className={`inline-flex items-center px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider ${
+                                resource.status === 'active'
+                                    ? 'bg-emerald-50 text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-300 border border-emerald-200/60 dark:border-emerald-800/40'
+                                    : 'bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-400 border border-gray-200 dark:border-gray-700'
+                            }`}>
+                                {resource.status}
+                            </span>
                         </div>
                     </div>
 
-                    {/* View Mode vs Edit Mode */}
-                    {!isEditing ? (
+                    {/* Top-Right Action Buttons */}
+                    <div className="flex items-center gap-2">
+                        {scope === 'project' && isBehind && onSync && (
+                            <button
+                                type="button"
+                                onClick={() => onSync(resource)}
+                                className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-lg bg-amber-500 hover:bg-amber-600 text-white transition-colors cursor-pointer shadow-xs animate-pulse"
+                            >
+                                <GitCompare size={12} /> Sync with Master
+                            </button>
+                        )}
+
+                        {!isEditing && (
+                            <button
+                                type="button"
+                                onClick={() => setShowDetails(prev => !prev)}
+                                className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-lg bg-gray-100 hover:bg-gray-200 dark:bg-gh-subtle dark:hover:bg-gh-hover text-gray-700 dark:text-gray-200 border border-gray-200 dark:border-gh-border transition-colors cursor-pointer shadow-2xs"
+                                title={showDetails ? "Hide Resource Overview" : "Show Resource Overview"}
+                            >
+                                {showDetails ? (
+                                    <>
+                                        <ChevronUp size={13} />
+                                        <span>Hide Details</span>
+                                    </>
+                                ) : (
+                                    <>
+                                        <ChevronDown size={13} />
+                                        <span>Show Details</span>
+                                    </>
+                                )}
+                            </button>
+                        )}
+
+                        {!isEditing && (
+                            <button
+                                type="button"
+                                onClick={() => {
+                                    setEditName(resource.name);
+                                    setEditBaseUnitId(String(resource.base_unit_id));
+                                    setEditDescription(resource.description || '');
+                                    setEditRemarks(resource.remarks || '');
+                                    setIsEditing(true);
+                                    setShowDetails(true);
+                                }}
+                                className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-lg bg-gray-100 hover:bg-gray-200 dark:bg-gh-subtle dark:hover:bg-gh-hover text-gray-700 dark:text-gray-200 border border-gray-200 dark:border-gh-border transition-colors cursor-pointer shadow-2xs"
+                            >
+                                <Edit2 size={12} />
+                                Edit Resource
+                            </button>
+                        )}
+
+                        {onAction && !isEditing && (
+                            resource.status === 'active' ? (
+                                <button
+                                    type="button"
+                                    onClick={() => onAction(resource, 'archive')}
+                                    className="p-1.5 rounded-lg text-gray-400 hover:text-amber-600 hover:bg-gray-100 dark:hover:bg-gh-hover transition-colors cursor-pointer"
+                                    title="Archive Resource"
+                                >
+                                    <Archive size={15} />
+                                </button>
+                            ) : (
+                                <button
+                                    type="button"
+                                    onClick={() => onAction(resource, 'restore')}
+                                    className="p-1.5 rounded-lg text-gray-400 hover:text-teal-600 hover:bg-gray-100 dark:hover:bg-gh-hover transition-colors cursor-pointer"
+                                    title="Restore Resource"
+                                >
+                                    <RotateCcw size={15} />
+                                </button>
+                            )
+                        )}
+                    </div>
+                </div>
+
+                {/* View Mode vs Edit Mode */}
+                {!isEditing ? (
+                    showDetails ? (
                         /* Unified 2-Column Horizontal Split with Vertically Stacked Data */
-                        <div className="grid grid-cols-1 md:grid-cols-2 gap-x-10 gap-y-4 pt-3 pb-2 border-t border-gray-100 dark:border-gh-border/50">
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-x-12 gap-y-3.5 pt-2">
                             {/* Left Column */}
-                            <div className="space-y-3.5">
+                            <div className="space-y-3">
                                 <div>
                                     <span className="text-[10px] font-semibold text-gray-400 dark:text-gray-500 uppercase tracking-wider block mb-0.5">
-                                        Code
+                                        Resource Code
                                     </span>
                                     <span className="font-mono font-bold text-gray-900 dark:text-gray-100 bg-gray-100 dark:bg-gh-subtle/80 px-2 py-0.5 rounded text-xs border border-gray-200 dark:border-gh-border inline-block">
                                         {resource.code}
@@ -410,23 +459,10 @@ export default function ResourceDetailPage({
 
                                 <div>
                                     <span className="text-[10px] font-semibold text-gray-400 dark:text-gray-500 uppercase tracking-wider block mb-0.5">
-                                        Category
+                                        Category / Kind
                                     </span>
                                     <span className="capitalize font-semibold text-gray-900 dark:text-gray-100 text-xs">
                                         {resource.kind}
-                                    </span>
-                                </div>
-
-                                <div>
-                                    <span className="text-[10px] font-semibold text-gray-400 dark:text-gray-500 uppercase tracking-wider block mb-0.5">
-                                        Status
-                                    </span>
-                                    <span className={`inline-flex items-center px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider ${
-                                        resource.status === 'active'
-                                            ? 'bg-emerald-50 text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-300 border border-emerald-200/60 dark:border-emerald-800/40'
-                                            : 'bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-400 border border-gray-200 dark:border-gray-700'
-                                    }`}>
-                                        {resource.status}
                                     </span>
                                 </div>
 
@@ -446,6 +482,28 @@ export default function ResourceDetailPage({
 
                                 <div>
                                     <span className="text-[10px] font-semibold text-gray-400 dark:text-gray-500 uppercase tracking-wider block mb-0.5">
+                                        Scope
+                                    </span>
+                                    <span className="font-semibold text-gray-700 dark:text-gray-300 text-xs">
+                                        {scope === 'master' ? 'Master Standard' : `Project #${resource.project_id || projectId}`}
+                                    </span>
+                                </div>
+
+                                <div>
+                                    <span className="text-[10px] font-semibold text-gray-400 dark:text-gray-500 uppercase tracking-wider block mb-0.5">
+                                        Status
+                                    </span>
+                                    <span className={`inline-flex items-center px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider ${
+                                        resource.status === 'active'
+                                            ? 'bg-emerald-50 text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-300 border border-emerald-200/60 dark:border-emerald-800/40'
+                                            : 'bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-400 border border-gray-200 dark:border-gray-700'
+                                    }`}>
+                                        {resource.status}
+                                    </span>
+                                </div>
+
+                                <div>
+                                    <span className="text-[10px] font-semibold text-gray-400 dark:text-gray-500 uppercase tracking-wider block mb-0.5">
                                         Description &amp; Specs
                                     </span>
                                     <p className="text-xs text-gray-700 dark:text-gray-300 leading-relaxed whitespace-pre-line">
@@ -455,16 +513,27 @@ export default function ResourceDetailPage({
                             </div>
 
                             {/* Right Column */}
-                            <div className="space-y-3.5">
+                            <div className="space-y-3">
                                 <div>
                                     <span className="text-[10px] font-semibold text-gray-400 dark:text-gray-500 uppercase tracking-wider block mb-0.5">
-                                        Current Rate
+                                        Current Rate (As of Today)
                                     </span>
-                                    {activeTodayRate ? (
-                                        <span className="font-mono font-bold text-emerald-600 dark:text-emerald-400 text-xs">
-                                            ₹ {formatMoney(activeTodayRate.rate)}{' '}
-                                            <span className="text-[11px] font-normal text-gray-500">/ {activeTodayRate.unit_code}</span>
+                                    {ratesLoading ? (
+                                        <span className="text-xs text-gray-400 italic flex items-center gap-1.5">
+                                            <Loader2 size={12} className="animate-spin text-blue-500" /> Loading active rate...
                                         </span>
+                                    ) : activeTodayRate ? (
+                                        <div className="flex items-baseline gap-2">
+                                            <span className="text-lg font-mono font-bold text-gray-900 dark:text-gray-100">
+                                                ₹ {formatMoney(activeTodayRate.rate)}
+                                            </span>
+                                            <span className="text-xs text-gray-500">
+                                                / {activeTodayRate.unit_code}
+                                            </span>
+                                            <span className="inline-flex items-center gap-1 text-[10px] font-semibold text-emerald-600 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-950/40 px-1.5 py-0.5 rounded">
+                                                <CheckCircle2 size={11} /> Active Rate
+                                            </span>
+                                        </div>
                                     ) : (
                                         <span className="text-xs text-gray-400 italic">No rate active</span>
                                     )}
@@ -472,14 +541,23 @@ export default function ResourceDetailPage({
 
                                 <div>
                                     <span className="text-[10px] font-semibold text-gray-400 dark:text-gray-500 uppercase tracking-wider block mb-0.5">
-                                        Packaging
+                                        Packaging Conversions
                                     </span>
-                                    {primaryPackaging ? (
+                                    {conversionsLoading ? (
+                                        <span className="text-xs text-gray-400 italic flex items-center gap-1.5">
+                                            <Loader2 size={12} className="animate-spin text-purple-500" /> Loading packaging...
+                                        </span>
+                                    ) : primaryPackaging ? (
                                         <span className="font-mono font-bold text-purple-700 dark:text-purple-300 text-xs">
                                             1 {primaryPackaging.from_unit_code} = {Number(primaryPackaging.factor)} {primaryPackaging.to_unit_code}
+                                            {conversions.length > 1 && (
+                                                <span className="text-gray-400 font-normal ml-1">
+                                                    (+{conversions.length - 1} more)
+                                                </span>
+                                            )}
                                         </span>
                                     ) : (
-                                        <span className="text-xs text-gray-400 italic">None</span>
+                                        <span className="text-xs text-gray-400 italic">No packaging conversions</span>
                                     )}
                                 </div>
 
@@ -494,16 +572,7 @@ export default function ResourceDetailPage({
 
                                 <div>
                                     <span className="text-[10px] font-semibold text-gray-400 dark:text-gray-500 uppercase tracking-wider block mb-0.5">
-                                        Scope
-                                    </span>
-                                    <span className="text-gray-800 dark:text-gray-200 font-semibold text-xs">
-                                        {scope === 'master' ? 'Master Catalog' : 'Project Local'}
-                                    </span>
-                                </div>
-
-                                <div>
-                                    <span className="text-[10px] font-semibold text-gray-400 dark:text-gray-500 uppercase tracking-wider block mb-0.5">
-                                        Remarks
+                                        Remarks &amp; Procurement Notes
                                     </span>
                                     <p className="text-xs text-gray-700 dark:text-gray-300 leading-relaxed whitespace-pre-line">
                                         {resource.remarks || <span className="text-gray-400 italic">None specified</span>}
@@ -512,133 +581,154 @@ export default function ResourceDetailPage({
                             </div>
                         </div>
                     ) : (
-                    /* Seamless Inline Edit Form */
-                    <form onSubmit={handleSaveDetails} className="space-y-4 pt-2">
-                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
-                            <div>
-                                <label className="block text-[11px] font-semibold text-gray-700 dark:text-gray-300 mb-1">
-                                    Resource Name *
-                                </label>
-                                <input
-                                    type="text"
-                                    value={editName}
-                                    onChange={(e) => setEditName(e.target.value)}
-                                    className="w-full px-3 py-1.5 text-xs border rounded-lg bg-white dark:bg-[#0d1117] border-gray-300 dark:border-gh-border text-gray-900 dark:text-gray-100 focus:ring-1 focus:ring-blue-500"
-                                    required
-                                />
+                        /* Compact 1-line Summary when details are collapsed */
+                        <div className="flex flex-wrap items-center gap-x-4 gap-y-1.5 text-xs text-gray-500 dark:text-gray-400 pt-1 pb-1">
+                            <span>Kind: <strong className="capitalize text-gray-800 dark:text-gray-200">{resource.kind}</strong></span>
+                            <span>&bull;</span>
+                            <span>Base Unit: <strong className="font-mono text-gray-800 dark:text-gray-200">{resource.base_unit_code || '—'}</strong> ({resource.base_unit_name || 'Unit'})</span>
+                            <span>&bull;</span>
+                            <span>Scope: <strong className="text-gray-800 dark:text-gray-200">{scope === 'master' ? 'Master Standard' : `Project #${resource.project_id || projectId}`}</strong></span>
+                            <span>&bull;</span>
+                            <span>Rate: <strong className="font-mono text-gray-800 dark:text-gray-200">{ratesLoading ? 'Loading...' : activeTodayRate ? `₹ ${formatMoney(activeTodayRate.rate)} / ${activeTodayRate.unit_code}` : 'No rate'}</strong></span>
+                            <span>&bull;</span>
+                            <span>Packaging: <strong className="text-purple-600 dark:text-purple-400">{conversionsLoading ? 'Loading...' : `${conversions.length} rules`}</strong></span>
+                        </div>
+                    )
+                ) : (
+                    /* In-Place Inline Resource Edit Form with dedicated clean styling */
+                    <div className="p-4 rounded-xl border border-blue-200 dark:border-blue-900/50 bg-blue-50/20 dark:bg-blue-950/10">
+                        <form onSubmit={handleSaveDetails} className="space-y-4">
+                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
+                                <div>
+                                    <label className="block text-[11px] font-semibold text-gray-700 dark:text-gray-300 mb-1">
+                                        Resource Name <span className="text-red-500">*</span>
+                                    </label>
+                                    <input
+                                        type="text"
+                                        value={editName}
+                                        onChange={(e) => setEditName(e.target.value)}
+                                        className="w-full px-2.5 py-1.5 text-xs border rounded-lg bg-white dark:bg-[#0d1117] border-gray-300 dark:border-gh-border text-gray-900 dark:text-gray-100"
+                                        required
+                                    />
+                                </div>
+
+                                <div>
+                                    <label className="block text-[11px] font-semibold text-gray-700 dark:text-gray-300 mb-1">
+                                        Base Unit
+                                    </label>
+                                    <select
+                                        value={editBaseUnitId}
+                                        onChange={(e) => setEditBaseUnitId(e.target.value)}
+                                        className="w-full px-2.5 py-1.5 text-xs font-mono border rounded-lg bg-white dark:bg-[#0d1117] border-gray-300 dark:border-gh-border text-gray-900 dark:text-gray-100"
+                                    >
+                                        {availableUnits.map(u => (
+                                            <option key={u.id} value={u.id}>
+                                                {u.code} &mdash; {u.name} ({u.category})
+                                            </option>
+                                        ))}
+                                    </select>
+                                </div>
+
+                                <div>
+                                    <label className="block text-[11px] font-semibold text-gray-700 dark:text-gray-300 mb-1">
+                                        Description &amp; Specs
+                                    </label>
+                                    <textarea
+                                        rows={2}
+                                        value={editDescription}
+                                        onChange={(e) => setEditDescription(e.target.value)}
+                                        placeholder="Specifications, standard compliance..."
+                                        className="w-full px-2.5 py-1.5 text-xs border rounded-lg bg-white dark:bg-[#0d1117] border-gray-300 dark:border-gh-border text-gray-900 dark:text-gray-100"
+                                    />
+                                </div>
+
+                                <div>
+                                    <label className="block text-[11px] font-semibold text-gray-700 dark:text-gray-300 mb-1">
+                                        Remarks &amp; Procurement Notes
+                                    </label>
+                                    <textarea
+                                        rows={2}
+                                        value={editRemarks}
+                                        onChange={(e) => setEditRemarks(e.target.value)}
+                                        placeholder="Procurement or handling notes..."
+                                        className="w-full px-2.5 py-1.5 text-xs border rounded-lg bg-white dark:bg-[#0d1117] border-gray-300 dark:border-gh-border text-gray-900 dark:text-gray-100"
+                                    />
+                                </div>
                             </div>
 
-                            <div>
-                                <label className="block text-[11px] font-semibold text-gray-700 dark:text-gray-300 mb-1">
-                                    Base Unit
-                                </label>
-                                <select
-                                    value={editBaseUnitId}
-                                    onChange={(e) => setEditBaseUnitId(e.target.value)}
-                                    className="w-full px-3 py-1.5 text-xs font-mono border rounded-lg bg-white dark:bg-[#0d1117] border-gray-300 dark:border-gh-border text-gray-900 dark:text-gray-100 focus:ring-1 focus:ring-blue-500"
+                            <div className="flex justify-end gap-2 pt-2 border-t border-gray-100 dark:border-gh-border/50">
+                                <button
+                                    type="button"
+                                    onClick={() => setIsEditing(false)}
+                                    disabled={savingDetails}
+                                    className="px-3 py-1.5 text-xs font-semibold rounded-lg bg-gray-100 hover:bg-gray-200 dark:bg-gh-subtle dark:hover:bg-gh-hover text-gray-700 dark:text-gray-300 transition-colors cursor-pointer"
                                 >
-                                    {availableUnits.map(u => (
-                                        <option key={u.id} value={u.id}>
-                                            {u.code} &mdash; {u.name} ({u.category})
-                                        </option>
-                                    ))}
-                                </select>
+                                    Cancel
+                                </button>
+                                <button
+                                    type="submit"
+                                    disabled={savingDetails || !editName.trim()}
+                                    className="flex items-center gap-1.5 px-4 py-1.5 text-xs font-semibold rounded-lg bg-blue-600 hover:bg-blue-700 text-white transition-colors cursor-pointer shadow-xs disabled:opacity-50"
+                                >
+                                    {savingDetails ? <Loader2 size={12} className="animate-spin" /> : <Save size={12} />}
+                                    Save Changes
+                                </button>
                             </div>
-
-                            <div>
-                                <label className="block text-[11px] font-semibold text-gray-700 dark:text-gray-300 mb-1">
-                                    Description &amp; Specs
-                                </label>
-                                <textarea
-                                    rows={2}
-                                    value={editDescription}
-                                    onChange={(e) => setEditDescription(e.target.value)}
-                                    placeholder="Specifications, standard compliance..."
-                                    className="w-full px-3 py-1.5 text-xs border rounded-lg bg-white dark:bg-[#0d1117] border-gray-300 dark:border-gh-border text-gray-900 dark:text-gray-100 focus:ring-1 focus:ring-blue-500"
-                                />
-                            </div>
-
-                            <div>
-                                <label className="block text-[11px] font-semibold text-gray-700 dark:text-gray-300 mb-1">
-                                    Remarks
-                                </label>
-                                <textarea
-                                    rows={2}
-                                    value={editRemarks}
-                                    onChange={(e) => setEditRemarks(e.target.value)}
-                                    placeholder="Procurement or handling notes..."
-                                    className="w-full px-3 py-1.5 text-xs border rounded-lg bg-white dark:bg-[#0d1117] border-gray-300 dark:border-gh-border text-gray-900 dark:text-gray-100 focus:ring-1 focus:ring-blue-500"
-                                />
-                            </div>
-                        </div>
-
-                        <div className="flex justify-end gap-2 pt-2 border-t border-gray-100 dark:border-gh-border">
-                            <button
-                                type="button"
-                                onClick={() => setIsEditing(false)}
-                                disabled={savingDetails}
-                                className="px-3 py-1.5 text-xs text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gh-hover rounded-lg cursor-pointer"
-                            >
-                                Cancel
-                            </button>
-                            <button
-                                type="submit"
-                                disabled={savingDetails || !editName.trim()}
-                                className="flex items-center gap-1.5 px-4 py-1.5 text-xs font-semibold rounded-lg bg-blue-600 hover:bg-blue-700 text-white disabled:opacity-50 cursor-pointer shadow-xs"
-                            >
-                                {savingDetails && <Loader2 size={13} className="animate-spin" />}
-                                Save Changes
-                            </button>
-                        </div>
-                    </form>
+                        </form>
+                    </div>
                 )}
             </div>
 
-            {/* ─── TABS: RATES | PACKAGING | HISTORY (INSIDE SAME CARD) ───────── */}
-            <div className="border-t border-gray-200 dark:border-gh-border bg-gray-50/50 dark:bg-gh-subtle/20 px-5 pt-3 pb-0 border-b border-gray-200 dark:border-gh-border flex gap-6 select-none overflow-x-auto">
+            {/* ─── TAB NAVIGATION: UNDERLINE TABS (NO BOX, NO GAPS) ─── */}
+            <div className="border-b border-gray-200 dark:border-gh-border pt-1">
+                <div className="flex gap-6 -mb-px">
                     <button
                         type="button"
                         onClick={() => setActiveTab('rates')}
-                        className={`pb-2.5 text-xs font-bold uppercase tracking-wider flex items-center gap-1.5 border-b-2 transition-colors cursor-pointer shrink-0 ${
+                        className={`pb-2.5 px-1 text-xs font-semibold border-b-2 flex items-center gap-2 transition-colors cursor-pointer ${
                             activeTab === 'rates'
-                                ? 'border-blue-600 text-blue-600 dark:border-blue-400 dark:text-blue-400'
+                                ? 'border-blue-600 text-blue-600 dark:border-blue-400 dark:text-blue-400 font-bold'
                                 : 'border-transparent text-gray-500 hover:text-gray-700 dark:hover:text-gray-300'
                         }`}
                     >
-                        <DollarSign size={14} />
-                        Rates ({rates.length})
+                        <DollarSign size={15} />
+                        Rates {ratesLoading ? '' : `(${rates.length})`}
                     </button>
 
                     <button
                         type="button"
                         onClick={() => setActiveTab('packaging')}
-                        className={`pb-2.5 text-xs font-bold uppercase tracking-wider flex items-center gap-1.5 border-b-2 transition-colors cursor-pointer shrink-0 ${
+                        className={`pb-2.5 px-1 text-xs font-semibold border-b-2 flex items-center gap-2 transition-colors cursor-pointer ${
                             activeTab === 'packaging'
-                                ? 'border-blue-600 text-blue-600 dark:border-blue-400 dark:text-blue-400'
+                                ? 'border-blue-600 text-blue-600 dark:border-blue-400 dark:text-blue-400 font-bold'
                                 : 'border-transparent text-gray-500 hover:text-gray-700 dark:hover:text-gray-300'
                         }`}
                     >
-                        <Package size={14} />
-                        Packaging ({conversions.length})
+                        <Package size={15} />
+                        Packaging Conversions {conversionsLoading ? '' : `(${conversions.length})`}
                     </button>
 
                     <button
                         type="button"
                         onClick={() => setActiveTab('history')}
-                        className={`pb-2.5 text-xs font-bold uppercase tracking-wider flex items-center gap-1.5 border-b-2 transition-colors cursor-pointer shrink-0 ${
+                        className={`pb-2.5 px-1 text-xs font-semibold border-b-2 flex items-center gap-2 transition-colors cursor-pointer ${
                             activeTab === 'history'
-                                ? 'border-blue-600 text-blue-600 dark:border-blue-400 dark:text-blue-400'
+                                ? 'border-blue-600 text-blue-600 dark:border-blue-400 dark:text-blue-400 font-bold'
                                 : 'border-transparent text-gray-500 hover:text-gray-700 dark:hover:text-gray-300'
                         }`}
                     >
-                        <History size={14} />
-                        History
+                        <History size={15} />
+                        Audit Change Log
                     </button>
                 </div>
+            </div>
+
+            {/* ─── TAB CONTENT PANELS (FRAMELESS & CRISP) ─── */}
+            <div className="pt-2">
 
                 {/* ─── TAB 1: RATES ─────────────────────────────────────────── */}
                 {activeTab === 'rates' && (
-                    <div className="p-5 space-y-4">
+                    <div className="space-y-4">
                         {/* Compact Rate Inspector & Action Bar */}
                         <div className="flex flex-wrap items-center justify-between gap-3 p-3 rounded-lg bg-gray-50 dark:bg-gh-subtle/40 border border-gray-100 dark:border-gh-border text-xs">
                             <div className="flex items-center gap-2 font-mono">
@@ -657,7 +747,11 @@ export default function ResourceDetailPage({
                                     Today
                                 </button>
                                 <span className="text-gray-300 dark:text-gray-600">|</span>
-                                {inspectedRate ? (
+                                {ratesLoading ? (
+                                    <span className="text-gray-400 italic font-sans flex items-center gap-1">
+                                        <Loader2 size={11} className="animate-spin text-blue-500" /> Loading...
+                                    </span>
+                                ) : inspectedRate ? (
                                     <span className="font-bold text-emerald-600 dark:text-emerald-400">
                                         ₹ {formatMoney(inspectedRate.rate)} / {inspectedRate.unit_code}
                                     </span>
@@ -864,7 +958,7 @@ export default function ResourceDetailPage({
 
                 {/* ─── TAB 2: PACKAGING ─────────────────────────────────────── */}
                 {activeTab === 'packaging' && (
-                    <div className="p-5 space-y-4">
+                    <div className="space-y-4">
                         <div className="flex items-center justify-between">
                             <span className="text-xs font-bold uppercase tracking-wider text-gray-600 dark:text-gray-400">
                                 Trade Packaging Rules
@@ -1032,7 +1126,7 @@ export default function ResourceDetailPage({
 
                 {/* ─── TAB 3: HISTORY ───────────────────────────────────────── */}
                 {activeTab === 'history' && (
-                    <div className="p-5">
+                    <div>
                         <ChangeLogSection
                             entity="resource"
                             entityId={resource.id}

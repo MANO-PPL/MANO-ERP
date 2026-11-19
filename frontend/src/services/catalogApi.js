@@ -88,6 +88,10 @@ export const catalogApi = {
         return res.data?.data || [];
     },
 
+    async listResourceConversions(resourceId) {
+        return this.listConversions(resourceId);
+    },
+
     async setConversion(resourceId, { fromUnitId, toUnitId, factor, reason }) {
         const res = await api.post(`/catalog/resources/${resourceId}/conversions`, {
             fromUnitId,
@@ -234,6 +238,10 @@ export const catalogApi = {
         if (date) params.date = date;
         const res = await api.get(`/catalog/activities/${activityId}/expected-usage`, { params });
         return res.data?.data;
+    },
+
+    async getExpectedUsage(activityId, qty, date) {
+        return this.expectedUsage(activityId, qty, date);
     },
 
     // ─── 8. Import & Sync ────────────────────────────────────────────────────

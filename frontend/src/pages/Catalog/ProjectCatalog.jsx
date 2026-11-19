@@ -20,9 +20,9 @@ export default function ProjectCatalog({
     const { id: paramId } = useParams();
     const [searchParams] = useSearchParams();
     const resolvedProjectId = Number(propProjectId || propProject?.id || paramId);
-    const isViewingResource = Boolean(searchParams.get('res'));
+    const isViewingDetail = Boolean(searchParams.get('res') || searchParams.get('act'));
 
-    const [activeTab, setActiveTab] = useState('resources'); // 'resources' | 'activities'
+    const [activeTab, setActiveTab] = useState(searchParams.get('act') ? 'activities' : 'resources');
     const [units, setUnits] = useState([]);
     const [projectName, setProjectName] = useState(propProject?.name || `Project #${resolvedProjectId}`);
 
@@ -65,7 +65,7 @@ export default function ProjectCatalog({
     return (
         <div className="flex-1 min-h-0 flex flex-col h-full bg-white dark:bg-[#0d1117] overflow-hidden">
             {/* ─── Sub-Navigation Pills: Resources | Activities (Sticky Header) ─── */}
-            {!isViewingResource && (
+            {!isViewingDetail && (
                 <div className="px-4 sm:px-6 pt-3 pb-2.5 bg-white dark:bg-[#0d1117] border-b border-gray-200 dark:border-gh-border shrink-0 select-none">
                     <div className="flex items-center gap-2">
                         <button
@@ -114,6 +114,7 @@ export default function ProjectCatalog({
                         projectId={resolvedProjectId}
                         projectName={projectName}
                         units={units}
+                        setExtraBreadcrumbs={setExtraBreadcrumbs}
                     />
                 </div>
             </div>

@@ -3,19 +3,20 @@ import { History, ChevronDown, ChevronRight, User, Clock, Loader2 } from 'lucide
 import catalogApi from '../../services/catalogApi';
 import { formatDatePlain } from './catalogFormat';
 
-export default function ChangeLogSection({ entity, entityId }) {
+export default function ChangeLogSection({ entity, entityType, entityId }) {
+    const targetEntity = entity || entityType;
     const [loading, setLoading] = useState(true);
     const [entries, setEntries] = useState([]);
     const [expandedIds, setExpandedIds] = useState(new Set());
 
     useEffect(() => {
-        if (!entity || !entityId) return;
+        if (!targetEntity || !entityId) return;
         let active = true;
         setLoading(true);
 
         const fetchLog = async () => {
             try {
-                const data = await catalogApi.getChangeLog(entity, entityId);
+                const data = await catalogApi.getChangeLog(targetEntity, entityId);
                 if (active) setEntries(data || []);
             } catch (err) {
                 console.error('Failed to load change log:', err);
@@ -28,7 +29,7 @@ export default function ChangeLogSection({ entity, entityId }) {
         return () => {
             active = false;
         };
-    }, [entity, entityId]);
+    }, [targetEntity, entityId]);
 
     const toggleExpand = (id) => {
         setExpandedIds(prev => {

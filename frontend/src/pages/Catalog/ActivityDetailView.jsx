@@ -41,7 +41,7 @@ export default function ActivityDetailView({
 
     // Norms State
     const [norms, setNorms] = useState([]);
-    const [normsLoading, setNormsLoading] = useState(false);
+    const [normsLoading, setNormsLoading] = useState(true);
 
     // Available resources for norm picker (same scope, active only)
     const [availableResources, setAvailableResources] = useState([]);
@@ -73,7 +73,7 @@ export default function ActivityDetailView({
     const [calcQty, setCalcQty] = useState('1');
     const [costData, setCostData] = useState(null);
     const [usageData, setUsageData] = useState(null);
-    const [calculating, setCalculating] = useState(false);
+    const [calculating, setCalculating] = useState(true);
 
     // Load available resources for picker (same scope, active only)
     useEffect(() => {
@@ -592,16 +592,23 @@ export default function ActivityDetailView({
                                                         <span className="font-mono text-[11px] text-gray-400">{it.resourceCode}</span>
                                                     </td>
                                                     <td className="py-2.5 px-3 font-mono">
-                                                        {formatQuantity(it.netQty)} {it.baseUnitCode}
+                                                        <div className="font-semibold text-gray-900 dark:text-gray-100">
+                                                            {formatQuantity(it.netQty)} {it.unitCode || it.baseUnitCode || ''}
+                                                        </div>
+                                                        {it.normUnitCode && it.normUnitCode !== (it.unitCode || it.baseUnitCode) && (
+                                                            <div className="text-[10px] text-gray-400 font-sans">
+                                                                from norm: {formatQuantity(it.normQtyPerUnit)} {it.normUnitCode}
+                                                            </div>
+                                                        )}
                                                     </td>
                                                     <td className="py-2.5 px-3 font-mono text-amber-600 dark:text-amber-400">
                                                         {it.wastagePct ?? 0}%
                                                     </td>
                                                     <td className="py-2.5 px-3 font-mono text-gray-500">
-                                                        +{formatQuantity(it.allowanceQty)} {it.baseUnitCode}
+                                                        +{formatQuantity(it.allowanceQty)} {it.unitCode || it.baseUnitCode || ''}
                                                     </td>
                                                     <td className="py-2.5 px-3 font-mono font-bold text-gray-900 dark:text-gray-100">
-                                                        {formatQuantity(it.grossQty)} {it.baseUnitCode}
+                                                        {formatQuantity(it.grossQty)} {it.unitCode || it.baseUnitCode || ''}
                                                     </td>
                                                 </tr>
                                             ))

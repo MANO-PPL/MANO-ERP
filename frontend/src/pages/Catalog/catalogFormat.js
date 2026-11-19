@@ -25,30 +25,72 @@ export function formatDatePlain(dateVal) {
 }
 
 /**
- * Format string decimal as money with thousands separator on integer part only.
- * Preserves decimal digits without floating point rounding.
- * e.g. "1234567.8900" -> "1,234,567.8900"
+ * Format string decimal or number as money with thousands separator.
+ * Displays 2 decimal places by default, only showing 3rd or 4th digits
+ * if they are non-zero (significant). Trailing zeros beyond 2 decimals are trimmed.
+ * Automatically eliminates IEEE-754 binary floating-point drift.
+ * Examples:
+ * - 5, "5", "5.0000" -> "5.00"
+ * - 5.5, "5.5000" -> "5.50"
+ * - "5.1200" -> "5.12"
+ * - "5.1250" -> "5.125" (3rd digit shown because required)
+ * - "5.1234" -> "5.1234" (4th digit shown because required)
+ * - "0.0025" -> "0.0025"
+ * - "1250000.5000" -> "1,250,000.50"
+ * - 125.35799999999999 -> "125.358"
  */
 export function formatMoney(val) {
     if (val === null || val === undefined || val === '') return '—';
     const s = String(val).trim();
-    const sign = s.startsWith('-') ? '-' : '';
-    const clean = sign ? s.slice(1) : s;
+    if (s === '—') return '—';
+    const num = Number(s);
+    if (isNaN(num)) return s;
 
-    const parts = clean.split('.');
-    const intPart = parts[0] || '0';
-    const decPart = parts.length > 1 ? `.${parts[1]}` : '';
+    const sign = num < 0 ? '-' : '';
+    const absNum = Math.abs(num);
 
-    // Standard thousands separator for integer part
-    const formattedInt = intPart.replace(/\B(?=(\d{3})+(?!\d))/g, ',');
-    return `${sign}${formattedInt}${decPart}`;
+    // Clean IEEE 754 binary floating-point drift up to 4 decimal places
+    const cleaned = Math.round((absNum + Number.EPSILON) * 10000) / 10000;
+
+    const fixedStr = cleaned.toFixed(4);
+    const parts = fixedStr.split('.');
+    const intPart = parts[0].replace(/\B(?=(\d{3})+(?!\d))/g, ',');
+    let rawDec = parts[1] || '0000';
+
+    // Trim trailing zeros beyond 2 decimal places
+    if (rawDec.length > 2) {
+        const trimmed = rawDec.replace(/0+$/, '');
+        rawDec = trimmed.length <= 2 ? trimmed.padEnd(2, '0') : trimmed;
+    } else {
+        rawDec = rawDec.padEnd(2, '0');
+    }
+
+    return `${sign}${intPart}.${rawDec}`;
 }
 
 /**
- * Display quantity as returned without rounding.
+ * Display quantity cleanly, eliminating IEEE-754 floating-point drift
+ * and trimming redundant trailing decimal zeros.
+ * Examples:
+ * - "1.000000" -> "1"
+ * - "0.250000" -> "0.25"
+ * - "2.200000" -> "2.2"
+ * - "24" -> "24"
+ * - 448.79999999999995 -> "448.8"
+ * - 37.400000000000006 -> "37.4"
  */
 export function formatQuantity(val) {
     if (val === null || val === undefined || val === '') return '—';
-    return String(val);
+    const s = String(val).trim();
+    if (s === '—') return '—';
+    const num = Number(val);
+    if (isNaN(num)) return s;
+
+    // Eliminate binary floating-point drift up to 4 decimal places
+    const cleaned = Math.round((num + Number.EPSILON) * 10000) / 10000;
+    const cleanedStr = String(cleaned);
+    if (!cleanedStr.includes('.')) return cleanedStr;
+    const trimmed = cleanedStr.replace(/\.?0+$/, '');
+    return trimmed || '0';
 }
 

@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import {
     Search,
     Plus,
@@ -19,17 +20,20 @@ import catalogCache from './catalogCache';
 import { showCatalogErrorToast } from './catalogErrors';
 import { customToast } from '../../utils/toast';
 import ActivityDrawer from './ActivityDrawer';
-import ActivityDetailView from './ActivityDetailView';
+import ActivityDetailPage from './ActivityDetailPage';
 import ImportMasterDialog from './ImportMasterDialog';
 import SyncReviewModal from './SyncReviewModal';
 import ReasonModal from './ReasonModal';
+import CatalogToolbar from './CatalogToolbar';
 
 export default function ActivitiesTab({
     scope = 'master',
     projectId = null,
     projectName = '',
-    units = []
+    units = [],
+    setExtraBreadcrumbs
 }) {
+    const [searchParams, setSearchParams] = useSearchParams();
     const [activities, setActivities] = useState([]);
     const [loading, setLoading] = useState(true);
     const [refreshing, setRefreshing] = useState(false);
@@ -87,6 +91,41 @@ export default function ActivitiesTab({
         loadActivities();
     }, [loadActivities]);
 
+    // Handlers for opening and closing activity detail page
+    const handleSelectActivity = useCallback((a) => {
+        setSelectedActivity(a);
+        const p = new URLSearchParams(searchParams);
+        p.set('act', a.code);
+        setSearchParams(p);
+    }, [searchParams, setSearchParams]);
+
+    const handleBackFromDetail = useCallback(() => {
+        setSelectedActivity(null);
+        const p = new URLSearchParams(searchParams);
+        p.delete('act');
+        setSearchParams(p);
+        loadActivities(true);
+    }, [searchParams, setSearchParams, loadActivities]);
+
+    // Sync selectedActivity with URL param 'act'
+    useEffect(() => {
+        const actCode = searchParams.get('act');
+        if (actCode && activities.length > 0) {
+            const found = activities.find(a => a.code === actCode || String(a.id) === actCode);
+            if (found && selectedActivity?.id !== found.id) {
+                setSelectedActivity(found);
+            }
+        } else if (!actCode && selectedActivity) {
+            setSelectedActivity(null);
+        }
+    }, [searchParams, activities, selectedActivity]);
+
+    useEffect(() => {
+        if (!selectedActivity && setExtraBreadcrumbs) {
+            setExtraBreadcrumbs([]);
+        }
+    }, [selectedActivity, setExtraBreadcrumbs]);
+
     // In-memory instant filtering
     const filteredActivities = useMemo(() => {
         return activities.filter((a) => {
@@ -136,77 +175,110 @@ export default function ActivitiesTab({
         }
     };
 
+    // When an activity is selected, enter full-page ActivityDetailPage
+    if (selectedActivity) {
+        return (
+            <>
+                <ActivityDetailPage
+                    activity={selectedActivity}
+                    scope={scope}
+                    projectId={projectId}
+                    units={units}
+                    onBack={handleBackFromDetail}
+                    onActivityUpdated={() => {
+                        catalogCache.invalidateActivities(scope, projectId);
+                        loadActivities(true);
+                    }}
+                    onAction={handleOpenAction}
+                    onSync={setSyncItem}
+                />
+
+                {/* Reason Modal (Archive / Restore / Delete) */}
+                <ReasonModal
+                    isOpen={isReasonModalOpen}
+                    title={`${actionType === 'delete' ? 'Delete' : actionType === 'archive' ? 'Archive' : 'Restore'} Activity`}
+                    subtitle={`Target: ${actionActivity?.code} - ${actionActivity?.name}`}
+                    confirmText={actionType === 'delete' ? 'Delete Permanently' : actionType === 'archive' ? 'Archive Activity' : 'Restore Activity'}
+                    confirmCls={actionType === 'delete' ? 'bg-red-600 hover:bg-red-700 text-white' : actionType === 'archive' ? 'bg-amber-600 hover:bg-amber-700 text-white' : 'bg-teal-600 hover:bg-teal-700 text-white'}
+                    onClose={() => {
+                        setIsReasonModalOpen(false);
+                        setActionActivity(null);
+                        setActionType(null);
+                    }}
+                    onConfirm={handleConfirmAction}
+                />
+
+                {/* Sync Review Modal */}
+                {syncItem && (
+                    <SyncReviewModal
+                        isOpen={Boolean(syncItem)}
+                        entityType="activity"
+                        itemId={syncItem.id}
+                        itemName={syncItem.name}
+                        itemCode={syncItem.code}
+                        onClose={() => setSyncItem(null)}
+                        onSuccess={() => {
+                            catalogCache.invalidateActivities(scope, projectId);
+                            loadActivities(true);
+                        }}
+                    />
+                )}
+            </>
+        );
+    }
+
     return (
         <div className="space-y-4">
             {/* Top Toolbar */}
-            <div className="flex flex-col sm:flex-row gap-3 items-center justify-between bg-white dark:bg-[#161b22] p-3.5 rounded-xl border border-gray-200 dark:border-gh-border shadow-xs">
-                {/* Search & Status Filter */}
-                <div className="flex flex-wrap items-center gap-2.5 w-full sm:w-auto">
-                    <div className="relative w-full sm:w-64">
-                        <Search size={14} className="absolute left-3 top-2.5 text-gray-400" />
-                        <input
-                            type="text"
-                            value={searchTerm}
-                            onChange={(e) => setSearchTerm(e.target.value)}
-                            placeholder="Search code, name, description..."
-                            className="w-full pl-9 pr-3 py-1.5 text-xs border rounded-lg bg-gray-50 dark:bg-gh-subtle border-gray-300 dark:border-gh-border text-gray-900 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-blue-500/50"
-                        />
-                    </div>
-
+            <CatalogToolbar
+                searchTerm={searchTerm}
+                onSearchChange={setSearchTerm}
+                searchPlaceholder="Search code, name, description..."
+                filters={(
                     <select
                         value={statusFilter}
                         onChange={(e) => setStatusFilter(e.target.value)}
-                        className="px-2.5 py-1.5 text-xs border rounded-lg bg-gray-50 dark:bg-gh-subtle border-gray-300 dark:border-gh-border text-gray-900 dark:text-gray-100"
+                        className="px-2.5 py-1.5 text-xs border rounded-lg bg-gray-50 dark:bg-gh-subtle border-gray-300 dark:border-gh-border text-gray-900 dark:text-gray-100 cursor-pointer"
                     >
                         <option value="active">Active Only</option>
                         <option value="archived">Archived Only</option>
                         <option value="all">All Statuses</option>
                     </select>
+                )}
+                onRefresh={() => {
+                    catalogCache.invalidateActivities(scope, projectId);
+                    loadActivities(true);
+                }}
+                refreshing={refreshing}
+                totalCount={activities.length}
+                filteredCount={filteredActivities.length}
+                actions={(
+                    <>
+                        {scope === 'project' && (
+                            <button
+                                type="button"
+                                onClick={() => setIsImportModalOpen(true)}
+                                className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-lg bg-gray-100 dark:bg-gh-hover text-gray-700 dark:text-gray-200 hover:bg-gray-200 dark:hover:bg-gh-subtle border border-gray-300 dark:border-gh-border transition-colors shadow-xs cursor-pointer"
+                            >
+                                <Download size={14} className="text-blue-500" />
+                                Import from Master
+                            </button>
+                        )}
 
-                    <button
-                        type="button"
-                        onClick={() => {
-                            catalogCache.invalidateActivities(scope, projectId);
-                            loadActivities(true);
-                        }}
-                        disabled={refreshing}
-                        className="p-1.5 text-gray-500 hover:text-blue-600 rounded-lg border border-gray-200 dark:border-gh-border bg-gray-50 dark:bg-gh-subtle transition-colors"
-                        title="Refresh activities from server"
-                    >
-                        <RefreshCw size={13} className={refreshing ? 'animate-spin text-blue-500' : ''} />
-                    </button>
-
-                    <span className="text-[11px] text-gray-400 ml-1">
-                        Showing {filteredActivities.length} of {activities.length}
-                    </span>
-                </div>
-
-                {/* Actions */}
-                <div className="flex items-center gap-2 w-full sm:w-auto justify-end">
-                    {scope === 'project' && (
                         <button
                             type="button"
-                            onClick={() => setIsImportModalOpen(true)}
-                            className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-lg bg-gray-100 dark:bg-gh-hover text-gray-700 dark:text-gray-200 hover:bg-gray-200 dark:hover:bg-gh-subtle border border-gray-300 dark:border-gh-border transition-colors shadow-xs cursor-pointer"
+                            onClick={() => {
+                                setEditingActivity(null);
+                                setIsDrawerOpen(true);
+                            }}
+                            className="flex items-center gap-1.5 px-3.5 py-1.5 text-xs font-semibold rounded-lg bg-blue-600 hover:bg-blue-700 text-white transition-colors shadow-xs cursor-pointer"
                         >
-                            <Download size={14} className="text-blue-500" />
-                            Import from Master
+                            <Plus size={14} />
+                            New Activity
                         </button>
-                    )}
-
-                    <button
-                        type="button"
-                        onClick={() => {
-                            setEditingActivity(null);
-                            setIsDrawerOpen(true);
-                        }}
-                        className="flex items-center gap-1.5 px-3.5 py-1.5 text-xs font-semibold rounded-lg bg-blue-600 hover:bg-blue-700 text-white transition-colors shadow-xs cursor-pointer"
-                    >
-                        <Plus size={14} />
-                        New Activity
-                    </button>
-                </div>
-            </div>
+                    </>
+                )}
+            />
 
             {/* Activities Table */}
             <div className="bg-white dark:bg-[#161b22] border border-gray-200 dark:border-gh-border rounded-xl shadow-xs overflow-hidden">
@@ -252,7 +324,7 @@ export default function ActivitiesTab({
                                             <td className="py-2.5 px-3.5 font-mono font-bold text-gray-900 dark:text-gray-100">
                                                 <button
                                                     type="button"
-                                                    onClick={() => setSelectedActivity(a)}
+                                                    onClick={() => handleSelectActivity(a)}
                                                     className="hover:text-blue-600 hover:underline text-left cursor-pointer"
                                                     title="Click to view norms and dynamic cost calculator"
                                                 >
@@ -308,7 +380,7 @@ export default function ActivitiesTab({
                                             <td className="py-2.5 px-3.5 text-right space-x-1">
                                                 <button
                                                     type="button"
-                                                    onClick={() => setSelectedActivity(a)}
+                                                    onClick={() => handleSelectActivity(a)}
                                                     className="p-1 rounded text-gray-500 hover:text-blue-600 hover:bg-gray-100 dark:hover:bg-gh-hover transition-colors cursor-pointer"
                                                     title="View Norms & Cost Calculator"
                                                 >
@@ -379,20 +451,7 @@ export default function ActivitiesTab({
                 }}
             />
 
-            {/* Detail View */}
-            {selectedActivity && (
-                <ActivityDetailView
-                    activity={selectedActivity}
-                    scope={scope}
-                    projectId={projectId}
-                    units={units}
-                    onClose={() => setSelectedActivity(null)}
-                    onActivityUpdated={() => {
-                        catalogCache.invalidateActivities(scope, projectId);
-                        loadActivities(true);
-                    }}
-                />
-            )}
+
 
             {/* Import from Master Dialog */}
             <ImportMasterDialog

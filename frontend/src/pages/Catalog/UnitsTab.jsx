@@ -152,12 +152,19 @@ export default function UnitsTab({
     units = [],
     onUnitsUpdated
 }) {
-    // Separate standard units (global, org_id is null) from custom tenant units (org_id is set)
-    const standardUnits = units.filter(u => u.org_id === null || u.org_id === undefined);
-    const customUnits = units.filter(u => u.org_id !== null && u.org_id !== undefined);
+    // Partition units into real physical metric dimensions and packaging/trade measures
+    const physicalMetricUnits = useMemo(() => units.filter(u => !isPackagingUnit(u)), [units]);
+    const packagingUnits = useMemo(() => units.filter(u => isPackagingUnit(u)), [units]);
+    const isLoading = units.length === 0;
 
-    // Create / Edit Custom Unit Modal State
+    // Filter states
+    const [metricCategoryFilter, setMetricCategoryFilter] = useState('all');
+    const [metricSearch, setMetricSearch] = useState('');
+    const [packagingSearch, setPackagingSearch] = useState('');
+
+    // Create / Edit Unit Modal State
     const [isUnitModalOpen, setIsUnitModalOpen] = useState(false);
+    const [creationMode, setCreationMode] = useState('physical'); // 'physical' | 'packaging'
     const [editingUnit, setEditingUnit] = useState(null);
     const [unitCode, setUnitCode] = useState('');
     const [unitName, setUnitName] = useState('');
@@ -169,6 +176,34 @@ export default function UnitsTab({
     // Delete Custom Unit State
     const [unitToDelete, setUnitToDelete] = useState(null);
     const [deletingUnit, setDeletingUnit] = useState(false);
+
+    // Filtered lists for both panels
+    const filteredMetricUnits = useMemo(() => {
+        return physicalMetricUnits.filter(u => {
+            if (metricCategoryFilter !== 'all' && u.category !== metricCategoryFilter) return false;
+            if (metricSearch.trim()) {
+                const s = metricSearch.trim().toLowerCase();
+                const matchCode = (u.code || '').toLowerCase().includes(s);
+                const matchName = (u.name || '').toLowerCase().includes(s);
+                const matchSymbol = (u.symbol || '').toLowerCase().includes(s);
+                if (!matchCode && !matchName && !matchSymbol) return false;
+            }
+            return true;
+        });
+    }, [physicalMetricUnits, metricCategoryFilter, metricSearch]);
+
+    const filteredPackagingUnits = useMemo(() => {
+        return packagingUnits.filter(u => {
+            if (packagingSearch.trim()) {
+                const s = packagingSearch.trim().toLowerCase();
+                const matchCode = (u.code || '').toLowerCase().includes(s);
+                const matchName = (u.name || '').toLowerCase().includes(s);
+                const matchSymbol = (u.symbol || '').toLowerCase().includes(s);
+                if (!matchCode && !matchName && !matchSymbol) return false;
+            }
+            return true;
+        });
+    }, [packagingUnits, packagingSearch]);
 
     // Converter Tool State
     const [convertQty, setConvertQty] = useState('1');
@@ -258,12 +293,24 @@ export default function UnitsTab({
         setUnitFactor(p.factor);
     };
 
-    // Open Unit Drawer
-    const openCreateUnit = () => {
+    // Open Unit Modal for Physical Metrics or Packaging Containers
+    const openCreatePhysicalUnit = () => {
         setEditingUnit(null);
+        setCreationMode('physical');
         setUnitCode('');
         setUnitName('');
-        setUnitCategory('volume');
+        setUnitCategory(metricCategoryFilter !== 'all' ? metricCategoryFilter : 'volume');
+        setUnitSymbol('');
+        setUnitFactor('1');
+        setIsUnitModalOpen(true);
+    };
+
+    const openCreatePackagingUnit = () => {
+        setEditingUnit(null);
+        setCreationMode('packaging');
+        setUnitCode('');
+        setUnitName('');
+        setUnitCategory('count');
         setUnitSymbol('');
         setUnitFactor('1');
         setIsUnitModalOpen(true);
@@ -271,6 +318,7 @@ export default function UnitsTab({
 
     const openEditUnit = (u) => {
         setEditingUnit(u);
+        setCreationMode(isPackagingUnit(u) ? 'packaging' : 'physical');
         setUnitCode(u.code);
         setUnitName(u.name);
         setUnitCategory(u.category || 'volume');
@@ -480,90 +528,149 @@ export default function UnitsTab({
 
             {/* ─── Units Registry: Side-by-Side Responsive Grid ─────────────── */}
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-5 items-start">
-                {/* ─── Custom Organization Operational Units ─────────────────── */}
+                {/* ─── Left Panel: Physical Metric Dimensions ("Real Metrics") ─── */}
                 <div className="bg-white dark:bg-[#161b22] p-5 rounded-xl border border-gray-200 dark:border-gh-border shadow-xs space-y-3.5">
-                    <div className="flex items-center justify-between gap-3">
+                    <div className="flex flex-wrap items-center justify-between gap-3">
                         <div className="flex items-center gap-2">
-                            <div className="p-2 rounded-lg bg-purple-50 dark:bg-purple-950/40 text-purple-600 dark:text-purple-400 shrink-0">
-                                <Wrench size={18} />
+                            <div className="p-2 rounded-lg bg-blue-50 dark:bg-blue-950/40 text-blue-600 dark:text-blue-400 shrink-0">
+                                <Scale size={18} />
                             </div>
                             <div>
-                                <h3 className="text-sm font-bold text-gray-900 dark:text-gray-100">
-                                    Custom Operational Units
+                                <h3 className="text-sm font-bold text-gray-900 dark:text-gray-100 flex items-center gap-1.5">
+                                    Physical Metric Dimensions
+                                    <span className="text-[11px] font-semibold px-2 py-0.5 rounded-full bg-blue-50 text-blue-700 dark:bg-blue-950/40 dark:text-blue-300">
+                                        {filteredMetricUnits.length}
+                                    </span>
                                 </h3>
                                 <p className="text-[11px] text-gray-500 dark:text-gray-400">
-                                    Tenant packaging &amp; trade measures
+                                    Continuous physical SI units (Volume, Weight, Length, Area, Time, Count)
                                 </p>
                             </div>
                         </div>
 
                         <button
                             type="button"
-                            onClick={openCreateUnit}
+                            onClick={openCreatePhysicalUnit}
                             className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-lg bg-blue-600 hover:bg-blue-700 text-white transition-colors shadow-xs cursor-pointer shrink-0"
                         >
                             <Plus size={14} />
-                            New Custom Unit
+                            Add Metric Unit
                         </button>
                     </div>
 
-                    {customUnits.length === 0 ? (
-                        <div className="text-center py-12 bg-gray-50 dark:bg-gh-subtle rounded-xl border border-dashed border-gray-300 dark:border-gh-border text-gray-400 text-xs">
-                            No custom units defined yet. Click "New Custom Unit" to add organization-specific units.
+                    {/* Category Filter Pills & Search */}
+                    <div className="space-y-2 pt-1">
+                        <div className="flex flex-wrap gap-1">
+                            {['all', 'volume', 'weight', 'length', 'area', 'time', 'count'].map((cat) => (
+                                <button
+                                    key={cat}
+                                    type="button"
+                                    onClick={() => setMetricCategoryFilter(cat)}
+                                    className={`px-2.5 py-1 rounded-md text-[11px] font-medium transition-colors cursor-pointer capitalize ${
+                                        metricCategoryFilter === cat
+                                            ? 'bg-blue-600 text-white'
+                                            : 'bg-gray-100 text-gray-600 dark:bg-gh-subtle dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gh-hover'
+                                    }`}
+                                >
+                                    {cat === 'all' ? 'All Metrics' : CATEGORY_CONFIG[cat]?.label?.split(' ')[0] || cat}
+                                </button>
+                            ))}
+                        </div>
+
+                        <div className="relative">
+                            <Search size={14} className="absolute left-2.5 top-2.5 text-gray-400" />
+                            <input
+                                type="text"
+                                value={metricSearch}
+                                onChange={(e) => setMetricSearch(e.target.value)}
+                                placeholder="Filter metric units by code or name..."
+                                className="w-full pl-8 pr-3 py-1.5 text-xs border rounded-lg bg-gray-50 dark:bg-gh-subtle border-gray-300 dark:border-gh-border text-gray-900 dark:text-gray-100 focus:outline-none focus:ring-1 focus:ring-blue-500"
+                            />
+                        </div>
+                    </div>
+
+                    {isLoading ? (
+                        <div className="flex flex-col items-center justify-center py-10 text-gray-400">
+                            <Loader2 size={20} className="animate-spin mb-2 text-blue-500" />
+                            <span className="text-xs">Loading physical metric units...</span>
+                        </div>
+                    ) : filteredMetricUnits.length === 0 ? (
+                        <div className="text-center py-10 bg-gray-50 dark:bg-gh-subtle rounded-xl border border-dashed border-gray-300 dark:border-gh-border text-gray-400 text-xs">
+                            No physical metric units match your filter.
                         </div>
                     ) : (
                         <div className="border border-gray-200 dark:border-gh-border rounded-xl overflow-hidden">
-                            <div className="overflow-x-auto max-h-[500px] overflow-y-auto">
+                            <div className="overflow-x-auto max-h-[480px] overflow-y-auto">
                                 <table className="w-full text-xs text-left">
                                     <thead className="bg-gray-50/80 dark:bg-gh-subtle border-b border-gray-200 dark:border-gh-border text-gray-600 dark:text-gray-400 font-semibold uppercase sticky top-0 z-10">
                                         <tr>
-                                            <th className="py-2.5 px-3.5 font-mono">Code</th>
-                                            <th className="py-2.5 px-3.5">Name</th>
-                                            <th className="py-2.5 px-3.5">Category</th>
-                                            <th className="py-2.5 px-3.5">Symbol</th>
-                                            <th className="py-2.5 px-3.5">Base Ratio</th>
-                                            <th className="py-2.5 px-3.5 text-right">Actions</th>
+                                            <th className="py-2 px-3 font-mono">Code</th>
+                                            <th className="py-2 px-3">Name</th>
+                                            <th className="py-2 px-3">Dimension</th>
+                                            <th className="py-2 px-3">Symbol</th>
+                                            <th className="py-2 px-3">Base Ratio</th>
+                                            <th className="py-2 px-3 text-right">Scope / Actions</th>
                                         </tr>
                                     </thead>
                                     <tbody className="divide-y divide-gray-200 dark:divide-gh-border">
-                                        {customUnits.map((u) => {
+                                        {filteredMetricUnits.map((u) => {
                                             const catBase = CATEGORY_CONFIG[u.category]?.baseCode || 'base';
+                                            const isBase = Number(u.is_base) === 1;
+                                            const isCustom = u.org_id !== null && u.org_id !== undefined;
+
                                             return (
                                                 <tr key={u.id} className="hover:bg-gray-50/60 dark:hover:bg-gh-hover/30">
-                                                    <td className="py-2.5 px-3.5 font-mono font-bold text-purple-600 dark:text-purple-400">
+                                                    <td className="py-2 px-3 font-mono font-bold text-blue-600 dark:text-blue-400">
                                                         {u.code}
                                                     </td>
-                                                    <td className="py-2.5 px-3.5 font-medium text-gray-900 dark:text-gray-100">
+                                                    <td className="py-2 px-3 font-medium text-gray-900 dark:text-gray-100">
                                                         {u.name}
                                                     </td>
-                                                    <td className="py-2.5 px-3.5 capitalize text-gray-600 dark:text-gray-300">
-                                                        <span className="inline-flex px-1.5 py-0.5 rounded text-[10px] font-medium bg-purple-50 text-purple-700 dark:bg-purple-950/40 dark:text-purple-300">
+                                                    <td className="py-2 px-3 capitalize">
+                                                        <span className="inline-flex px-1.5 py-0.5 rounded text-[10px] font-medium bg-gray-100 dark:bg-gh-subtle text-gray-700 dark:text-gray-300">
                                                             {u.category || '—'}
                                                         </span>
                                                     </td>
-                                                    <td className="py-2.5 px-3.5 font-mono text-gray-600 dark:text-gray-400">
+                                                    <td className="py-2 px-3 font-mono text-gray-600 dark:text-gray-400">
                                                         {u.symbol || u.code}
                                                     </td>
-                                                    <td className="py-2.5 px-3.5 font-mono text-gray-700 dark:text-gray-300 text-xs">
-                                                        1 {u.code} = {Number(u.to_base_factor)} {catBase}
+                                                    <td className="py-2 px-3 font-mono text-gray-700 dark:text-gray-300 text-xs">
+                                                        {isBase ? (
+                                                            <span className="inline-flex items-center px-1.5 py-0.2 rounded text-[10px] font-semibold bg-emerald-50 text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800">
+                                                                Base (1.0)
+                                                            </span>
+                                                        ) : (
+                                                            <span>1 {u.code} = {Number(u.to_base_factor)} {catBase}</span>
+                                                        )}
                                                     </td>
-                                                    <td className="py-2.5 px-3.5 text-right space-x-1">
-                                                        <button
-                                                            type="button"
-                                                            onClick={() => openEditUnit(u)}
-                                                            className="p-1 rounded text-gray-500 hover:text-blue-600 hover:bg-gray-100 dark:hover:bg-gh-hover transition-colors cursor-pointer"
-                                                            title="Edit Unit"
-                                                        >
-                                                            <Edit2 size={13} />
-                                                        </button>
-                                                        <button
-                                                            type="button"
-                                                            onClick={() => setUnitToDelete(u)}
-                                                            className="p-1 rounded text-gray-500 hover:text-red-600 hover:bg-gray-100 dark:hover:bg-gh-hover transition-colors cursor-pointer"
-                                                            title="Delete Unit"
-                                                        >
-                                                            <Trash2 size={13} />
-                                                        </button>
+                                                    <td className="py-2 px-3 text-right whitespace-nowrap">
+                                                        {isCustom ? (
+                                                            <div className="flex items-center justify-end gap-1">
+                                                                <span className="inline-flex px-1.5 py-0.5 rounded text-[10px] font-semibold bg-purple-50 text-purple-700 dark:bg-purple-950/40 dark:text-purple-300 mr-1">
+                                                                    Custom
+                                                                </span>
+                                                                <button
+                                                                    type="button"
+                                                                    onClick={() => openEditUnit(u)}
+                                                                    className="p-1 rounded text-gray-400 hover:text-blue-600 hover:bg-gray-100 dark:hover:bg-gh-hover transition-colors cursor-pointer"
+                                                                    title="Edit Unit"
+                                                                >
+                                                                    <Edit2 size={13} />
+                                                                </button>
+                                                                <button
+                                                                    type="button"
+                                                                    onClick={() => setUnitToDelete(u)}
+                                                                    className="p-1 rounded text-gray-400 hover:text-red-600 hover:bg-gray-100 dark:hover:bg-gh-hover transition-colors cursor-pointer"
+                                                                    title="Delete Unit"
+                                                                >
+                                                                    <Trash2 size={13} />
+                                                                </button>
+                                                            </div>
+                                                        ) : (
+                                                            <span className="inline-flex items-center gap-1 text-[10px] text-gray-400 font-medium">
+                                                                <ShieldCheck size={11} className="text-gray-400" /> System
+                                                            </span>
+                                                        )}
                                                     </td>
                                                 </tr>
                                             );
@@ -575,81 +682,137 @@ export default function UnitsTab({
                     )}
                 </div>
 
-                {/* ─── Standard System Units (Read-Only) ─────────────────────── */}
+                {/* ─── Right Panel: Packaging & Trade Measures ───────────────── */}
                 <div className="bg-white dark:bg-[#161b22] p-5 rounded-xl border border-gray-200 dark:border-gh-border shadow-xs space-y-3.5">
-                    <div className="flex items-center justify-between gap-3">
+                    <div className="flex flex-wrap items-center justify-between gap-3">
                         <div className="flex items-center gap-2">
-                            <div className="p-2 rounded-lg bg-gray-100 dark:bg-gh-subtle text-gray-700 dark:text-gray-300 shrink-0">
-                                <ShieldCheck size={18} />
+                            <div className="p-2 rounded-lg bg-purple-50 dark:bg-purple-950/40 text-purple-600 dark:text-purple-400 shrink-0">
+                                <Package size={18} />
                             </div>
                             <div>
-                                <h3 className="text-sm font-bold text-gray-900 dark:text-gray-100">
-                                    Global Standard System Units
+                                <h3 className="text-sm font-bold text-gray-900 dark:text-gray-100 flex items-center gap-1.5">
+                                    Packaging &amp; Trade Measures
+                                    <span className="text-[11px] font-semibold px-2 py-0.5 rounded-full bg-purple-50 text-purple-700 dark:bg-purple-950/40 dark:text-purple-300">
+                                        {filteredPackagingUnits.length}
+                                    </span>
                                 </h3>
                                 <p className="text-[11px] text-gray-500 dark:text-gray-400">
-                                    IS &amp; metric standard system registry
+                                    Containers, multipacks &amp; cross-category trade units (cup, bag, drum, bottle, box...)
                                 </p>
                             </div>
                         </div>
-                        <span className="text-[11px] font-semibold px-2.5 py-1 rounded-full bg-gray-100 dark:bg-gh-subtle text-gray-600 dark:text-gray-300 shrink-0">
-                            {standardUnits.length} units
+
+                        <button
+                            type="button"
+                            onClick={openCreatePackagingUnit}
+                            className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-lg bg-purple-600 hover:bg-purple-700 text-white transition-colors shadow-xs cursor-pointer shrink-0"
+                        >
+                            <Plus size={14} />
+                            Add Packaging Unit
+                        </button>
+                    </div>
+
+                    {/* Explanatory Info Card */}
+                    <div className="p-2.5 rounded-lg bg-purple-50/60 dark:bg-purple-950/20 border border-purple-200/80 dark:border-purple-900/40 text-[11px] text-purple-900 dark:text-purple-300 leading-relaxed flex items-start gap-2">
+                        <Info size={14} className="text-purple-600 dark:text-purple-400 shrink-0 mt-0.5" />
+                        <span>
+                            <strong>Packaging Units</strong> represent trade containers or multi-packs. Their material-specific capacity (e.g. <em>1 cup = 250 ml</em>, <em>1 bag = 50 kg</em>) is defined per resource under <strong>Resource Details &rarr; Packaging Conversions</strong>.
                         </span>
                     </div>
 
-                    <div className="border border-gray-200 dark:border-gh-border rounded-xl overflow-hidden">
-                        <div className="overflow-x-auto max-h-[500px] overflow-y-auto">
-                            <table className="w-full text-xs text-left">
-                                <thead className="bg-gray-50/80 dark:bg-gh-subtle border-b border-gray-200 dark:border-gh-border text-gray-600 dark:text-gray-400 font-semibold uppercase sticky top-0 z-10">
-                                    <tr>
-                                        <th className="py-2.5 px-3.5 font-mono">Code</th>
-                                        <th className="py-2.5 px-3.5">Name</th>
-                                        <th className="py-2.5 px-3.5">Category</th>
-                                        <th className="py-2.5 px-3.5">Symbol</th>
-                                        <th className="py-2.5 px-3.5 text-right">Base Conversion</th>
-                                    </tr>
-                                </thead>
-                                <tbody className="divide-y divide-gray-200 dark:divide-gh-border">
-                                    {standardUnits.map((u) => {
-                                        const catBase = CATEGORY_CONFIG[u.category]?.baseCode || 'base';
-                                        const isBase = Number(u.is_base) === 1;
-                                        return (
-                                            <tr key={u.id} className="hover:bg-gray-50/60 dark:hover:bg-gh-hover/30">
-                                                <td className="py-2.5 px-3.5 font-mono font-bold text-blue-600 dark:text-blue-400">
-                                                    {u.code}
-                                                </td>
-                                                <td className="py-2.5 px-3.5 font-medium text-gray-900 dark:text-gray-100">
-                                                    {u.name}
-                                                </td>
-                                                <td className="py-2.5 px-3.5 capitalize text-gray-600 dark:text-gray-300">
-                                                    <span className="inline-flex px-1.5 py-0.5 rounded text-[10px] font-medium bg-gray-100 dark:bg-gh-subtle text-gray-700 dark:text-gray-300">
-                                                        {u.category || '—'}
-                                                    </span>
-                                                </td>
-                                                <td className="py-2.5 px-3.5 font-mono text-gray-600 dark:text-gray-400">
-                                                    {u.symbol || u.code}
-                                                </td>
-                                                <td className="py-2.5 px-3.5 font-mono text-right">
-                                                    {isBase ? (
-                                                        <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-semibold bg-emerald-50 text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800">
-                                                            Canonical Base (1.0)
-                                                        </span>
-                                                    ) : (
-                                                        <span className="text-gray-600 dark:text-gray-400 text-xs">
-                                                            1 {u.code} = {Number(u.to_base_factor)} {catBase}
-                                                        </span>
-                                                    )}
-                                                </td>
-                                            </tr>
-                                        );
-                                    })}
-                                </tbody>
-                            </table>
-                        </div>
+                    {/* Search bar */}
+                    <div className="relative pt-1">
+                        <Search size={14} className="absolute left-2.5 top-3 text-gray-400" />
+                        <input
+                            type="text"
+                            value={packagingSearch}
+                            onChange={(e) => setPackagingSearch(e.target.value)}
+                            placeholder="Filter packaging units by code or container name..."
+                            className="w-full pl-8 pr-3 py-1.5 text-xs border rounded-lg bg-gray-50 dark:bg-gh-subtle border-gray-300 dark:border-gh-border text-gray-900 dark:text-gray-100 focus:outline-none focus:ring-1 focus:ring-purple-500"
+                        />
                     </div>
+
+                    {isLoading ? (
+                        <div className="flex flex-col items-center justify-center py-10 text-gray-400">
+                            <Loader2 size={20} className="animate-spin mb-2 text-purple-500" />
+                            <span className="text-xs">Loading packaging units...</span>
+                        </div>
+                    ) : filteredPackagingUnits.length === 0 ? (
+                        <div className="text-center py-10 bg-gray-50 dark:bg-gh-subtle rounded-xl border border-dashed border-gray-300 dark:border-gh-border text-gray-400 text-xs">
+                            No packaging units match your search.
+                        </div>
+                    ) : (
+                        <div className="border border-gray-200 dark:border-gh-border rounded-xl overflow-hidden">
+                            <div className="overflow-x-auto max-h-[480px] overflow-y-auto">
+                                <table className="w-full text-xs text-left">
+                                    <thead className="bg-gray-50/80 dark:bg-gh-subtle border-b border-gray-200 dark:border-gh-border text-gray-600 dark:text-gray-400 font-semibold uppercase sticky top-0 z-10">
+                                        <tr>
+                                            <th className="py-2 px-3 font-mono">Code</th>
+                                            <th className="py-2 px-3">Name</th>
+                                            <th className="py-2 px-3">Registry Ratio</th>
+                                            <th className="py-2 px-3">Symbol</th>
+                                            <th className="py-2 px-3 text-right">Scope / Actions</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody className="divide-y divide-gray-200 dark:divide-gh-border">
+                                        {filteredPackagingUnits.map((u) => {
+                                            const isCustom = u.org_id !== null && u.org_id !== undefined;
+
+                                            return (
+                                                <tr key={u.id} className="hover:bg-gray-50/60 dark:hover:bg-gh-hover/30">
+                                                    <td className="py-2 px-3 font-mono font-bold text-purple-600 dark:text-purple-400">
+                                                        {u.code}
+                                                    </td>
+                                                    <td className="py-2 px-3 font-medium text-gray-900 dark:text-gray-100">
+                                                        {u.name}
+                                                    </td>
+                                                    <td className="py-2 px-3 font-mono text-gray-600 dark:text-gray-300 text-xs">
+                                                        1 {u.code} = {Number(u.to_base_factor || 1)} count
+                                                    </td>
+                                                    <td className="py-2 px-3 font-mono text-gray-600 dark:text-gray-400">
+                                                        {u.symbol || u.code}
+                                                    </td>
+                                                    <td className="py-2 px-3 text-right whitespace-nowrap">
+                                                        {isCustom ? (
+                                                            <div className="flex items-center justify-end gap-1">
+                                                                <span className="inline-flex px-1.5 py-0.5 rounded text-[10px] font-semibold bg-purple-50 text-purple-700 dark:bg-purple-950/40 dark:text-purple-300 mr-1">
+                                                                    Custom
+                                                                </span>
+                                                                <button
+                                                                    type="button"
+                                                                    onClick={() => openEditUnit(u)}
+                                                                    className="p-1 rounded text-gray-400 hover:text-blue-600 hover:bg-gray-100 dark:hover:bg-gh-hover transition-colors cursor-pointer"
+                                                                    title="Edit Unit"
+                                                                >
+                                                                    <Edit2 size={13} />
+                                                                </button>
+                                                                <button
+                                                                    type="button"
+                                                                    onClick={() => setUnitToDelete(u)}
+                                                                    className="p-1 rounded text-gray-400 hover:text-red-600 hover:bg-gray-100 dark:hover:bg-gh-hover transition-colors cursor-pointer"
+                                                                    title="Delete Unit"
+                                                                >
+                                                                    <Trash2 size={13} />
+                                                                </button>
+                                                            </div>
+                                                        ) : (
+                                                            <span className="inline-flex items-center gap-1 text-[10px] text-gray-400 font-medium">
+                                                                <ShieldCheck size={11} className="text-gray-400" /> System
+                                                            </span>
+                                                        )}
+                                                    </td>
+                                                </tr>
+                                            );
+                                        })}
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+                    )}
                 </div>
             </div>
 
-            {/* Create/Edit Custom Unit Modal */}
+            {/* Create/Edit Unit Modal */}
             {isUnitModalOpen && (
                 <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-fade-in">
                     <div className="relative w-full max-w-lg bg-white dark:bg-[#161b22] border border-gray-200 dark:border-gh-border rounded-xl shadow-2xl p-6 max-h-[90vh] overflow-y-auto">
@@ -659,12 +822,77 @@ export default function UnitsTab({
                         >
                             &times;
                         </button>
-                        <h3 className="text-base font-bold text-gray-900 dark:text-gray-100 mb-1">
-                            {editingUnit ? `Edit Custom Unit: ${editingUnit.code}` : 'Create Custom Operational Unit'}
-                        </h3>
-                        <p className="text-xs text-gray-500 dark:text-gray-400 mb-4">
-                            Custom units are scoped to your organization with mathematically verified conversion factors.
-                        </p>
+
+                        <div className="mb-4">
+                            <h3 className="text-base font-bold text-gray-900 dark:text-gray-100">
+                                {editingUnit
+                                    ? `Edit Unit: ${editingUnit.code}`
+                                    : creationMode === 'packaging'
+                                    ? 'Add Packaging / Trade Container Unit'
+                                    : 'Add Physical Metric Dimension Unit'}
+                            </h3>
+                            <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">
+                                {creationMode === 'packaging'
+                                    ? 'Define a container, measure, or multipack. Link its capacity per material under Resource Details.'
+                                    : 'Define a physical scientific unit with an invariant ratio to the canonical SI base.'}
+                            </p>
+                        </div>
+
+                        {/* Mode Switcher (only for new units) */}
+                        {!editingUnit && (
+                            <div className="flex rounded-lg bg-gray-100 dark:bg-gh-subtle p-1 mb-4">
+                                <button
+                                    type="button"
+                                    onClick={() => {
+                                        setCreationMode('physical');
+                                        setUnitCategory('volume');
+                                    }}
+                                    className={`flex-1 py-1.5 text-xs font-semibold rounded-md transition-all cursor-pointer ${
+                                        creationMode === 'physical'
+                                            ? 'bg-white dark:bg-[#161b22] text-blue-600 dark:text-blue-400 shadow-xs'
+                                            : 'text-gray-600 dark:text-gray-400 hover:text-gray-900'
+                                    }`}
+                                >
+                                    Physical Metric Unit
+                                </button>
+                                <button
+                                    type="button"
+                                    onClick={() => {
+                                        setCreationMode('packaging');
+                                        setUnitCategory('count');
+                                    }}
+                                    className={`flex-1 py-1.5 text-xs font-semibold rounded-md transition-all cursor-pointer ${
+                                        creationMode === 'packaging'
+                                            ? 'bg-white dark:bg-[#161b22] text-purple-600 dark:text-purple-400 shadow-xs'
+                                            : 'text-gray-600 dark:text-gray-400 hover:text-gray-900'
+                                    }`}
+                                >
+                                    Packaging / Trade Container
+                                </button>
+                            </div>
+                        )}
+
+                        {/* Quick Presets */}
+                        {!editingUnit && (
+                            <div className="mb-4 p-3 bg-gray-50 dark:bg-gh-subtle rounded-xl border border-gray-200 dark:border-gh-border">
+                                <span className="text-[11px] font-semibold text-gray-700 dark:text-gray-300 block mb-2">
+                                    {creationMode === 'packaging' ? 'Common Packaging Presets (Click to autofill):' : `Common ${currentCategoryConfig.label} Presets:`}
+                                </span>
+                                <div className="flex flex-wrap gap-1.5">
+                                    {(creationMode === 'packaging' ? PACKAGING_PRESETS : (currentCategoryConfig.presets || [])).map((p) => (
+                                        <button
+                                            key={p.code}
+                                            type="button"
+                                            onClick={() => handleApplyPreset(p)}
+                                            className="px-2 py-1 text-[11px] rounded bg-white dark:bg-[#161b22] border border-gray-200 dark:border-gh-border text-gray-800 dark:text-gray-200 hover:border-blue-500 hover:text-blue-600 dark:hover:border-blue-400 transition-colors cursor-pointer"
+                                            title={p.note}
+                                        >
+                                            {p.label}
+                                        </button>
+                                    ))}
+                                </div>
+                            </div>
+                        )}
 
                         <form onSubmit={handleSaveUnit} className="space-y-4">
                             <div className="grid grid-cols-2 gap-3">
@@ -677,7 +905,7 @@ export default function UnitsTab({
                                         value={unitCode}
                                         onChange={handleCodeChange}
                                         disabled={Boolean(editingUnit)}
-                                        placeholder="e.g. ml, box10, drum"
+                                        placeholder="e.g. ml, cup, drum"
                                         className={`w-full px-2.5 py-1.5 text-xs font-mono border rounded-lg ${
                                             editingUnit
                                                 ? 'bg-gray-100 dark:bg-gh-subtle text-gray-400 cursor-not-allowed'
@@ -696,7 +924,7 @@ export default function UnitsTab({
                                         type="text"
                                         value={unitSymbol}
                                         onChange={(e) => setUnitSymbol(e.target.value)}
-                                        placeholder="e.g. ml, bx10, drm"
+                                        placeholder="e.g. ml, cup, drm"
                                         className="w-full px-2.5 py-1.5 text-xs font-mono border rounded-lg bg-white dark:bg-[#0d1117] border-gray-300 dark:border-gh-border text-gray-900 dark:text-gray-100 focus:ring-1 focus:ring-blue-500"
                                     />
                                     <span className="text-[10px] text-gray-400">Notation label</span>
@@ -711,34 +939,36 @@ export default function UnitsTab({
                                     type="text"
                                     value={unitName}
                                     onChange={(e) => setUnitName(e.target.value)}
-                                    placeholder="e.g. Millilitre or Box of 10 Pieces"
+                                    placeholder="e.g. Millilitre or Cup Container (~250 ml)"
                                     className="w-full px-2.5 py-1.5 text-xs border rounded-lg bg-white dark:bg-[#0d1117] border-gray-300 dark:border-gh-border text-gray-900 dark:text-gray-100 focus:ring-1 focus:ring-blue-500"
                                     required
                                 />
                             </div>
 
-                            <div>
-                                <label className="block text-[11px] font-semibold text-gray-700 dark:text-gray-300 mb-1">
-                                    Physical Category <span className="text-red-500">*</span>
-                                </label>
-                                <select
-                                    value={unitCategory}
-                                    onChange={(e) => setUnitCategory(e.target.value)}
-                                    disabled={Boolean(editingUnit)}
-                                    className={`w-full px-2.5 py-1.5 text-xs border rounded-lg ${
-                                        editingUnit
-                                            ? 'bg-gray-100 dark:bg-gh-subtle text-gray-400 cursor-not-allowed'
-                                            : 'bg-white dark:bg-[#0d1117] border-gray-300 dark:border-gh-border text-gray-900 dark:text-gray-100 focus:ring-1 focus:ring-blue-500'
-                                    }`}
-                                >
-                                    <option value="volume">Volume (Canonical Base: m³)</option>
-                                    <option value="weight">Weight / Mass (Canonical Base: kg)</option>
-                                    <option value="count">Count / Quantity (Canonical Base: nos)</option>
-                                    <option value="length">Length / Distance (Canonical Base: m)</option>
-                                    <option value="area">Area / Surface (Canonical Base: m²)</option>
-                                    <option value="time">Time / Duration (Canonical Base: hr)</option>
-                                </select>
-                            </div>
+                            {creationMode === 'physical' ? (
+                                <div>
+                                    <label className="block text-[11px] font-semibold text-gray-700 dark:text-gray-300 mb-1">
+                                        Physical Category <span className="text-red-500">*</span>
+                                    </label>
+                                    <select
+                                        value={unitCategory}
+                                        onChange={(e) => setUnitCategory(e.target.value)}
+                                        disabled={Boolean(editingUnit)}
+                                        className={`w-full px-2.5 py-1.5 text-xs border rounded-lg ${
+                                            editingUnit
+                                                ? 'bg-gray-100 dark:bg-gh-subtle text-gray-400 cursor-not-allowed'
+                                                : 'bg-white dark:bg-[#0d1117] border-gray-300 dark:border-gh-border text-gray-900 dark:text-gray-100 focus:ring-1 focus:ring-blue-500'
+                                        }`}
+                                    >
+                                        <option value="volume">Volume (Canonical Base: m³)</option>
+                                        <option value="weight">Weight / Mass (Canonical Base: kg)</option>
+                                        <option value="count">Count / Quantity (Canonical Base: nos)</option>
+                                        <option value="length">Length / Distance (Canonical Base: m)</option>
+                                        <option value="area">Area / Surface (Canonical Base: m²)</option>
+                                        <option value="time">Time / Duration (Canonical Base: hr)</option>
+                                    </select>
+                                </div>
+                            ) : null}
 
                             {/* Dynamic Base Unit & Conversion Factor Card */}
                             <div className="p-3.5 rounded-lg border border-blue-200 dark:border-blue-900/50 bg-blue-50/50 dark:bg-blue-950/20 space-y-3">
@@ -754,7 +984,9 @@ export default function UnitsTab({
 
                                 <div>
                                     <label className="block text-[11px] font-semibold text-gray-700 dark:text-gray-300 mb-1">
-                                        Conversion Multiplier to Base Unit ({currentCategoryConfig.baseCode}) <span className="text-red-500">*</span>
+                                        {creationMode === 'packaging'
+                                            ? 'Count Multiplier (1 for single container, N for multipack)'
+                                            : `Conversion Multiplier to Base Unit (${currentCategoryConfig.baseCode})`} <span className="text-red-500">*</span>
                                     </label>
                                     <input
                                         type="number"
@@ -762,12 +994,14 @@ export default function UnitsTab({
                                         min="0.0000000001"
                                         value={unitFactor}
                                         onChange={(e) => setUnitFactor(e.target.value)}
-                                        placeholder="e.g. 0.000001, 10, or 1000"
+                                        placeholder="e.g. 0.000001, 1, or 10"
                                         className="w-full px-2.5 py-1.5 text-xs font-mono border rounded-lg bg-white dark:bg-[#0d1117] border-gray-300 dark:border-gh-border text-gray-900 dark:text-gray-100 focus:ring-1 focus:ring-blue-500"
                                         required
                                     />
                                     <p className="text-[10px] text-gray-500 dark:text-gray-400 mt-1">
-                                        How many <strong>{currentCategoryConfig.baseCode}</strong> equal 1 <strong>{unitCode.trim() || 'unit'}</strong>?
+                                        {creationMode === 'packaging'
+                                            ? 'Containers default to 1 count. Multipacks (like box of 10) have multiplier = 10.'
+                                            : `How many ${currentCategoryConfig.baseCode} equal 1 ${unitCode.trim() || 'unit'}?`}
                                     </p>
                                 </div>
 
@@ -792,10 +1026,12 @@ export default function UnitsTab({
                                 <button
                                     type="submit"
                                     disabled={submittingUnit || !unitCode.trim() || !unitName.trim()}
-                                    className="px-4 py-1.5 text-xs font-semibold rounded-lg bg-blue-600 hover:bg-blue-700 text-white flex items-center gap-1.5 cursor-pointer shadow-xs disabled:opacity-50"
+                                    className={`px-4 py-1.5 text-xs font-semibold rounded-lg text-white flex items-center gap-1.5 cursor-pointer shadow-xs disabled:opacity-50 ${
+                                        creationMode === 'packaging' ? 'bg-purple-600 hover:bg-purple-700' : 'bg-blue-600 hover:bg-blue-700'
+                                    }`}
                                 >
                                     {submittingUnit && <Loader2 size={12} className="animate-spin" />}
-                                    {editingUnit ? 'Save Changes' : 'Create Unit'}
+                                    {editingUnit ? 'Save Changes' : creationMode === 'packaging' ? 'Create Packaging Unit' : 'Create Metric Unit'}
                                 </button>
                             </div>
                         </form>
