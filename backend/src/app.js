@@ -21,11 +21,29 @@ export const allowedOrigins = [
     'https://www.mano.co.in'
 ];
 
+const isDevLanOrigin = (origin) => {
+    if (process.env.NODE_ENV === 'production') return false;
+    try {
+        const url = new URL(origin);
+        const host = url.hostname;
+        return (
+            host === 'localhost' ||
+            host === '127.0.0.1' ||
+            host.endsWith('.local') ||
+            /^192\.168\.\d+\.\d+$/.test(host) ||
+            /^10\.\d+\.\d+\.\d+$/.test(host) ||
+            /^172\.(1[6-9]|2\d|3[0-1])\.\d+\.\d+$/.test(host)
+        );
+    } catch {
+        return false;
+    }
+};
+
 app.use(cors({
     origin: (origin, callback) => {
         // Allow requests with no origin (like mobile apps or curl requests)
         if (!origin) return callback(null, true);
-        if (allowedOrigins.indexOf(origin) !== -1) {
+        if (allowedOrigins.indexOf(origin) !== -1 || isDevLanOrigin(origin)) {
             callback(null, true);
         } else {
             callback(new AppError('Not allowed by CORS', 403));

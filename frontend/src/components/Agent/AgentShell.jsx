@@ -6,8 +6,9 @@ import { agentReducer, canSend, initialAgentState } from './agentReducer.js';
 import { createDecision, isAgentEvent, isExpired, isPreviewEvent } from './agentModel.js';
 import { extractAgentContext, projectDisplay, getNavigationTrail } from './agentContext.js';
 import { previewTransport } from './agentTransport.js';
+import { safeRandomUUID } from '../../utils/uuid.js';
 
-const makeId = () => crypto.randomUUID();
+const makeId = () => safeRandomUUID();
 
 /**
  * Persistent Agent Shell container providing drawer toggles, entity context propagation,
@@ -77,9 +78,9 @@ export default function AgentShell({ transport = previewTransport }) {
                 setAttachment({
                     file,
                     uploadInfo: isSpreadsheet
-                        ? { uploadId: crypto.randomUUID(), kind: 'spreadsheet', filename: file.name, sheetName: 'Sheet1', totalRows: 25,
+                        ? { uploadId: safeRandomUUID(), kind: 'spreadsheet', filename: file.name, sheetName: 'Sheet1', totalRows: 25,
                             headers: ['Vendor Name', 'Contact Person', 'Phone', 'Category', 'Address'], preview: [] }
-                        : { uploadId: crypto.randomUUID(), kind: 'attachment', filename: file.name, mimeType: file.type || 'application/octet-stream',
+                        : { uploadId: safeRandomUUID(), kind: 'attachment', filename: file.name, mimeType: file.type || 'application/octet-stream',
                             size: file.size, approvedForAgentWrite }
                 });
             }

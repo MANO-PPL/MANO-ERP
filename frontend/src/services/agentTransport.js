@@ -1,7 +1,8 @@
 import { isAgentEvent } from '../components/Agent/agentModel.js';
 import { getAccessToken, refreshAccessToken } from './api.js';
+import { safeRandomUUID } from '../utils/uuid.js';
 
-export function createConnectedTransport({ fetchImpl = (...args) => fetch(...args), randomKey = () => crypto.randomUUID(), refreshAuth = refreshAccessToken } = {}) {
+export function createConnectedTransport({ fetchImpl = (...args) => fetch(...args), randomKey = () => safeRandomUUID(), refreshAuth = refreshAccessToken } = {}) {
     const logicalKeys = new WeakMap();
     const receipts = new Map();
     const emitError = (options, code, retrySafe = false) => options.onEvent({ type: 'agent_error', eventId: randomKey(),
