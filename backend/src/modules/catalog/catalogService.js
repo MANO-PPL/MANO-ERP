@@ -1746,14 +1746,11 @@ export async function updateActivity(id, patch, externalTrx = null) {
             if (!isUnitAccessibleForOrg(unit.org_id, existing.org_id)) {
                 throw new CatalogError(CatalogErrorCodes.CAT_UNIT_INCOMPATIBLE, 'Output unit belongs to another organization');
             }
-            const [hasNorm, externalInUse] = await Promise.all([
-                trx('cat_activity_norm').where({ activity_id: id }).first(),
-                runUsageChecks('activity', [id]),
-            ]);
-            if (hasNorm || externalInUse.length > 0) {
+            const externalInUse = await runUsageChecks('activity', [id]);
+            if (externalInUse.length > 0) {
                 throw new CatalogError(
                     CatalogErrorCodes.CAT_IN_USE,
-                    'Cannot change activity output unit while norms or external records reference this activity'
+                    'Cannot change activity output unit because this activity is actively referenced by downstream project transactions (DPR, WIP, or Billing).'
                 );
             }
             updateData.output_unit_id = Number(nextOutputUnitId);
@@ -2210,10 +2207,11 @@ export async function removeNorm(normId, reason, options = {}, externalTrx = nul
         if (!activity) throw new CatalogError(CatalogErrorCodes.CAT_NOT_FOUND, 'Activity not found');
 
         const effFrom = toDateStr(existing.effective_from, 'effective_from');
-        if (effFrom <= today) {
+        const externalInUse = await runUsageChecks('activity', [existing.activity_id]);
+        if (externalInUse.length > 0) {
             throw new CatalogError(
-                CatalogErrorCodes.CAT_INVALID_VALUE,
-                `Past or active norm (${effFrom}) cannot be removed; use correctNorm instead`
+                CatalogErrorCodes.CAT_IN_USE,
+                'Cannot remove norm because this activity is actively referenced by downstream project transactions (DPR, WIP, or Billing).'
             );
         }
 

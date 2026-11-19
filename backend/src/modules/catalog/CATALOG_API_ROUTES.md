@@ -588,7 +588,7 @@ Activities represent construction or engineering tasks (e.g. Masonry, Painting, 
 * **Method**: `DELETE`
 * **Path**: `/api/catalog/norms/:normId`
 * **Query or Body**: `{ "reason": "Engineering revision cancelled" }`
-* **Guarantees**: Only scheduled future norm lines (`effective_from > today`) can be deleted. Past and active norm lines reject deletion with `CAT_INVALID_VALUE` to protect estimation history.
+* **Guarantees**: Norm lines can be deleted as long as the parent activity has not been referenced in downstream project transactions (DPR, WIP, Billing). When referenced downstream, deletion is rejected with `CAT_IN_USE` to protect historical audit integrity.
 * **Response**: `200 OK`
 
 [⬆ Back to Master API Route Index](#master-api-route-index)
