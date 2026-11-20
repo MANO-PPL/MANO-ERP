@@ -1,8 +1,30 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
-import { ChevronDown, Check, Plus, SlidersHorizontal } from 'lucide-react';
+import {
+    ChevronDown,
+    Check,
+    Plus,
+    SlidersHorizontal,
+    Trash2,
+    Calendar,
+    Phone,
+    Mail,
+    MessageSquare,
+    MapPin,
+    Users,
+    Clock,
+    History
+} from 'lucide-react';
 import { toast } from 'react-toastify';
 import api from '../../services/api';
 import ManageMetadataModal from '../../components/ManageMetadataModal';
+
+const INTERACTION_TYPES = [
+    { type: 'Call', label: 'Call', icon: Phone },
+    { type: 'WhatsApp', label: 'WhatsApp', icon: MessageSquare },
+    { type: 'Email', label: 'Email', icon: Mail },
+    { type: 'Site Visit', label: 'Site Visit', icon: MapPin },
+    { type: 'Meeting', label: 'Meeting', icon: Users }
+];
 
 /**
  * Modal form for adding or updating client organization records, sectors, and job nature classifications.
@@ -42,6 +64,30 @@ const AddEditClient = ({
     const [showJobNatureDropdown, setShowJobNatureDropdown] = useState(false);
     const [isAddingJobNature, setIsAddingJobNature] = useState(false);
     const [isAddingSector, setIsAddingSector] = useState(false);
+    const [interactions, setInteractions] = useState([]);
+
+    const handleAddInteraction = () => {
+        setInteractions((prev) => [
+            ...prev,
+            {
+                id: `temp_${Date.now()}_${Math.random().toString(36).substr(2, 5)}`,
+                type: 'Call',
+                interaction_date: new Date().toISOString().split('T')[0],
+                follow_up_date: '',
+                remarks: ''
+            }
+        ]);
+    };
+
+    const handleRemoveInteraction = (index) => {
+        setInteractions((prev) => prev.filter((_, idx) => idx !== index));
+    };
+
+    const handleInteractionChange = (index, field, value) => {
+        setInteractions((prev) =>
+            prev.map((item, idx) => (idx === index ? { ...item, [field]: value } : item))
+        );
+    };
 
     // Manage Metadata Modal State
     const [metadataModal, setMetadataModal] = useState({
@@ -131,6 +177,7 @@ const AddEditClient = ({
             });
             setSectorSearch(initialData.sector_name || initialData.sector || '');
             setJobNatureSearch(initialData.job_name || initialData.job_nature || '');
+            setInteractions([]);
         } else {
             setFormData({
                 name: '',
@@ -149,6 +196,7 @@ const AddEditClient = ({
             });
             setSectorSearch('');
             setJobNatureSearch('');
+            setInteractions([]);
         }
     }, [initialData, isOpen]);
 
@@ -159,7 +207,19 @@ const AddEditClient = ({
 
     const handleSubmit = (e) => {
         e.preventDefault();
-        onSave(formData);
+        const validInteractions = interactions
+            .filter((i) => i.type && (i.interaction_date || i.remarks?.trim() || i.follow_up_date))
+            .map((i) => ({
+                type: i.type,
+                interaction_date: i.interaction_date || new Date().toISOString().split('T')[0],
+                follow_up_date: i.follow_up_date || null,
+                remarks: i.remarks?.trim() || null
+            }));
+
+        onSave({
+            ...formData,
+            interactions: validInteractions
+        });
         onClose();
     };
 
@@ -571,6 +631,183 @@ const AddEditClient = ({
                                 onChange={handleChange}
                                 className={inputClasses}
                             />
+                        </div>
+
+                        {/* ─── Interactions Section ─── */}
+                        <div className="md:col-span-2 border-t border-gray-100 dark:border-white/5 pt-5 mt-1">
+                            <div className="flex items-center justify-between mb-3">
+                                <div className="flex items-center gap-2">
+                                    <div className="w-6 h-6 rounded-md bg-blue-50 dark:bg-blue-950/40 text-blue-600 dark:text-blue-400 flex items-center justify-center">
+                                        <Clock size={13} className="stroke-[2.5]" />
+                                    </div>
+                                    <div>
+                                        <h3 className="text-xs font-bold uppercase tracking-wider text-gray-800 dark:text-gray-200">
+                                            Interactions
+                                        </h3>
+                                        <p className="text-[11px] text-gray-500 dark:text-gray-400">
+                                            Log initial calls, emails, WhatsApp messages, or follow-up tasks
+                                        </p>
+                                    </div>
+                                </div>
+                                <button
+                                    type="button"
+                                    onClick={handleAddInteraction}
+                                    className="px-2.5 py-1.5 bg-blue-50 hover:bg-blue-100 dark:bg-blue-950/50 dark:hover:bg-blue-900/60 text-blue-600 dark:text-blue-400 border border-blue-200/80 dark:border-blue-800/60 rounded-lg text-xs font-semibold flex items-center gap-1 transition-all cursor-pointer shadow-xs"
+                                >
+                                    <Plus size={12} className="stroke-[3]" />
+                                    <span>Add Interaction</span>
+                                </button>
+                            </div>
+
+                            {/* Display existing interactions if editing a client with history */}
+                            {initialData?.interactions && initialData.interactions.length > 0 && (
+                                <div className="mb-4 p-3 bg-gray-50/70 dark:bg-white/[0.02] border border-gray-200/70 dark:border-white/5 rounded-xl">
+                                    <div className="flex items-center gap-1.5 mb-2 text-gray-500 dark:text-gray-400 text-xs font-semibold">
+                                        <History size={12} />
+                                        <span>Existing Interactions ({initialData.interactions.length})</span>
+                                    </div>
+                                    <div className="max-h-36 overflow-y-auto space-y-2 pr-1 custom-scrollbar">
+                                        {initialData.interactions.map((past, pIdx) => (
+                                            <div
+                                                key={past.id || pIdx}
+                                                className="p-2 bg-white dark:bg-[#161b22] border border-gray-200/60 dark:border-white/5 rounded-lg text-xs flex items-start justify-between gap-2"
+                                            >
+                                                <div className="min-w-0">
+                                                    <div className="flex items-center gap-2">
+                                                        <span className="font-semibold text-blue-600 dark:text-blue-400">
+                                                            {past.type}
+                                                        </span>
+                                                        <span className="text-[11px] text-gray-400">
+                                                            {past.interaction_date ? new Date(past.interaction_date).toLocaleDateString() : '—'}
+                                                        </span>
+                                                        {past.follow_up_date && (
+                                                            <span className="text-[10px] bg-amber-50 dark:bg-amber-950/40 text-amber-600 dark:text-amber-400 px-1.5 py-0.5 rounded font-medium">
+                                                                Follow-up: {new Date(past.follow_up_date).toLocaleDateString()}
+                                                            </span>
+                                                        )}
+                                                    </div>
+                                                    {past.remarks && (
+                                                        <p className="text-gray-600 dark:text-gray-300 text-[11px] mt-0.5 truncate">
+                                                            {past.remarks}
+                                                        </p>
+                                                    )}
+                                                </div>
+                                                {past.interacted_by_name && (
+                                                    <span className="text-[10px] text-gray-400 shrink-0">
+                                                        by {past.interacted_by_name}
+                                                    </span>
+                                                )}
+                                            </div>
+                                        ))}
+                                    </div>
+                                </div>
+                            )}
+
+                            {/* List of New Interactions to Add */}
+                            {interactions.length > 0 && (
+                                <div className="space-y-3.5">
+                                    {interactions.map((item, idx) => (
+                                        <div
+                                            key={item.id || idx}
+                                            className="p-4 bg-gray-50/80 dark:bg-white/[0.03] border border-gray-200/80 dark:border-white/10 rounded-xl space-y-3 relative transition-all"
+                                        >
+                                            {/* Interaction Header */}
+                                            <div className="flex items-center justify-between">
+                                                <div className="flex items-center gap-2">
+                                                    <span className="text-[11px] font-bold text-gray-500 dark:text-gray-400 uppercase tracking-wider">
+                                                        Interaction #{idx + 1}
+                                                    </span>
+                                                </div>
+                                                <button
+                                                    type="button"
+                                                    onClick={() => handleRemoveInteraction(idx)}
+                                                    className="p-1 text-gray-400 hover:text-red-600 dark:hover:text-red-400 hover:bg-red-50 dark:hover:bg-red-950/30 rounded-md transition cursor-pointer"
+                                                    title="Remove this interaction"
+                                                >
+                                                    <Trash2 size={14} />
+                                                </button>
+                                            </div>
+
+                                            {/* Interaction Type Selection */}
+                                            <div>
+                                                <label className="block text-[11px] font-semibold text-gray-600 dark:text-gray-400 mb-1">
+                                                    Type <span className="text-red-500">*</span>
+                                                </label>
+                                                <div className="flex flex-wrap gap-1.5">
+                                                    {INTERACTION_TYPES.map(({ type, icon: Icon }) => {
+                                                        const isSelected = item.type?.toLowerCase() === type.toLowerCase();
+                                                        return (
+                                                            <button
+                                                                key={type}
+                                                                type="button"
+                                                                onClick={() => handleInteractionChange(idx, 'type', type)}
+                                                                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition cursor-pointer ${
+                                                                    isSelected
+                                                                        ? 'bg-blue-600 text-white shadow-sm shadow-blue-500/25 ring-1 ring-blue-500'
+                                                                        : 'bg-white dark:bg-[#161b22] hover:bg-gray-100 dark:hover:bg-white/5 text-gray-700 dark:text-gray-300 border border-gray-200 dark:border-white/10'
+                                                                }`}
+                                                            >
+                                                                <Icon size={12} className={isSelected ? 'text-white' : 'text-blue-500'} />
+                                                                <span>{type}</span>
+                                                            </button>
+                                                        );
+                                                    })}
+                                                </div>
+                                            </div>
+
+                                            {/* Date Fields: Interaction Date & Follow-up Date */}
+                                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                                                <div>
+                                                    <label className="block text-[11px] font-semibold text-gray-600 dark:text-gray-400 mb-1">
+                                                        Interaction Date <span className="text-red-500">*</span>
+                                                    </label>
+                                                    <input
+                                                        type="date"
+                                                        value={item.interaction_date}
+                                                        onChange={(e) => handleInteractionChange(idx, 'interaction_date', e.target.value)}
+                                                        className="w-full bg-white dark:bg-white/5 border border-gray-300 dark:border-white/10 rounded-lg px-3 py-2 text-xs text-gray-900 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                                                        required
+                                                    />
+                                                </div>
+                                                <div>
+                                                    <label className="block text-[11px] font-semibold text-gray-600 dark:text-gray-400 mb-1">
+                                                        Follow-up Date (Optional)
+                                                    </label>
+                                                    <input
+                                                        type="date"
+                                                        value={item.follow_up_date || ''}
+                                                        onChange={(e) => handleInteractionChange(idx, 'follow_up_date', e.target.value)}
+                                                        className="w-full bg-white dark:bg-white/5 border border-gray-300 dark:border-white/10 rounded-lg px-3 py-2 text-xs text-gray-900 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                                                    />
+                                                </div>
+                                            </div>
+
+                                            {/* Remarks / Discussion Notes */}
+                                            <div>
+                                                <label className="block text-[11px] font-semibold text-gray-600 dark:text-gray-400 mb-1">
+                                                    Discussion Remarks / Notes
+                                                </label>
+                                                <textarea
+                                                    rows={2}
+                                                    value={item.remarks}
+                                                    onChange={(e) => handleInteractionChange(idx, 'remarks', e.target.value)}
+                                                    placeholder="Enter summary of discussion, client requirements, or next steps..."
+                                                    className="w-full bg-white dark:bg-white/5 border border-gray-300 dark:border-white/10 rounded-lg p-2.5 text-xs text-gray-900 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none"
+                                                />
+                                            </div>
+                                        </div>
+                                    ))}
+
+                                    <button
+                                        type="button"
+                                        onClick={handleAddInteraction}
+                                        className="w-full py-2 bg-gray-50 hover:bg-gray-100 dark:bg-white/[0.02] dark:hover:bg-white/[0.05] border border-dashed border-gray-300 dark:border-white/15 text-blue-600 dark:text-blue-400 rounded-xl text-xs font-semibold flex items-center justify-center gap-1.5 transition-all cursor-pointer"
+                                    >
+                                        <Plus size={13} className="stroke-[2.5]" />
+                                        <span>Add Another Interaction</span>
+                                    </button>
+                                </div>
+                            )}
                         </div>
                     </form>
                 </div>

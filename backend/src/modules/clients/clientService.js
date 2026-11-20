@@ -198,120 +198,174 @@ export async function getClientById(orgId, id, options = {}) {
 }
 
 export async function createClient(orgId, data, options = {}) {
-    const connection = options.transaction || db;
-    if (!data.name) {
-        throw new AppError('Client name is required', 400);
-    }
-
-    if (options.skipDuplicateCheck !== true) {
-        const existing = await connection('crm_contacts')
-            .where({ org_id: orgId })
-            .whereRaw('LOWER(TRIM(name)) = ?', [String(data.name).trim().toLowerCase()])
-            .whereRaw('LOWER(??) = ?', ['category', 'client'])
-            .first();
-        if (existing) {
-            throw new AppError(`Data already exists: A client with the name "${data.name.trim()}" already exists`, 409);
+    const run = async (connection) => {
+        if (!data.name) {
+            throw new AppError('Client name is required', 400);
         }
-    }
 
-    const insertData = {
-        org_id: orgId,
-        name: data.name,
-        sector_id: data.sector_id || null,
-        job_nature_id: data.job_nature_id || data.job_id || null,
-        category: 'Client',
-        contact_person: data.contact_person || null,
-        designation: data.designation || null,
-        telephone_no: (data.telephone_no !== undefined ? data.telephone_no : data.contact_no) || null,
-        mobile: data.mobile || null,
-        email: data.email || null,
-        address: data.address || null,
-        location: data.location || null,
-        website: (data.website !== undefined ? data.website : data.web_site) || null,
-        gst_no: (data.gst_no !== undefined ? data.gst_no : data.qst_no) || null,
-        constitution: data.constitution || null,
-        reference: data.reference || null,
-        responsibility: data.responsibility || null,
-        remarks: (data.remarks !== undefined ? data.remarks : (data.remark !== undefined ? data.remark : data.self_remark)) || null
+        if (options.skipDuplicateCheck !== true) {
+            const existing = await connection('crm_contacts')
+                .where({ org_id: orgId })
+                .whereRaw('LOWER(TRIM(name)) = ?', [String(data.name).trim().toLowerCase()])
+                .whereRaw('LOWER(??) = ?', ['category', 'client'])
+                .first();
+            if (existing) {
+                throw new AppError(`Data already exists: A client with the name "${data.name.trim()}" already exists`, 409);
+            }
+        }
+
+        const insertData = {
+            org_id: orgId,
+            name: data.name,
+            sector_id: data.sector_id || null,
+            job_nature_id: data.job_nature_id || data.job_id || null,
+            category: 'Client',
+            contact_person: data.contact_person || null,
+            designation: data.designation || null,
+            telephone_no: (data.telephone_no !== undefined ? data.telephone_no : data.contact_no) || null,
+            mobile: data.mobile || null,
+            email: data.email || null,
+            address: data.address || null,
+            location: data.location || null,
+            website: (data.website !== undefined ? data.website : data.web_site) || null,
+            gst_no: (data.gst_no !== undefined ? data.gst_no : data.qst_no) || null,
+            constitution: data.constitution || null,
+            reference: data.reference || null,
+            responsibility: data.responsibility || null,
+            remarks: (data.remarks !== undefined ? data.remarks : (data.remark !== undefined ? data.remark : data.self_remark)) || null
+        };
+
+        // Resolve sector name to ID if provided as string
+        if ((data.sector || data.sector_name) && !data.sector_id && !insertData.sector_id) {
+            insertData.sector_id = await findOrCreateSector(orgId, data.sector || data.sector_name, connection);
+        }
+        // Resolve job nature name to ID if provided as string
+        if ((data.job_nature || data.job_nature_name || data.job_name) && !data.job_nature_id && !data.job_id && !insertData.job_nature_id) {
+            insertData.job_nature_id = await findOrCreateJobNature(orgId, data.job_nature || data.job_nature_name || data.job_name, connection);
+        }
+
+        const [newId] = await connection('crm_contacts').insert(insertData);
+
+        // Save interactions if provided
+        const rawInteractions = Array.isArray(data.interactions)
+            ? data.interactions
+            : (data.interaction ? [data.interaction] : []);
+
+        for (const item of rawInteractions) {
+            if (!item || !item.type) continue;
+            await createInteraction(orgId, {
+                contact_id: newId,
+                type: item.type,
+                interaction_date: item.interaction_date || new Date().toISOString().split('T')[0],
+                follow_up_date: item.follow_up_date || null,
+                remarks: item.remarks || null,
+                interacted_by: item.interacted_by || data.interacted_by || options.userId || null
+            }, { transaction: connection });
+        }
+
+        return newId;
     };
 
-    // Resolve sector name to ID if provided as string
-    if ((data.sector || data.sector_name) && !data.sector_id && !insertData.sector_id) {
-        insertData.sector_id = await findOrCreateSector(orgId, data.sector || data.sector_name);
+    if (options.transaction) {
+        return await run(options.transaction);
+    } else {
+        return await db.transaction(async (trx) => {
+            return await run(trx);
+        });
     }
-    // Resolve job nature name to ID if provided as string
-    if ((data.job_nature || data.job_nature_name || data.job_name) && !data.job_nature_id && !data.job_id && !insertData.job_nature_id) {
-        insertData.job_nature_id = await findOrCreateJobNature(orgId, data.job_nature || data.job_nature_name || data.job_name);
-    }
-
-    const [newId] = await connection('crm_contacts').insert(insertData);
-    return newId;
 }
 
 export async function updateClient(orgId, id, data, options = {}) {
-    const connection = options.transaction || db;
-    const client = await connection('crm_contacts')
-        .where({ id, org_id: orgId })
-        .whereRaw('LOWER(??) = ?', ['category', 'client'])
-        .first();
-    if (!client) {
-        throw new AppError('Client not found', 404);
-    }
+    const run = async (connection) => {
+        const client = await connection('crm_contacts')
+            .where({ id, org_id: orgId })
+            .whereRaw('LOWER(??) = ?', ['category', 'client'])
+            .first();
+        if (!client) {
+            throw new AppError('Client not found', 404);
+        }
 
-    const updateData = {};
+        const updateData = {};
 
-    // Mapping frontend fields to DB columns
-    if (data.name !== undefined) updateData.name = data.name;
-    if (data.sector_id !== undefined) updateData.sector_id = data.sector_id;
-    if (data.job_nature_id !== undefined) updateData.job_nature_id = data.job_nature_id;
-    if (data.job_id !== undefined) updateData.job_nature_id = data.job_id;
-    updateData.category = 'Client';
-    if (data.contact_person !== undefined) updateData.contact_person = data.contact_person;
-    if (data.designation !== undefined) updateData.designation = data.designation;
-    if (data.telephone_no !== undefined) {
-        updateData.telephone_no = data.telephone_no;
-    } else if (data.contact_no !== undefined) {
-        updateData.telephone_no = data.contact_no;
-    }
-    if (data.mobile !== undefined) updateData.mobile = data.mobile;
-    if (data.email !== undefined) updateData.email = data.email;
-    if (data.address !== undefined) updateData.address = data.address;
-    if (data.location !== undefined) updateData.location = data.location;
-    if (data.website !== undefined) {
-        updateData.website = data.website;
-    } else if (data.web_site !== undefined) {
-        updateData.website = data.web_site;
-    }
-    if (data.gst_no !== undefined) {
-        updateData.gst_no = data.gst_no;
-    } else if (data.qst_no !== undefined) {
-        updateData.gst_no = data.qst_no;
-    }
-    if (data.constitution !== undefined) updateData.constitution = data.constitution;
-    if (data.reference !== undefined) updateData.reference = data.reference;
-    if (data.responsibility !== undefined) updateData.responsibility = data.responsibility;
-    if (data.remarks !== undefined) {
-        updateData.remarks = data.remarks;
-    } else if (data.remark !== undefined) {
-        updateData.remarks = data.remark;
-    } else if (data.self_remark !== undefined) {
-        updateData.remarks = data.self_remark;
-    }
+        // Mapping frontend fields to DB columns
+        if (data.name !== undefined) updateData.name = data.name;
+        if (data.sector_id !== undefined) updateData.sector_id = data.sector_id;
+        if (data.job_nature_id !== undefined) updateData.job_nature_id = data.job_nature_id;
+        if (data.job_id !== undefined) updateData.job_nature_id = data.job_id;
+        updateData.category = 'Client';
+        if (data.contact_person !== undefined) updateData.contact_person = data.contact_person;
+        if (data.designation !== undefined) updateData.designation = data.designation;
+        if (data.telephone_no !== undefined) {
+            updateData.telephone_no = data.telephone_no;
+        } else if (data.contact_no !== undefined) {
+            updateData.telephone_no = data.contact_no;
+        }
+        if (data.mobile !== undefined) updateData.mobile = data.mobile;
+        if (data.email !== undefined) updateData.email = data.email;
+        if (data.address !== undefined) updateData.address = data.address;
+        if (data.location !== undefined) updateData.location = data.location;
+        if (data.website !== undefined) {
+            updateData.website = data.website;
+        } else if (data.web_site !== undefined) {
+            updateData.website = data.web_site;
+        }
+        if (data.gst_no !== undefined) {
+            updateData.gst_no = data.gst_no;
+        } else if (data.qst_no !== undefined) {
+            updateData.gst_no = data.qst_no;
+        }
+        if (data.constitution !== undefined) updateData.constitution = data.constitution;
+        if (data.reference !== undefined) updateData.reference = data.reference;
+        if (data.responsibility !== undefined) updateData.responsibility = data.responsibility;
+        if (data.remarks !== undefined) {
+            updateData.remarks = data.remarks;
+        } else if (data.remark !== undefined) {
+            updateData.remarks = data.remark;
+        } else if (data.self_remark !== undefined) {
+            updateData.remarks = data.self_remark;
+        }
 
-    // Resolve job nature name to ID if provided as string
-    if ((data.job_nature || data.job_nature_name || data.job_name) && !updateData.job_nature_id) {
-        updateData.job_nature_id = await findOrCreateJobNature(orgId, data.job_nature || data.job_nature_name || data.job_name || data.job_id);
+        // Resolve job nature name to ID if provided as string
+        if ((data.job_nature || data.job_nature_name || data.job_name) && !updateData.job_nature_id) {
+            updateData.job_nature_id = await findOrCreateJobNature(orgId, data.job_nature || data.job_nature_name || data.job_name || data.job_id, connection);
+        }
+
+        // Resolve sector name to ID if provided as string
+        if ((data.sector || data.sector_name) && !updateData.sector_id) {
+            updateData.sector_id = await findOrCreateSector(orgId, data.sector || data.sector_name, connection);
+        }
+
+        updateData.updated_at = connection.fn.now();
+
+        await connection('crm_contacts').where({ id, org_id: orgId }).update(updateData);
+
+        // Save new interactions if provided
+        const rawInteractions = Array.isArray(data.interactions)
+            ? data.interactions
+            : (data.interaction ? [data.interaction] : []);
+
+        for (const item of rawInteractions) {
+            if (!item || !item.type || item.id) continue;
+            await createInteraction(orgId, {
+                contact_id: id,
+                type: item.type,
+                interaction_date: item.interaction_date || new Date().toISOString().split('T')[0],
+                follow_up_date: item.follow_up_date || null,
+                remarks: item.remarks || null,
+                interacted_by: item.interacted_by || data.interacted_by || options.userId || null
+            }, { transaction: connection });
+        }
+
+        return true;
+    };
+
+    if (options.transaction) {
+        return await run(options.transaction);
+    } else {
+        return await db.transaction(async (trx) => {
+            return await run(trx);
+        });
     }
-
-    // Resolve sector name to ID if provided as string
-    if ((data.sector || data.sector_name) && !updateData.sector_id) {
-        updateData.sector_id = await findOrCreateSector(orgId, data.sector || data.sector_name);
-    }
-
-    updateData.updated_at = connection.fn.now();
-
-    await connection('crm_contacts').where({ id, org_id: orgId }).update(updateData);
-    return true;
 }
 
 export async function deleteClient(orgId, id) {

@@ -28,7 +28,10 @@ export const getClient = catchAsync(async (req, res) => {
 });
 
 export const createClient = catchAsync(async (req, res) => {
-    const newId = await clientService.createClient(req.user.org_id, req.body);
+    const newId = await clientService.createClient(req.user.org_id, {
+        ...req.body,
+        interacted_by: req.user?.id
+    }, { userId: req.user?.id });
     res.status(201).json({ success: true, message: 'Client created successfully', id: newId });
 });
 
@@ -38,7 +41,10 @@ export const updateClient = catchAsync(async (req, res) => {
         throw new AppError('Invalid Client ID', 400);
     }
 
-    await clientService.updateClient(req.user.org_id, id, req.body);
+    await clientService.updateClient(req.user.org_id, id, {
+        ...req.body,
+        interacted_by: req.user?.id
+    }, { userId: req.user?.id });
     res.json({ success: true, message: 'Client updated successfully' });
 });
 

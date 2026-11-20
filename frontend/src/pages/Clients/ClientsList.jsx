@@ -338,14 +338,18 @@ export const ClientsList = () => {
         try {
             if (editingClient) {
                 await clientApi.updateClient(editingClient.id, formData);
+                toast.success('Client updated successfully');
             } else {
                 await clientApi.createClient(formData);
+                toast.success('Client created successfully');
             }
             setIsAddModalOpen(false);
             setEditingClient(null);
             fetchClients();
         } catch (err) {
             console.error('Failed to save client from modal:', err);
+            const msg = err.response?.data?.message || err.message || 'Failed to save client';
+            toast.error(msg);
         }
     };
 
