@@ -1,6 +1,7 @@
 import express from 'express';
 import { authenticateJWT } from '../../middleware/auth.js';
 import * as catalogController from './catalogController.js';
+import { singleImageUpload } from '../shared/imageUploadMiddleware.js';
 
 const router = express.Router();
 
@@ -31,6 +32,8 @@ router.put('/resources/:id', catalogController.updateResource);
 router.delete('/resources/:id', catalogController.deleteResource);
 router.post('/resources/:id/archive', catalogController.archiveResource);
 router.post('/resources/:id/restore', catalogController.restoreResource);
+router.post('/resources/:id/image', singleImageUpload('image'), catalogController.uploadResourceImage);
+router.delete('/resources/:id/image', catalogController.removeResourceImage);
 
 // Resource Conversions
 router.get('/resources/:id/conversions', catalogController.listConversions);
@@ -57,6 +60,8 @@ router.put('/activities/:id', catalogController.updateActivity);
 router.delete('/activities/:id', catalogController.deleteActivity);
 router.post('/activities/:id/archive', catalogController.archiveActivity);
 router.post('/activities/:id/restore', catalogController.restoreActivity);
+router.post('/activities/:id/image', singleImageUpload('image'), catalogController.uploadActivityImage);
+router.delete('/activities/:id/image', catalogController.removeActivityImage);
 
 // ─── 5. Norms ────────────────────────────────────────────────────────────────
 router.get('/activities/:id/norms', catalogController.getNorms);
@@ -92,6 +97,7 @@ router.get('/activities/:id/sync-diff', catalogController.getActivitySyncDiff);
 router.post('/activities/:id/sync-accept', catalogController.acceptActivitySync);
 
 // ─── 8. Housekeeping ─────────────────────────────────────────────────────────
+router.get('/media/view', catalogController.viewMedia);
 router.get('/change-log', catalogController.getChangeLog);
 router.get('/changelog/:entity/:id', catalogController.getChangeLog);
 router.get('/integrity', catalogController.checkIntegrity);

@@ -82,6 +82,20 @@ export const catalogApi = {
         return res.data?.data;
     },
 
+    async uploadResourceImage(id, file) {
+        const formData = new FormData();
+        formData.append('image', file);
+        const res = await api.post(`/catalog/resources/${id}/image`, formData, {
+            headers: { 'Content-Type': 'multipart/form-data' }
+        });
+        return res.data?.data;
+    },
+
+    async removeResourceImage(id) {
+        const res = await api.delete(`/catalog/resources/${id}/image`);
+        return res.data?.data;
+    },
+
     // ─── 3. Resource Conversions ─────────────────────────────────────────────
     async listConversions(resourceId) {
         const res = await api.get(`/catalog/resources/${resourceId}/conversions`);
@@ -188,6 +202,20 @@ export const catalogApi = {
 
     async deleteActivity(id, reason) {
         const res = await api.delete(`/catalog/activities/${id}`, { data: { reason } });
+        return res.data?.data;
+    },
+
+    async uploadActivityImage(id, file) {
+        const formData = new FormData();
+        formData.append('image', file);
+        const res = await api.post(`/catalog/activities/${id}/image`, formData, {
+            headers: { 'Content-Type': 'multipart/form-data' }
+        });
+        return res.data?.data;
+    },
+
+    async removeActivityImage(id) {
+        const res = await api.delete(`/catalog/activities/${id}/image`);
         return res.data?.data;
     },
 

@@ -945,6 +945,7 @@ export async function createResource(input, externalTrx = null) {
             base_unit_id: baseUnitId,
             description: description ? String(description).slice(0, 500) : null,
             remarks: remarks ? String(remarks).slice(0, 500) : null,
+            image_url: input.imageUrl || input.image_url || null,
             status: 'active',
             version: 1,
             synced_version: syncedVersion,
@@ -996,6 +997,10 @@ export async function updateResource(id, patch, externalTrx = null) {
         }
         if (patch.remarks !== undefined) {
             updateData.remarks = patch.remarks !== null ? String(patch.remarks).slice(0, 500) : null;
+        }
+        if (patch.image_url !== undefined || patch.imageUrl !== undefined) {
+            const rawImg = patch.image_url !== undefined ? patch.image_url : patch.imageUrl;
+            updateData.image_url = rawImg !== null ? String(rawImg).slice(0, 1000) : null;
         }
 
         const nextBaseUnitId = patch.baseUnitId ?? patch.base_unit_id;
@@ -1255,6 +1260,7 @@ export async function importResource(masterId, projectId, options = {}, external
             base_unit_id: master.base_unit_id,
             description: master.description,
             remarks: master.remarks,
+            image_url: master.image_url || null,
             status: 'active',
             version: 1,
             synced_version: master.version,
@@ -1611,6 +1617,7 @@ async function fetchActivityWithNorms(trx, id) {
             'r.code as resource_code',
             'r.name as resource_name',
             'r.kind as resource_kind',
+            'r.image_url as resource_image_url',
             'r.base_unit_id as resource_base_unit_id',
             'bu.code as resource_base_unit_code',
             'u.code as unit_code',
@@ -1690,6 +1697,7 @@ export async function createActivity(input, externalTrx = null) {
             output_unit_id: outputUnitId,
             description: description ? String(description).slice(0, 500) : null,
             remarks: remarks ? String(remarks).slice(0, 500) : null,
+            image_url: input.imageUrl || input.image_url || null,
             status: 'active',
             version: 1,
             synced_version: syncedVersion,
@@ -1737,6 +1745,10 @@ export async function updateActivity(id, patch, externalTrx = null) {
         }
         if (patch.remarks !== undefined) {
             updateData.remarks = patch.remarks !== null ? String(patch.remarks).slice(0, 500) : null;
+        }
+        if (patch.image_url !== undefined || patch.imageUrl !== undefined) {
+            const rawImg = patch.image_url !== undefined ? patch.image_url : patch.imageUrl;
+            updateData.image_url = rawImg !== null ? String(rawImg).slice(0, 1000) : null;
         }
 
         const nextOutputUnitId = patch.outputUnitId ?? patch.output_unit_id;
@@ -1931,6 +1943,7 @@ export async function listActivities(filter = {}, externalTrx = null) {
                 'r.code as resource_code',
                 'r.name as resource_name',
                 'r.kind as resource_kind',
+                'r.image_url as resource_image_url',
                 'r.base_unit_id as resource_base_unit_id',
                 'bu.code as resource_base_unit_code',
                 'u.code as unit_code',
@@ -2077,6 +2090,7 @@ export async function getNorms(activityId, date = null, externalTrx = null) {
                 'r.code as resource_code',
                 'r.name as resource_name',
                 'r.kind as resource_kind',
+                'r.image_url as resource_image_url',
                 'r.base_unit_id as resource_base_unit_id',
                 'bu.code as resource_base_unit_code',
                 'u.code as unit_code',
@@ -2301,6 +2315,7 @@ export async function importActivity(masterId, projectId, options = {}, external
             output_unit_id: master.output_unit_id,
             description: master.description,
             remarks: master.remarks,
+            image_url: master.image_url || null,
             status: 'active',
             version: 1,
             synced_version: master.version,

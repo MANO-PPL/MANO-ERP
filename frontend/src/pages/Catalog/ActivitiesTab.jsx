@@ -332,12 +332,33 @@ export default function ActivitiesTab({
                                                 </button>
                                             </td>
                                             <td className="py-2.5 px-3.5 text-gray-800 dark:text-gray-200">
-                                                <div className="font-medium">{a.name}</div>
-                                                {a.description && (
-                                                    <div className="text-[11px] text-gray-400 truncate max-w-sm mt-0.5">
-                                                        {a.description}
+                                                <div className="flex items-center gap-2.5">
+                                                    {a.image_url ? (
+                                                        <img
+                                                            src={a.image_url}
+                                                            alt={a.name}
+                                                            className="w-7 h-7 rounded-lg object-cover shrink-0 border border-gray-200 dark:border-gh-border bg-gray-50 dark:bg-gh-subtle"
+                                                        />
+                                                    ) : (
+                                                        <div className="w-7 h-7 rounded-lg shrink-0 flex items-center justify-center bg-blue-50 dark:bg-blue-950/30 border border-blue-200/50 dark:border-blue-800/40 text-blue-500">
+                                                            <Layers size={14} />
+                                                        </div>
+                                                    )}
+                                                    <div className="min-w-0">
+                                                        <div
+                                                            className="font-medium cursor-pointer hover:text-blue-600 transition-colors truncate"
+                                                            onClick={() => handleSelectActivity(a)}
+                                                            title="Open Activity Details & Recipe"
+                                                        >
+                                                            {a.name}
+                                                        </div>
+                                                        {a.description && (
+                                                            <div className="text-[11px] text-gray-400 truncate max-w-sm mt-0.5">
+                                                                {a.description}
+                                                            </div>
+                                                        )}
                                                     </div>
-                                                )}
+                                                </div>
                                             </td>
                                             <td className="py-2.5 px-3.5 font-mono text-gray-700 dark:text-gray-300">
                                                 {a.output_unit_code || '—'}

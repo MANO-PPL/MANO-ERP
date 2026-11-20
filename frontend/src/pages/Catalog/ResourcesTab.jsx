@@ -443,18 +443,33 @@ export default function ResourcesTab({
                                                 </button>
                                             </td>
                                             <td className="py-2.5 px-3.5 text-gray-800 dark:text-gray-200">
-                                                <div
-                                                    className="font-medium cursor-pointer hover:text-blue-600 transition-colors"
-                                                    onClick={() => handleSelectResource(r)}
-                                                    title="Open Resource Details & Management"
-                                                >
-                                                    {r.name}
-                                                </div>
-                                                {r.description && (
-                                                    <div className="text-[11px] text-gray-400 truncate max-w-sm">
-                                                        {r.description}
+                                                <div className="flex items-center gap-2.5">
+                                                    {r.image_url ? (
+                                                        <img
+                                                            src={r.image_url}
+                                                            alt={r.name}
+                                                            className="w-7 h-7 rounded-lg object-cover shrink-0 border border-gray-200 dark:border-gh-border bg-gray-50 dark:bg-gh-subtle"
+                                                        />
+                                                    ) : (
+                                                        <div className="w-7 h-7 rounded-lg shrink-0 flex items-center justify-center bg-gray-100 dark:bg-gh-subtle border border-gray-200 dark:border-gh-border text-gray-400">
+                                                            {r.kind === 'material' ? <Package size={14} /> : r.kind === 'labour' ? <HardHat size={14} /> : <Truck size={14} />}
+                                                        </div>
+                                                    )}
+                                                    <div className="min-w-0">
+                                                        <div
+                                                            className="font-medium cursor-pointer hover:text-blue-600 transition-colors truncate"
+                                                            onClick={() => handleSelectResource(r)}
+                                                            title="Open Resource Details & Management"
+                                                        >
+                                                            {r.name}
+                                                        </div>
+                                                        {r.description && (
+                                                            <div className="text-[11px] text-gray-400 truncate max-w-sm">
+                                                                {r.description}
+                                                            </div>
+                                                        )}
                                                     </div>
-                                                )}
+                                                </div>
                                             </td>
                                             <td className="py-2.5 px-3.5">
                                                 {renderKindBadge(r.kind)}

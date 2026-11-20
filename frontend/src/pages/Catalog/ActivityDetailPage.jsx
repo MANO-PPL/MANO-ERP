@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo, useCallback } from 'react';
+import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import {
     ArrowLeft,
     Layers,
@@ -18,7 +18,15 @@ import {
     Calendar,
     Save,
     ChevronDown,
-    ChevronUp
+    ChevronUp,
+    Camera,
+    Upload,
+    MoreVertical,
+    Eye,
+    Maximize2,
+    Package,
+    User,
+    Wrench
 } from 'lucide-react';
 import catalogApi from '../../services/catalogApi';
 import catalogCache from './catalogCache';
@@ -80,6 +88,33 @@ export default function ActivityDetailPage({
 
     const [removingNorm, setRemovingNorm] = useState(null);
     const [isRemoveNormModalOpen, setIsRemoveNormModalOpen] = useState(false);
+
+    // ─── Image Upload & Lightbox State ──────────────────────────────────────
+    const [uploadingImage, setUploadingImage] = useState(false);
+    const [showImageMenu, setShowImageMenu] = useState(false);
+    const [showLightbox, setShowLightbox] = useState(false);
+    const fileInputRef = useRef(null);
+    const imageMenuRef = useRef(null);
+
+    useEffect(() => {
+        const handleClickOutside = (e) => {
+            if (imageMenuRef.current && !imageMenuRef.current.contains(e.target)) {
+                setShowImageMenu(false);
+            }
+        };
+        const handleKeyDown = (e) => {
+            if (e.key === 'Escape') {
+                setShowLightbox(false);
+                setShowImageMenu(false);
+            }
+        };
+        document.addEventListener('mousedown', handleClickOutside);
+        document.addEventListener('keydown', handleKeyDown);
+        return () => {
+            document.removeEventListener('mousedown', handleClickOutside);
+            document.removeEventListener('keydown', handleKeyDown);
+        };
+    }, []);
 
     // ─── Dynamic Cost & Usage Calculator State ────────────────────────────────
     const [calcDate, setCalcDate] = useState(getTodayDateStr());
@@ -303,6 +338,7 @@ export default function ActivityDetailPage({
                 resourceId: cl.resourceId,
                 resourceCode: cl.resourceCode,
                 resourceName: cl.resourceName,
+                imageUrl: availableResources.find(r => r.id === cl.resourceId)?.image_url || null,
                 kind: cl.kind,
                 // Common norm recipe (per 1 unit)
                 normQty: baseNormQty,
@@ -490,6 +526,46 @@ export default function ActivityDetailPage({
 
     const isBehind = scope === 'project' && activity.parent_id && Number(activity.master_version) > Number(activity.synced_version || 0);
 
+    // ─── Image Upload Handlers ──────────────────────────────────────────────
+    const handleImageUpload = async (e) => {
+        const file = e.target.files?.[0];
+        if (!file || !activity?.id) return;
+        if (file.size > 30 * 1024 * 1024) {
+            customToast.error('Selected image exceeds 30MB limit. Please choose an image under 30MB.', 'File Too Large');
+            if (fileInputRef.current) fileInputRef.current.value = '';
+            return;
+        }
+        try {
+            setUploadingImage(true);
+            const updated = await catalogApi.uploadActivityImage(activity.id, file);
+            if (updated) {
+                setActivity(prev => ({ ...prev, image_url: updated.image_url }));
+                customToast.success('Activity image updated successfully', 'Image Saved');
+                if (onActivityUpdated) onActivityUpdated();
+            }
+        } catch (err) {
+            showCatalogErrorToast(err, 'Failed to upload image');
+        } finally {
+            setUploadingImage(false);
+            if (fileInputRef.current) fileInputRef.current.value = '';
+        }
+    };
+
+    const handleRemoveImage = async () => {
+        if (!activity?.id) return;
+        try {
+            setUploadingImage(true);
+            const updated = await catalogApi.removeActivityImage(activity.id);
+            setActivity(prev => ({ ...prev, image_url: null }));
+            customToast.success('Activity image removed', 'Image Removed');
+            if (onActivityUpdated) onActivityUpdated();
+        } catch (err) {
+            showCatalogErrorToast(err, 'Failed to remove image');
+        } finally {
+            setUploadingImage(false);
+        }
+    };
+
     return (
         <div className="flex-1 min-h-0 flex flex-col space-y-4 animate-fade-in">
             {/* ─── OPEN & MODERN ACTIVITY HEADER (NO CARD) ─── */}
@@ -507,6 +583,7 @@ export default function ActivityDetailPage({
                                 <ArrowLeft size={18} />
                             </button>
                         )}
+
                         <div className="flex flex-wrap items-center gap-2.5">
                             <h1 className="text-xl sm:text-2xl font-bold text-gray-900 dark:text-gray-100 leading-tight">
                                 {activity.name}
@@ -603,126 +680,247 @@ export default function ActivityDetailPage({
                 {/* View Mode vs Edit Mode */}
                 {!isEditing ? (
                     showDetails ? (
-                        /* The exact 2-column structure preserved, but borderless and seamless without card box */
-                        <div className="grid grid-cols-1 md:grid-cols-2 gap-x-12 gap-y-3.5 pt-2">
-                            {/* Left Column */}
-                            <div className="space-y-3">
-                                <div>
-                                    <span className="text-[10px] font-semibold text-gray-400 dark:text-gray-500 uppercase tracking-wider block mb-0.5">
-                                        Activity Code
-                                    </span>
-                                    <span className="font-mono font-bold text-gray-900 dark:text-gray-100 bg-gray-100 dark:bg-gh-subtle/80 px-2 py-0.5 rounded text-xs border border-gray-200 dark:border-gh-border inline-block">
-                                        {activity.code}
-                                    </span>
-                                </div>
+                        /* Flex container: Specs on Left + Full-Height Image Card on Right */
+                        <div className="flex flex-col lg:flex-row gap-6 lg:gap-8 items-stretch pt-2">
+                            {/* Left: Technical Specifications (2-Column Grid) */}
+                            <div className="flex-1 min-w-0 grid grid-cols-1 md:grid-cols-2 gap-x-8 lg:gap-x-12 gap-y-3.5">
+                                {/* Left Column */}
+                                <div className="space-y-3">
+                                    <div>
+                                        <span className="text-[10px] font-semibold text-gray-400 dark:text-gray-500 uppercase tracking-wider block mb-0.5">
+                                            Activity Code
+                                        </span>
+                                        <span className="font-mono font-bold text-gray-900 dark:text-gray-100 bg-gray-100 dark:bg-gh-subtle/80 px-2 py-0.5 rounded text-xs border border-gray-200 dark:border-gh-border inline-block">
+                                            {activity.code}
+                                        </span>
+                                    </div>
 
-                                <div>
-                                    <span className="text-[10px] font-semibold text-gray-400 dark:text-gray-500 uppercase tracking-wider block mb-0.5">
-                                        Output Unit
-                                    </span>
-                                    <div className="flex items-baseline gap-1.5">
-                                        <span className="font-mono font-bold text-gray-900 dark:text-gray-100 text-xs">
-                                            {activity.output_unit_code || '—'}
+                                    <div>
+                                        <span className="text-[10px] font-semibold text-gray-400 dark:text-gray-500 uppercase tracking-wider block mb-0.5">
+                                            Output Unit
                                         </span>
-                                        <span className="text-xs text-gray-500 dark:text-gray-400">
-                                            ({activity.output_unit_name || 'Output Unit'})
+                                        <div className="flex items-baseline gap-1.5">
+                                            <span className="font-mono font-bold text-gray-900 dark:text-gray-100 text-xs">
+                                                {activity.output_unit_code || '—'}
+                                            </span>
+                                            <span className="text-xs text-gray-500 dark:text-gray-400">
+                                                ({activity.output_unit_name || 'Output Unit'})
+                                            </span>
+                                        </div>
+                                    </div>
+
+                                    <div>
+                                        <span className="text-[10px] font-semibold text-gray-400 dark:text-gray-500 uppercase tracking-wider block mb-0.5">
+                                            Scope
                                         </span>
+                                        <span className="font-semibold text-gray-700 dark:text-gray-300 text-xs">
+                                            {activity.project_id ? `Project #${activity.project_id}` : 'Master Standard'}
+                                        </span>
+                                    </div>
+
+                                    <div>
+                                        <span className="text-[10px] font-semibold text-gray-400 dark:text-gray-500 uppercase tracking-wider block mb-0.5">
+                                            Status
+                                        </span>
+                                        <span className={`inline-flex items-center px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider ${
+                                            activity.status === 'active'
+                                                ? 'bg-emerald-50 text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-300 border border-emerald-200/60 dark:border-emerald-800/40'
+                                                : 'bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-400 border border-gray-200 dark:border-gray-700'
+                                        }`}>
+                                            {activity.status}
+                                        </span>
+                                    </div>
+
+                                    <div>
+                                        <span className="text-[10px] font-semibold text-gray-400 dark:text-gray-500 uppercase tracking-wider block mb-0.5">
+                                            Description &amp; Scope Notes
+                                        </span>
+                                        <p className="text-xs text-gray-700 dark:text-gray-300 leading-relaxed whitespace-pre-line">
+                                            {activity.description || <span className="text-gray-400 italic">None specified</span>}
+                                        </p>
                                     </div>
                                 </div>
 
-                                <div>
-                                    <span className="text-[10px] font-semibold text-gray-400 dark:text-gray-500 uppercase tracking-wider block mb-0.5">
-                                        Scope
-                                    </span>
-                                    <span className="font-semibold text-gray-700 dark:text-gray-300 text-xs">
-                                        {activity.project_id ? `Project #${activity.project_id}` : 'Master Standard'}
-                                    </span>
-                                </div>
+                                {/* Right Column */}
+                                <div className="space-y-3">
+                                    <div>
+                                        <span className="text-[10px] font-semibold text-gray-400 dark:text-gray-500 uppercase tracking-wider block mb-0.5">
+                                            Dynamic Unit Cost (As of Today)
+                                        </span>
+                                        {calculating || !costData ? (
+                                            <span className="text-xs text-gray-400 italic flex items-center gap-1.5">
+                                                <Loader2 size={12} className="animate-spin text-blue-500" /> Computing unit rate...
+                                            </span>
+                                        ) : (
+                                            <div className="space-y-1">
+                                                <div className="flex items-baseline gap-2">
+                                                    <span className="text-lg font-mono font-bold text-gray-900 dark:text-gray-100">
+                                                        ₹ {formatMoney(costData.total || 0)}
+                                                    </span>
+                                                    <span className="text-xs text-gray-500">
+                                                        / {activity.output_unit_code || 'unit'}
+                                                    </span>
+                                                    {costData.complete ? (
+                                                        <span className="inline-flex items-center gap-1 text-[10px] font-semibold text-emerald-600 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-950/40 px-1.5 py-0.5 rounded">
+                                                            <CheckCircle2 size={11} /> Fully Priced
+                                                        </span>
+                                                    ) : costData.warnings && costData.warnings.length > 0 ? (
+                                                        <span className="inline-flex items-center gap-1 text-[10px] font-semibold text-amber-600 dark:text-amber-400 bg-amber-50 dark:bg-amber-950/40 px-1.5 py-0.5 rounded">
+                                                            <AlertTriangle size={11} /> {costData.warnings.length} Rate{costData.warnings.length === 1 ? '' : 's'} Missing
+                                                        </span>
+                                                    ) : null}
+                                                </div>
+                                            </div>
+                                        )}
+                                    </div>
 
-                                <div>
-                                    <span className="text-[10px] font-semibold text-gray-400 dark:text-gray-500 uppercase tracking-wider block mb-0.5">
-                                        Status
-                                    </span>
-                                    <span className={`inline-flex items-center px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider ${
-                                        activity.status === 'active'
-                                            ? 'bg-emerald-50 text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-300 border border-emerald-200/60 dark:border-emerald-800/40'
-                                            : 'bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-400 border border-gray-200 dark:border-gray-700'
-                                    }`}>
-                                        {activity.status}
-                                    </span>
-                                </div>
+                                    <div>
+                                        <span className="text-[10px] font-semibold text-gray-400 dark:text-gray-500 uppercase tracking-wider block mb-0.5">
+                                            Recipe Composition
+                                        </span>
+                                        {normsLoading ? (
+                                            <span className="text-xs text-gray-400 italic flex items-center gap-1.5">
+                                                <Loader2 size={12} className="animate-spin text-blue-500" /> Loading recipe norms...
+                                            </span>
+                                        ) : (
+                                            <span className="font-mono font-bold text-blue-600 dark:text-blue-400 text-xs">
+                                                {norms.length} resource norm lines active
+                                            </span>
+                                        )}
+                                    </div>
 
-                                <div>
-                                    <span className="text-[10px] font-semibold text-gray-400 dark:text-gray-500 uppercase tracking-wider block mb-0.5">
-                                        Description &amp; Scope Notes
-                                    </span>
-                                    <p className="text-xs text-gray-700 dark:text-gray-300 leading-relaxed whitespace-pre-line">
-                                        {activity.description || <span className="text-gray-400 italic">None specified</span>}
-                                    </p>
+                                    <div>
+                                        <span className="text-[10px] font-semibold text-gray-400 dark:text-gray-500 uppercase tracking-wider block mb-0.5">
+                                            Remarks
+                                        </span>
+                                        <p className="text-xs text-gray-700 dark:text-gray-300 leading-relaxed whitespace-pre-line">
+                                            {activity.remarks || <span className="text-gray-400 italic">No execution notes</span>}
+                                        </p>
+                                    </div>
                                 </div>
                             </div>
 
-                            {/* Right Column */}
-                            <div className="space-y-3">
-                                <div>
-                                    <span className="text-[10px] font-semibold text-gray-400 dark:text-gray-500 uppercase tracking-wider block mb-0.5">
-                                        Dynamic Unit Cost (As of Today)
-                                    </span>
-                                    {calculating || !costData ? (
-                                        <span className="text-xs text-gray-400 italic flex items-center gap-1.5">
-                                            <Loader2 size={12} className="animate-spin text-blue-500" /> Computing unit rate...
-                                        </span>
-                                    ) : (
-                                        <div className="space-y-1">
-                                            <div className="flex items-baseline gap-2">
-                                                <span className="text-lg font-mono font-bold text-gray-900 dark:text-gray-100">
-                                                    ₹ {formatMoney(costData.total || 0)}
-                                                </span>
-                                                <span className="text-xs text-gray-500">
-                                                    / {activity.output_unit_code || 'unit'}
-                                                </span>
-                                                {costData.complete ? (
-                                                    <span className="inline-flex items-center gap-1 text-[10px] font-semibold text-emerald-600 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-950/40 px-1.5 py-0.5 rounded">
-                                                        <CheckCircle2 size={11} /> Fully Priced
-                                                    </span>
-                                                ) : costData.warnings && costData.warnings.length > 0 ? (
-                                                    <span className="inline-flex items-center gap-1 text-[10px] font-semibold text-amber-600 dark:text-amber-400 bg-amber-50 dark:bg-amber-950/40 px-1.5 py-0.5 rounded">
-                                                        <AlertTriangle size={11} /> {costData.warnings.length} Rate{costData.warnings.length === 1 ? '' : 's'} Missing
-                                                    </span>
-                                                ) : null}
-                                            </div>
+                            {/* Right: Prominent Activity Image Card (Fills height vertically) */}
+                            <div className="relative group shrink-0 w-full lg:w-64 xl:w-72 self-stretch min-h-[220px] rounded-2xl border border-gray-200 dark:border-gh-border bg-gray-50 dark:bg-gh-subtle overflow-hidden shadow-xs flex flex-col justify-center">
+                                {activity.image_url ? (
+                                    <>
+                                        {/* Clickable Image -> Fullscreen Lightbox */}
+                                        <div
+                                            className="w-full h-full min-h-[220px] cursor-pointer overflow-hidden"
+                                            onClick={() => setShowLightbox(true)}
+                                            title="Click to view fullscreen"
+                                        >
+                                            <img
+                                                src={activity.image_url}
+                                                alt={activity.name}
+                                                className="w-full h-full object-cover min-h-[220px] transition-transform duration-300 group-hover:scale-105"
+                                            />
                                         </div>
-                                    )}
-                                </div>
 
-                                <div>
-                                    <span className="text-[10px] font-semibold text-gray-400 dark:text-gray-500 uppercase tracking-wider block mb-0.5">
-                                        Recipe Composition
-                                    </span>
-                                    {normsLoading ? (
-                                        <span className="text-xs text-gray-400 italic flex items-center gap-1.5">
-                                            <Loader2 size={12} className="animate-spin text-blue-500" /> Loading recipe norms...
-                                        </span>
-                                    ) : (
-                                        <span className="font-mono font-bold text-blue-600 dark:text-blue-400 text-xs">
-                                            {norms.length} resource norm lines active
-                                        </span>
-                                    )}
-                                </div>
+                                        {/* Discreet Triple-Dot Menu in Top-Right Corner */}
+                                        <div className="absolute top-2.5 right-2.5 z-10" ref={imageMenuRef}>
+                                            <button
+                                                type="button"
+                                                onClick={(e) => {
+                                                    e.stopPropagation();
+                                                    setShowImageMenu(prev => !prev);
+                                                }}
+                                                className="p-1.5 rounded-lg bg-black/40 hover:bg-black/65 text-white backdrop-blur-md transition-all shadow-xs cursor-pointer"
+                                                title="Image options"
+                                            >
+                                                <MoreVertical size={15} />
+                                            </button>
 
-                                <div>
-                                    <span className="text-[10px] font-semibold text-gray-400 dark:text-gray-500 uppercase tracking-wider block mb-0.5">
-                                        Remarks
-                                    </span>
-                                    <p className="text-xs text-gray-700 dark:text-gray-300 leading-relaxed whitespace-pre-line">
-                                        {activity.remarks || <span className="text-gray-400 italic">No execution notes</span>}
-                                    </p>
-                                </div>
+                                            {showImageMenu && (
+                                                <div
+                                                    className="absolute right-0 mt-1.5 w-40 rounded-xl bg-white dark:bg-[#161b22] border border-gray-200 dark:border-gh-border shadow-xl py-1 z-20 text-xs animate-scale-in"
+                                                    onClick={(e) => e.stopPropagation()}
+                                                >
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => {
+                                                            setShowImageMenu(false);
+                                                            setShowLightbox(true);
+                                                        }}
+                                                        className="w-full flex items-center gap-2 px-3 py-2 text-gray-700 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-gh-hover text-left transition-colors cursor-pointer"
+                                                    >
+                                                        <Maximize2 size={13} className="text-gray-500" />
+                                                        <span>View Fullscreen</span>
+                                                    </button>
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => {
+                                                            setShowImageMenu(false);
+                                                            fileInputRef.current?.click();
+                                                        }}
+                                                        disabled={uploadingImage}
+                                                        className="w-full flex items-center gap-2 px-3 py-2 text-gray-700 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-gh-hover text-left transition-colors cursor-pointer"
+                                                    >
+                                                        <Camera size={13} className="text-gray-500" />
+                                                        <span>Change Photo</span>
+                                                    </button>
+                                                    <div className="my-1 border-t border-gray-100 dark:border-gh-border" />
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => {
+                                                            setShowImageMenu(false);
+                                                            handleRemoveImage();
+                                                        }}
+                                                        disabled={uploadingImage}
+                                                        className="w-full flex items-center gap-2 px-3 py-2 text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-950/30 text-left transition-colors cursor-pointer"
+                                                    >
+                                                        <Trash2 size={13} />
+                                                        <span>Remove Photo</span>
+                                                    </button>
+                                                </div>
+                                            )}
+                                        </div>
+                                    </>
+                                ) : (
+                                    <button
+                                        type="button"
+                                        onClick={() => fileInputRef.current?.click()}
+                                        disabled={uploadingImage}
+                                        className="w-full h-full min-h-[220px] border-2 border-dashed border-gray-300 dark:border-gh-border hover:border-blue-500 dark:hover:border-blue-400 rounded-2xl flex flex-col items-center justify-center gap-2.5 p-6 text-gray-400 hover:text-blue-600 dark:hover:text-blue-400 transition-colors cursor-pointer group bg-gray-50/50 dark:bg-gh-subtle/40"
+                                        title="Upload Activity Photo"
+                                    >
+                                        {uploadingImage ? (
+                                            <div className="flex flex-col items-center gap-2">
+                                                <Loader2 size={24} className="animate-spin text-blue-500" />
+                                                <span className="text-xs font-medium text-gray-500">Uploading...</span>
+                                            </div>
+                                        ) : (
+                                            <>
+                                                <div className="w-12 h-12 rounded-full bg-gray-100 dark:bg-gh-border/50 flex items-center justify-center group-hover:scale-110 transition-transform">
+                                                    <Camera size={20} className="text-gray-400 group-hover:text-blue-500" />
+                                                </div>
+                                                <div className="text-center px-3">
+                                                    <span className="text-xs font-semibold block text-gray-700 dark:text-gray-300">Add Photo</span>
+                                                    <span className="text-[10px] text-gray-400 block mt-0.5">PNG, JPG up to 30MB</span>
+                                                </div>
+                                            </>
+                                        )}
+                                    </button>
+                                )}
+                                <input
+                                    ref={fileInputRef}
+                                    type="file"
+                                    accept="image/png,image/jpeg,image/jpg,image/webp,image/gif"
+                                    onChange={handleImageUpload}
+                                    className="hidden"
+                                />
                             </div>
                         </div>
                     ) : (
                         /* Compact 1-line Summary when details are collapsed */
                         <div className="flex flex-wrap items-center gap-x-4 gap-y-1.5 text-xs text-gray-500 dark:text-gray-400 pt-1 pb-1">
+                            {activity.image_url && (
+                                <img
+                                    src={activity.image_url}
+                                    alt=""
+                                    className="w-5 h-5 rounded-md object-cover border border-gray-200 dark:border-gh-border shrink-0"
+                                />
+                            )}
                             <span>Output: <strong className="font-mono text-gray-800 dark:text-gray-200">{activity.output_unit_code || '—'}</strong> ({activity.output_unit_name || 'Unit'})</span>
                             <span>&bull;</span>
                             <span>Scope: <strong className="text-gray-800 dark:text-gray-200">{activity.project_id ? `Project #${activity.project_id}` : 'Master Standard'}</strong></span>
@@ -1033,8 +1231,21 @@ export default function ActivityDetailPage({
                                                 <tr key={idx} className="hover:bg-gray-50/80 dark:hover:bg-gh-hover/30 transition-colors">
                                                     {/* Common Resource */}
                                                     <td className="py-2.5 px-3 font-medium text-gray-900 dark:text-gray-100">
-                                                        <div className="font-semibold truncate" title={row.resourceName}>{row.resourceName}</div>
-                                                        <span className="font-mono text-[11px] text-gray-400">{row.resourceCode}</span>
+                                                        <div className="flex items-center gap-2.5">
+                                                            <div className="w-7 h-7 rounded-lg overflow-hidden border border-gray-200 dark:border-gh-border bg-gray-50 dark:bg-gh-subtle shrink-0 flex items-center justify-center">
+                                                                {row.imageUrl ? (
+                                                                    <img src={row.imageUrl} alt="" className="w-full h-full object-cover" />
+                                                                ) : (
+                                                                    <span className="text-gray-400">
+                                                                        {row.kind === 'material' ? <Package size={13} /> : row.kind === 'labour' ? <User size={13} /> : <Wrench size={13} />}
+                                                                    </span>
+                                                                )}
+                                                            </div>
+                                                            <div className="min-w-0">
+                                                                <div className="font-semibold truncate" title={row.resourceName}>{row.resourceName}</div>
+                                                                <span className="font-mono text-[11px] text-gray-400">{row.resourceCode}</span>
+                                                            </div>
+                                                        </div>
                                                     </td>
                                                     {/* Common Norm Net Qty */}
                                                     <td className="py-2.5 px-3 font-mono whitespace-nowrap">
@@ -1325,8 +1536,21 @@ export default function ActivityDetailPage({
                                             {norms.map((n) => (
                                                 <tr key={n.id} className="hover:bg-gray-50 dark:hover:bg-gh-hover/30">
                                                     <td className="py-2.5 px-3 font-medium text-gray-900 dark:text-gray-100">
-                                                        <div>{n.resource_name}</div>
-                                                        <span className="font-mono text-[11px] text-gray-400">{n.resource_code}</span>
+                                                        <div className="flex items-center gap-2.5">
+                                                            <div className="w-7 h-7 rounded-lg overflow-hidden border border-gray-200 dark:border-gh-border bg-gray-50 dark:bg-gh-subtle shrink-0 flex items-center justify-center">
+                                                                {n.resource_image_url ? (
+                                                                    <img src={n.resource_image_url} alt="" className="w-full h-full object-cover" />
+                                                                ) : (
+                                                                    <span className="text-gray-400">
+                                                                        {n.resource_kind === 'material' ? <Package size={13} /> : n.resource_kind === 'labour' ? <User size={13} /> : <Wrench size={13} />}
+                                                                    </span>
+                                                                )}
+                                                            </div>
+                                                            <div className="min-w-0">
+                                                                <div>{n.resource_name}</div>
+                                                                <span className="font-mono text-[11px] text-gray-400">{n.resource_code}</span>
+                                                            </div>
+                                                        </div>
                                                     </td>
                                                     <td className="py-2.5 px-3 font-mono font-bold text-gray-900 dark:text-gray-100">
                                                         {formatQuantity(n.qty_per_unit)}
@@ -1535,6 +1759,37 @@ export default function ActivityDetailPage({
                 }}
                 onConfirm={handleConfirmRemoveNorm}
             />
+
+            {/* Fullscreen Image Lightbox Modal */}
+            {showLightbox && activity.image_url && (
+                <div
+                    className="fixed inset-0 z-50 bg-black/85 backdrop-blur-sm flex flex-col items-center justify-center p-4 animate-fade-in"
+                    onClick={() => setShowLightbox(false)}
+                >
+                    <div className="absolute top-4 right-4 flex items-center gap-2 z-10" onClick={(e) => e.stopPropagation()}>
+                        <button
+                            type="button"
+                            onClick={() => setShowLightbox(false)}
+                            className="p-1.5 rounded-lg bg-white/10 hover:bg-white/20 text-white transition-colors cursor-pointer"
+                            title="Close (Esc)"
+                        >
+                            <X size={20} />
+                        </button>
+                    </div>
+
+                    <div className="max-w-4xl max-h-[85vh] flex flex-col items-center justify-center select-none" onClick={(e) => e.stopPropagation()}>
+                        <img
+                            src={activity.image_url}
+                            alt={activity.name}
+                            className="max-w-full max-h-[75vh] object-contain rounded-xl shadow-2xl"
+                        />
+                        <div className="mt-3 text-center">
+                            <span className="text-white text-sm font-semibold block">{activity.name}</span>
+                            <span className="text-white/60 text-xs font-mono">{activity.code}</span>
+                        </div>
+                    </div>
+                </div>
+            )}
         </div>
     );
 }

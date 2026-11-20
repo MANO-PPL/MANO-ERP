@@ -2,6 +2,7 @@ import db from '../../config/database.js';
 import * as catalogService from './catalogService.js';
 import { CatalogError, CatalogErrorCodes, mapCatalogErrorCodeToHttpStatus } from './catalogErrors.js';
 import { isAdmin, isClient } from '../../utils/userUtils.js';
+import mediaService from '../shared/mediaService.js';
 
 // =========================================================================
 // Central Error Mapper & Response Handler (Step 4)
@@ -265,6 +266,7 @@ export async function listResources(req, res) {
             status: req.query.status || undefined,
             search: req.query.q || req.query.search || undefined,
         });
+        await mediaService.presignEntities(data, 'image_url');
         res.json({ success: true, data });
     } catch (err) {
         handleCatalogError(res, err);
@@ -282,6 +284,7 @@ export async function getResource(req, res) {
             await assertProjectAccess(req, data.project_id, 'view');
         }
 
+        await mediaService.presignEntity(data, 'image_url');
         res.json({ success: true, data });
     } catch (err) {
         handleCatalogError(res, err);
@@ -305,6 +308,7 @@ export async function createResource(req, res) {
             projectId,
             userId: req.user?.id,
         });
+        await mediaService.presignEntity(data, 'image_url');
         res.status(201).json({ success: true, data });
     } catch (err) {
         handleCatalogError(res, err);
@@ -328,6 +332,7 @@ export async function updateResource(req, res) {
             ...req.body,
             userId: req.user?.id,
         });
+        await mediaService.presignEntity(data, 'image_url');
         res.json({ success: true, data });
     } catch (err) {
         handleCatalogError(res, err);
@@ -397,6 +402,82 @@ export async function deleteResource(req, res) {
             userId: req.user?.id,
             reason: req.body?.reason,
         });
+        res.json({ success: true, data });
+    } catch (err) {
+        handleCatalogError(res, err);
+    }
+}
+
+export async function uploadResourceImage(req, res) {
+    try {
+        const id = Number(req.params.id);
+        const existing = await catalogService.getResource(id);
+        if (!existing || (req.user?.org_id && Number(existing.org_id) !== Number(req.user.org_id))) {
+            throw new CatalogError(CatalogErrorCodes.CAT_NOT_FOUND, 'Resource not found');
+        }
+
+        if (existing.project_id) {
+            await assertProjectAccess(req, existing.project_id, 'edit');
+        } else {
+            assertMasterWritePermission(req);
+        }
+
+        if (!req.file || !req.file.buffer) {
+            throw new CatalogError(CatalogErrorCodes.CAT_INVALID_VALUE, 'No image file uploaded');
+        }
+
+        const media = await mediaService.uploadImage({
+            fileBuffer: req.file.buffer,
+            orgId: req.user?.org_id,
+            module: 'catalog',
+            subfolder: 'resources',
+            entityId: `res_${id}`,
+            projectId: existing.project_id
+        });
+
+        if (existing.image_url && existing.image_url !== media.url) {
+            await mediaService.deleteMedia(existing.image_url);
+        }
+
+        const data = await catalogService.updateResource(id, {
+            image_url: media.url,
+            userId: req.user?.id,
+            reason: 'Resource image updated'
+        });
+
+        const presignedUrl = await mediaService.presignUrl(media.url);
+        data.image_url = presignedUrl;
+
+        res.json({ success: true, data, url: presignedUrl, image_url: presignedUrl });
+    } catch (err) {
+        handleCatalogError(res, err);
+    }
+}
+
+export async function removeResourceImage(req, res) {
+    try {
+        const id = Number(req.params.id);
+        const existing = await catalogService.getResource(id);
+        if (!existing || (req.user?.org_id && Number(existing.org_id) !== Number(req.user.org_id))) {
+            throw new CatalogError(CatalogErrorCodes.CAT_NOT_FOUND, 'Resource not found');
+        }
+
+        if (existing.project_id) {
+            await assertProjectAccess(req, existing.project_id, 'edit');
+        } else {
+            assertMasterWritePermission(req);
+        }
+
+        if (existing.image_url) {
+            await mediaService.deleteMedia(existing.image_url);
+        }
+
+        const data = await catalogService.updateResource(id, {
+            image_url: null,
+            userId: req.user?.id,
+            reason: 'Resource image removed'
+        });
+
         res.json({ success: true, data });
     } catch (err) {
         handleCatalogError(res, err);
@@ -586,6 +667,7 @@ export async function listActivities(req, res) {
             status: req.query.status || undefined,
             search: req.query.q || req.query.search || undefined,
         });
+        await mediaService.presignEntities(data, 'image_url');
         res.json({ success: true, data });
     } catch (err) {
         handleCatalogError(res, err);
@@ -603,6 +685,7 @@ export async function getActivity(req, res) {
             await assertProjectAccess(req, data.project_id, 'view');
         }
 
+        await mediaService.presignEntity(data, 'image_url');
         res.json({ success: true, data });
     } catch (err) {
         handleCatalogError(res, err);
@@ -626,6 +709,7 @@ export async function createActivity(req, res) {
             projectId,
             userId: req.user?.id,
         });
+        await mediaService.presignEntity(data, 'image_url');
         res.status(201).json({ success: true, data });
     } catch (err) {
         handleCatalogError(res, err);
@@ -649,6 +733,7 @@ export async function updateActivity(req, res) {
             ...req.body,
             userId: req.user?.id,
         });
+        await mediaService.presignEntity(data, 'image_url');
         res.json({ success: true, data });
     } catch (err) {
         handleCatalogError(res, err);
@@ -724,6 +809,95 @@ export async function deleteActivity(req, res) {
     }
 }
 
+export async function uploadActivityImage(req, res) {
+    try {
+        const id = Number(req.params.id);
+        const existing = await catalogService.getActivity(id);
+        if (!existing || (req.user?.org_id && Number(existing.org_id) !== Number(req.user.org_id))) {
+            throw new CatalogError(CatalogErrorCodes.CAT_NOT_FOUND, 'Activity not found');
+        }
+
+        if (existing.project_id) {
+            await assertProjectAccess(req, existing.project_id, 'edit');
+        } else {
+            assertMasterWritePermission(req);
+        }
+
+        if (!req.file || !req.file.buffer) {
+            throw new CatalogError(CatalogErrorCodes.CAT_INVALID_VALUE, 'No image file uploaded');
+        }
+
+        const media = await mediaService.uploadImage({
+            fileBuffer: req.file.buffer,
+            orgId: req.user?.org_id,
+            module: 'catalog',
+            subfolder: 'activities',
+            entityId: `act_${id}`,
+            projectId: existing.project_id
+        });
+
+        if (existing.image_url && existing.image_url !== media.url) {
+            await mediaService.deleteMedia(existing.image_url);
+        }
+
+        const data = await catalogService.updateActivity(id, {
+            image_url: media.url,
+            userId: req.user?.id,
+            reason: 'Activity image updated'
+        });
+
+        const presignedUrl = await mediaService.presignUrl(media.url);
+        data.image_url = presignedUrl;
+
+        res.json({ success: true, data, url: presignedUrl, image_url: presignedUrl });
+    } catch (err) {
+        handleCatalogError(res, err);
+    }
+}
+
+export async function removeActivityImage(req, res) {
+    try {
+        const id = Number(req.params.id);
+        const existing = await catalogService.getActivity(id);
+        if (!existing || (req.user?.org_id && Number(existing.org_id) !== Number(req.user.org_id))) {
+            throw new CatalogError(CatalogErrorCodes.CAT_NOT_FOUND, 'Activity not found');
+        }
+
+        if (existing.project_id) {
+            await assertProjectAccess(req, existing.project_id, 'edit');
+        } else {
+            assertMasterWritePermission(req);
+        }
+
+        if (existing.image_url) {
+            await mediaService.deleteMedia(existing.image_url);
+        }
+
+        const data = await catalogService.updateActivity(id, {
+            image_url: null,
+            userId: req.user?.id,
+            reason: 'Activity image removed'
+        });
+
+        res.json({ success: true, data });
+    } catch (err) {
+        handleCatalogError(res, err);
+    }
+}
+
+export async function viewMedia(req, res) {
+    try {
+        const rawUrl = req.query.url;
+        if (!rawUrl) {
+            return res.status(400).json({ success: false, message: 'URL query parameter required' });
+        }
+        const presigned = await mediaService.presignUrl(rawUrl);
+        return res.redirect(presigned);
+    } catch (err) {
+        return res.status(500).json({ success: false, message: 'Failed to presign media URL' });
+    }
+}
+
 // =========================================================================
 // 5. Norms
 // =========================================================================
@@ -732,6 +906,7 @@ export async function getNorms(req, res) {
     try {
         const activityId = Number(req.params.id);
         const data = await catalogService.getNorms(activityId, req.query.date);
+        await mediaService.presignEntities(data, 'resource_image_url');
         res.json({ success: true, data });
     } catch (err) {
         handleCatalogError(res, err);

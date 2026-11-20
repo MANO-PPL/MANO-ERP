@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import {
     ArrowLeft,
     Package,
@@ -17,7 +17,11 @@ import {
     ChevronUp,
     Save,
     CheckCircle2,
-    AlertTriangle
+    AlertTriangle,
+    Camera,
+    MoreVertical,
+    Eye,
+    Maximize2
 } from 'lucide-react';
 import catalogApi from '../../services/catalogApi';
 import { showCatalogErrorToast } from './catalogErrors';
@@ -91,6 +95,72 @@ export default function ResourceDetailPage({
     const [isRemoveConvModalOpen, setIsRemoveConvModalOpen] = useState(false);
 
     const todayStr = useMemo(() => getTodayDateStr(), []);
+
+    // ─── Image Upload & Lightbox State & Handlers ──────────────────────────
+    const [uploadingImage, setUploadingImage] = useState(false);
+    const [showImageMenu, setShowImageMenu] = useState(false);
+    const [showLightbox, setShowLightbox] = useState(false);
+    const fileInputRef = useRef(null);
+    const imageMenuRef = useRef(null);
+
+    useEffect(() => {
+        const handleClickOutside = (e) => {
+            if (imageMenuRef.current && !imageMenuRef.current.contains(e.target)) {
+                setShowImageMenu(false);
+            }
+        };
+        const handleKeyDown = (e) => {
+            if (e.key === 'Escape') {
+                setShowLightbox(false);
+                setShowImageMenu(false);
+            }
+        };
+        document.addEventListener('mousedown', handleClickOutside);
+        document.addEventListener('keydown', handleKeyDown);
+        return () => {
+            document.removeEventListener('mousedown', handleClickOutside);
+            document.removeEventListener('keydown', handleKeyDown);
+        };
+    }, []);
+
+    const handleImageUpload = async (e) => {
+        const file = e.target.files?.[0];
+        if (!file || !resource?.id) return;
+        if (file.size > 30 * 1024 * 1024) {
+            customToast.error('Selected image exceeds 30MB limit. Please choose an image under 30MB.', 'File Too Large');
+            if (fileInputRef.current) fileInputRef.current.value = '';
+            return;
+        }
+        try {
+            setUploadingImage(true);
+            const updated = await catalogApi.uploadResourceImage(resource.id, file);
+            if (updated) {
+                setResource(prev => ({ ...prev, image_url: updated.image_url }));
+                customToast.success('Resource image updated successfully', 'Image Saved');
+                if (onResourceUpdated) onResourceUpdated();
+            }
+        } catch (err) {
+            showCatalogErrorToast(err, 'Failed to upload image');
+        } finally {
+            setUploadingImage(false);
+            if (fileInputRef.current) fileInputRef.current.value = '';
+        }
+    };
+
+    const handleRemoveImage = async () => {
+        if (!resource?.id) return;
+        try {
+            setUploadingImage(true);
+            await catalogApi.removeResourceImage(resource.id);
+            setResource(prev => ({ ...prev, image_url: null }));
+            customToast.success('Resource image removed', 'Image Removed');
+            if (onResourceUpdated) onResourceUpdated();
+        } catch (err) {
+            showCatalogErrorToast(err, 'Failed to remove image');
+        } finally {
+            setUploadingImage(false);
+        }
+    };
 
     // Load available units
     useEffect(() => {
@@ -444,145 +514,266 @@ export default function ResourceDetailPage({
                 {/* View Mode vs Edit Mode */}
                 {!isEditing ? (
                     showDetails ? (
-                        /* Unified 2-Column Horizontal Split with Vertically Stacked Data */
-                        <div className="grid grid-cols-1 md:grid-cols-2 gap-x-12 gap-y-3.5 pt-2">
-                            {/* Left Column */}
-                            <div className="space-y-3">
-                                <div>
-                                    <span className="text-[10px] font-semibold text-gray-400 dark:text-gray-500 uppercase tracking-wider block mb-0.5">
-                                        Resource Code
-                                    </span>
-                                    <span className="font-mono font-bold text-gray-900 dark:text-gray-100 bg-gray-100 dark:bg-gh-subtle/80 px-2 py-0.5 rounded text-xs border border-gray-200 dark:border-gh-border inline-block">
-                                        {resource.code}
-                                    </span>
-                                </div>
-
-                                <div>
-                                    <span className="text-[10px] font-semibold text-gray-400 dark:text-gray-500 uppercase tracking-wider block mb-0.5">
-                                        Category / Kind
-                                    </span>
-                                    <span className="capitalize font-semibold text-gray-900 dark:text-gray-100 text-xs">
-                                        {resource.kind}
-                                    </span>
-                                </div>
-
-                                <div>
-                                    <span className="text-[10px] font-semibold text-gray-400 dark:text-gray-500 uppercase tracking-wider block mb-0.5">
-                                        Base Unit
-                                    </span>
-                                    <div className="flex items-baseline gap-1.5">
-                                        <span className="font-mono font-bold text-gray-900 dark:text-gray-100 text-xs">
-                                            {resource.base_unit_code || '—'}
+                        /* Flex container: Specs on Left + Full-Height Image Card on Right */
+                        <div className="flex flex-col lg:flex-row gap-6 lg:gap-8 items-stretch pt-2">
+                            {/* Left: Technical Specifications (2-Column Grid) */}
+                            <div className="flex-1 min-w-0 grid grid-cols-1 md:grid-cols-2 gap-x-8 lg:gap-x-12 gap-y-3.5">
+                                {/* Left Column */}
+                                <div className="space-y-3">
+                                    <div>
+                                        <span className="text-[10px] font-semibold text-gray-400 dark:text-gray-500 uppercase tracking-wider block mb-0.5">
+                                            Resource Code
                                         </span>
-                                        <span className="text-xs text-gray-500 dark:text-gray-400">
-                                            ({resource.base_unit_name || 'Standard Unit'})
+                                        <span className="font-mono font-bold text-gray-900 dark:text-gray-100 bg-gray-100 dark:bg-gh-subtle/80 px-2 py-0.5 rounded text-xs border border-gray-200 dark:border-gh-border inline-block">
+                                            {resource.code}
                                         </span>
+                                    </div>
+
+                                    <div>
+                                        <span className="text-[10px] font-semibold text-gray-400 dark:text-gray-500 uppercase tracking-wider block mb-0.5">
+                                            Category / Kind
+                                        </span>
+                                        <span className="capitalize font-semibold text-gray-900 dark:text-gray-100 text-xs">
+                                            {resource.kind}
+                                        </span>
+                                    </div>
+
+                                    <div>
+                                        <span className="text-[10px] font-semibold text-gray-400 dark:text-gray-500 uppercase tracking-wider block mb-0.5">
+                                            Base Unit
+                                        </span>
+                                        <div className="flex items-baseline gap-1.5">
+                                            <span className="font-mono font-bold text-gray-900 dark:text-gray-100 text-xs">
+                                                {resource.base_unit_code || '—'}
+                                            </span>
+                                            <span className="text-xs text-gray-500 dark:text-gray-400">
+                                                ({resource.base_unit_name || 'Standard Unit'})
+                                            </span>
+                                        </div>
+                                    </div>
+
+                                    <div>
+                                        <span className="text-[10px] font-semibold text-gray-400 dark:text-gray-500 uppercase tracking-wider block mb-0.5">
+                                            Scope
+                                        </span>
+                                        <span className="font-semibold text-gray-700 dark:text-gray-300 text-xs">
+                                            {scope === 'master' ? 'Master Standard' : `Project #${resource.project_id || projectId}`}
+                                        </span>
+                                    </div>
+
+                                    <div>
+                                        <span className="text-[10px] font-semibold text-gray-400 dark:text-gray-500 uppercase tracking-wider block mb-0.5">
+                                            Status
+                                        </span>
+                                        <span className={`inline-flex items-center px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider ${
+                                            resource.status === 'active'
+                                                ? 'bg-emerald-50 text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-300 border border-emerald-200/60 dark:border-emerald-800/40'
+                                                : 'bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-400 border border-gray-200 dark:border-gray-700'
+                                        }`}>
+                                            {resource.status}
+                                        </span>
+                                    </div>
+
+                                    <div>
+                                        <span className="text-[10px] font-semibold text-gray-400 dark:text-gray-500 uppercase tracking-wider block mb-0.5">
+                                            Description &amp; Specs
+                                        </span>
+                                        <p className="text-xs text-gray-700 dark:text-gray-300 leading-relaxed whitespace-pre-line">
+                                            {resource.description || <span className="text-gray-400 italic">None specified</span>}
+                                        </p>
                                     </div>
                                 </div>
 
-                                <div>
-                                    <span className="text-[10px] font-semibold text-gray-400 dark:text-gray-500 uppercase tracking-wider block mb-0.5">
-                                        Scope
-                                    </span>
-                                    <span className="font-semibold text-gray-700 dark:text-gray-300 text-xs">
-                                        {scope === 'master' ? 'Master Standard' : `Project #${resource.project_id || projectId}`}
-                                    </span>
-                                </div>
+                                {/* Right Column */}
+                                <div className="space-y-3">
+                                    <div>
+                                        <span className="text-[10px] font-semibold text-gray-400 dark:text-gray-500 uppercase tracking-wider block mb-0.5">
+                                            Current Rate (As of Today)
+                                        </span>
+                                        {ratesLoading ? (
+                                            <span className="text-xs text-gray-400 italic flex items-center gap-1.5">
+                                                <Loader2 size={12} className="animate-spin text-blue-500" /> Loading active rate...
+                                            </span>
+                                        ) : activeTodayRate ? (
+                                            <div className="flex items-baseline gap-2">
+                                                <span className="text-lg font-mono font-bold text-gray-900 dark:text-gray-100">
+                                                    ₹ {formatMoney(activeTodayRate.rate)}
+                                                </span>
+                                                <span className="text-xs text-gray-500">
+                                                    / {activeTodayRate.unit_code}
+                                                </span>
+                                                <span className="inline-flex items-center gap-1 text-[10px] font-semibold text-emerald-600 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-950/40 px-1.5 py-0.5 rounded">
+                                                    <CheckCircle2 size={11} /> Active Rate
+                                                </span>
+                                            </div>
+                                        ) : (
+                                            <span className="text-xs text-gray-400 italic">No rate active</span>
+                                        )}
+                                    </div>
 
-                                <div>
-                                    <span className="text-[10px] font-semibold text-gray-400 dark:text-gray-500 uppercase tracking-wider block mb-0.5">
-                                        Status
-                                    </span>
-                                    <span className={`inline-flex items-center px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider ${
-                                        resource.status === 'active'
-                                            ? 'bg-emerald-50 text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-300 border border-emerald-200/60 dark:border-emerald-800/40'
-                                            : 'bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-400 border border-gray-200 dark:border-gray-700'
-                                    }`}>
-                                        {resource.status}
-                                    </span>
-                                </div>
+                                    <div>
+                                        <span className="text-[10px] font-semibold text-gray-400 dark:text-gray-500 uppercase tracking-wider block mb-0.5">
+                                            Packaging Conversions
+                                        </span>
+                                        {conversionsLoading ? (
+                                            <span className="text-xs text-gray-400 italic flex items-center gap-1.5">
+                                                <Loader2 size={12} className="animate-spin text-purple-500" /> Loading packaging...
+                                            </span>
+                                        ) : primaryPackaging ? (
+                                            <span className="font-mono font-bold text-purple-700 dark:text-purple-300 text-xs">
+                                                1 {primaryPackaging.from_unit_code} = {Number(primaryPackaging.factor)} {primaryPackaging.to_unit_code}
+                                                {conversions.length > 1 && (
+                                                    <span className="text-gray-400 font-normal ml-1">
+                                                        (+{conversions.length - 1} more)
+                                                    </span>
+                                                )}
+                                            </span>
+                                        ) : (
+                                            <span className="text-xs text-gray-400 italic">No packaging conversions</span>
+                                        )}
+                                    </div>
 
-                                <div>
-                                    <span className="text-[10px] font-semibold text-gray-400 dark:text-gray-500 uppercase tracking-wider block mb-0.5">
-                                        Description &amp; Specs
-                                    </span>
-                                    <p className="text-xs text-gray-700 dark:text-gray-300 leading-relaxed whitespace-pre-line">
-                                        {resource.description || <span className="text-gray-400 italic">None specified</span>}
-                                    </p>
+                                    <div>
+                                        <span className="text-[10px] font-semibold text-gray-400 dark:text-gray-500 uppercase tracking-wider block mb-0.5">
+                                            Version
+                                        </span>
+                                        <span className="font-mono text-gray-800 dark:text-gray-200 font-semibold text-xs">
+                                            v{resource.version}
+                                        </span>
+                                    </div>
+
+                                    <div>
+                                        <span className="text-[10px] font-semibold text-gray-400 dark:text-gray-500 uppercase tracking-wider block mb-0.5">
+                                            Remarks &amp; Procurement Notes
+                                        </span>
+                                        <p className="text-xs text-gray-700 dark:text-gray-300 leading-relaxed whitespace-pre-line">
+                                            {resource.remarks || <span className="text-gray-400 italic">None specified</span>}
+                                        </p>
+                                    </div>
                                 </div>
                             </div>
 
-                            {/* Right Column */}
-                            <div className="space-y-3">
-                                <div>
-                                    <span className="text-[10px] font-semibold text-gray-400 dark:text-gray-500 uppercase tracking-wider block mb-0.5">
-                                        Current Rate (As of Today)
-                                    </span>
-                                    {ratesLoading ? (
-                                        <span className="text-xs text-gray-400 italic flex items-center gap-1.5">
-                                            <Loader2 size={12} className="animate-spin text-blue-500" /> Loading active rate...
-                                        </span>
-                                    ) : activeTodayRate ? (
-                                        <div className="flex items-baseline gap-2">
-                                            <span className="text-lg font-mono font-bold text-gray-900 dark:text-gray-100">
-                                                ₹ {formatMoney(activeTodayRate.rate)}
-                                            </span>
-                                            <span className="text-xs text-gray-500">
-                                                / {activeTodayRate.unit_code}
-                                            </span>
-                                            <span className="inline-flex items-center gap-1 text-[10px] font-semibold text-emerald-600 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-950/40 px-1.5 py-0.5 rounded">
-                                                <CheckCircle2 size={11} /> Active Rate
-                                            </span>
+                            {/* Right: Prominent Product Image Card (Fills height vertically) */}
+                            <div className="relative group shrink-0 w-full lg:w-64 xl:w-72 self-stretch min-h-[220px] rounded-2xl border border-gray-200 dark:border-gh-border bg-gray-50 dark:bg-gh-subtle overflow-hidden shadow-xs flex flex-col justify-center">
+                                {resource.image_url ? (
+                                    <>
+                                        {/* Clickable Image -> Fullscreen Lightbox */}
+                                        <div
+                                            className="w-full h-full min-h-[220px] cursor-pointer overflow-hidden"
+                                            onClick={() => setShowLightbox(true)}
+                                            title="Click to view fullscreen"
+                                        >
+                                            <img
+                                                src={resource.image_url}
+                                                alt={resource.name}
+                                                className="w-full h-full object-cover min-h-[220px] transition-transform duration-300 group-hover:scale-105"
+                                            />
                                         </div>
-                                    ) : (
-                                        <span className="text-xs text-gray-400 italic">No rate active</span>
-                                    )}
-                                </div>
 
-                                <div>
-                                    <span className="text-[10px] font-semibold text-gray-400 dark:text-gray-500 uppercase tracking-wider block mb-0.5">
-                                        Packaging Conversions
-                                    </span>
-                                    {conversionsLoading ? (
-                                        <span className="text-xs text-gray-400 italic flex items-center gap-1.5">
-                                            <Loader2 size={12} className="animate-spin text-purple-500" /> Loading packaging...
-                                        </span>
-                                    ) : primaryPackaging ? (
-                                        <span className="font-mono font-bold text-purple-700 dark:text-purple-300 text-xs">
-                                            1 {primaryPackaging.from_unit_code} = {Number(primaryPackaging.factor)} {primaryPackaging.to_unit_code}
-                                            {conversions.length > 1 && (
-                                                <span className="text-gray-400 font-normal ml-1">
-                                                    (+{conversions.length - 1} more)
-                                                </span>
+                                        {/* Discreet Triple-Dot Menu in Top-Right Corner */}
+                                        <div className="absolute top-2.5 right-2.5 z-10" ref={imageMenuRef}>
+                                            <button
+                                                type="button"
+                                                onClick={(e) => {
+                                                    e.stopPropagation();
+                                                    setShowImageMenu(prev => !prev);
+                                                }}
+                                                className="p-1.5 rounded-lg bg-black/40 hover:bg-black/65 text-white backdrop-blur-md transition-all shadow-xs cursor-pointer"
+                                                title="Image options"
+                                            >
+                                                <MoreVertical size={15} />
+                                            </button>
+
+                                            {showImageMenu && (
+                                                <div
+                                                    className="absolute right-0 mt-1.5 w-40 rounded-xl bg-white dark:bg-[#161b22] border border-gray-200 dark:border-gh-border shadow-xl py-1 z-20 text-xs animate-scale-in"
+                                                    onClick={(e) => e.stopPropagation()}
+                                                >
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => {
+                                                            setShowImageMenu(false);
+                                                            setShowLightbox(true);
+                                                        }}
+                                                        className="w-full flex items-center gap-2 px-3 py-2 text-gray-700 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-gh-hover text-left transition-colors cursor-pointer"
+                                                    >
+                                                        <Maximize2 size={13} className="text-gray-500" />
+                                                        <span>View Fullscreen</span>
+                                                    </button>
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => {
+                                                            setShowImageMenu(false);
+                                                            fileInputRef.current?.click();
+                                                        }}
+                                                        disabled={uploadingImage}
+                                                        className="w-full flex items-center gap-2 px-3 py-2 text-gray-700 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-gh-hover text-left transition-colors cursor-pointer"
+                                                    >
+                                                        <Camera size={13} className="text-gray-500" />
+                                                        <span>Change Photo</span>
+                                                    </button>
+                                                    <div className="my-1 border-t border-gray-100 dark:border-gh-border" />
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => {
+                                                            setShowImageMenu(false);
+                                                            handleRemoveImage();
+                                                        }}
+                                                        disabled={uploadingImage}
+                                                        className="w-full flex items-center gap-2 px-3 py-2 text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-950/30 text-left transition-colors cursor-pointer"
+                                                    >
+                                                        <Trash2 size={13} />
+                                                        <span>Remove Photo</span>
+                                                    </button>
+                                                </div>
                                             )}
-                                        </span>
-                                    ) : (
-                                        <span className="text-xs text-gray-400 italic">No packaging conversions</span>
-                                    )}
-                                </div>
-
-                                <div>
-                                    <span className="text-[10px] font-semibold text-gray-400 dark:text-gray-500 uppercase tracking-wider block mb-0.5">
-                                        Version
-                                    </span>
-                                    <span className="font-mono text-gray-800 dark:text-gray-200 font-semibold text-xs">
-                                        v{resource.version}
-                                    </span>
-                                </div>
-
-                                <div>
-                                    <span className="text-[10px] font-semibold text-gray-400 dark:text-gray-500 uppercase tracking-wider block mb-0.5">
-                                        Remarks &amp; Procurement Notes
-                                    </span>
-                                    <p className="text-xs text-gray-700 dark:text-gray-300 leading-relaxed whitespace-pre-line">
-                                        {resource.remarks || <span className="text-gray-400 italic">None specified</span>}
-                                    </p>
-                                </div>
+                                        </div>
+                                    </>
+                                ) : (
+                                    <button
+                                        type="button"
+                                        onClick={() => fileInputRef.current?.click()}
+                                        disabled={uploadingImage}
+                                        className="w-full h-full min-h-[220px] border-2 border-dashed border-gray-300 dark:border-gh-border hover:border-blue-500 dark:hover:border-blue-400 rounded-2xl flex flex-col items-center justify-center gap-2.5 p-6 text-gray-400 hover:text-blue-600 dark:hover:text-blue-400 transition-colors cursor-pointer group bg-gray-50/50 dark:bg-gh-subtle/40"
+                                        title="Upload Resource Photo"
+                                    >
+                                        {uploadingImage ? (
+                                            <div className="flex flex-col items-center gap-2">
+                                                <Loader2 size={24} className="animate-spin text-blue-500" />
+                                                <span className="text-xs font-medium text-gray-500">Uploading...</span>
+                                            </div>
+                                        ) : (
+                                            <>
+                                                <div className="w-12 h-12 rounded-full bg-gray-100 dark:bg-gh-border/50 flex items-center justify-center group-hover:scale-110 transition-transform">
+                                                    <Camera size={20} className="text-gray-400 group-hover:text-blue-500" />
+                                                </div>
+                                                <div className="text-center px-3">
+                                                    <span className="text-xs font-semibold block text-gray-700 dark:text-gray-300">Add Photo</span>
+                                                    <span className="text-[10px] text-gray-400 block mt-0.5">PNG, JPG up to 30MB</span>
+                                                </div>
+                                            </>
+                                        )}
+                                    </button>
+                                )}
+                                <input
+                                    ref={fileInputRef}
+                                    type="file"
+                                    accept="image/png,image/jpeg,image/jpg,image/webp,image/gif"
+                                    onChange={handleImageUpload}
+                                    className="hidden"
+                                />
                             </div>
                         </div>
                     ) : (
                         /* Compact 1-line Summary when details are collapsed */
                         <div className="flex flex-wrap items-center gap-x-4 gap-y-1.5 text-xs text-gray-500 dark:text-gray-400 pt-1 pb-1">
+                            {resource.image_url && (
+                                <img
+                                    src={resource.image_url}
+                                    alt=""
+                                    className="w-5 h-5 rounded-md object-cover border border-gray-200 dark:border-gh-border shrink-0"
+                                />
+                            )}
                             <span>Kind: <strong className="capitalize text-gray-800 dark:text-gray-200">{resource.kind}</strong></span>
                             <span>&bull;</span>
                             <span>Base Unit: <strong className="font-mono text-gray-800 dark:text-gray-200">{resource.base_unit_code || '—'}</strong> ({resource.base_unit_name || 'Unit'})</span>
@@ -1173,6 +1364,37 @@ export default function ResourceDetailPage({
                 }}
                 onConfirm={handleConfirmRemoveConv}
             />
+
+            {/* Fullscreen Image Lightbox Modal */}
+            {showLightbox && resource.image_url && (
+                <div
+                    className="fixed inset-0 z-50 bg-black/85 backdrop-blur-sm flex flex-col items-center justify-center p-4 animate-fade-in"
+                    onClick={() => setShowLightbox(false)}
+                >
+                    <div className="absolute top-4 right-4 flex items-center gap-2 z-10" onClick={(e) => e.stopPropagation()}>
+                        <button
+                            type="button"
+                            onClick={() => setShowLightbox(false)}
+                            className="p-1.5 rounded-lg bg-white/10 hover:bg-white/20 text-white transition-colors cursor-pointer"
+                            title="Close (Esc)"
+                        >
+                            <X size={20} />
+                        </button>
+                    </div>
+
+                    <div className="max-w-4xl max-h-[85vh] flex flex-col items-center justify-center select-none" onClick={(e) => e.stopPropagation()}>
+                        <img
+                            src={resource.image_url}
+                            alt={resource.name}
+                            className="max-w-full max-h-[75vh] object-contain rounded-xl shadow-2xl"
+                        />
+                        <div className="mt-3 text-center">
+                            <span className="text-white text-sm font-semibold block">{resource.name}</span>
+                            <span className="text-white/60 text-xs font-mono">{resource.code}</span>
+                        </div>
+                    </div>
+                </div>
+            )}
         </div>
     );
 }
