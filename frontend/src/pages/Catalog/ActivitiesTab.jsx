@@ -19,7 +19,6 @@ import catalogApi from '../../services/catalogApi';
 import catalogCache from './catalogCache';
 import { showCatalogErrorToast } from './catalogErrors';
 import { customToast } from '../../utils/toast';
-import ActivityDrawer from './ActivityDrawer';
 import ActivityDetailPage from './ActivityDetailPage';
 import ImportMasterDialog from './ImportMasterDialog';
 import SyncReviewModal from './SyncReviewModal';
@@ -42,9 +41,7 @@ export default function ActivitiesTab({
     const [searchTerm, setSearchTerm] = useState('');
     const [statusFilter, setStatusFilter] = useState('active'); // 'all' | 'active' | 'archived'
 
-    // Drawers & Modals
-    const [isDrawerOpen, setIsDrawerOpen] = useState(false);
-    const [editingActivity, setEditingActivity] = useState(null);
+    // Modals & Details
     const [selectedActivity, setSelectedActivity] = useState(null); // for detail view
     const [isImportModalOpen, setIsImportModalOpen] = useState(false);
     const [syncItem, setSyncItem] = useState(null); // for sync review modal
@@ -92,8 +89,8 @@ export default function ActivitiesTab({
     }, [loadActivities]);
 
     // Handlers for opening and closing activity detail page
-    const handleSelectActivity = useCallback((a) => {
-        setSelectedActivity(a);
+    const handleSelectActivity = useCallback((a, extra = {}) => {
+        setSelectedActivity({ ...a, ...extra });
         const p = new URLSearchParams(searchParams);
         p.set('act', a.code);
         setSearchParams(p);
@@ -115,7 +112,7 @@ export default function ActivitiesTab({
             if (found && selectedActivity?.id !== found.id) {
                 setSelectedActivity(found);
             }
-        } else if (!actCode && selectedActivity) {
+        } else if (!actCode && selectedActivity && !selectedActivity.isNew) {
             setSelectedActivity(null);
         }
     }, [searchParams, activities, selectedActivity]);
@@ -185,9 +182,25 @@ export default function ActivitiesTab({
                     projectId={projectId}
                     units={units}
                     onBack={handleBackFromDetail}
-                    onActivityUpdated={() => {
+                    onActivityUpdated={(fresh) => {
                         catalogCache.invalidateActivities(scope, projectId);
                         loadActivities(true);
+                        if (fresh?.code) {
+                            setSelectedActivity(fresh);
+                            const p = new URLSearchParams(searchParams);
+                            p.set('act', fresh.code);
+                            setSearchParams(p);
+                        }
+                    }}
+                    onActivityCreated={(created) => {
+                        catalogCache.invalidateActivities(scope, projectId);
+                        loadActivities(true);
+                        if (created?.code) {
+                            setSelectedActivity(created);
+                            const p = new URLSearchParams(searchParams);
+                            p.set('act', created.code);
+                            setSearchParams(p);
+                        }
                     }}
                     onAction={handleOpenAction}
                     onSync={setSyncItem}
@@ -267,10 +280,7 @@ export default function ActivitiesTab({
 
                         <button
                             type="button"
-                            onClick={() => {
-                                setEditingActivity(null);
-                                setIsDrawerOpen(true);
-                            }}
+                            onClick={() => setSelectedActivity({ isNew: true })}
                             className="flex items-center gap-1.5 px-3.5 py-1.5 text-xs font-semibold rounded-lg bg-blue-600 hover:bg-blue-700 text-white transition-colors shadow-xs cursor-pointer"
                         >
                             <Plus size={14} />
@@ -409,10 +419,7 @@ export default function ActivitiesTab({
                                                 </button>
                                                 <button
                                                     type="button"
-                                                    onClick={() => {
-                                                        setEditingActivity(a);
-                                                        setIsDrawerOpen(true);
-                                                    }}
+                                                    onClick={() => handleSelectActivity(a, { startEditing: true })}
                                                     className="p-1 rounded text-gray-500 hover:text-blue-600 hover:bg-gray-100 dark:hover:bg-gh-hover transition-colors cursor-pointer"
                                                     title="Edit Activity"
                                                 >
@@ -454,25 +461,6 @@ export default function ActivitiesTab({
                     </div>
                 )}
             </div>
-
-            {/* Create/Edit Drawer */}
-            <ActivityDrawer
-                isOpen={isDrawerOpen}
-                activity={editingActivity}
-                scope={scope}
-                projectId={projectId}
-                units={units}
-                onClose={() => {
-                    setIsDrawerOpen(false);
-                    setEditingActivity(null);
-                }}
-                onSuccess={() => {
-                    catalogCache.invalidateActivities(scope, projectId);
-                    loadActivities(true);
-                }}
-            />
-
-
 
             {/* Import from Master Dialog */}
             <ImportMasterDialog

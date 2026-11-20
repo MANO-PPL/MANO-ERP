@@ -20,7 +20,6 @@ import catalogCache from './catalogCache';
 import { showCatalogErrorToast } from './catalogErrors';
 import { formatMoney, getTodayDateStr } from './catalogFormat';
 import { customToast } from '../../utils/toast';
-import ResourceDrawer from './ResourceDrawer';
 import ResourceDetailPage from './ResourceDetailPage';
 import ImportMasterDialog from './ImportMasterDialog';
 import SyncReviewModal from './SyncReviewModal';
@@ -45,9 +44,7 @@ export default function ResourcesTab({
     const [kindFilter, setKindFilter] = useState('all'); // 'all' | 'material' | 'labour' | 'equipment'
     const [statusFilter, setStatusFilter] = useState('active'); // 'all' | 'active' | 'archived'
 
-    // Drawers & Modals
-    const [isDrawerOpen, setIsDrawerOpen] = useState(false);
-    const [editingResource, setEditingResource] = useState(null);
+    // Modals & Details
     const [selectedResource, setSelectedResource] = useState(null);
     const [isImportModalOpen, setIsImportModalOpen] = useState(false);
     const [syncItem, setSyncItem] = useState(null);
@@ -136,8 +133,8 @@ export default function ResourcesTab({
     }, [loadResources]);
 
     // Handlers for opening and closing resource detail page
-    const handleSelectResource = useCallback((r) => {
-        setSelectedResource(r);
+    const handleSelectResource = useCallback((r, extra = {}) => {
+        setSelectedResource({ ...r, ...extra });
         const p = new URLSearchParams(searchParams);
         p.set('res', r.code);
         setSearchParams(p);
@@ -159,7 +156,7 @@ export default function ResourcesTab({
             if (found && selectedResource?.id !== found.id) {
                 setSelectedResource(found);
             }
-        } else if (!resCode && selectedResource) {
+        } else if (!resCode && selectedResource && !selectedResource.isNew) {
             setSelectedResource(null);
         }
     }, [searchParams, resources, selectedResource]);
@@ -265,9 +262,25 @@ export default function ResourcesTab({
                     projectId={projectId}
                     units={units}
                     onBack={handleBackFromDetail}
-                    onResourceUpdated={() => {
+                    onResourceUpdated={(fresh) => {
                         catalogCache.invalidateResources(scope, projectId);
                         loadResources(true);
+                        if (fresh?.code) {
+                            setSelectedResource(fresh);
+                            const p = new URLSearchParams(searchParams);
+                            p.set('res', fresh.code);
+                            setSearchParams(p);
+                        }
+                    }}
+                    onResourceCreated={(created) => {
+                        catalogCache.invalidateResources(scope, projectId);
+                        loadResources(true);
+                        if (created?.code) {
+                            setSelectedResource(created);
+                            const p = new URLSearchParams(searchParams);
+                            p.set('res', created.code);
+                            setSearchParams(p);
+                        }
                     }}
                     onAction={handleOpenAction}
                     onSync={setSyncItem}
@@ -381,8 +394,10 @@ export default function ResourcesTab({
                         <button
                             type="button"
                             onClick={() => {
-                                setEditingResource(null);
-                                setIsDrawerOpen(true);
+                                setSelectedResource({
+                                    isNew: true,
+                                    kind: kindFilter !== 'all' ? kindFilter : 'material'
+                                });
                             }}
                             className="flex items-center gap-1.5 px-3.5 py-1.5 text-xs font-semibold rounded-lg bg-blue-600 hover:bg-blue-700 text-white transition-colors shadow-xs cursor-pointer"
                         >
@@ -529,7 +544,7 @@ export default function ResourcesTab({
                                             <td className="py-2.5 px-3.5 text-right space-x-1">
                                                 <button
                                                     type="button"
-                                                    onClick={() => handleSelectResource(r)}
+                                                    onClick={() => handleSelectResource(r, { startEditing: true })}
                                                     className="p-1 rounded text-gray-500 hover:text-blue-600 hover:bg-gray-100 dark:hover:bg-gh-hover transition-colors cursor-pointer"
                                                     title="Open Details & Edit"
                                                 >
@@ -571,32 +586,6 @@ export default function ResourcesTab({
                     </div>
                 )}
             </div>
-
-            {/* Create/Edit Drawer */}
-            <ResourceDrawer
-                isOpen={isDrawerOpen}
-                resource={editingResource}
-                scope={scope}
-                projectId={projectId}
-                units={units}
-                onClose={() => {
-                    setIsDrawerOpen(false);
-                    setEditingResource(null);
-                }}
-                onSuccess={() => {
-                    catalogCache.invalidateResources(scope, projectId);
-                    loadResources(true);
-                    if (selectedResource && editingResource && selectedResource.id === editingResource.id) {
-                        catalogApi.listResources({
-                            scope,
-                            projectId: scope === 'project' ? projectId : undefined
-                        }).then(list => {
-                            const updated = (list || []).find(r => r.id === selectedResource.id);
-                            if (updated) setSelectedResource(updated);
-                        }).catch(() => {});
-                    }
-                }}
-            />
 
             {/* Import from Master Dialog */}
             <ImportMasterDialog

@@ -44,21 +44,34 @@ export default function ActivityDetailPage({
     units = [],
     onBack,
     onActivityUpdated,
+    onActivityCreated,
     onAction,
     onSync
 }) {
-    const [activity, setActivity] = useState(initialActivity);
+    const isNew = Boolean(initialActivity?.isNew);
+    const [activity, setActivity] = useState(initialActivity || {});
     const [activeSection, setActiveSection] = useState('calculator'); // 'calculator' | 'norms' | 'changelog'
     const [showDetails, setShowDetails] = useState(true); // Toggle to collapse/expand activity details panel
 
     // ─── Edit Activity Mode State ─────────────────────────────────────────────
-    const [isEditing, setIsEditing] = useState(false);
-    const [editCode, setEditCode] = useState(activity?.code || '');
-    const [editName, setEditName] = useState(activity?.name || '');
-    const [editOutputUnitId, setEditOutputUnitId] = useState(String(activity?.output_unit_id || ''));
-    const [editDescription, setEditDescription] = useState(activity?.description || '');
-    const [editRemarks, setEditRemarks] = useState(activity?.remarks || '');
+    const [isEditing, setIsEditing] = useState(Boolean(initialActivity?.isNew || initialActivity?.startEditing));
+    const [editCode, setEditCode] = useState(initialActivity?.code || '');
+    const [editName, setEditName] = useState(initialActivity?.name || '');
+    const [editOutputUnitId, setEditOutputUnitId] = useState(String(initialActivity?.output_unit_id || (units?.[0]?.id || '')));
+    const [editDescription, setEditDescription] = useState(initialActivity?.description || '');
+    const [editRemarks, setEditRemarks] = useState(initialActivity?.remarks || '');
     const [savingDetails, setSavingDetails] = useState(false);
+
+    // ─── Pending Image State (For isNew creation) ─────────────────────────────
+    const [pendingImageFile, setPendingImageFile] = useState(null);
+    const [pendingImagePreview, setPendingImagePreview] = useState(null);
+
+    // Sync default output unit if initial was empty
+    useEffect(() => {
+        if (!editOutputUnitId && units && units.length > 0) {
+            setEditOutputUnitId(String(units[0].id));
+        }
+    }, [units, editOutputUnitId]);
 
     // ─── Norms State ──────────────────────────────────────────────────────────
     const [norms, setNorms] = useState([]);
@@ -142,6 +155,7 @@ export default function ActivityDetailPage({
                 setEditOutputUnitId(String(updated.output_unit_id));
                 setEditDescription(updated.description || '');
                 setEditRemarks(updated.remarks || '');
+                return updated;
             }
         } catch (_) {}
     };
@@ -401,11 +415,45 @@ export default function ActivityDetailPage({
 
     // Save Activity Details Edit
     const handleSaveActivityDetails = async (e) => {
-        e.preventDefault();
+        if (e && e.preventDefault) e.preventDefault();
         const cleanName = editName.trim();
         const cleanCode = editCode.trim().toUpperCase();
         if (!cleanName || !cleanCode || !editOutputUnitId) {
             customToast.error('Code, Name, and Output Unit are required.', 'Missing Fields');
+            return;
+        }
+
+        if (isNew) {
+            setSavingDetails(true);
+            try {
+                const created = await catalogApi.createActivity({
+                    projectId: scope === 'project' && projectId ? Number(projectId) : null,
+                    code: cleanCode,
+                    name: cleanName,
+                    outputUnitId: Number(editOutputUnitId),
+                    description: editDescription.trim() || undefined,
+                    remarks: editRemarks.trim() || undefined
+                });
+
+                if (pendingImageFile && created?.id) {
+                    try {
+                        const withImg = await catalogApi.uploadActivityImage(created.id, pendingImageFile);
+                        if (withImg?.image_url) created.image_url = withImg.image_url;
+                    } catch (_) {}
+                }
+
+                customToast.success(`Activity ${created.code} created successfully`, 'Activity Created');
+                if (onActivityCreated) {
+                    onActivityCreated(created);
+                } else if (onActivityUpdated) {
+                    onActivityUpdated(created);
+                    if (onBack) onBack();
+                }
+            } catch (err) {
+                showCatalogErrorToast(err, 'Failed to create activity');
+            } finally {
+                setSavingDetails(false);
+            }
             return;
         }
 
@@ -421,8 +469,8 @@ export default function ActivityDetailPage({
 
             customToast.success('Activity details updated successfully', 'Activity Saved');
             setIsEditing(false);
-            await reloadActivity();
-            if (onActivityUpdated) onActivityUpdated();
+            const fresh = await reloadActivity();
+            if (onActivityUpdated) onActivityUpdated(fresh);
             runCalculation(calcDate);
         } catch (err) {
             showCatalogErrorToast(err, 'Failed to update activity');
@@ -529,12 +577,21 @@ export default function ActivityDetailPage({
     // ─── Image Upload Handlers ──────────────────────────────────────────────
     const handleImageUpload = async (e) => {
         const file = e.target.files?.[0];
-        if (!file || !activity?.id) return;
+        if (!file) return;
         if (file.size > 30 * 1024 * 1024) {
             customToast.error('Selected image exceeds 30MB limit. Please choose an image under 30MB.', 'File Too Large');
             if (fileInputRef.current) fileInputRef.current.value = '';
             return;
         }
+
+        if (isNew) {
+            setPendingImageFile(file);
+            setPendingImagePreview(URL.createObjectURL(file));
+            if (fileInputRef.current) fileInputRef.current.value = '';
+            return;
+        }
+
+        if (!activity?.id) return;
         try {
             setUploadingImage(true);
             const updated = await catalogApi.uploadActivityImage(activity.id, file);
@@ -552,10 +609,15 @@ export default function ActivityDetailPage({
     };
 
     const handleRemoveImage = async () => {
+        if (isNew) {
+            setPendingImageFile(null);
+            setPendingImagePreview(null);
+            return;
+        }
         if (!activity?.id) return;
         try {
             setUploadingImage(true);
-            const updated = await catalogApi.removeActivityImage(activity.id);
+            await catalogApi.removeActivityImage(activity.id);
             setActivity(prev => ({ ...prev, image_url: null }));
             customToast.success('Activity image removed', 'Image Removed');
             if (onActivityUpdated) onActivityUpdated();
@@ -572,133 +634,227 @@ export default function ActivityDetailPage({
             <div className="space-y-3">
                 {/* Header Row: Title & Action Buttons */}
                 <div className="flex flex-wrap items-center justify-between gap-3">
-                    <div className="flex items-center gap-3">
+                    <div className="flex items-center gap-3 flex-1 min-w-0">
                         {onBack && (
                             <button
                                 type="button"
                                 onClick={onBack}
-                                className="p-1.5 rounded-lg text-gray-500 hover:text-gray-900 dark:text-gray-400 dark:hover:text-gray-100 hover:bg-gray-100 dark:hover:bg-gh-hover transition-colors cursor-pointer"
+                                className="p-1.5 rounded-lg text-gray-500 hover:text-gray-900 dark:text-gray-400 dark:hover:text-gray-100 hover:bg-gray-100 dark:hover:bg-gh-hover transition-colors cursor-pointer shrink-0"
                                 title="Back to Activities list"
                             >
                                 <ArrowLeft size={18} />
                             </button>
                         )}
 
-                        <div className="flex flex-wrap items-center gap-2.5">
-                            <h1 className="text-xl sm:text-2xl font-bold text-gray-900 dark:text-gray-100 leading-tight">
-                                {activity.name}
-                            </h1>
-                            <span className="font-mono font-bold text-xs text-gray-600 dark:text-gray-300 bg-gray-100 dark:bg-gh-subtle px-2 py-0.5 rounded border border-gray-200 dark:border-gh-border">
-                                {activity.code}
-                            </span>
-                            <span className={`inline-flex items-center px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider ${
-                                activity.status === 'active'
-                                    ? 'bg-emerald-50 text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-300 border border-emerald-200/60 dark:border-emerald-800/40'
-                                    : 'bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-400 border border-gray-200 dark:border-gray-700'
-                            }`}>
-                                {activity.status}
-                            </span>
-                        </div>
+                        {isEditing || isNew ? (
+                            <div className="flex flex-wrap items-center gap-2.5 flex-1 min-w-0">
+                                <input
+                                    type="text"
+                                    value={editName}
+                                    onChange={(e) => setEditName(e.target.value)}
+                                    placeholder="Activity Name (e.g. Earthwork Excavation)"
+                                    className="text-lg sm:text-xl font-bold text-gray-900 dark:text-gray-100 bg-transparent border-b-2 border-blue-500 focus:outline-none focus:border-blue-600 px-1 py-0.5 w-full max-w-md placeholder:text-gray-400 placeholder:font-normal"
+                                    autoFocus={isNew}
+                                    required
+                                />
+                                {!isNew && (
+                                    <span className="font-mono font-bold text-xs text-gray-600 dark:text-gray-300 bg-gray-100 dark:bg-gh-subtle px-2 py-0.5 rounded border border-gray-200 dark:border-gh-border">
+                                        {activity.code}
+                                    </span>
+                                )}
+                            </div>
+                        ) : (
+                            <div className="flex flex-wrap items-center gap-2.5">
+                                <h1 className="text-xl sm:text-2xl font-bold text-gray-900 dark:text-gray-100 leading-tight">
+                                    {activity.name}
+                                </h1>
+                                <span className="font-mono font-bold text-xs text-gray-600 dark:text-gray-300 bg-gray-100 dark:bg-gh-subtle px-2 py-0.5 rounded border border-gray-200 dark:border-gh-border">
+                                    {activity.code}
+                                </span>
+                                <span className={`inline-flex items-center px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider ${
+                                    activity.status === 'active'
+                                        ? 'bg-emerald-50 text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-300 border border-emerald-200/60 dark:border-emerald-800/40'
+                                        : 'bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-400 border border-gray-200 dark:border-gray-700'
+                                }`}>
+                                    {activity.status}
+                                </span>
+                            </div>
+                        )}
                     </div>
 
                     {/* Top-Right Action Buttons */}
                     <div className="flex items-center gap-2">
-                        {scope === 'project' && isBehind && onSync && (
-                            <button
-                                type="button"
-                                onClick={() => onSync(activity)}
-                                className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-lg bg-amber-500 hover:bg-amber-600 text-white transition-colors cursor-pointer shadow-xs animate-pulse"
-                            >
-                                <GitCompare size={12} /> Sync with Master
-                            </button>
-                        )}
-
-                        {!isEditing && (
-                            <button
-                                type="button"
-                                onClick={() => setShowDetails(prev => !prev)}
-                                className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-lg bg-gray-100 hover:bg-gray-200 dark:bg-gh-subtle dark:hover:bg-gh-hover text-gray-700 dark:text-gray-200 border border-gray-200 dark:border-gh-border transition-colors cursor-pointer shadow-2xs"
-                                title={showDetails ? "Hide Activity Overview" : "Show Activity Overview"}
-                            >
-                                {showDetails ? (
-                                    <>
-                                        <ChevronUp size={13} />
-                                        <span>Hide Details</span>
-                                    </>
-                                ) : (
-                                    <>
-                                        <ChevronDown size={13} />
-                                        <span>Show Details</span>
-                                    </>
+                        {isEditing || isNew ? (
+                            <>
+                                <button
+                                    type="button"
+                                    onClick={() => {
+                                        if (isNew) {
+                                            onBack();
+                                        } else {
+                                            setIsEditing(false);
+                                            setEditCode(activity.code || '');
+                                            setEditName(activity.name || '');
+                                            setEditOutputUnitId(String(activity.output_unit_id || ''));
+                                            setEditDescription(activity.description || '');
+                                            setEditRemarks(activity.remarks || '');
+                                        }
+                                    }}
+                                    disabled={savingDetails}
+                                    className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-lg bg-gray-100 hover:bg-gray-200 dark:bg-gh-subtle dark:hover:bg-gh-hover text-gray-700 dark:text-gray-300 border border-gray-200 dark:border-gh-border transition-colors cursor-pointer"
+                                >
+                                    <X size={13} />
+                                    <span>Cancel</span>
+                                </button>
+                                <button
+                                    type="button"
+                                    onClick={handleSaveActivityDetails}
+                                    disabled={savingDetails || !editName.trim() || !editCode.trim() || !editOutputUnitId}
+                                    className="flex items-center gap-1.5 px-4 py-1.5 text-xs font-semibold rounded-lg bg-blue-600 hover:bg-blue-700 text-white transition-colors cursor-pointer shadow-xs disabled:opacity-50"
+                                >
+                                    {savingDetails ? <Loader2 size={13} className="animate-spin" /> : <Save size={13} />}
+                                    <span>{isNew ? 'Create Activity' : 'Save Changes'}</span>
+                                </button>
+                            </>
+                        ) : (
+                            <>
+                                {scope === 'project' && isBehind && onSync && (
+                                    <button
+                                        type="button"
+                                        onClick={() => onSync(activity)}
+                                        className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-lg bg-amber-500 hover:bg-amber-600 text-white transition-colors cursor-pointer shadow-xs animate-pulse"
+                                    >
+                                        <GitCompare size={12} /> Sync with Master
+                                    </button>
                                 )}
-                            </button>
-                        )}
 
-                        {!isEditing && (
-                            <button
-                                type="button"
-                                onClick={() => {
-                                    setEditCode(activity.code);
-                                    setEditName(activity.name);
-                                    setEditOutputUnitId(String(activity.output_unit_id));
-                                    setEditDescription(activity.description || '');
-                                    setEditRemarks(activity.remarks || '');
-                                    setIsEditing(true);
-                                    setShowDetails(true);
-                                }}
-                                className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-lg bg-gray-100 hover:bg-gray-200 dark:bg-gh-subtle dark:hover:bg-gh-hover text-gray-700 dark:text-gray-200 border border-gray-200 dark:border-gh-border transition-colors cursor-pointer shadow-2xs"
-                            >
-                                <Edit2 size={12} />
-                                Edit Activity
-                            </button>
-                        )}
-
-                        {onAction && !isEditing && (
-                            activity.status === 'active' ? (
                                 <button
                                     type="button"
-                                    onClick={() => onAction(activity, 'archive')}
-                                    className="p-1.5 rounded-lg text-gray-400 hover:text-amber-600 hover:bg-gray-100 dark:hover:bg-gh-hover transition-colors cursor-pointer"
-                                    title="Archive Activity"
+                                    onClick={() => setShowDetails(prev => !prev)}
+                                    className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-lg bg-gray-100 hover:bg-gray-200 dark:bg-gh-subtle dark:hover:bg-gh-hover text-gray-700 dark:text-gray-200 border border-gray-200 dark:border-gh-border transition-colors cursor-pointer shadow-2xs"
+                                    title={showDetails ? "Hide Activity Overview" : "Show Activity Overview"}
                                 >
-                                    <Archive size={15} />
+                                    {showDetails ? (
+                                        <>
+                                            <ChevronUp size={13} />
+                                            <span>Hide Details</span>
+                                        </>
+                                    ) : (
+                                        <>
+                                            <ChevronDown size={13} />
+                                            <span>Show Details</span>
+                                        </>
+                                    )}
                                 </button>
-                            ) : (
+
                                 <button
                                     type="button"
-                                    onClick={() => onAction(activity, 'restore')}
-                                    className="p-1.5 rounded-lg text-gray-400 hover:text-teal-600 hover:bg-gray-100 dark:hover:bg-gh-hover transition-colors cursor-pointer"
-                                    title="Restore Activity"
+                                    onClick={() => {
+                                        setEditCode(activity.code);
+                                        setEditName(activity.name);
+                                        setEditOutputUnitId(String(activity.output_unit_id));
+                                        setEditDescription(activity.description || '');
+                                        setEditRemarks(activity.remarks || '');
+                                        setIsEditing(true);
+                                        setShowDetails(true);
+                                    }}
+                                    className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-lg bg-gray-100 hover:bg-gray-200 dark:bg-gh-subtle dark:hover:bg-gh-hover text-gray-700 dark:text-gray-200 border border-gray-200 dark:border-gh-border transition-colors cursor-pointer shadow-2xs"
                                 >
-                                    <RotateCcw size={15} />
+                                    <Edit2 size={12} />
+                                    <span>Edit</span>
                                 </button>
-                            )
+
+                                {onAction && (
+                                    activity.status === 'active' ? (
+                                        <button
+                                            type="button"
+                                            onClick={() => onAction(activity, 'archive')}
+                                            className="p-1.5 rounded-lg text-gray-400 hover:text-amber-600 hover:bg-gray-100 dark:hover:bg-gh-hover transition-colors cursor-pointer"
+                                            title="Archive Activity"
+                                        >
+                                            <Archive size={15} />
+                                        </button>
+                                    ) : (
+                                        <button
+                                            type="button"
+                                            onClick={() => onAction(activity, 'restore')}
+                                            className="p-1.5 rounded-lg text-gray-400 hover:text-teal-600 hover:bg-gray-100 dark:hover:bg-gh-hover transition-colors cursor-pointer"
+                                            title="Restore Activity"
+                                        >
+                                            <RotateCcw size={15} />
+                                        </button>
+                                    )
+                                )}
+                            </>
                         )}
                     </div>
                 </div>
 
-                {/* View Mode vs Edit Mode */}
-                {!isEditing ? (
-                    showDetails ? (
-                        /* Flex container: Specs on Left + Full-Height Image Card on Right */
-                        <div className="flex flex-col lg:flex-row gap-6 lg:gap-8 items-stretch pt-2">
-                            {/* Left: Technical Specifications (2-Column Grid) */}
-                            <div className="flex-1 min-w-0 grid grid-cols-1 md:grid-cols-2 gap-x-8 lg:gap-x-12 gap-y-3.5">
-                                {/* Left Column */}
-                                <div className="space-y-3">
-                                    <div>
-                                        <span className="text-[10px] font-semibold text-gray-400 dark:text-gray-500 uppercase tracking-wider block mb-0.5">
-                                            Activity Code
-                                        </span>
+                {/* Technical Specifications Container */}
+                {(!isEditing && !isNew && !showDetails) ? (
+                    /* Compact 1-line Summary when details are collapsed */
+                    <div className="flex flex-wrap items-center gap-x-4 gap-y-1.5 text-xs text-gray-500 dark:text-gray-400 pt-1 pb-1">
+                        {activity.image_url && (
+                            <img
+                                src={activity.image_url}
+                                alt=""
+                                className="w-5 h-5 rounded-md object-cover border border-gray-200 dark:border-gh-border shrink-0"
+                            />
+                        )}
+                        <span>Output: <strong className="font-mono text-gray-800 dark:text-gray-200">{activity.output_unit_code || '—'}</strong> ({activity.output_unit_name || 'Unit'})</span>
+                        <span>&bull;</span>
+                        <span>Scope: <strong className="text-gray-800 dark:text-gray-200">{activity.project_id ? `Project #${activity.project_id}` : 'Master Standard'}</strong></span>
+                        <span>&bull;</span>
+                        <span>Unit Cost: <strong className="font-mono text-gray-800 dark:text-gray-200">{calculating || !costData ? 'Computing...' : `₹ ${formatMoney(costData?.total || 0)} / ${activity.output_unit_code || 'unit'}`}</strong></span>
+                        <span>&bull;</span>
+                        <span>Recipe: <strong className="text-blue-600 dark:text-blue-400">{normsLoading ? 'Loading...' : `${norms.length} lines`}</strong></span>
+                    </div>
+                ) : (
+                    /* Unified 2-Column Specs + Right Image Card (Exact same layout for View, Edit, and Create) */
+                    <div className="flex flex-col lg:flex-row gap-6 lg:gap-8 items-stretch pt-2">
+                        {/* Left: Technical Specifications (2-Column Grid) */}
+                        <div className="flex-1 min-w-0 grid grid-cols-1 md:grid-cols-2 gap-x-8 lg:gap-x-12 gap-y-3.5">
+                            {/* Left Column */}
+                            <div className="space-y-3">
+                                <div>
+                                    <span className="text-[10px] font-semibold text-gray-400 dark:text-gray-500 uppercase tracking-wider block mb-1">
+                                        Activity Code {(isEditing || isNew) && <span className="text-red-500">*</span>}
+                                    </span>
+                                    {isEditing || isNew ? (
+                                        <input
+                                            type="text"
+                                            value={editCode}
+                                            onChange={(e) => setEditCode(e.target.value.toUpperCase())}
+                                            placeholder="e.g. ACT-EXC-01"
+                                            className="w-full sm:w-60 px-2.5 py-1.5 text-xs font-mono font-bold uppercase rounded-lg border border-gray-300 dark:border-gh-border bg-white dark:bg-[#0d1117] text-gray-900 dark:text-gray-100 focus:outline-none focus:ring-1 focus:ring-blue-500"
+                                            required
+                                        />
+                                    ) : (
                                         <span className="font-mono font-bold text-gray-900 dark:text-gray-100 bg-gray-100 dark:bg-gh-subtle/80 px-2 py-0.5 rounded text-xs border border-gray-200 dark:border-gh-border inline-block">
                                             {activity.code}
                                         </span>
-                                    </div>
+                                    )}
+                                </div>
 
-                                    <div>
-                                        <span className="text-[10px] font-semibold text-gray-400 dark:text-gray-500 uppercase tracking-wider block mb-0.5">
-                                            Output Unit
-                                        </span>
+                                <div>
+                                    <span className="text-[10px] font-semibold text-gray-400 dark:text-gray-500 uppercase tracking-wider block mb-1">
+                                        Output Unit {(isEditing || isNew) && <span className="text-red-500">*</span>}
+                                    </span>
+                                    {isEditing || isNew ? (
+                                        <select
+                                            value={editOutputUnitId}
+                                            onChange={(e) => setEditOutputUnitId(e.target.value)}
+                                            className="w-full sm:w-60 px-2.5 py-1.5 text-xs font-mono rounded-lg border border-gray-300 dark:border-gh-border bg-white dark:bg-[#0d1117] text-gray-900 dark:text-gray-100 focus:outline-none focus:ring-1 focus:ring-blue-500"
+                                            required
+                                        >
+                                            <option value="">Select Output Unit...</option>
+                                            {units.map((u) => (
+                                                <option key={u.id} value={u.id}>
+                                                    {u.code} &mdash; {u.name} ({u.category})
+                                                </option>
+                                            ))}
+                                        </select>
+                                    ) : (
                                         <div className="flex items-baseline gap-1.5">
                                             <span className="font-mono font-bold text-gray-900 dark:text-gray-100 text-xs">
                                                 {activity.output_unit_code || '—'}
@@ -707,336 +863,247 @@ export default function ActivityDetailPage({
                                                 ({activity.output_unit_name || 'Output Unit'})
                                             </span>
                                         </div>
-                                    </div>
+                                    )}
+                                </div>
 
-                                    <div>
-                                        <span className="text-[10px] font-semibold text-gray-400 dark:text-gray-500 uppercase tracking-wider block mb-0.5">
-                                            Scope
-                                        </span>
-                                        <span className="font-semibold text-gray-700 dark:text-gray-300 text-xs">
-                                            {activity.project_id ? `Project #${activity.project_id}` : 'Master Standard'}
-                                        </span>
-                                    </div>
+                                <div>
+                                    <span className="text-[10px] font-semibold text-gray-400 dark:text-gray-500 uppercase tracking-wider block mb-0.5">
+                                        Scope
+                                    </span>
+                                    <span className="font-semibold text-gray-700 dark:text-gray-300 text-xs">
+                                        {activity.project_id ? `Project #${activity.project_id}` : 'Master Standard'}
+                                    </span>
+                                </div>
 
-                                    <div>
-                                        <span className="text-[10px] font-semibold text-gray-400 dark:text-gray-500 uppercase tracking-wider block mb-0.5">
-                                            Status
-                                        </span>
-                                        <span className={`inline-flex items-center px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider ${
-                                            activity.status === 'active'
-                                                ? 'bg-emerald-50 text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-300 border border-emerald-200/60 dark:border-emerald-800/40'
-                                                : 'bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-400 border border-gray-200 dark:border-gray-700'
-                                        }`}>
-                                            {activity.status}
-                                        </span>
-                                    </div>
+                                <div>
+                                    <span className="text-[10px] font-semibold text-gray-400 dark:text-gray-500 uppercase tracking-wider block mb-0.5">
+                                        Status
+                                    </span>
+                                    <span className={`inline-flex items-center px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider ${
+                                        isNew || activity.status === 'active'
+                                            ? 'bg-emerald-50 text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-300 border border-emerald-200/60 dark:border-emerald-800/40'
+                                            : 'bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-400 border border-gray-200 dark:border-gray-700'
+                                    }`}>
+                                        {isNew ? 'active (new)' : activity.status}
+                                    </span>
+                                </div>
 
-                                    <div>
-                                        <span className="text-[10px] font-semibold text-gray-400 dark:text-gray-500 uppercase tracking-wider block mb-0.5">
-                                            Description &amp; Scope Notes
-                                        </span>
+                                <div>
+                                    <span className="text-[10px] font-semibold text-gray-400 dark:text-gray-500 uppercase tracking-wider block mb-1">
+                                        Description &amp; Scope Notes
+                                    </span>
+                                    {isEditing || isNew ? (
+                                        <textarea
+                                            rows={2}
+                                            value={editDescription}
+                                            onChange={(e) => setEditDescription(e.target.value)}
+                                            placeholder="Specification, work scope, compliance requirements..."
+                                            className="w-full px-2.5 py-1.5 text-xs rounded-lg border border-gray-300 dark:border-gh-border bg-white dark:bg-[#0d1117] text-gray-900 dark:text-gray-100 focus:outline-none focus:ring-1 focus:ring-blue-500"
+                                        />
+                                    ) : (
                                         <p className="text-xs text-gray-700 dark:text-gray-300 leading-relaxed whitespace-pre-line">
                                             {activity.description || <span className="text-gray-400 italic">None specified</span>}
                                         </p>
-                                    </div>
+                                    )}
+                                </div>
+                            </div>
+
+                            {/* Right Column */}
+                            <div className="space-y-3">
+                                <div>
+                                    <span className="text-[10px] font-semibold text-gray-400 dark:text-gray-500 uppercase tracking-wider block mb-1">
+                                        Dynamic Unit Cost (As of Today)
+                                    </span>
+                                    {isNew ? (
+                                        <span className="text-xs text-gray-400 italic block">
+                                            Computed automatically once recipe norms are configured
+                                        </span>
+                                    ) : calculating || !costData ? (
+                                        <span className="text-xs text-gray-400 italic flex items-center gap-1.5">
+                                            <Loader2 size={12} className="animate-spin text-blue-500" /> Computing unit rate...
+                                        </span>
+                                    ) : (
+                                        <div className="space-y-1">
+                                            <div className="flex items-baseline gap-2">
+                                                <span className="text-lg font-mono font-bold text-gray-900 dark:text-gray-100">
+                                                    ₹ {formatMoney(costData.total || 0)}
+                                                </span>
+                                                <span className="text-xs text-gray-500">
+                                                    / {activity.output_unit_code || 'unit'}
+                                                </span>
+                                                {costData.complete ? (
+                                                    <span className="inline-flex items-center gap-1 text-[10px] font-semibold text-emerald-600 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-950/40 px-1.5 py-0.5 rounded">
+                                                        <CheckCircle2 size={11} /> Fully Priced
+                                                    </span>
+                                                ) : costData.warnings && costData.warnings.length > 0 ? (
+                                                    <span className="inline-flex items-center gap-1 text-[10px] font-semibold text-amber-600 dark:text-amber-400 bg-amber-50 dark:bg-amber-950/40 px-1.5 py-0.5 rounded">
+                                                        <AlertTriangle size={11} /> {costData.warnings.length} Rate{costData.warnings.length === 1 ? '' : 's'} Missing
+                                                    </span>
+                                                ) : null}
+                                            </div>
+                                        </div>
+                                    )}
                                 </div>
 
-                                {/* Right Column */}
-                                <div className="space-y-3">
-                                    <div>
-                                        <span className="text-[10px] font-semibold text-gray-400 dark:text-gray-500 uppercase tracking-wider block mb-0.5">
-                                            Dynamic Unit Cost (As of Today)
+                                <div>
+                                    <span className="text-[10px] font-semibold text-gray-400 dark:text-gray-500 uppercase tracking-wider block mb-0.5">
+                                        Recipe Composition
+                                    </span>
+                                    {isNew ? (
+                                        <span className="text-xs text-gray-400 italic block">
+                                            0 norm lines (add materials, labour, equipment after creation)
                                         </span>
-                                        {calculating || !costData ? (
-                                            <span className="text-xs text-gray-400 italic flex items-center gap-1.5">
-                                                <Loader2 size={12} className="animate-spin text-blue-500" /> Computing unit rate...
-                                            </span>
-                                        ) : (
-                                            <div className="space-y-1">
-                                                <div className="flex items-baseline gap-2">
-                                                    <span className="text-lg font-mono font-bold text-gray-900 dark:text-gray-100">
-                                                        ₹ {formatMoney(costData.total || 0)}
-                                                    </span>
-                                                    <span className="text-xs text-gray-500">
-                                                        / {activity.output_unit_code || 'unit'}
-                                                    </span>
-                                                    {costData.complete ? (
-                                                        <span className="inline-flex items-center gap-1 text-[10px] font-semibold text-emerald-600 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-950/40 px-1.5 py-0.5 rounded">
-                                                            <CheckCircle2 size={11} /> Fully Priced
-                                                        </span>
-                                                    ) : costData.warnings && costData.warnings.length > 0 ? (
-                                                        <span className="inline-flex items-center gap-1 text-[10px] font-semibold text-amber-600 dark:text-amber-400 bg-amber-50 dark:bg-amber-950/40 px-1.5 py-0.5 rounded">
-                                                            <AlertTriangle size={11} /> {costData.warnings.length} Rate{costData.warnings.length === 1 ? '' : 's'} Missing
-                                                        </span>
-                                                    ) : null}
-                                                </div>
-                                            </div>
-                                        )}
-                                    </div>
+                                    ) : normsLoading ? (
+                                        <span className="text-xs text-gray-400 italic flex items-center gap-1.5">
+                                            <Loader2 size={12} className="animate-spin text-blue-500" /> Loading recipe norms...
+                                        </span>
+                                    ) : (
+                                        <span className="font-mono font-bold text-blue-600 dark:text-blue-400 text-xs">
+                                            {norms.length} resource norm lines active
+                                        </span>
+                                    )}
+                                </div>
 
-                                    <div>
-                                        <span className="text-[10px] font-semibold text-gray-400 dark:text-gray-500 uppercase tracking-wider block mb-0.5">
-                                            Recipe Composition
-                                        </span>
-                                        {normsLoading ? (
-                                            <span className="text-xs text-gray-400 italic flex items-center gap-1.5">
-                                                <Loader2 size={12} className="animate-spin text-blue-500" /> Loading recipe norms...
-                                            </span>
-                                        ) : (
-                                            <span className="font-mono font-bold text-blue-600 dark:text-blue-400 text-xs">
-                                                {norms.length} resource norm lines active
-                                            </span>
-                                        )}
-                                    </div>
-
-                                    <div>
-                                        <span className="text-[10px] font-semibold text-gray-400 dark:text-gray-500 uppercase tracking-wider block mb-0.5">
-                                            Remarks
-                                        </span>
+                                <div>
+                                    <span className="text-[10px] font-semibold text-gray-400 dark:text-gray-500 uppercase tracking-wider block mb-1">
+                                        Remarks
+                                    </span>
+                                    {isEditing || isNew ? (
+                                        <textarea
+                                            rows={2}
+                                            value={editRemarks}
+                                            onChange={(e) => setEditRemarks(e.target.value)}
+                                            placeholder="Internal execution notes or machinery remarks..."
+                                            className="w-full px-2.5 py-1.5 text-xs rounded-lg border border-gray-300 dark:border-gh-border bg-white dark:bg-[#0d1117] text-gray-900 dark:text-gray-100 focus:outline-none focus:ring-1 focus:ring-blue-500"
+                                        />
+                                    ) : (
                                         <p className="text-xs text-gray-700 dark:text-gray-300 leading-relaxed whitespace-pre-line">
                                             {activity.remarks || <span className="text-gray-400 italic">No execution notes</span>}
                                         </p>
+                                    )}
+                                </div>
+                            </div>
+                        </div>
+
+                        {/* Right: Prominent Activity Image Card (Fills height vertically) */}
+                        <div className="relative group shrink-0 w-full lg:w-64 xl:w-72 self-stretch min-h-[220px] rounded-2xl border border-gray-200 dark:border-gh-border bg-gray-50 dark:bg-gh-subtle overflow-hidden shadow-xs flex flex-col justify-center">
+                            {(isNew ? pendingImagePreview : activity.image_url) ? (
+                                <>
+                                    {/* Clickable Image -> Fullscreen Lightbox */}
+                                    <div
+                                        className="w-full h-full min-h-[220px] cursor-pointer overflow-hidden"
+                                        onClick={() => setShowLightbox(true)}
+                                        title="Click to view fullscreen"
+                                    >
+                                        <img
+                                            src={isNew ? pendingImagePreview : activity.image_url}
+                                            alt={activity.name || 'Activity photo'}
+                                            className="w-full h-full object-cover min-h-[220px] transition-transform duration-300 group-hover:scale-105"
+                                        />
                                     </div>
-                                </div>
-                            </div>
 
-                            {/* Right: Prominent Activity Image Card (Fills height vertically) */}
-                            <div className="relative group shrink-0 w-full lg:w-64 xl:w-72 self-stretch min-h-[220px] rounded-2xl border border-gray-200 dark:border-gh-border bg-gray-50 dark:bg-gh-subtle overflow-hidden shadow-xs flex flex-col justify-center">
-                                {activity.image_url ? (
-                                    <>
-                                        {/* Clickable Image -> Fullscreen Lightbox */}
-                                        <div
-                                            className="w-full h-full min-h-[220px] cursor-pointer overflow-hidden"
-                                            onClick={() => setShowLightbox(true)}
-                                            title="Click to view fullscreen"
+                                    {/* Discreet Triple-Dot Menu in Top-Right Corner */}
+                                    <div className="absolute top-2.5 right-2.5 z-10" ref={imageMenuRef}>
+                                        <button
+                                            type="button"
+                                            onClick={(e) => {
+                                                e.stopPropagation();
+                                                setShowImageMenu(prev => !prev);
+                                            }}
+                                            className="p-1.5 rounded-lg bg-black/40 hover:bg-black/65 text-white backdrop-blur-md transition-all shadow-xs cursor-pointer"
+                                            title="Image options"
                                         >
-                                            <img
-                                                src={activity.image_url}
-                                                alt={activity.name}
-                                                className="w-full h-full object-cover min-h-[220px] transition-transform duration-300 group-hover:scale-105"
-                                            />
-                                        </div>
+                                            <MoreVertical size={15} />
+                                        </button>
 
-                                        {/* Discreet Triple-Dot Menu in Top-Right Corner */}
-                                        <div className="absolute top-2.5 right-2.5 z-10" ref={imageMenuRef}>
-                                            <button
-                                                type="button"
-                                                onClick={(e) => {
-                                                    e.stopPropagation();
-                                                    setShowImageMenu(prev => !prev);
-                                                }}
-                                                className="p-1.5 rounded-lg bg-black/40 hover:bg-black/65 text-white backdrop-blur-md transition-all shadow-xs cursor-pointer"
-                                                title="Image options"
+                                        {showImageMenu && (
+                                            <div
+                                                className="absolute right-0 mt-1.5 w-40 rounded-xl bg-white dark:bg-[#161b22] border border-gray-200 dark:border-gh-border shadow-xl py-1 z-20 text-xs animate-scale-in"
+                                                onClick={(e) => e.stopPropagation()}
                                             >
-                                                <MoreVertical size={15} />
-                                            </button>
-
-                                            {showImageMenu && (
-                                                <div
-                                                    className="absolute right-0 mt-1.5 w-40 rounded-xl bg-white dark:bg-[#161b22] border border-gray-200 dark:border-gh-border shadow-xl py-1 z-20 text-xs animate-scale-in"
-                                                    onClick={(e) => e.stopPropagation()}
+                                                <button
+                                                    type="button"
+                                                    onClick={() => {
+                                                        setShowImageMenu(false);
+                                                        setShowLightbox(true);
+                                                    }}
+                                                    className="w-full flex items-center gap-2 px-3 py-2 text-gray-700 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-gh-hover text-left transition-colors cursor-pointer"
                                                 >
-                                                    <button
-                                                        type="button"
-                                                        onClick={() => {
-                                                            setShowImageMenu(false);
-                                                            setShowLightbox(true);
-                                                        }}
-                                                        className="w-full flex items-center gap-2 px-3 py-2 text-gray-700 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-gh-hover text-left transition-colors cursor-pointer"
-                                                    >
-                                                        <Maximize2 size={13} className="text-gray-500" />
-                                                        <span>View Fullscreen</span>
-                                                    </button>
-                                                    <button
-                                                        type="button"
-                                                        onClick={() => {
-                                                            setShowImageMenu(false);
-                                                            fileInputRef.current?.click();
-                                                        }}
-                                                        disabled={uploadingImage}
-                                                        className="w-full flex items-center gap-2 px-3 py-2 text-gray-700 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-gh-hover text-left transition-colors cursor-pointer"
-                                                    >
-                                                        <Camera size={13} className="text-gray-500" />
-                                                        <span>Change Photo</span>
-                                                    </button>
-                                                    <div className="my-1 border-t border-gray-100 dark:border-gh-border" />
-                                                    <button
-                                                        type="button"
-                                                        onClick={() => {
-                                                            setShowImageMenu(false);
-                                                            handleRemoveImage();
-                                                        }}
-                                                        disabled={uploadingImage}
-                                                        className="w-full flex items-center gap-2 px-3 py-2 text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-950/30 text-left transition-colors cursor-pointer"
-                                                    >
-                                                        <Trash2 size={13} />
-                                                        <span>Remove Photo</span>
-                                                    </button>
-                                                </div>
-                                            )}
-                                        </div>
-                                    </>
-                                ) : (
-                                    <button
-                                        type="button"
-                                        onClick={() => fileInputRef.current?.click()}
-                                        disabled={uploadingImage}
-                                        className="w-full h-full min-h-[220px] border-2 border-dashed border-gray-300 dark:border-gh-border hover:border-blue-500 dark:hover:border-blue-400 rounded-2xl flex flex-col items-center justify-center gap-2.5 p-6 text-gray-400 hover:text-blue-600 dark:hover:text-blue-400 transition-colors cursor-pointer group bg-gray-50/50 dark:bg-gh-subtle/40"
-                                        title="Upload Activity Photo"
-                                    >
-                                        {uploadingImage ? (
-                                            <div className="flex flex-col items-center gap-2">
-                                                <Loader2 size={24} className="animate-spin text-blue-500" />
-                                                <span className="text-xs font-medium text-gray-500">Uploading...</span>
+                                                    <Maximize2 size={13} className="text-gray-500" />
+                                                    <span>View Fullscreen</span>
+                                                </button>
+                                                <button
+                                                    type="button"
+                                                    onClick={() => {
+                                                        setShowImageMenu(false);
+                                                        fileInputRef.current?.click();
+                                                    }}
+                                                    disabled={uploadingImage}
+                                                    className="w-full flex items-center gap-2 px-3 py-2 text-gray-700 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-gh-hover text-left transition-colors cursor-pointer"
+                                                >
+                                                    <Camera size={13} className="text-gray-500" />
+                                                    <span>Change Photo</span>
+                                                </button>
+                                                <div className="my-1 border-t border-gray-100 dark:border-gh-border" />
+                                                <button
+                                                    type="button"
+                                                    onClick={() => {
+                                                        setShowImageMenu(false);
+                                                        handleRemoveImage();
+                                                    }}
+                                                    disabled={uploadingImage}
+                                                    className="w-full flex items-center gap-2 px-3 py-2 text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-950/30 text-left transition-colors cursor-pointer"
+                                                >
+                                                    <Trash2 size={13} />
+                                                    <span>Remove Photo</span>
+                                                </button>
                                             </div>
-                                        ) : (
-                                            <>
-                                                <div className="w-12 h-12 rounded-full bg-gray-100 dark:bg-gh-border/50 flex items-center justify-center group-hover:scale-110 transition-transform">
-                                                    <Camera size={20} className="text-gray-400 group-hover:text-blue-500" />
-                                                </div>
-                                                <div className="text-center px-3">
-                                                    <span className="text-xs font-semibold block text-gray-700 dark:text-gray-300">Add Photo</span>
-                                                    <span className="text-[10px] text-gray-400 block mt-0.5">PNG, JPG up to 30MB</span>
-                                                </div>
-                                            </>
                                         )}
-                                    </button>
-                                )}
-                                <input
-                                    ref={fileInputRef}
-                                    type="file"
-                                    accept="image/png,image/jpeg,image/jpg,image/webp,image/gif"
-                                    onChange={handleImageUpload}
-                                    className="hidden"
-                                />
-                            </div>
-                        </div>
-                    ) : (
-                        /* Compact 1-line Summary when details are collapsed */
-                        <div className="flex flex-wrap items-center gap-x-4 gap-y-1.5 text-xs text-gray-500 dark:text-gray-400 pt-1 pb-1">
-                            {activity.image_url && (
-                                <img
-                                    src={activity.image_url}
-                                    alt=""
-                                    className="w-5 h-5 rounded-md object-cover border border-gray-200 dark:border-gh-border shrink-0"
-                                />
-                            )}
-                            <span>Output: <strong className="font-mono text-gray-800 dark:text-gray-200">{activity.output_unit_code || '—'}</strong> ({activity.output_unit_name || 'Unit'})</span>
-                            <span>&bull;</span>
-                            <span>Scope: <strong className="text-gray-800 dark:text-gray-200">{activity.project_id ? `Project #${activity.project_id}` : 'Master Standard'}</strong></span>
-                            <span>&bull;</span>
-                            <span>Unit Cost: <strong className="font-mono text-gray-800 dark:text-gray-200">{calculating || !costData ? 'Computing...' : `₹ ${formatMoney(costData?.total || 0)} / ${activity.output_unit_code || 'unit'}`}</strong></span>
-                            <span>&bull;</span>
-                            <span>Recipe: <strong className="text-blue-600 dark:text-blue-400">{normsLoading ? 'Loading...' : `${norms.length} lines`}</strong></span>
-                        </div>
-                    )
-                ) : (
-                    /* In-Place Inline Activity Edit Form with dedicated clean styling */
-                    <div className="p-4 rounded-xl border border-blue-200 dark:border-blue-900/50 bg-blue-50/20 dark:bg-blue-950/10">
-                        <form onSubmit={handleSaveActivityDetails} className="space-y-4">
-                            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                                <div>
-                                    <label className="block text-[11px] font-semibold text-gray-700 dark:text-gray-300 mb-1">
-                                        Activity Code <span className="text-red-500">*</span>
-                                    </label>
-                                    <input
-                                        type="text"
-                                        value={editCode}
-                                        onChange={(e) => setEditCode(e.target.value.toUpperCase())}
-                                        placeholder="e.g. LEMONADE"
-                                        className="w-full px-2.5 py-1.5 text-xs font-mono font-bold border rounded-lg bg-white dark:bg-[#0d1117] border-gray-300 dark:border-gh-border text-gray-900 dark:text-gray-100"
-                                        required
-                                    />
-                                </div>
-
-                                <div>
-                                    <label className="block text-[11px] font-semibold text-gray-700 dark:text-gray-300 mb-1">
-                                        Activity Name <span className="text-red-500">*</span>
-                                    </label>
-                                    <input
-                                        type="text"
-                                        value={editName}
-                                        onChange={(e) => setEditName(e.target.value)}
-                                        placeholder="e.g. Lemonade"
-                                        className="w-full px-2.5 py-1.5 text-xs border rounded-lg bg-white dark:bg-[#0d1117] border-gray-300 dark:border-gh-border text-gray-900 dark:text-gray-100"
-                                        required
-                                    />
-                                </div>
-
-                                <div>
-                                    <label className="block text-[11px] font-semibold text-gray-700 dark:text-gray-300 mb-1">
-                                        Output Unit <span className="text-red-500">*</span>
-                                    </label>
-                                    <select
-                                        value={editOutputUnitId}
-                                        onChange={(e) => setEditOutputUnitId(e.target.value)}
-                                        className="w-full px-2.5 py-1.5 text-xs border rounded-lg bg-white dark:bg-[#0d1117] border-gray-300 dark:border-gh-border text-gray-900 dark:text-gray-100"
-                                        required
-                                    >
-                                        <option value="">Select Output Unit</option>
-                                        {units.map((u) => (
-                                            <option key={u.id} value={u.id}>
-                                                {u.code} &mdash; {u.name} ({u.category})
-                                            </option>
-                                        ))}
-                                    </select>
-                                </div>
-                            </div>
-
-                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                                <div>
-                                    <label className="block text-[11px] font-semibold text-gray-700 dark:text-gray-300 mb-1">
-                                        Description
-                                    </label>
-                                    <textarea
-                                        value={editDescription}
-                                        onChange={(e) => setEditDescription(e.target.value)}
-                                        rows={2}
-                                        placeholder="Specification and execution description..."
-                                        className="w-full px-2.5 py-1.5 text-xs border rounded-lg bg-white dark:bg-[#0d1117] border-gray-300 dark:border-gh-border text-gray-900 dark:text-gray-100"
-                                    />
-                                </div>
-
-                                <div>
-                                    <label className="block text-[11px] font-semibold text-gray-700 dark:text-gray-300 mb-1">
-                                        Remarks
-                                    </label>
-                                    <textarea
-                                        value={editRemarks}
-                                        onChange={(e) => setEditRemarks(e.target.value)}
-                                        rows={2}
-                                        placeholder="Internal notes or machinery remarks..."
-                                        className="w-full px-2.5 py-1.5 text-xs border rounded-lg bg-white dark:bg-[#0d1117] border-gray-300 dark:border-gh-border text-gray-900 dark:text-gray-100"
-                                    />
-                                </div>
-                            </div>
-
-                            <div className="flex justify-end gap-2 pt-2 border-t border-gray-100 dark:border-gh-border/50">
+                                    </div>
+                                </>
+                            ) : (
                                 <button
                                     type="button"
-                                    onClick={() => setIsEditing(false)}
-                                    disabled={savingDetails}
-                                    className="px-3 py-1.5 text-xs font-semibold rounded-lg bg-gray-100 hover:bg-gray-200 dark:bg-gh-subtle dark:hover:bg-gh-hover text-gray-700 dark:text-gray-300 transition-colors cursor-pointer"
+                                    onClick={() => fileInputRef.current?.click()}
+                                    disabled={uploadingImage}
+                                    className="w-full h-full min-h-[220px] border-2 border-dashed border-gray-300 dark:border-gh-border hover:border-blue-500 dark:hover:border-blue-400 rounded-2xl flex flex-col items-center justify-center gap-2.5 p-6 text-gray-400 hover:text-blue-600 dark:hover:text-blue-400 transition-colors cursor-pointer group bg-gray-50/50 dark:bg-gh-subtle/40"
+                                    title="Upload Activity Photo"
                                 >
-                                    Cancel
+                                    {uploadingImage ? (
+                                        <div className="flex flex-col items-center gap-2">
+                                            <Loader2 size={24} className="animate-spin text-blue-500" />
+                                            <span className="text-xs font-medium text-gray-500">Uploading...</span>
+                                        </div>
+                                    ) : (
+                                        <>
+                                            <div className="w-12 h-12 rounded-full bg-gray-100 dark:bg-gh-border/50 flex items-center justify-center group-hover:scale-110 transition-transform">
+                                                <Camera size={20} className="text-gray-400 group-hover:text-blue-500" />
+                                            </div>
+                                            <div className="text-center px-3">
+                                                <span className="text-xs font-semibold block text-gray-700 dark:text-gray-300">Add Photo</span>
+                                                <span className="text-[10px] text-gray-400 block mt-0.5">PNG, JPG up to 30MB</span>
+                                            </div>
+                                        </>
+                                    )}
                                 </button>
-                                <button
-                                    type="submit"
-                                    disabled={savingDetails}
-                                    className="flex items-center gap-1.5 px-4 py-1.5 text-xs font-semibold rounded-lg bg-blue-600 hover:bg-blue-700 text-white transition-colors cursor-pointer shadow-xs disabled:opacity-50"
-                                >
-                                    {savingDetails ? <Loader2 size={12} className="animate-spin" /> : <Save size={12} />}
-                                    Save Changes
-                                </button>
-                            </div>
-                        </form>
+                            )}
+                            <input
+                                ref={fileInputRef}
+                                type="file"
+                                accept="image/png,image/jpeg,image/jpg,image/webp,image/gif"
+                                onChange={handleImageUpload}
+                                className="hidden"
+                            />
+                        </div>
                     </div>
                 )}
             </div>
 
             {/* ─── TAB NAVIGATION: UNDERLINE TABS (NO BOX, NO GAPS) ─── */}
-            <div className="border-b border-gray-200 dark:border-gh-border pt-1">
-                <div className="flex gap-6 -mb-px">
+            {!isNew ? (
+                <>
+                    <div className="border-b border-gray-200 dark:border-gh-border pt-1">
+                        <div className="flex gap-6 -mb-px">
                     <button
                         type="button"
                         onClick={() => setActiveSection('calculator')}
@@ -1605,7 +1672,18 @@ export default function ActivityDetailPage({
                         entityId={activity.id}
                     />
                 )}
-            </div>
+                </div>
+                </>
+            ) : (
+                <div className="py-8 px-6 text-center rounded-2xl border-2 border-dashed border-gray-200 dark:border-gh-border bg-gray-50/50 dark:bg-gh-subtle/30 mt-2">
+                    <p className="text-xs font-semibold text-gray-700 dark:text-gray-300">
+                        Resource Norms, Unit Rate Analysis &amp; Warehouse BOM
+                    </p>
+                    <p className="text-[11px] text-gray-400 mt-1 max-w-md mx-auto">
+                        Once created, you can define material/labour/equipment recipe norms, auto-calculate dynamic costs across dates, and plan project BOM requirements.
+                    </p>
+                </div>
+            )}
 
             {/* ─── MODAL: CORRECT NORM LINE ─────────────────────────────────── */}
             {isCorrectNormModalOpen && correctingNorm && (
@@ -1761,7 +1839,7 @@ export default function ActivityDetailPage({
             />
 
             {/* Fullscreen Image Lightbox Modal */}
-            {showLightbox && activity.image_url && (
+            {showLightbox && (isNew ? pendingImagePreview : activity.image_url) && (
                 <div
                     className="fixed inset-0 z-50 bg-black/85 backdrop-blur-sm flex flex-col items-center justify-center p-4 animate-fade-in"
                     onClick={() => setShowLightbox(false)}
@@ -1779,13 +1857,13 @@ export default function ActivityDetailPage({
 
                     <div className="max-w-4xl max-h-[85vh] flex flex-col items-center justify-center select-none" onClick={(e) => e.stopPropagation()}>
                         <img
-                            src={activity.image_url}
-                            alt={activity.name}
+                            src={isNew ? pendingImagePreview : activity.image_url}
+                            alt={activity.name || 'Activity photo'}
                             className="max-w-full max-h-[75vh] object-contain rounded-xl shadow-2xl"
                         />
                         <div className="mt-3 text-center">
-                            <span className="text-white text-sm font-semibold block">{activity.name}</span>
-                            <span className="text-white/60 text-xs font-mono">{activity.code}</span>
+                            <span className="text-white text-sm font-semibold block">{editName || activity.name}</span>
+                            <span className="text-white/60 text-xs font-mono">{editCode || activity.code}</span>
                         </div>
                     </div>
                 </div>

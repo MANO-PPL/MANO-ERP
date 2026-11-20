@@ -21,7 +21,9 @@ import {
     Camera,
     MoreVertical,
     Eye,
-    Maximize2
+    Maximize2,
+    User,
+    Wrench
 } from 'lucide-react';
 import catalogApi from '../../services/catalogApi';
 import { showCatalogErrorToast } from './catalogErrors';
@@ -37,10 +39,12 @@ export default function ResourceDetailPage({
     units = [],
     onBack,
     onResourceUpdated,
+    onResourceCreated,
     onAction,
     onSync
 }) {
-    const [resource, setResource] = useState(initialResource);
+    const isNew = Boolean(initialResource?.isNew);
+    const [resource, setResource] = useState(initialResource || {});
     const [activeTab, setActiveTab] = useState('rates'); // 'rates' | 'packaging' | 'history'
     const [showDetails, setShowDetails] = useState(true); // Toggle to collapse/expand resource details panel
 
@@ -48,12 +52,19 @@ export default function ResourceDetailPage({
     const [availableUnits, setAvailableUnits] = useState(units || []);
 
     // ─── Edit Mode State ──────────────────────────────────────────────────────
-    const [isEditing, setIsEditing] = useState(false);
-    const [editName, setEditName] = useState(resource?.name || '');
-    const [editBaseUnitId, setEditBaseUnitId] = useState(String(resource?.base_unit_id || ''));
-    const [editDescription, setEditDescription] = useState(resource?.description || '');
-    const [editRemarks, setEditRemarks] = useState(resource?.remarks || '');
+    const [isEditing, setIsEditing] = useState(Boolean(initialResource?.isNew || initialResource?.startEditing));
+    const [editKind, setEditKind] = useState(initialResource?.kind || 'material');
+    const [editCode, setEditCode] = useState(initialResource?.code || '');
+    const [editName, setEditName] = useState(initialResource?.name || '');
+    const [editBaseUnitId, setEditBaseUnitId] = useState(String(initialResource?.base_unit_id || (units?.[0]?.id || '')));
+    const [editDescription, setEditDescription] = useState(initialResource?.description || '');
+    const [editRemarks, setEditRemarks] = useState(initialResource?.remarks || '');
+    const [initialRateValue, setInitialRateValue] = useState('');
     const [savingDetails, setSavingDetails] = useState(false);
+
+    // ─── Pending Image State (For isNew creation) ─────────────────────────────
+    const [pendingImageFile, setPendingImageFile] = useState(null);
+    const [pendingImagePreview, setPendingImagePreview] = useState(null);
 
     // ─── Rates State ──────────────────────────────────────────────────────────
     const [rates, setRates] = useState([]);
@@ -125,12 +136,21 @@ export default function ResourceDetailPage({
 
     const handleImageUpload = async (e) => {
         const file = e.target.files?.[0];
-        if (!file || !resource?.id) return;
+        if (!file) return;
         if (file.size > 30 * 1024 * 1024) {
             customToast.error('Selected image exceeds 30MB limit. Please choose an image under 30MB.', 'File Too Large');
             if (fileInputRef.current) fileInputRef.current.value = '';
             return;
         }
+
+        if (isNew) {
+            setPendingImageFile(file);
+            setPendingImagePreview(URL.createObjectURL(file));
+            if (fileInputRef.current) fileInputRef.current.value = '';
+            return;
+        }
+
+        if (!resource?.id) return;
         try {
             setUploadingImage(true);
             const updated = await catalogApi.uploadResourceImage(resource.id, file);
@@ -148,6 +168,11 @@ export default function ResourceDetailPage({
     };
 
     const handleRemoveImage = async () => {
+        if (isNew) {
+            setPendingImageFile(null);
+            setPendingImagePreview(null);
+            return;
+        }
         if (!resource?.id) return;
         try {
             setUploadingImage(true);
@@ -164,9 +189,19 @@ export default function ResourceDetailPage({
 
     // Load available units
     useEffect(() => {
-        if (units && units.length > 0) setAvailableUnits(units);
+        if (units && units.length > 0) {
+            setAvailableUnits(units);
+            if (!editBaseUnitId && units[0]?.id) {
+                setEditBaseUnitId(String(units[0].id));
+            }
+        }
         catalogApi.listUnits().then(fresh => {
-            if (Array.isArray(fresh) && fresh.length > 0) setAvailableUnits(fresh);
+            if (Array.isArray(fresh) && fresh.length > 0) {
+                setAvailableUnits(fresh);
+                if (!editBaseUnitId && fresh[0]?.id) {
+                    setEditBaseUnitId(String(fresh[0].id));
+                }
+            }
         }).catch(() => {});
     }, [units]);
 
@@ -181,10 +216,12 @@ export default function ResourceDetailPage({
             const updated = (list || []).find(r => r.id === resource.id);
             if (updated) {
                 setResource(updated);
+                setEditCode(updated.code);
                 setEditName(updated.name);
                 setEditBaseUnitId(String(updated.base_unit_id));
                 setEditDescription(updated.description || '');
                 setEditRemarks(updated.remarks || '');
+                return updated;
             }
         } catch (_) {}
     };
@@ -256,16 +293,79 @@ export default function ResourceDetailPage({
 
     // ─── Save Resource Core Details ───────────────────────────────────────────
     const handleSaveDetails = async (e) => {
-        e.preventDefault();
+        if (e && e.preventDefault) e.preventDefault();
         const trimmedName = editName.trim();
         if (!trimmedName) {
             customToast.error('Resource name cannot be empty', 'Missing Name');
             return;
         }
 
+        if (isNew) {
+            const cleanCode = editCode.trim().toUpperCase();
+            if (!cleanCode) {
+                customToast.error('Resource code cannot be empty', 'Missing Code');
+                return;
+            }
+            if (!editBaseUnitId) {
+                customToast.error('Please select a base unit', 'Missing Unit');
+                return;
+            }
+
+            setSavingDetails(true);
+            try {
+                const created = await catalogApi.createResource({
+                    projectId: scope === 'project' && projectId ? Number(projectId) : null,
+                    kind: editKind,
+                    code: cleanCode,
+                    name: trimmedName,
+                    baseUnitId: Number(editBaseUnitId),
+                    description: editDescription.trim() || undefined,
+                    remarks: editRemarks.trim() || undefined
+                });
+
+                if (pendingImageFile && created?.id) {
+                    try {
+                        const withImg = await catalogApi.uploadResourceImage(created.id, pendingImageFile);
+                        if (withImg?.image_url) created.image_url = withImg.image_url;
+                    } catch (_) {}
+                }
+
+                if (initialRateValue.trim() && created?.id) {
+                    try {
+                        await catalogApi.setRate(created.id, {
+                            rate: initialRateValue.trim(),
+                            unitId: Number(editBaseUnitId),
+                            effectiveFrom: getTodayDateStr(),
+                            note: 'Initial baseline rate'
+                        });
+                    } catch (_) {}
+                }
+
+                customToast.success(`Resource ${created.code} created successfully`, 'Resource Created');
+                if (onResourceCreated) {
+                    onResourceCreated(created);
+                } else if (onResourceUpdated) {
+                    onResourceUpdated();
+                    if (onBack) onBack();
+                }
+            } catch (err) {
+                showCatalogErrorToast(err, 'Failed to create resource');
+            } finally {
+                setSavingDetails(false);
+            }
+            return;
+        }
+
+        const cleanCode = editCode.trim().toUpperCase();
+        if (!cleanCode) {
+            customToast.error('Resource code cannot be empty', 'Missing Code');
+            return;
+        }
+
         setSavingDetails(true);
         try {
             await catalogApi.updateResource(resource.id, {
+                code: cleanCode,
                 name: trimmedName,
                 baseUnitId: Number(editBaseUnitId),
                 description: editDescription.trim() || undefined,
@@ -273,8 +373,8 @@ export default function ResourceDetailPage({
             });
             customToast.success('Resource updated', 'Updated');
             setIsEditing(false);
-            await reloadResource();
-            if (onResourceUpdated) onResourceUpdated();
+            const fresh = await reloadResource();
+            if (onResourceUpdated) onResourceUpdated(fresh);
         } catch (err) {
             showCatalogErrorToast(err, 'Failed to update resource');
         } finally {
@@ -405,143 +505,273 @@ export default function ResourceDetailPage({
             <div className="space-y-3">
                 {/* Header Row: Title & Action Buttons */}
                 <div className="flex flex-wrap items-center justify-between gap-3">
-                    <div className="flex items-center gap-3">
+                    <div className="flex items-center gap-3 flex-1 min-w-0">
                         {onBack && (
                             <button
                                 type="button"
                                 onClick={onBack}
-                                className="p-1.5 rounded-lg text-gray-500 hover:text-gray-900 dark:text-gray-400 dark:hover:text-gray-100 hover:bg-gray-100 dark:hover:bg-gh-hover transition-colors cursor-pointer"
+                                className="p-1.5 rounded-lg text-gray-500 hover:text-gray-900 dark:text-gray-400 dark:hover:text-gray-100 hover:bg-gray-100 dark:hover:bg-gh-hover transition-colors cursor-pointer shrink-0"
                                 title="Back to Resources list"
                             >
                                 <ArrowLeft size={18} />
                             </button>
                         )}
-                        <div className="flex flex-wrap items-center gap-2.5">
-                            <h1 className="text-xl sm:text-2xl font-bold text-gray-900 dark:text-gray-100 leading-tight">
-                                {resource.name}
-                            </h1>
-                            <span className="font-mono font-bold text-xs text-gray-600 dark:text-gray-300 bg-gray-100 dark:bg-gh-subtle px-2 py-0.5 rounded border border-gray-200 dark:border-gh-border">
-                                {resource.code}
-                            </span>
-                            <span className="capitalize font-semibold text-xs px-2 py-0.5 rounded bg-blue-50 text-blue-700 dark:bg-blue-950/40 dark:text-blue-300 border border-blue-200/60 dark:border-blue-800/40">
-                                {resource.kind}
-                            </span>
-                            <span className={`inline-flex items-center px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider ${
-                                resource.status === 'active'
-                                    ? 'bg-emerald-50 text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-300 border border-emerald-200/60 dark:border-emerald-800/40'
-                                    : 'bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-400 border border-gray-200 dark:border-gray-700'
-                            }`}>
-                                {resource.status}
-                            </span>
-                        </div>
+
+                        {isEditing || isNew ? (
+                            <div className="flex flex-wrap items-center gap-2.5 flex-1 min-w-0">
+                                <input
+                                    type="text"
+                                    value={editName}
+                                    onChange={(e) => setEditName(e.target.value)}
+                                    placeholder="Resource Name (e.g. Portland Cement)"
+                                    className="text-lg sm:text-xl font-bold text-gray-900 dark:text-gray-100 bg-transparent border-b-2 border-blue-500 focus:outline-none focus:border-blue-600 px-1 py-0.5 w-full max-w-md placeholder:text-gray-400 placeholder:font-normal"
+                                    autoFocus={isNew}
+                                    required
+                                />
+                                {!isNew && (
+                                    <>
+                                        <span className="font-mono font-bold text-xs text-gray-600 dark:text-gray-300 bg-gray-100 dark:bg-gh-subtle px-2 py-0.5 rounded border border-gray-200 dark:border-gh-border">
+                                            {resource.code}
+                                        </span>
+                                        <span className="capitalize font-semibold text-xs px-2 py-0.5 rounded bg-blue-50 text-blue-700 dark:bg-blue-950/40 dark:text-blue-300 border border-blue-200/60 dark:border-blue-800/40">
+                                            {resource.kind}
+                                        </span>
+                                    </>
+                                )}
+                            </div>
+                        ) : (
+                            <div className="flex flex-wrap items-center gap-2.5">
+                                <h1 className="text-xl sm:text-2xl font-bold text-gray-900 dark:text-gray-100 leading-tight">
+                                    {resource.name}
+                                </h1>
+                                <span className="font-mono font-bold text-xs text-gray-600 dark:text-gray-300 bg-gray-100 dark:bg-gh-subtle px-2 py-0.5 rounded border border-gray-200 dark:border-gh-border">
+                                    {resource.code}
+                                </span>
+                                <span className="capitalize font-semibold text-xs px-2 py-0.5 rounded bg-blue-50 text-blue-700 dark:bg-blue-950/40 dark:text-blue-300 border border-blue-200/60 dark:border-blue-800/40">
+                                    {resource.kind}
+                                </span>
+                                <span className={`inline-flex items-center px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider ${
+                                    resource.status === 'active'
+                                        ? 'bg-emerald-50 text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-300 border border-emerald-200/60 dark:border-emerald-800/40'
+                                        : 'bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-400 border border-gray-200 dark:border-gray-700'
+                                }`}>
+                                    {resource.status}
+                                </span>
+                            </div>
+                        )}
                     </div>
 
                     {/* Top-Right Action Buttons */}
                     <div className="flex items-center gap-2">
-                        {scope === 'project' && isBehind && onSync && (
-                            <button
-                                type="button"
-                                onClick={() => onSync(resource)}
-                                className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-lg bg-amber-500 hover:bg-amber-600 text-white transition-colors cursor-pointer shadow-xs animate-pulse"
-                            >
-                                <GitCompare size={12} /> Sync with Master
-                            </button>
-                        )}
-
-                        {!isEditing && (
-                            <button
-                                type="button"
-                                onClick={() => setShowDetails(prev => !prev)}
-                                className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-lg bg-gray-100 hover:bg-gray-200 dark:bg-gh-subtle dark:hover:bg-gh-hover text-gray-700 dark:text-gray-200 border border-gray-200 dark:border-gh-border transition-colors cursor-pointer shadow-2xs"
-                                title={showDetails ? "Hide Resource Overview" : "Show Resource Overview"}
-                            >
-                                {showDetails ? (
-                                    <>
-                                        <ChevronUp size={13} />
-                                        <span>Hide Details</span>
-                                    </>
-                                ) : (
-                                    <>
-                                        <ChevronDown size={13} />
-                                        <span>Show Details</span>
-                                    </>
+                        {isEditing || isNew ? (
+                            <>
+                                <button
+                                    type="button"
+                                    onClick={() => {
+                                        if (isNew) {
+                                            onBack();
+                                        } else {
+                                            setIsEditing(false);
+                                            setEditCode(resource.code || '');
+                                            setEditName(resource.name || '');
+                                            setEditBaseUnitId(String(resource.base_unit_id || ''));
+                                            setEditDescription(resource.description || '');
+                                            setEditRemarks(resource.remarks || '');
+                                        }
+                                    }}
+                                    disabled={savingDetails}
+                                    className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-lg bg-gray-100 hover:bg-gray-200 dark:bg-gh-subtle dark:hover:bg-gh-hover text-gray-700 dark:text-gray-300 border border-gray-200 dark:border-gh-border transition-colors cursor-pointer"
+                                >
+                                    <X size={13} />
+                                    <span>Cancel</span>
+                                </button>
+                                <button
+                                    type="button"
+                                    onClick={handleSaveDetails}
+                                    disabled={savingDetails || !editName.trim() || (isNew && !editCode.trim())}
+                                    className="flex items-center gap-1.5 px-4 py-1.5 text-xs font-semibold rounded-lg bg-blue-600 hover:bg-blue-700 text-white transition-colors cursor-pointer shadow-xs disabled:opacity-50"
+                                >
+                                    {savingDetails ? <Loader2 size={13} className="animate-spin" /> : <Save size={13} />}
+                                    <span>{isNew ? 'Create Resource' : 'Save Changes'}</span>
+                                </button>
+                            </>
+                        ) : (
+                            <>
+                                {scope === 'project' && isBehind && onSync && (
+                                    <button
+                                        type="button"
+                                        onClick={() => onSync(resource)}
+                                        className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-lg bg-amber-500 hover:bg-amber-600 text-white transition-colors cursor-pointer shadow-xs animate-pulse"
+                                    >
+                                        <GitCompare size={12} /> Sync with Master
+                                    </button>
                                 )}
-                            </button>
-                        )}
 
-                        {!isEditing && (
-                            <button
-                                type="button"
-                                onClick={() => {
-                                    setEditName(resource.name);
-                                    setEditBaseUnitId(String(resource.base_unit_id));
-                                    setEditDescription(resource.description || '');
-                                    setEditRemarks(resource.remarks || '');
-                                    setIsEditing(true);
-                                    setShowDetails(true);
-                                }}
-                                className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-lg bg-gray-100 hover:bg-gray-200 dark:bg-gh-subtle dark:hover:bg-gh-hover text-gray-700 dark:text-gray-200 border border-gray-200 dark:border-gh-border transition-colors cursor-pointer shadow-2xs"
-                            >
-                                <Edit2 size={12} />
-                                Edit Resource
-                            </button>
-                        )}
-
-                        {onAction && !isEditing && (
-                            resource.status === 'active' ? (
                                 <button
                                     type="button"
-                                    onClick={() => onAction(resource, 'archive')}
-                                    className="p-1.5 rounded-lg text-gray-400 hover:text-amber-600 hover:bg-gray-100 dark:hover:bg-gh-hover transition-colors cursor-pointer"
-                                    title="Archive Resource"
+                                    onClick={() => setShowDetails(prev => !prev)}
+                                    className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-lg bg-gray-100 hover:bg-gray-200 dark:bg-gh-subtle dark:hover:bg-gh-hover text-gray-700 dark:text-gray-200 border border-gray-200 dark:border-gh-border transition-colors cursor-pointer shadow-2xs"
+                                    title={showDetails ? "Hide Resource Overview" : "Show Resource Overview"}
                                 >
-                                    <Archive size={15} />
+                                    {showDetails ? (
+                                        <>
+                                            <ChevronUp size={13} />
+                                            <span>Hide Details</span>
+                                        </>
+                                    ) : (
+                                        <>
+                                            <ChevronDown size={13} />
+                                            <span>Show Details</span>
+                                        </>
+                                    )}
                                 </button>
-                            ) : (
+
                                 <button
                                     type="button"
-                                    onClick={() => onAction(resource, 'restore')}
-                                    className="p-1.5 rounded-lg text-gray-400 hover:text-teal-600 hover:bg-gray-100 dark:hover:bg-gh-hover transition-colors cursor-pointer"
-                                    title="Restore Resource"
+                                    onClick={() => {
+                                        setEditCode(resource.code);
+                                        setEditName(resource.name);
+                                        setEditBaseUnitId(String(resource.base_unit_id));
+                                        setEditDescription(resource.description || '');
+                                        setEditRemarks(resource.remarks || '');
+                                        setIsEditing(true);
+                                        setShowDetails(true);
+                                    }}
+                                    className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-lg bg-gray-100 hover:bg-gray-200 dark:bg-gh-subtle dark:hover:bg-gh-hover text-gray-700 dark:text-gray-200 border border-gray-200 dark:border-gh-border transition-colors cursor-pointer shadow-2xs"
                                 >
-                                    <RotateCcw size={15} />
+                                    <Edit2 size={12} />
+                                    <span>Edit</span>
                                 </button>
-                            )
+
+                                {onAction && (
+                                    resource.status === 'active' ? (
+                                        <button
+                                            type="button"
+                                            onClick={() => onAction(resource, 'archive')}
+                                            className="p-1.5 rounded-lg text-gray-400 hover:text-amber-600 hover:bg-gray-100 dark:hover:bg-gh-hover transition-colors cursor-pointer"
+                                            title="Archive Resource"
+                                        >
+                                            <Archive size={15} />
+                                        </button>
+                                    ) : (
+                                        <button
+                                            type="button"
+                                            onClick={() => onAction(resource, 'restore')}
+                                            className="p-1.5 rounded-lg text-gray-400 hover:text-teal-600 hover:bg-gray-100 dark:hover:bg-gh-hover transition-colors cursor-pointer"
+                                            title="Restore Resource"
+                                        >
+                                            <RotateCcw size={15} />
+                                        </button>
+                                    )
+                                )}
+                            </>
                         )}
                     </div>
                 </div>
 
-                {/* View Mode vs Edit Mode */}
-                {!isEditing ? (
-                    showDetails ? (
-                        /* Flex container: Specs on Left + Full-Height Image Card on Right */
-                        <div className="flex flex-col lg:flex-row gap-6 lg:gap-8 items-stretch pt-2">
-                            {/* Left: Technical Specifications (2-Column Grid) */}
-                            <div className="flex-1 min-w-0 grid grid-cols-1 md:grid-cols-2 gap-x-8 lg:gap-x-12 gap-y-3.5">
-                                {/* Left Column */}
-                                <div className="space-y-3">
-                                    <div>
-                                        <span className="text-[10px] font-semibold text-gray-400 dark:text-gray-500 uppercase tracking-wider block mb-0.5">
-                                            Resource Code
-                                        </span>
+                {/* Technical Specifications Container */}
+                {(!isEditing && !isNew && !showDetails) ? (
+                    /* Compact 1-line Summary when details are collapsed */
+                    <div className="flex flex-wrap items-center gap-x-4 gap-y-1.5 text-xs text-gray-500 dark:text-gray-400 pt-1 pb-1">
+                        {resource.image_url && (
+                            <img
+                                src={resource.image_url}
+                                alt=""
+                                className="w-5 h-5 rounded-md object-cover border border-gray-200 dark:border-gh-border shrink-0"
+                            />
+                        )}
+                        <span>Kind: <strong className="capitalize text-gray-800 dark:text-gray-200">{resource.kind}</strong></span>
+                        <span>&bull;</span>
+                        <span>Base Unit: <strong className="font-mono text-gray-800 dark:text-gray-200">{resource.base_unit_code || '—'}</strong> ({resource.base_unit_name || 'Unit'})</span>
+                        <span>&bull;</span>
+                        <span>Scope: <strong className="text-gray-800 dark:text-gray-200">{scope === 'master' ? 'Master Standard' : `Project #${resource.project_id || projectId}`}</strong></span>
+                        <span>&bull;</span>
+                        <span>Rate: <strong className="font-mono text-gray-800 dark:text-gray-200">{ratesLoading ? 'Loading...' : activeTodayRate ? `₹ ${formatMoney(activeTodayRate.rate)} / ${activeTodayRate.unit_code}` : 'No rate'}</strong></span>
+                        <span>&bull;</span>
+                        <span>Packaging: <strong className="text-purple-600 dark:text-purple-400">{conversionsLoading ? 'Loading...' : `${conversions.length} rules`}</strong></span>
+                    </div>
+                ) : (
+                    /* Unified 2-Column Specs + Right Image Card (Exact same layout for View, Edit, and Create) */
+                    <div className="flex flex-col lg:flex-row gap-6 lg:gap-8 items-stretch pt-2">
+                        {/* Left: Technical Specifications (2-Column Grid) */}
+                        <div className="flex-1 min-w-0 grid grid-cols-1 md:grid-cols-2 gap-x-8 lg:gap-x-12 gap-y-3.5">
+                            {/* Left Column */}
+                            <div className="space-y-3">
+                                <div>
+                                    <span className="text-[10px] font-semibold text-gray-400 dark:text-gray-500 uppercase tracking-wider block mb-1">
+                                        Resource Code {(isEditing || isNew) && <span className="text-red-500">*</span>}
+                                    </span>
+                                    {isEditing || isNew ? (
+                                        <input
+                                            type="text"
+                                            value={editCode}
+                                            onChange={(e) => setEditCode(e.target.value.toUpperCase())}
+                                            placeholder="e.g. MAT-CEM-53"
+                                            className="w-full sm:w-60 px-2.5 py-1.5 text-xs font-mono font-bold uppercase rounded-lg border border-gray-300 dark:border-gh-border bg-white dark:bg-[#0d1117] text-gray-900 dark:text-gray-100 focus:outline-none focus:ring-1 focus:ring-blue-500"
+                                            required
+                                        />
+                                    ) : (
                                         <span className="font-mono font-bold text-gray-900 dark:text-gray-100 bg-gray-100 dark:bg-gh-subtle/80 px-2 py-0.5 rounded text-xs border border-gray-200 dark:border-gh-border inline-block">
                                             {resource.code}
                                         </span>
-                                    </div>
+                                    )}
+                                </div>
 
-                                    <div>
-                                        <span className="text-[10px] font-semibold text-gray-400 dark:text-gray-500 uppercase tracking-wider block mb-0.5">
-                                            Category / Kind
-                                        </span>
+                                <div>
+                                    <span className="text-[10px] font-semibold text-gray-400 dark:text-gray-500 uppercase tracking-wider block mb-1">
+                                        Category / Kind {isNew && <span className="text-red-500">*</span>}
+                                    </span>
+                                    {isNew ? (
+                                        <div className="flex flex-wrap items-center gap-1.5">
+                                            {[
+                                                { id: 'material', label: 'Material', icon: Package },
+                                                { id: 'labour', label: 'Labour', icon: User },
+                                                { id: 'equipment', label: 'Equipment', icon: Wrench }
+                                            ].map(k => {
+                                                const Icon = k.icon;
+                                                const active = editKind === k.id;
+                                                return (
+                                                    <button
+                                                        key={k.id}
+                                                        type="button"
+                                                        onClick={() => setEditKind(k.id)}
+                                                        className={`flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-semibold border transition-all cursor-pointer ${
+                                                            active
+                                                                ? 'bg-blue-600 text-white border-blue-600 shadow-2xs'
+                                                                : 'bg-white dark:bg-[#0d1117] border-gray-300 dark:border-gh-border text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gh-hover'
+                                                        }`}
+                                                    >
+                                                        <Icon size={12} />
+                                                        <span>{k.label}</span>
+                                                    </button>
+                                                );
+                                            })}
+                                        </div>
+                                    ) : (
                                         <span className="capitalize font-semibold text-gray-900 dark:text-gray-100 text-xs">
                                             {resource.kind}
                                         </span>
-                                    </div>
+                                    )}
+                                </div>
 
-                                    <div>
-                                        <span className="text-[10px] font-semibold text-gray-400 dark:text-gray-500 uppercase tracking-wider block mb-0.5">
-                                            Base Unit
-                                        </span>
+                                <div>
+                                    <span className="text-[10px] font-semibold text-gray-400 dark:text-gray-500 uppercase tracking-wider block mb-1">
+                                        Base Unit {(isEditing || isNew) && <span className="text-red-500">*</span>}
+                                    </span>
+                                    {isEditing || isNew ? (
+                                        <select
+                                            value={editBaseUnitId}
+                                            onChange={(e) => setEditBaseUnitId(e.target.value)}
+                                            className="w-full sm:w-60 px-2.5 py-1.5 text-xs font-mono rounded-lg border border-gray-300 dark:border-gh-border bg-white dark:bg-[#0d1117] text-gray-900 dark:text-gray-100 focus:outline-none focus:ring-1 focus:ring-blue-500"
+                                            required
+                                        >
+                                            {availableUnits.map(u => (
+                                                <option key={u.id} value={u.id}>
+                                                    {u.code} &mdash; {u.name} ({u.category})
+                                                </option>
+                                            ))}
+                                        </select>
+                                    ) : (
                                         <div className="flex items-baseline gap-1.5">
                                             <span className="font-mono font-bold text-gray-900 dark:text-gray-100 text-xs">
                                                 {resource.base_unit_code || '—'}
@@ -550,329 +780,272 @@ export default function ResourceDetailPage({
                                                 ({resource.base_unit_name || 'Standard Unit'})
                                             </span>
                                         </div>
-                                    </div>
+                                    )}
+                                </div>
 
-                                    <div>
-                                        <span className="text-[10px] font-semibold text-gray-400 dark:text-gray-500 uppercase tracking-wider block mb-0.5">
-                                            Scope
-                                        </span>
-                                        <span className="font-semibold text-gray-700 dark:text-gray-300 text-xs">
-                                            {scope === 'master' ? 'Master Standard' : `Project #${resource.project_id || projectId}`}
-                                        </span>
-                                    </div>
+                                <div>
+                                    <span className="text-[10px] font-semibold text-gray-400 dark:text-gray-500 uppercase tracking-wider block mb-0.5">
+                                        Scope
+                                    </span>
+                                    <span className="font-semibold text-gray-700 dark:text-gray-300 text-xs">
+                                        {scope === 'master' ? 'Master Standard' : `Project #${resource.project_id || projectId}`}
+                                    </span>
+                                </div>
 
-                                    <div>
-                                        <span className="text-[10px] font-semibold text-gray-400 dark:text-gray-500 uppercase tracking-wider block mb-0.5">
-                                            Status
-                                        </span>
-                                        <span className={`inline-flex items-center px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider ${
-                                            resource.status === 'active'
-                                                ? 'bg-emerald-50 text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-300 border border-emerald-200/60 dark:border-emerald-800/40'
-                                                : 'bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-400 border border-gray-200 dark:border-gray-700'
-                                        }`}>
-                                            {resource.status}
-                                        </span>
-                                    </div>
+                                <div>
+                                    <span className="text-[10px] font-semibold text-gray-400 dark:text-gray-500 uppercase tracking-wider block mb-0.5">
+                                        Status
+                                    </span>
+                                    <span className={`inline-flex items-center px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider ${
+                                        isNew || resource.status === 'active'
+                                            ? 'bg-emerald-50 text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-300 border border-emerald-200/60 dark:border-emerald-800/40'
+                                            : 'bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-400 border border-gray-200 dark:border-gray-700'
+                                    }`}>
+                                        {isNew ? 'active (new)' : resource.status}
+                                    </span>
+                                </div>
 
-                                    <div>
-                                        <span className="text-[10px] font-semibold text-gray-400 dark:text-gray-500 uppercase tracking-wider block mb-0.5">
-                                            Description &amp; Specs
-                                        </span>
+                                <div>
+                                    <span className="text-[10px] font-semibold text-gray-400 dark:text-gray-500 uppercase tracking-wider block mb-1">
+                                        Description &amp; Specs
+                                    </span>
+                                    {isEditing || isNew ? (
+                                        <textarea
+                                            rows={2}
+                                            value={editDescription}
+                                            onChange={(e) => setEditDescription(e.target.value)}
+                                            placeholder="Specifications, technical grade, standard compliance..."
+                                            className="w-full px-2.5 py-1.5 text-xs rounded-lg border border-gray-300 dark:border-gh-border bg-white dark:bg-[#0d1117] text-gray-900 dark:text-gray-100 focus:outline-none focus:ring-1 focus:ring-blue-500"
+                                        />
+                                    ) : (
                                         <p className="text-xs text-gray-700 dark:text-gray-300 leading-relaxed whitespace-pre-line">
                                             {resource.description || <span className="text-gray-400 italic">None specified</span>}
                                         </p>
-                                    </div>
+                                    )}
                                 </div>
+                            </div>
 
-                                {/* Right Column */}
-                                <div className="space-y-3">
-                                    <div>
-                                        <span className="text-[10px] font-semibold text-gray-400 dark:text-gray-500 uppercase tracking-wider block mb-0.5">
-                                            Current Rate (As of Today)
-                                        </span>
-                                        {ratesLoading ? (
-                                            <span className="text-xs text-gray-400 italic flex items-center gap-1.5">
-                                                <Loader2 size={12} className="animate-spin text-blue-500" /> Loading active rate...
-                                            </span>
-                                        ) : activeTodayRate ? (
-                                            <div className="flex items-baseline gap-2">
-                                                <span className="text-lg font-mono font-bold text-gray-900 dark:text-gray-100">
-                                                    ₹ {formatMoney(activeTodayRate.rate)}
-                                                </span>
-                                                <span className="text-xs text-gray-500">
-                                                    / {activeTodayRate.unit_code}
-                                                </span>
-                                                <span className="inline-flex items-center gap-1 text-[10px] font-semibold text-emerald-600 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-950/40 px-1.5 py-0.5 rounded">
-                                                    <CheckCircle2 size={11} /> Active Rate
+                            {/* Right Column */}
+                            <div className="space-y-3">
+                                <div>
+                                    <span className="text-[10px] font-semibold text-gray-400 dark:text-gray-500 uppercase tracking-wider block mb-1">
+                                        {isNew ? 'Initial Baseline Rate' : 'Current Rate (As of Today)'}
+                                    </span>
+                                    {isNew ? (
+                                        <div>
+                                            <div className="flex items-center gap-2">
+                                                <div className="relative">
+                                                    <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-400 font-bold text-xs">₹</span>
+                                                    <input
+                                                        type="number"
+                                                        step="any"
+                                                        min="0"
+                                                        value={initialRateValue}
+                                                        onChange={(e) => setInitialRateValue(e.target.value)}
+                                                        placeholder="0.00"
+                                                        className="w-32 pl-6 pr-2.5 py-1.5 text-xs font-mono font-bold rounded-lg border border-gray-300 dark:border-gh-border bg-white dark:bg-[#0d1117] text-gray-900 dark:text-gray-100 focus:outline-none focus:ring-1 focus:ring-blue-500"
+                                                    />
+                                                </div>
+                                                <span className="text-xs text-gray-500 font-mono">
+                                                    / {availableUnits.find(u => String(u.id) === String(editBaseUnitId))?.code || 'unit'}
                                                 </span>
                                             </div>
-                                        ) : (
-                                            <span className="text-xs text-gray-400 italic">No rate active</span>
-                                        )}
-                                    </div>
-
-                                    <div>
-                                        <span className="text-[10px] font-semibold text-gray-400 dark:text-gray-500 uppercase tracking-wider block mb-0.5">
-                                            Packaging Conversions
+                                            <span className="text-[10px] text-gray-400 block mt-0.5">Optional baseline rate</span>
+                                        </div>
+                                    ) : ratesLoading ? (
+                                        <span className="text-xs text-gray-400 italic flex items-center gap-1.5">
+                                            <Loader2 size={12} className="animate-spin text-blue-500" /> Loading active rate...
                                         </span>
-                                        {conversionsLoading ? (
-                                            <span className="text-xs text-gray-400 italic flex items-center gap-1.5">
-                                                <Loader2 size={12} className="animate-spin text-purple-500" /> Loading packaging...
+                                    ) : activeTodayRate ? (
+                                        <div className="flex items-baseline gap-2">
+                                            <span className="text-lg font-mono font-bold text-gray-900 dark:text-gray-100">
+                                                ₹ {formatMoney(activeTodayRate.rate)}
                                             </span>
-                                        ) : primaryPackaging ? (
-                                            <span className="font-mono font-bold text-purple-700 dark:text-purple-300 text-xs">
-                                                1 {primaryPackaging.from_unit_code} = {Number(primaryPackaging.factor)} {primaryPackaging.to_unit_code}
-                                                {conversions.length > 1 && (
-                                                    <span className="text-gray-400 font-normal ml-1">
-                                                        (+{conversions.length - 1} more)
-                                                    </span>
-                                                )}
+                                            <span className="text-xs text-gray-500">
+                                                / {activeTodayRate.unit_code}
                                             </span>
-                                        ) : (
-                                            <span className="text-xs text-gray-400 italic">No packaging conversions</span>
-                                        )}
-                                    </div>
+                                            <span className="inline-flex items-center gap-1 text-[10px] font-semibold text-emerald-600 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-950/40 px-1.5 py-0.5 rounded">
+                                                <CheckCircle2 size={11} /> Active Rate
+                                            </span>
+                                        </div>
+                                    ) : (
+                                        <span className="text-xs text-gray-400 italic">No rate active</span>
+                                    )}
+                                </div>
 
-                                    <div>
-                                        <span className="text-[10px] font-semibold text-gray-400 dark:text-gray-500 uppercase tracking-wider block mb-0.5">
-                                            Version
+                                <div>
+                                    <span className="text-[10px] font-semibold text-gray-400 dark:text-gray-500 uppercase tracking-wider block mb-0.5">
+                                        Packaging Conversions
+                                    </span>
+                                    {isNew ? (
+                                        <span className="text-xs text-gray-400 italic">Configured after creating resource</span>
+                                    ) : conversionsLoading ? (
+                                        <span className="text-xs text-gray-400 italic flex items-center gap-1.5">
+                                            <Loader2 size={12} className="animate-spin text-purple-500" /> Loading packaging...
                                         </span>
-                                        <span className="font-mono text-gray-800 dark:text-gray-200 font-semibold text-xs">
-                                            v{resource.version}
+                                    ) : primaryPackaging ? (
+                                        <span className="font-mono font-bold text-purple-700 dark:text-purple-300 text-xs">
+                                            1 {primaryPackaging.from_unit_code} = {Number(primaryPackaging.factor)} {primaryPackaging.to_unit_code}
+                                            {conversions.length > 1 && (
+                                                <span className="text-gray-400 font-normal ml-1">
+                                                    (+{conversions.length - 1} more)
+                                                </span>
+                                            )}
                                         </span>
-                                    </div>
+                                    ) : (
+                                        <span className="text-xs text-gray-400 italic">No packaging conversions</span>
+                                    )}
+                                </div>
 
-                                    <div>
-                                        <span className="text-[10px] font-semibold text-gray-400 dark:text-gray-500 uppercase tracking-wider block mb-0.5">
-                                            Remarks &amp; Procurement Notes
-                                        </span>
+                                <div>
+                                    <span className="text-[10px] font-semibold text-gray-400 dark:text-gray-500 uppercase tracking-wider block mb-0.5">
+                                        Version
+                                    </span>
+                                    <span className="font-mono text-gray-800 dark:text-gray-200 font-semibold text-xs">
+                                        {isNew ? 'v1 (Draft)' : `v${resource.version}`}
+                                    </span>
+                                </div>
+
+                                <div>
+                                    <span className="text-[10px] font-semibold text-gray-400 dark:text-gray-500 uppercase tracking-wider block mb-1">
+                                        Remarks &amp; Procurement Notes
+                                    </span>
+                                    {isEditing || isNew ? (
+                                        <textarea
+                                            rows={2}
+                                            value={editRemarks}
+                                            onChange={(e) => setEditRemarks(e.target.value)}
+                                            placeholder="Procurement or handling notes..."
+                                            className="w-full px-2.5 py-1.5 text-xs rounded-lg border border-gray-300 dark:border-gh-border bg-white dark:bg-[#0d1117] text-gray-900 dark:text-gray-100 focus:outline-none focus:ring-1 focus:ring-blue-500"
+                                        />
+                                    ) : (
                                         <p className="text-xs text-gray-700 dark:text-gray-300 leading-relaxed whitespace-pre-line">
                                             {resource.remarks || <span className="text-gray-400 italic">None specified</span>}
                                         </p>
+                                    )}
+                                </div>
+                            </div>
+                        </div>
+
+                        {/* Right: Prominent Product Image Card (Fills height vertically) */}
+                        <div className="relative group shrink-0 w-full lg:w-64 xl:w-72 self-stretch min-h-[220px] rounded-2xl border border-gray-200 dark:border-gh-border bg-gray-50 dark:bg-gh-subtle overflow-hidden shadow-xs flex flex-col justify-center">
+                            {(isNew ? pendingImagePreview : resource.image_url) ? (
+                                <>
+                                    {/* Clickable Image -> Fullscreen Lightbox */}
+                                    <div
+                                        className="w-full h-full min-h-[220px] cursor-pointer overflow-hidden"
+                                        onClick={() => setShowLightbox(true)}
+                                        title="Click to view fullscreen"
+                                    >
+                                        <img
+                                            src={isNew ? pendingImagePreview : resource.image_url}
+                                            alt={resource.name || 'Resource photo'}
+                                            className="w-full h-full object-cover min-h-[220px] transition-transform duration-300 group-hover:scale-105"
+                                        />
                                     </div>
-                                </div>
-                            </div>
 
-                            {/* Right: Prominent Product Image Card (Fills height vertically) */}
-                            <div className="relative group shrink-0 w-full lg:w-64 xl:w-72 self-stretch min-h-[220px] rounded-2xl border border-gray-200 dark:border-gh-border bg-gray-50 dark:bg-gh-subtle overflow-hidden shadow-xs flex flex-col justify-center">
-                                {resource.image_url ? (
-                                    <>
-                                        {/* Clickable Image -> Fullscreen Lightbox */}
-                                        <div
-                                            className="w-full h-full min-h-[220px] cursor-pointer overflow-hidden"
-                                            onClick={() => setShowLightbox(true)}
-                                            title="Click to view fullscreen"
+                                    {/* Discreet Triple-Dot Menu in Top-Right Corner */}
+                                    <div className="absolute top-2.5 right-2.5 z-10" ref={imageMenuRef}>
+                                        <button
+                                            type="button"
+                                            onClick={(e) => {
+                                                e.stopPropagation();
+                                                setShowImageMenu(prev => !prev);
+                                            }}
+                                            className="p-1.5 rounded-lg bg-black/40 hover:bg-black/65 text-white backdrop-blur-md transition-all shadow-xs cursor-pointer"
+                                            title="Image options"
                                         >
-                                            <img
-                                                src={resource.image_url}
-                                                alt={resource.name}
-                                                className="w-full h-full object-cover min-h-[220px] transition-transform duration-300 group-hover:scale-105"
-                                            />
-                                        </div>
+                                            <MoreVertical size={15} />
+                                        </button>
 
-                                        {/* Discreet Triple-Dot Menu in Top-Right Corner */}
-                                        <div className="absolute top-2.5 right-2.5 z-10" ref={imageMenuRef}>
-                                            <button
-                                                type="button"
-                                                onClick={(e) => {
-                                                    e.stopPropagation();
-                                                    setShowImageMenu(prev => !prev);
-                                                }}
-                                                className="p-1.5 rounded-lg bg-black/40 hover:bg-black/65 text-white backdrop-blur-md transition-all shadow-xs cursor-pointer"
-                                                title="Image options"
+                                        {showImageMenu && (
+                                            <div
+                                                className="absolute right-0 mt-1.5 w-40 rounded-xl bg-white dark:bg-[#161b22] border border-gray-200 dark:border-gh-border shadow-xl py-1 z-20 text-xs animate-scale-in"
+                                                onClick={(e) => e.stopPropagation()}
                                             >
-                                                <MoreVertical size={15} />
-                                            </button>
-
-                                            {showImageMenu && (
-                                                <div
-                                                    className="absolute right-0 mt-1.5 w-40 rounded-xl bg-white dark:bg-[#161b22] border border-gray-200 dark:border-gh-border shadow-xl py-1 z-20 text-xs animate-scale-in"
-                                                    onClick={(e) => e.stopPropagation()}
+                                                <button
+                                                    type="button"
+                                                    onClick={() => {
+                                                        setShowImageMenu(false);
+                                                        setShowLightbox(true);
+                                                    }}
+                                                    className="w-full flex items-center gap-2 px-3 py-2 text-gray-700 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-gh-hover text-left transition-colors cursor-pointer"
                                                 >
-                                                    <button
-                                                        type="button"
-                                                        onClick={() => {
-                                                            setShowImageMenu(false);
-                                                            setShowLightbox(true);
-                                                        }}
-                                                        className="w-full flex items-center gap-2 px-3 py-2 text-gray-700 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-gh-hover text-left transition-colors cursor-pointer"
-                                                    >
-                                                        <Maximize2 size={13} className="text-gray-500" />
-                                                        <span>View Fullscreen</span>
-                                                    </button>
-                                                    <button
-                                                        type="button"
-                                                        onClick={() => {
-                                                            setShowImageMenu(false);
-                                                            fileInputRef.current?.click();
-                                                        }}
-                                                        disabled={uploadingImage}
-                                                        className="w-full flex items-center gap-2 px-3 py-2 text-gray-700 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-gh-hover text-left transition-colors cursor-pointer"
-                                                    >
-                                                        <Camera size={13} className="text-gray-500" />
-                                                        <span>Change Photo</span>
-                                                    </button>
-                                                    <div className="my-1 border-t border-gray-100 dark:border-gh-border" />
-                                                    <button
-                                                        type="button"
-                                                        onClick={() => {
-                                                            setShowImageMenu(false);
-                                                            handleRemoveImage();
-                                                        }}
-                                                        disabled={uploadingImage}
-                                                        className="w-full flex items-center gap-2 px-3 py-2 text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-950/30 text-left transition-colors cursor-pointer"
-                                                    >
-                                                        <Trash2 size={13} />
-                                                        <span>Remove Photo</span>
-                                                    </button>
-                                                </div>
-                                            )}
-                                        </div>
-                                    </>
-                                ) : (
-                                    <button
-                                        type="button"
-                                        onClick={() => fileInputRef.current?.click()}
-                                        disabled={uploadingImage}
-                                        className="w-full h-full min-h-[220px] border-2 border-dashed border-gray-300 dark:border-gh-border hover:border-blue-500 dark:hover:border-blue-400 rounded-2xl flex flex-col items-center justify-center gap-2.5 p-6 text-gray-400 hover:text-blue-600 dark:hover:text-blue-400 transition-colors cursor-pointer group bg-gray-50/50 dark:bg-gh-subtle/40"
-                                        title="Upload Resource Photo"
-                                    >
-                                        {uploadingImage ? (
-                                            <div className="flex flex-col items-center gap-2">
-                                                <Loader2 size={24} className="animate-spin text-blue-500" />
-                                                <span className="text-xs font-medium text-gray-500">Uploading...</span>
+                                                    <Maximize2 size={13} className="text-gray-500" />
+                                                    <span>View Fullscreen</span>
+                                                </button>
+                                                <button
+                                                    type="button"
+                                                    onClick={() => {
+                                                        setShowImageMenu(false);
+                                                        fileInputRef.current?.click();
+                                                    }}
+                                                    disabled={uploadingImage}
+                                                    className="w-full flex items-center gap-2 px-3 py-2 text-gray-700 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-gh-hover text-left transition-colors cursor-pointer"
+                                                >
+                                                    <Camera size={13} className="text-gray-500" />
+                                                    <span>Change Photo</span>
+                                                </button>
+                                                <div className="my-1 border-t border-gray-100 dark:border-gh-border" />
+                                                <button
+                                                    type="button"
+                                                    onClick={() => {
+                                                        setShowImageMenu(false);
+                                                        handleRemoveImage();
+                                                    }}
+                                                    disabled={uploadingImage}
+                                                    className="w-full flex items-center gap-2 px-3 py-2 text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-950/30 text-left transition-colors cursor-pointer"
+                                                >
+                                                    <Trash2 size={13} />
+                                                    <span>Remove Photo</span>
+                                                </button>
                                             </div>
-                                        ) : (
-                                            <>
-                                                <div className="w-12 h-12 rounded-full bg-gray-100 dark:bg-gh-border/50 flex items-center justify-center group-hover:scale-110 transition-transform">
-                                                    <Camera size={20} className="text-gray-400 group-hover:text-blue-500" />
-                                                </div>
-                                                <div className="text-center px-3">
-                                                    <span className="text-xs font-semibold block text-gray-700 dark:text-gray-300">Add Photo</span>
-                                                    <span className="text-[10px] text-gray-400 block mt-0.5">PNG, JPG up to 30MB</span>
-                                                </div>
-                                            </>
                                         )}
-                                    </button>
-                                )}
-                                <input
-                                    ref={fileInputRef}
-                                    type="file"
-                                    accept="image/png,image/jpeg,image/jpg,image/webp,image/gif"
-                                    onChange={handleImageUpload}
-                                    className="hidden"
-                                />
-                            </div>
-                        </div>
-                    ) : (
-                        /* Compact 1-line Summary when details are collapsed */
-                        <div className="flex flex-wrap items-center gap-x-4 gap-y-1.5 text-xs text-gray-500 dark:text-gray-400 pt-1 pb-1">
-                            {resource.image_url && (
-                                <img
-                                    src={resource.image_url}
-                                    alt=""
-                                    className="w-5 h-5 rounded-md object-cover border border-gray-200 dark:border-gh-border shrink-0"
-                                />
-                            )}
-                            <span>Kind: <strong className="capitalize text-gray-800 dark:text-gray-200">{resource.kind}</strong></span>
-                            <span>&bull;</span>
-                            <span>Base Unit: <strong className="font-mono text-gray-800 dark:text-gray-200">{resource.base_unit_code || '—'}</strong> ({resource.base_unit_name || 'Unit'})</span>
-                            <span>&bull;</span>
-                            <span>Scope: <strong className="text-gray-800 dark:text-gray-200">{scope === 'master' ? 'Master Standard' : `Project #${resource.project_id || projectId}`}</strong></span>
-                            <span>&bull;</span>
-                            <span>Rate: <strong className="font-mono text-gray-800 dark:text-gray-200">{ratesLoading ? 'Loading...' : activeTodayRate ? `₹ ${formatMoney(activeTodayRate.rate)} / ${activeTodayRate.unit_code}` : 'No rate'}</strong></span>
-                            <span>&bull;</span>
-                            <span>Packaging: <strong className="text-purple-600 dark:text-purple-400">{conversionsLoading ? 'Loading...' : `${conversions.length} rules`}</strong></span>
-                        </div>
-                    )
-                ) : (
-                    /* In-Place Inline Resource Edit Form with dedicated clean styling */
-                    <div className="p-4 rounded-xl border border-blue-200 dark:border-blue-900/50 bg-blue-50/20 dark:bg-blue-950/10">
-                        <form onSubmit={handleSaveDetails} className="space-y-4">
-                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
-                                <div>
-                                    <label className="block text-[11px] font-semibold text-gray-700 dark:text-gray-300 mb-1">
-                                        Resource Name <span className="text-red-500">*</span>
-                                    </label>
-                                    <input
-                                        type="text"
-                                        value={editName}
-                                        onChange={(e) => setEditName(e.target.value)}
-                                        className="w-full px-2.5 py-1.5 text-xs border rounded-lg bg-white dark:bg-[#0d1117] border-gray-300 dark:border-gh-border text-gray-900 dark:text-gray-100"
-                                        required
-                                    />
-                                </div>
-
-                                <div>
-                                    <label className="block text-[11px] font-semibold text-gray-700 dark:text-gray-300 mb-1">
-                                        Base Unit
-                                    </label>
-                                    <select
-                                        value={editBaseUnitId}
-                                        onChange={(e) => setEditBaseUnitId(e.target.value)}
-                                        className="w-full px-2.5 py-1.5 text-xs font-mono border rounded-lg bg-white dark:bg-[#0d1117] border-gray-300 dark:border-gh-border text-gray-900 dark:text-gray-100"
-                                    >
-                                        {availableUnits.map(u => (
-                                            <option key={u.id} value={u.id}>
-                                                {u.code} &mdash; {u.name} ({u.category})
-                                            </option>
-                                        ))}
-                                    </select>
-                                </div>
-
-                                <div>
-                                    <label className="block text-[11px] font-semibold text-gray-700 dark:text-gray-300 mb-1">
-                                        Description &amp; Specs
-                                    </label>
-                                    <textarea
-                                        rows={2}
-                                        value={editDescription}
-                                        onChange={(e) => setEditDescription(e.target.value)}
-                                        placeholder="Specifications, standard compliance..."
-                                        className="w-full px-2.5 py-1.5 text-xs border rounded-lg bg-white dark:bg-[#0d1117] border-gray-300 dark:border-gh-border text-gray-900 dark:text-gray-100"
-                                    />
-                                </div>
-
-                                <div>
-                                    <label className="block text-[11px] font-semibold text-gray-700 dark:text-gray-300 mb-1">
-                                        Remarks &amp; Procurement Notes
-                                    </label>
-                                    <textarea
-                                        rows={2}
-                                        value={editRemarks}
-                                        onChange={(e) => setEditRemarks(e.target.value)}
-                                        placeholder="Procurement or handling notes..."
-                                        className="w-full px-2.5 py-1.5 text-xs border rounded-lg bg-white dark:bg-[#0d1117] border-gray-300 dark:border-gh-border text-gray-900 dark:text-gray-100"
-                                    />
-                                </div>
-                            </div>
-
-                            <div className="flex justify-end gap-2 pt-2 border-t border-gray-100 dark:border-gh-border/50">
+                                    </div>
+                                </>
+                            ) : (
                                 <button
                                     type="button"
-                                    onClick={() => setIsEditing(false)}
-                                    disabled={savingDetails}
-                                    className="px-3 py-1.5 text-xs font-semibold rounded-lg bg-gray-100 hover:bg-gray-200 dark:bg-gh-subtle dark:hover:bg-gh-hover text-gray-700 dark:text-gray-300 transition-colors cursor-pointer"
+                                    onClick={() => fileInputRef.current?.click()}
+                                    disabled={uploadingImage}
+                                    className="w-full h-full min-h-[220px] border-2 border-dashed border-gray-300 dark:border-gh-border hover:border-blue-500 dark:hover:border-blue-400 rounded-2xl flex flex-col items-center justify-center gap-2.5 p-6 text-gray-400 hover:text-blue-600 dark:hover:text-blue-400 transition-colors cursor-pointer group bg-gray-50/50 dark:bg-gh-subtle/40"
+                                    title="Upload Resource Photo"
                                 >
-                                    Cancel
+                                    {uploadingImage ? (
+                                        <div className="flex flex-col items-center gap-2">
+                                            <Loader2 size={24} className="animate-spin text-blue-500" />
+                                            <span className="text-xs font-medium text-gray-500">Uploading...</span>
+                                        </div>
+                                    ) : (
+                                        <>
+                                            <div className="w-12 h-12 rounded-full bg-gray-100 dark:bg-gh-border/50 flex items-center justify-center group-hover:scale-110 transition-transform">
+                                                <Camera size={20} className="text-gray-400 group-hover:text-blue-500" />
+                                            </div>
+                                            <div className="text-center px-3">
+                                                <span className="text-xs font-semibold block text-gray-700 dark:text-gray-300">Add Photo</span>
+                                                <span className="text-[10px] text-gray-400 block mt-0.5">PNG, JPG up to 30MB</span>
+                                            </div>
+                                        </>
+                                    )}
                                 </button>
-                                <button
-                                    type="submit"
-                                    disabled={savingDetails || !editName.trim()}
-                                    className="flex items-center gap-1.5 px-4 py-1.5 text-xs font-semibold rounded-lg bg-blue-600 hover:bg-blue-700 text-white transition-colors cursor-pointer shadow-xs disabled:opacity-50"
-                                >
-                                    {savingDetails ? <Loader2 size={12} className="animate-spin" /> : <Save size={12} />}
-                                    Save Changes
-                                </button>
-                            </div>
-                        </form>
+                            )}
+                            <input
+                                ref={fileInputRef}
+                                type="file"
+                                accept="image/png,image/jpeg,image/jpg,image/webp,image/gif"
+                                onChange={handleImageUpload}
+                                className="hidden"
+                            />
+                        </div>
                     </div>
                 )}
             </div>
 
             {/* ─── TAB NAVIGATION: UNDERLINE TABS (NO BOX, NO GAPS) ─── */}
-            <div className="border-b border-gray-200 dark:border-gh-border pt-1">
-                <div className="flex gap-6 -mb-px">
+            {!isNew ? (
+                <>
+                    <div className="border-b border-gray-200 dark:border-gh-border pt-1">
+                        <div className="flex gap-6 -mb-px">
                     <button
                         type="button"
                         onClick={() => setActiveTab('rates')}
@@ -1324,7 +1497,18 @@ export default function ResourceDetailPage({
                         />
                     </div>
                 )}
-            </div>
+                </div>
+                </>
+            ) : (
+                <div className="py-8 px-6 text-center rounded-2xl border-2 border-dashed border-gray-200 dark:border-gh-border bg-gray-50/50 dark:bg-gh-subtle/30 mt-2">
+                    <p className="text-xs font-semibold text-gray-700 dark:text-gray-300">
+                        Historical Rates, Packaging Conversions &amp; Change Logs
+                    </p>
+                    <p className="text-[11px] text-gray-400 mt-1 max-w-md mx-auto">
+                        Once created, you can configure effective-dated rates, custom packaging units (e.g. bags, trips, drums), and track historical audit changes.
+                    </p>
+                </div>
+            )}
 
             {/* ─── AUDIT REASON MODALS ─────────────────────────────────────────── */}
             <ReasonModal
@@ -1366,7 +1550,7 @@ export default function ResourceDetailPage({
             />
 
             {/* Fullscreen Image Lightbox Modal */}
-            {showLightbox && resource.image_url && (
+            {showLightbox && (isNew ? pendingImagePreview : resource.image_url) && (
                 <div
                     className="fixed inset-0 z-50 bg-black/85 backdrop-blur-sm flex flex-col items-center justify-center p-4 animate-fade-in"
                     onClick={() => setShowLightbox(false)}
@@ -1384,13 +1568,13 @@ export default function ResourceDetailPage({
 
                     <div className="max-w-4xl max-h-[85vh] flex flex-col items-center justify-center select-none" onClick={(e) => e.stopPropagation()}>
                         <img
-                            src={resource.image_url}
-                            alt={resource.name}
+                            src={isNew ? pendingImagePreview : resource.image_url}
+                            alt={resource.name || 'Resource photo'}
                             className="max-w-full max-h-[75vh] object-contain rounded-xl shadow-2xl"
                         />
                         <div className="mt-3 text-center">
-                            <span className="text-white text-sm font-semibold block">{resource.name}</span>
-                            <span className="text-white/60 text-xs font-mono">{resource.code}</span>
+                            <span className="text-white text-sm font-semibold block">{editName || resource.name}</span>
+                            <span className="text-white/60 text-xs font-mono">{editCode || resource.code}</span>
                         </div>
                     </div>
                 </div>
