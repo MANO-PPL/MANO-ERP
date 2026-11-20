@@ -45,9 +45,10 @@ export default function MobileMainLayout({ loadProjects }) {
                 <Outlet />
             </main>
 
-            <div data-agent-contract="mobile" className="contents">
+            {/* ERP Assistant temporarily disabled */}
+            {/* <div data-agent-contract="mobile" className="contents">
                 <AgentShell transport={connectedTransport} />
-            </div>
+            </div> */}
         </div>
     );
 }

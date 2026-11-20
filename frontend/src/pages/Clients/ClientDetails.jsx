@@ -170,7 +170,8 @@ const ClientDetails = ({ isOpen, onClose, client, onUpdate, onEdit }) => {
         { label: 'Sector', value: client.sector_name || client.sector },
         { label: 'Responsibility', value: client.responsibility },
         { label: 'Nature of Job', value: client.job_name || client.job_nature },
-        { label: 'Location', value: client.location }
+        { label: 'Location', value: client.location },
+        { label: 'Created At', value: client.created_at ? new Date(client.created_at).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }) : null }
     ];
 
     const contactItems = [

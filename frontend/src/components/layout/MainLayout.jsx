@@ -28,7 +28,8 @@ const MainLayout = () => {
                     <Outlet />
                 </main>
             </div>
-            <AgentShell transport={connectedTransport} />
+            {/* ERP Assistant temporarily disabled */}
+            {/* <AgentShell transport={connectedTransport} /> */}
         </div>
     );
 };
