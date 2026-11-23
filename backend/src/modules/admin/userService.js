@@ -2,6 +2,7 @@ import bcrypt from 'bcrypt';
 import AppError from '../../utils/AppError.js';
 import { db } from '../../config/database.js';
 import { normalizeUserType } from '../../utils/userUtils.js';
+import mediaService from '../shared/mediaService.js';
 
 export { normalizeUserType };
 
@@ -31,7 +32,7 @@ export function validateSystemPermissions(permissions) {
 
 // Retrieve all users for an organization
 export async function getUsersByOrg(orgId) {
-    return await db('iam_users as u')
+    const users = await db('iam_users as u')
         .leftJoin('iam_designations as d', 'u.desg_id', 'd.id')
         .leftJoin('iam_departments as dep', 'u.dept_id', 'dep.id')
         .select(
@@ -52,6 +53,16 @@ export async function getUsersByOrg(orgId) {
             'u.updated_at'
         )
         .where('u.org_id', orgId);
+
+    for (const u of users) {
+        if (u.profile_image_url) {
+            try {
+                u.profile_image_url = await mediaService.presignUrl(u.profile_image_url);
+            } catch (e) {}
+        }
+    }
+
+    return users;
 }
 
 // Retrieve single user by id within an org
@@ -83,6 +94,12 @@ export async function getUserById(orgId, userId) {
 
     if (!user) {
         throw new AppError('User not found', 404);
+    }
+
+    if (user.profile_image_url) {
+        try {
+            user.profile_image_url = await mediaService.presignUrl(user.profile_image_url);
+        } catch (e) {}
     }
 
     // Fetch assigned projects

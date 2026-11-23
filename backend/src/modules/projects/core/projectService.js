@@ -337,6 +337,14 @@ export async function getProjectMembers(orgId, projectId) {
             'pu.created_at as assigned_at'
         );
 
+    for (const m of members) {
+        if (m.profile_image_url) {
+            try {
+                m.profile_image_url = await presignUrl(m.profile_image_url);
+            } catch (e) {}
+        }
+    }
+
     return members;
 }
 
