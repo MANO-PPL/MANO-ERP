@@ -169,6 +169,7 @@ const WIP = ({ setExtraBreadcrumbs, projectPermissions, isAdmin, user }) => {
                         name: m.user_name,
                         role: m.user_type || 'Employee',
                         initials,
+                        avatar: m.profile_image_url || null,
                         color
                     };
                 });
@@ -462,9 +463,13 @@ const WIP = ({ setExtraBreadcrumbs, projectPermissions, isAdmin, user }) => {
                                     onClick={() => handleSelectEmployee(employee.id)}
                                     className={`w-full flex items-center p-3 text-left transition-all ${isSelected ? 'bg-white dark:bg-[#0d1117] border-l-3 border-blue-500 shadow-2xs' : 'hover:bg-gray-100 dark:hover:bg-white/5 border-l-3 border-transparent'}`}
                                 >
-                                    <div className={`w-8 h-8 rounded-full ${employee.color} flex items-center justify-center text-white font-bold text-xs shrink-0 shadow-xs`}>
-                                        {employee.initials}
-                                    </div>
+                                    {employee.avatar ? (
+                                        <img src={employee.avatar} alt={employee.name} className="w-8 h-8 rounded-full object-cover shrink-0 shadow-xs border border-blue-200/50" />
+                                    ) : (
+                                        <div className={`w-8 h-8 rounded-full ${employee.color} flex items-center justify-center text-white font-bold text-xs shrink-0 shadow-xs`}>
+                                            {employee.initials}
+                                        </div>
+                                    )}
                                     <div className="ml-2.5 overflow-hidden">
                                         <p className={`text-xs font-semibold truncate ${isSelected ? 'text-blue-600 dark:text-blue-400' : 'text-gray-900 dark:text-gray-200'}`}>
                                             {employee.name}
@@ -489,9 +494,13 @@ const WIP = ({ setExtraBreadcrumbs, projectPermissions, isAdmin, user }) => {
                 {/* Workspace Header & Actions */}
                 <div className="px-6 py-4 border-b border-gray-200 dark:border-gh-border bg-[#f9fafb] dark:bg-gh-bg flex flex-col sm:flex-row sm:items-center justify-between gap-4">
                     <div className="flex items-center space-x-3">
-                        <div className={`w-11 h-11 rounded-xl ${selectedEmployee.color} flex items-center justify-center text-white text-base font-bold shadow-xs shrink-0`}>
-                            {selectedEmployee.initials}
-                        </div>
+                        {selectedEmployee.avatar ? (
+                            <img src={selectedEmployee.avatar} alt={selectedEmployee.name} className="w-11 h-11 rounded-xl object-cover shrink-0 shadow-xs border border-blue-200/50" />
+                        ) : (
+                            <div className={`w-11 h-11 rounded-xl ${selectedEmployee.color} flex items-center justify-center text-white text-base font-bold shadow-xs shrink-0`}>
+                                {selectedEmployee.initials}
+                            </div>
+                        )}
                         <div>
                             <div className="flex items-center space-x-2">
                                 <h1 className="text-base font-bold text-gray-900 dark:text-white">
