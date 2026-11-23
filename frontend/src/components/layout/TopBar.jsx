@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Search, Bell, ChevronDown, Moon, Sun, LogOut } from 'lucide-react';
+import { Search, Bell, ChevronDown, Moon, Sun, LogOut, User } from 'lucide-react';
 import { useTheme } from 'next-themes';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { authApi } from '../../services/authApi';
@@ -12,7 +12,12 @@ const TopBar = () => {
   const location = useLocation();
   const navigate = useNavigate();
   const [isProfileOpen, setIsProfileOpen] = useState(false);
+  const [avatarError, setAvatarError] = useState(false);
   const { user, logout } = useAuth();
+
+  React.useEffect(() => {
+    setAvatarError(false);
+  }, [user?.profile_image_url]);
 
   const [activeProjectInfo, setActiveProjectInfo] = useState(null);
 
@@ -101,6 +106,7 @@ const TopBar = () => {
     }
 
     if (location.pathname === '/admin') return 'Employee';
+    if (location.pathname === '/profile') return 'My Profile';
 
     switch (location.pathname) {
       case '/': return 'Dashboard';
@@ -152,10 +158,12 @@ const TopBar = () => {
                 <p className="text-xs font-bold text-gray-800 dark:text-gh-text whitespace-nowrap leading-tight">{user?.user_name || 'User'}</p>
                 <p className="text-[10px] text-gray-500 dark:text-gh-muted whitespace-nowrap leading-tight">{user?.desg_name || user?.user_type || 'Employee'}</p>
               </div>
-              {user?.profile_image_url ? (
+              {user?.profile_image_url && !avatarError ? (
                 <img 
+                  key={user.profile_image_url}
                   src={user.profile_image_url} 
                   alt={user?.user_name} 
+                  onError={() => setAvatarError(true)}
                   className="w-7 h-7 rounded-full object-cover border border-blue-200 dark:border-blue-800 shadow-sm"
                 />
               ) : (
@@ -170,6 +178,16 @@ const TopBar = () => {
                 <>
                     <div className="fixed inset-0 z-40" onClick={() => setIsProfileOpen(false)}></div>
                     <div className="absolute right-0 mt-2 w-44 bg-white dark:bg-[#161b22] border border-gray-200 dark:border-white/10 rounded-xl shadow-2xl py-1 z-50 anim-fade-in origin-top-right">
+                        <button 
+                            onClick={() => {
+                                setIsProfileOpen(false);
+                                navigate('/profile');
+                            }}
+                            className="w-full text-left px-4 py-2 text-xs text-gray-700 dark:text-gh-text hover:bg-gray-100 dark:hover:bg-white/5 flex items-center gap-2 transition-colors font-medium border-b border-gray-100 dark:border-white/10"
+                        >
+                            <User size={15} />
+                            My Profile
+                        </button>
                         <button 
                             onClick={handleLogout}
                             className="w-full text-left px-4 py-2 text-xs text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20 flex items-center gap-2 transition-colors font-bold"

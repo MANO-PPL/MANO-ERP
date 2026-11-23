@@ -79,7 +79,20 @@ export default function EmployeeDirectory({ users, loading, canWrite, onOpen, on
                 <tbody className="divide-y divide-slate-100 dark:divide-gh-border">
                     {loading || !rows.length ? <tr><td colSpan={6} className="p-10 text-center text-slate-500">{loading ? 'Loading employees…' : 'No employees match these filters.'}</td></tr> : rows.map(user => <tr key={user.id} className="hover:bg-slate-50 dark:hover:bg-gh-hover cursor-pointer" onClick={() => onOpen(user)}>
                         <td className="px-5 py-3"><div className="flex items-center gap-3 text-left group">
-                            <span className="grid h-9 w-9 shrink-0 place-items-center rounded-full bg-indigo-50 dark:bg-indigo-950/40 font-semibold text-indigo-700 dark:text-indigo-300">{user.name?.trim().split(/\s+/).slice(0,2).map(part => part[0]).join('')}</span>
+                            {user.profile_image_url ? (
+                                <img
+                                    src={user.profile_image_url}
+                                    alt={user.name}
+                                    onError={(e) => { e.currentTarget.style.display = 'none'; if (e.currentTarget.nextSibling) e.currentTarget.nextSibling.style.display = 'grid'; }}
+                                    className="h-9 w-9 rounded-full object-cover border border-slate-200 dark:border-gh-border shadow-2xs shrink-0"
+                                />
+                            ) : null}
+                            <span
+                                style={{ display: user.profile_image_url ? 'none' : 'grid' }}
+                                className="h-9 w-9 shrink-0 place-items-center rounded-full bg-indigo-50 dark:bg-indigo-950/40 font-semibold text-indigo-700 dark:text-indigo-300 text-xs"
+                            >
+                                {user.name?.trim().split(/\s+/).slice(0,2).map(part => part[0]).join('')}
+                            </span>
                             <strong className="block font-semibold text-slate-900 dark:text-slate-100 group-hover:text-indigo-600 dark:group-hover:text-indigo-400 transition-colors">{user.name}</strong>
                         </div></td>
                         <td className="px-5 py-3 font-mono text-xs text-slate-600 dark:text-slate-300">{user.email || '—'}</td>

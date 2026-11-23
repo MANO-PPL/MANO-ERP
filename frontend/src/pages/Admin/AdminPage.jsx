@@ -549,12 +549,25 @@ const StatusBadge = ({ status }) => {
 };
 
 // ─── Avatar ───────────────────────────────────────────────────────────────────
-const Avatar = ({ name }) => {
+const Avatar = ({ name, url }) => {
     const safeName = name || 'Employee';
     const initials = safeName.split(' ').map(n => n[0]).join('').slice(0, 2).toUpperCase();
     return (
-        <div className="w-8 h-8 rounded-full bg-gradient-to-br from-blue-500 to-indigo-600 text-white font-bold text-xs flex items-center justify-center shadow-xs shrink-0 ring-2 ring-white dark:ring-[#161b22]">
-            {initials}
+        <div className="w-8 h-8 rounded-full overflow-hidden shrink-0 ring-2 ring-white dark:ring-[#161b22] border border-blue-200/50 shadow-xs relative">
+            {url ? (
+                <img
+                    src={url}
+                    alt={safeName}
+                    onError={(e) => { e.currentTarget.style.display = 'none'; if (e.currentTarget.nextSibling) e.currentTarget.nextSibling.style.display = 'flex'; }}
+                    className="w-full h-full object-cover"
+                />
+            ) : null}
+            <div
+                style={{ display: url ? 'none' : 'flex' }}
+                className="w-full h-full bg-gradient-to-br from-blue-500 to-indigo-600 text-white font-bold text-xs items-center justify-center"
+            >
+                {initials}
+            </div>
         </div>
     );
 };
@@ -1013,7 +1026,7 @@ const UserDetailDrawer = ({ canWrite, user, open, onClose, onUpdate, onDelete, i
                 {/* Header */}
                 <div className="px-6 py-4 border-b border-gray-100 dark:border-white/10 flex items-center justify-between shrink-0 bg-gray-50/50 dark:bg-[#0d1117]">
                     <div className="flex items-center gap-3">
-                        <Avatar name={localUser.name} />
+                        <Avatar name={localUser.name} url={localUser.profile_image_url} />
                         <div>
                             {editing ? (
                                 <input
@@ -1446,8 +1459,21 @@ const AssignTemplateDrawer = ({
                                             {isSelected && <Check size={11} className="stroke-[3.5]" />}
                                         </div>
 
-                                        <div className="w-8 h-8 rounded-full bg-gray-100 dark:bg-white/10 text-gray-700 dark:text-gray-300 font-bold text-xs flex items-center justify-center shrink-0">
-                                            {initials}
+                                        <div className="w-8 h-8 rounded-full overflow-hidden shrink-0 relative bg-gray-100 dark:bg-white/10 flex items-center justify-center">
+                                            {u.profile_image_url ? (
+                                                <img
+                                                    src={u.profile_image_url}
+                                                    alt={u.name}
+                                                    onError={(e) => { e.currentTarget.style.display = 'none'; if (e.currentTarget.nextSibling) e.currentTarget.nextSibling.style.display = 'flex'; }}
+                                                    className="w-full h-full object-cover"
+                                                />
+                                            ) : null}
+                                            <div
+                                                style={{ display: u.profile_image_url ? 'none' : 'flex' }}
+                                                className="w-full h-full text-gray-700 dark:text-gray-300 font-bold text-xs items-center justify-center"
+                                            >
+                                                {initials}
+                                            </div>
                                         </div>
 
                                         <div className="min-w-0">
