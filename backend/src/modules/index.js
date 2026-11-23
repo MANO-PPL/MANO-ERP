@@ -22,11 +22,13 @@ import locationRoutes from './locations/locationRoutes.js';
 import locationLabRoutes from './locations/locationLabRoutes.js';
 import catalogRoutes from './catalog/catalogRoutes.js';
 import catalogLabRoutes from './catalog/catalogLabRoutes.js';
+import profileRoutes from './profile/profileRoutes.js';
 
 const router = express.Router();
 
 // Core production route imports
 router.use('/auth', authRoutes);
+router.use('/profile', profileRoutes);
 router.use('/admin', adminRoutes);
 router.use('/projects', projectRoutes);
 router.use('/units', unitRoutes);

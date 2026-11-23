@@ -5,19 +5,31 @@ import * as TokenService from './tokenService.js';
 import EventBus from '../../utils/EventBus.js';
 import { getEventSource } from '../../utils/clientInfo.js';
 import AppError from '../../utils/AppError.js';
+import mediaService from '../shared/mediaService.js';
 
 const ACCESS_TOKEN_EXPIRY = '15m';
 
 /**
  * Helper to format user response safely and parse permissions
  */
-function formatUserResponse(user) {
+async function formatUserResponse(user) {
     let systemPerms = user.system_permissions;
     if (typeof systemPerms === 'string') {
         try {
             systemPerms = JSON.parse(systemPerms);
         } catch (e) {
             systemPerms = null;
+        }
+    } else {
+        systemPerms = user.system_permissions || null;
+    }
+
+    let presignedAvatar = null;
+    if (user.profile_image_url) {
+        try {
+            presignedAvatar = await mediaService.presignUrl(user.profile_image_url);
+        } catch (e) {
+            presignedAvatar = user.profile_image_url;
         }
     }
 
@@ -29,10 +41,10 @@ function formatUserResponse(user) {
         email: user.email,
         phone_no: user.phone_no,
         user_type: user.user_type,
-        profile_image_url: user.profile_image_url,
+        profile_image_url: presignedAvatar || user.profile_image_url,
         dept_name: user.dept_name || null,
         desg_name: user.desg_name || null,
-        system_permissions: systemPerms || null
+        system_permissions: systemPerms
     };
 }
 
@@ -99,10 +111,12 @@ export async function authenticateUser(userInput, password, req, rememberMe = fa
         user_agent: userAgent
     });
 
+    const userProfile = await getUserProfile(user.id);
+
     return {
         accessToken,
         refreshToken,
-        user: formatUserResponse(user)
+        user: userProfile
     };
 }
 
@@ -145,6 +159,15 @@ export async function getUserProfile(userId) {
         }
     }
 
+    let presignedAvatar = null;
+    if (user.profile_image_url) {
+        try {
+            presignedAvatar = await mediaService.presignUrl(user.profile_image_url);
+        } catch (e) {
+            presignedAvatar = user.profile_image_url;
+        }
+    }
+
     return {
         id: user.id,
         user_id: user.id,
@@ -154,7 +177,7 @@ export async function getUserProfile(userId) {
         phone_no: user.phone_no,
         org_id: user.org_id,
         user_type: user.user_type,
-        profile_image_url: user.profile_image_url,
+        profile_image_url: presignedAvatar || user.profile_image_url,
         dept_name: user.dept_name,
         desg_name: user.desg_name,
         system_permissions: systemPerms
