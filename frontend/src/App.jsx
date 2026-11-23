@@ -65,6 +65,8 @@ const MobileCollaboration = lazy(() => import('./mobile/pages/Collaboration/Mobi
 const MobileAdmin = lazy(() => import('./mobile/pages/Admin/MobileAdmin'));
 const MobileEmployeeBulkUpload = lazy(() => import('./mobile/pages/Admin/MobileEmployeeBulkUpload'));
 const MobileGlobalSpreadsheets = lazy(() => import('./mobile/pages/Spreadsheets/MobileGlobalSpreadsheets'));
+const Profile = lazyWithRetry(() => import('./pages/Profile/Profile'), 'profile');
+const MobileProfile = lazy(() => import('./mobile/pages/Profile/MobileProfile'));
 
 import { MOBILE_NAV_ITEMS } from './mobile/layout/mobileNavigation';
 import { projectApi } from './services/projectApi';
@@ -267,6 +269,13 @@ function App() {
                 <ProtectedRoute pageId="clients" requiredLevel={2}>
                   <Suspense fallback={<PageSkeleton variant="table" />}>
                     <ResponsiveRoute mobile={<MobileClientBulkUpload />} desktop={<ClientBulkUpload />} />
+                  </Suspense>
+                </ProtectedRoute>
+              } />
+              <Route path="profile" element={
+                <ProtectedRoute>
+                  <Suspense fallback={<PageSkeleton variant="form" />}>
+                    <ResponsiveRoute mobile={<MobileProfile />} desktop={<Profile />} />
                   </Suspense>
                 </ProtectedRoute>
               } />

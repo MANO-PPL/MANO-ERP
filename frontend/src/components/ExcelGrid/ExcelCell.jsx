@@ -345,10 +345,31 @@ export const ExcelCell = ({
                     onClick={(e) => e.stopPropagation()}
                     className="flex items-center justify-between w-full h-full px-1 text-xs outline-none select-none"
                 >
-                    <div className="truncate flex-1 min-w-0 pr-1">
+                    <div
+                        className="truncate flex-1 min-w-0 pr-1 cursor-pointer"
+                        onClick={(e) => {
+                            e.stopPropagation();
+                            handleBlur(localValueRef.current);
+                        }}
+                    >
                         {activeDisplayNode}
                     </div>
-                    <ChevronDown className="w-3.5 h-3.5 text-blue-500 shrink-0 rotate-180 transition-transform duration-200" />
+                    <button
+                        type="button"
+                        onMouseDown={(e) => {
+                            e.stopPropagation();
+                            e.preventDefault();
+                        }}
+                        onClick={(e) => {
+                            e.stopPropagation();
+                            e.preventDefault();
+                            handleBlur(localValueRef.current);
+                        }}
+                        className="p-1 rounded text-blue-500 hover:text-blue-700 hover:bg-blue-50 dark:hover:bg-white/10 shrink-0 transition-colors cursor-pointer"
+                        title="Close dropdown"
+                    >
+                        <ChevronDown className="w-3.5 h-3.5 rotate-180 transition-transform duration-200" />
+                    </button>
                     <ExcelCellSelectDropdown
                         anchorEl={cellRef.current}
                         value={localValue}
