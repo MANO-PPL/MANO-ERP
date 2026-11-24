@@ -152,7 +152,18 @@ export default function MobileSidebar({ open, onClose, onNavigate, loadProjects 
                 </div>
 
                 <div className="flex items-center gap-2.5 border-t border-gray-200 px-3 py-2.5 dark:border-gh-border">
-                    <span className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-blue-100 text-xs font-semibold text-blue-700 dark:bg-blue-950 dark:text-blue-300">
+                    {user?.profile_image_url ? (
+                        <img
+                            src={user.profile_image_url}
+                            alt={user?.user_name}
+                            onError={(e) => { e.currentTarget.style.display = 'none'; if (e.currentTarget.nextSibling) e.currentTarget.nextSibling.style.display = 'inline-flex'; }}
+                            className="h-8 w-8 shrink-0 rounded-full border border-blue-200 object-cover dark:border-blue-800"
+                        />
+                    ) : null}
+                    <span
+                        style={{ display: user?.profile_image_url ? 'none' : 'inline-flex' }}
+                        className="h-8 w-8 shrink-0 items-center justify-center rounded-full bg-blue-100 text-xs font-semibold text-blue-700 dark:bg-blue-950 dark:text-blue-300"
+                    >
                         {initialsFor(user?.user_name)}
                     </span>
                     <div className="min-w-0">

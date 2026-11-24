@@ -55,9 +55,13 @@ const Chip = ({ emp, onRemove, label = 'Reporter' }) => (
         exit={{ opacity: 0, scale: 0.9 }}
         className="flex items-center gap-2 pl-1.5 pr-2.5 py-1 bg-white dark:bg-[#161b22] border border-gray-200 dark:border-white/10 rounded-full shadow-xs group hover:border-blue-400 transition-all"
     >
-        <div className={`w-5 h-5 rounded-full bg-gradient-to-br ${emp.color || 'from-blue-500 to-indigo-600'} flex items-center justify-center text-[9px] font-bold text-white shrink-0 shadow-xs`}>
-            {emp.initials}
-        </div>
+        {emp.avatar ? (
+            <img src={emp.avatar} alt={emp.name} className="w-5 h-5 rounded-full object-cover shrink-0 shadow-xs border border-blue-200/50" />
+        ) : (
+            <div className={`w-5 h-5 rounded-full bg-gradient-to-br ${emp.color || 'from-blue-500 to-indigo-600'} flex items-center justify-center text-[9px] font-bold text-white shrink-0 shadow-xs`}>
+                {emp.initials}
+            </div>
+        )}
         <span className="text-xs font-bold text-gray-800 dark:text-gray-200 truncate">{emp.name}</span>
         {label && (
             <span className="px-1.5 py-0.2 bg-blue-50 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400 text-[9px] font-extrabold rounded-full uppercase">
@@ -205,9 +209,13 @@ const LevelRow = ({ level, idx, total, onApproversChange, onRemove, onRename, on
                                 {assignedApprovers.map(emp => (
                                     <div key={emp.id} className="flex items-center justify-between p-2.5 bg-gray-50 dark:bg-[#0d1117] border border-gray-200/60 dark:border-white/5 rounded-xl shadow-2xs">
                                         <div className="flex items-center gap-2.5 min-w-0">
-                                            <div className={`w-7 h-7 rounded-full bg-gradient-to-br ${emp.color || 'from-blue-500 to-indigo-600'} flex items-center justify-center text-xs font-bold text-white shrink-0 shadow-xs`}>
-                                                {emp.initials}
-                                            </div>
+                                            {emp.avatar ? (
+                                                <img src={emp.avatar} alt={emp.name} className="w-7 h-7 rounded-full object-cover shrink-0 shadow-xs border border-blue-200/50" />
+                                            ) : (
+                                                <div className={`w-7 h-7 rounded-full bg-gradient-to-br ${emp.color || 'from-blue-500 to-indigo-600'} flex items-center justify-center text-xs font-bold text-white shrink-0 shadow-xs`}>
+                                                    {emp.initials}
+                                                </div>
+                                            )}
                                             <div className="min-w-0">
                                                 <p className="text-xs font-bold text-gray-900 dark:text-white truncate">{emp.name}</p>
                                                 <p className="text-[10px] text-gray-400 uppercase tracking-tight truncate">{emp.role || 'Approver'}</p>
@@ -517,9 +525,13 @@ const SectionCard = ({ section, config, onChange, canWrite, employees = [], onEx
                         {config.reporters.map(emp => (
                             <div key={emp.id} className="flex items-center justify-between p-2.5 bg-gray-50 dark:bg-[#0d1117] border border-gray-200/60 dark:border-white/10 rounded-xl shadow-2xs">
                                 <div className="flex items-center gap-2.5 min-w-0">
-                                    <div className={`w-7 h-7 rounded-full bg-gradient-to-br ${emp.color || 'from-indigo-500 to-purple-600'} flex items-center justify-center text-xs font-bold text-white shrink-0 shadow-xs`}>
-                                        {emp.initials}
-                                    </div>
+                                    {emp.avatar ? (
+                                        <img src={emp.avatar} alt={emp.name} className="w-7 h-7 rounded-full object-cover shrink-0 shadow-xs border border-blue-200/50" />
+                                    ) : (
+                                        <div className={`w-7 h-7 rounded-full bg-gradient-to-br ${emp.color || 'from-indigo-500 to-purple-600'} flex items-center justify-center text-xs font-bold text-white shrink-0 shadow-xs`}>
+                                            {emp.initials}
+                                        </div>
+                                    )}
                                     <div className="min-w-0">
                                         <p className="text-xs font-bold text-gray-900 dark:text-white truncate">{emp.name}</p>
                                         <p className="text-[10px] text-indigo-600 dark:text-indigo-400 uppercase tracking-tight truncate font-bold">{emp.role || 'Reporter'}</p>
@@ -794,6 +806,7 @@ const Approvals = ({ setExtraBreadcrumbs, project, projectPermissions, isAdmin }
                         name: m.user_name,
                         role: m.user_type,
                         initials,
+                        avatar: m.profile_image_url || null,
                         color: colors[idx % colors.length]
                     };
                 });

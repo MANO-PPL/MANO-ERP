@@ -1187,7 +1187,15 @@ const Tasks = ({ setExtraBreadcrumbs, projectPermissions, isAdmin }) => {
                                 const initials = user.user_name
                                     ? user.user_name.split(' ').map(n => n[0]).join('').toUpperCase().slice(0, 2)
                                     : 'U';
-                                return (
+                                return user.profile_image_url ? (
+                                    <img
+                                        key={user.id}
+                                        src={user.profile_image_url}
+                                        alt={user.user_name}
+                                        title={user.user_name}
+                                        className="w-6 h-6 rounded-full object-cover border border-white dark:border-[#0d1117] shadow-xs"
+                                    />
+                                ) : (
                                     <div
                                         key={user.id}
                                         className="w-6 h-6 rounded-full bg-blue-600 border border-white dark:border-[#0d1117] flex items-center justify-center text-[9px] font-bold text-white shadow-xs"
@@ -1239,9 +1247,17 @@ const Tasks = ({ setExtraBreadcrumbs, projectPermissions, isAdmin }) => {
                                             onClick={() => handleToggleAssignee(taskId, member.id)}
                                         >
                                             <div className="flex items-center space-x-2 truncate">
-                                                <div className="w-5 h-5 rounded-full bg-blue-500 flex items-center justify-center text-[8px] font-bold text-white shrink-0">
-                                                    {initials}
-                                                </div>
+                                                {member.profile_image_url ? (
+                                                    <img
+                                                        src={member.profile_image_url}
+                                                        alt={member.user_name}
+                                                        className="w-5 h-5 rounded-full object-cover shrink-0 border border-blue-200/50"
+                                                    />
+                                                ) : (
+                                                    <div className="w-5 h-5 rounded-full bg-blue-500 flex items-center justify-center text-[8px] font-bold text-white shrink-0">
+                                                        {initials}
+                                                    </div>
+                                                )}
                                                 <span className="truncate">{member.user_name}</span>
                                             </div>
                                             {isAssigned && <Check size={14} className="text-blue-500 shrink-0" />}

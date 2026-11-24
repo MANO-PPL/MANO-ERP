@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { ChevronDown, List, LogOut, Menu, MessageSquare, Moon, Sun } from 'lucide-react';
+import { ChevronDown, List, LogOut, Menu, MessageSquare, Moon, Sun, User } from 'lucide-react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { useTheme } from 'next-themes';
 import { useAuth } from '../../context/AuthContext';
@@ -29,6 +29,7 @@ const PAGE_TITLES = {
     '/collaboration': 'Collaboration',
     '/admin': 'Admin Settings',
     '/spreadsheets': 'Spreadsheets',
+    '/profile': 'My Profile',
 };
 
 export default function MobileTopBar({ menuButtonRef, navigationOpen, onOpenNavigation }) {
@@ -37,7 +38,12 @@ export default function MobileTopBar({ menuButtonRef, navigationOpen, onOpenNavi
     const { resolvedTheme, setTheme } = useTheme();
     const { user, logout } = useAuth();
     const [profileOpen, setProfileOpen] = useState(false);
+    const [avatarError, setAvatarError] = useState(false);
     const isDark = resolvedTheme === 'dark';
+
+    useEffect(() => {
+        setAvatarError(false);
+    }, [user?.profile_image_url]);
 
     const projectMatch = location.pathname.match(/^\/projects\/([a-zA-Z0-9_-]+)/);
     const projectId = (projectMatch && projectMatch[1] !== 'create' && projectMatch[1] !== 'new') ? projectMatch[1] : null;
@@ -208,10 +214,12 @@ export default function MobileTopBar({ menuButtonRef, navigationOpen, onOpenNavi
                         onClick={() => setProfileOpen(true)}
                         className="inline-flex min-h-8 min-w-8 shrink-0 items-center justify-center rounded-lg focus-visible:outline focus-visible:outline-2 focus-visible:outline-blue-500"
                     >
-                        {user?.profile_image_url ? (
+                        {user?.profile_image_url && !avatarError ? (
                             <img
+                                key={user.profile_image_url}
                                 src={user.profile_image_url}
                                 alt=""
+                                onError={() => setAvatarError(true)}
                                 className="h-7 w-7 rounded-full border border-blue-200 object-cover dark:border-blue-800"
                             />
                         ) : (
@@ -225,22 +233,45 @@ export default function MobileTopBar({ menuButtonRef, navigationOpen, onOpenNavi
 
             <MobileBottomSheet open={profileOpen} onClose={() => setProfileOpen(false)} title="Profile">
                 <div className="flex items-center gap-2.5 rounded-lg bg-gray-50 p-2.5 dark:bg-gh-bg">
-                    <span className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-blue-100 text-xs font-semibold text-blue-700 dark:bg-blue-950 dark:text-blue-300">
-                        {initialsFor(user?.user_name)}
-                    </span>
+                    {user?.profile_image_url && !avatarError ? (
+                        <img
+                            key={user.profile_image_url}
+                            src={user.profile_image_url}
+                            alt=""
+                            onError={() => setAvatarError(true)}
+                            className="h-9 w-9 shrink-0 rounded-full border border-blue-200 object-cover dark:border-blue-800"
+                        />
+                    ) : (
+                        <span className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-blue-100 text-xs font-semibold text-blue-700 dark:bg-blue-950 dark:text-blue-300">
+                            {initialsFor(user?.user_name)}
+                        </span>
+                    )}
                     <div className="min-w-0">
                         <p className="truncate text-xs font-semibold text-gray-900 dark:text-gh-text">{user?.user_name || 'User'}</p>
                         <p className="truncate text-[11px] font-normal text-gray-500 dark:text-gh-muted">{user?.desg_name || user?.user_type || 'Employee'}</p>
                     </div>
                 </div>
-                <button
-                    type="button"
-                    onClick={handleLogout}
-                    className="mt-2.5 flex min-h-9 w-full items-center justify-center gap-2 rounded-lg border border-red-200 bg-red-50 px-3 text-xs font-semibold text-red-700 dark:border-red-900/70 dark:bg-red-950/40 dark:text-red-300"
-                >
-                    <LogOut size={16} aria-hidden="true" />
-                    Log out
-                </button>
+                <div className="mt-3 space-y-2">
+                    <button
+                        type="button"
+                        onClick={() => {
+                            setProfileOpen(false);
+                            navigate('/profile');
+                        }}
+                        className="flex min-h-9 w-full items-center gap-2.5 rounded-lg border border-gray-200 bg-white px-3 text-xs font-semibold text-gray-800 transition-colors hover:bg-gray-50 dark:border-gh-border dark:bg-gh-bg dark:text-gh-text dark:hover:bg-gh-hover"
+                    >
+                        <User size={15} aria-hidden="true" />
+                        <span>My Profile</span>
+                    </button>
+                    <button
+                        type="button"
+                        onClick={handleLogout}
+                        className="flex min-h-9 w-full items-center justify-center gap-2 rounded-lg border border-red-200 bg-red-50 px-3 text-xs font-semibold text-red-700 dark:border-red-900/70 dark:bg-red-950/40 dark:text-red-300"
+                    >
+                        <LogOut size={16} aria-hidden="true" />
+                        <span>Log out</span>
+                    </button>
+                </div>
             </MobileBottomSheet>
         </>
     );

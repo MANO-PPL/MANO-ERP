@@ -110,6 +110,7 @@ const NewProjectSlideOut = ({ isOpen, onClose, onProjectCreated, projectToEdit =
                     name: u.user_name,
                     role: u.user_type,
                     initials: u.user_name.substring(0, 2).toUpperCase(),
+                    avatar: u.profile_image_url || null,
                     color: COLORS[idx % COLORS.length]
                 }));
                 setEmployeeOptions(mappedUsers);
@@ -370,9 +371,13 @@ const NewProjectSlideOut = ({ isOpen, onClose, onProjectCreated, projectToEdit =
                                             onClick={() => toggleEmployee(emp)}
                                             className={`w-full flex items-center gap-3 px-4 py-2.5 transition-colors text-left ${isSelected ? 'bg-blue-50 dark:bg-blue-900/20' : 'hover:bg-gray-50 dark:hover:bg-white/5'}`}
                                         >
-                                            <div className={`w-7 h-7 rounded-full bg-gradient-to-br ${emp.color} flex items-center justify-center text-[10px] font-bold text-white shrink-0`}>
-                                                {emp.initials}
-                                            </div>
+                                            {emp.avatar ? (
+                                                <img src={emp.avatar} alt={emp.name} className="w-7 h-7 rounded-full object-cover shrink-0 border border-blue-200/50" />
+                                            ) : (
+                                                <div className={`w-7 h-7 rounded-full bg-gradient-to-br ${emp.color} flex items-center justify-center text-[10px] font-bold text-white shrink-0`}>
+                                                    {emp.initials}
+                                                </div>
+                                            )}
                                             <div className="flex-1 min-w-0">
                                                 <p className="text-sm font-semibold text-gray-800 dark:text-white truncate">{emp.name}</p>
                                                 <p className="text-xs text-gray-400 dark:text-gray-500">{emp.role}</p>
@@ -396,9 +401,13 @@ const NewProjectSlideOut = ({ isOpen, onClose, onProjectCreated, projectToEdit =
                             <div className="mt-3 flex flex-wrap gap-2">
                                 {selectedEmployees.map(emp => (
                                     <div key={emp.id} className="flex items-center gap-1.5 px-2.5 py-1 bg-blue-50 dark:bg-blue-900/20 border border-blue-100 dark:border-blue-500/30 rounded-full">
-                                        <div className={`w-5 h-5 rounded-full bg-gradient-to-br ${emp.color} flex items-center justify-center text-[9px] font-bold text-white shrink-0`}>
-                                            {emp.initials}
-                                        </div>
+                                        {emp.avatar ? (
+                                            <img src={emp.avatar} alt={emp.name} className="w-5 h-5 rounded-full object-cover shrink-0 border border-blue-200/50" />
+                                        ) : (
+                                            <div className={`w-5 h-5 rounded-full bg-gradient-to-br ${emp.color} flex items-center justify-center text-[9px] font-bold text-white shrink-0`}>
+                                                {emp.initials}
+                                            </div>
+                                        )}
                                         <span className="text-xs font-semibold text-blue-700 dark:text-blue-300">{emp.name}</span>
                                         <button
                                             type="button"

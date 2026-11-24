@@ -1,17 +1,38 @@
 import api from './api';
 
 function employeePayload(data) {
-    return {
-        user_name: data.name ?? data.user_name,
-        email: data.email ?? data.email_id,
-        user_password: data.password || data.user_password || undefined,
-        user_type: data.user_type ?? data.role,
-        phone_no: data.phone_no,
-        department: data.department,
-        dept_id: data.dept_id,
-        desg_id: data.desg_id,
-        system_permissions: data.system_permissions,
-    };
+    const payload = {};
+    if (data.name !== undefined || data.user_name !== undefined) {
+        payload.user_name = data.name ?? data.user_name;
+    }
+    if (data.email !== undefined || data.email_id !== undefined) {
+        payload.email = data.email ?? data.email_id;
+    }
+    if (data.password || data.user_password) {
+        payload.user_password = data.password || data.user_password;
+    }
+    if (data.user_type !== undefined || data.role !== undefined) {
+        payload.user_type = data.user_type ?? data.role;
+    }
+    if (data.phone_no !== undefined) {
+        payload.phone_no = data.phone_no;
+    }
+    if (data.department !== undefined) {
+        payload.department = data.department;
+    }
+    if (data.dept_id !== undefined) {
+        payload.dept_id = data.dept_id;
+    }
+    if (data.desg_id !== undefined) {
+        payload.desg_id = data.desg_id;
+    }
+    if (data.system_permissions !== undefined) {
+        payload.system_permissions = data.system_permissions;
+    }
+    if ('profile_image_url' in data) {
+        payload.profile_image_url = data.profile_image_url;
+    }
+    return payload;
 }
 
 export const adminApi = {
@@ -34,6 +55,14 @@ export const adminApi = {
     },
 
     updateUser: async (id, userData) => {
+        if (userData instanceof FormData) {
+            const response = await api.put(`/admin/user/${id}`, userData, {
+                headers: {
+                    'Content-Type': 'multipart/form-data'
+                }
+            });
+            return response.data;
+        }
         const payload = employeePayload(userData);
         const response = await api.put(`/admin/user/${id}`, payload);
         return response.data;
