@@ -436,7 +436,10 @@ export async function uploadResourceImage(req, res) {
         });
 
         if (existing.image_url && existing.image_url !== media.url) {
-            await mediaService.deleteMedia(existing.image_url);
+            const inUse = await catalogService.isMediaReferencedElsewhere(existing.image_url, id, 'resource');
+            if (!inUse) {
+                await mediaService.deleteMedia(existing.image_url);
+            }
         }
 
         const data = await catalogService.updateResource(id, {
@@ -469,7 +472,10 @@ export async function removeResourceImage(req, res) {
         }
 
         if (existing.image_url) {
-            await mediaService.deleteMedia(existing.image_url);
+            const inUse = await catalogService.isMediaReferencedElsewhere(existing.image_url, id, 'resource');
+            if (!inUse) {
+                await mediaService.deleteMedia(existing.image_url);
+            }
         }
 
         const data = await catalogService.updateResource(id, {
@@ -837,7 +843,10 @@ export async function uploadActivityImage(req, res) {
         });
 
         if (existing.image_url && existing.image_url !== media.url) {
-            await mediaService.deleteMedia(existing.image_url);
+            const inUse = await catalogService.isMediaReferencedElsewhere(existing.image_url, id, 'activity');
+            if (!inUse) {
+                await mediaService.deleteMedia(existing.image_url);
+            }
         }
 
         const data = await catalogService.updateActivity(id, {
@@ -870,7 +879,10 @@ export async function removeActivityImage(req, res) {
         }
 
         if (existing.image_url) {
-            await mediaService.deleteMedia(existing.image_url);
+            const inUse = await catalogService.isMediaReferencedElsewhere(existing.image_url, id, 'activity');
+            if (!inUse) {
+                await mediaService.deleteMedia(existing.image_url);
+            }
         }
 
         const data = await catalogService.updateActivity(id, {

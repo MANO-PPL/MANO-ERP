@@ -1,5 +1,18 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { X, Search, Download, Check, AlertCircle, Loader2, Info, CheckCircle2 } from 'lucide-react';
+import {
+    X,
+    Search,
+    Download,
+    Check,
+    AlertCircle,
+    Loader2,
+    Info,
+    CheckCircle2,
+    Package,
+    Layers,
+    HardHat,
+    Truck
+} from 'lucide-react';
 import catalogApi from '../../services/catalogApi';
 import catalogCache from './catalogCache';
 import { getCatalogErrorMessage } from './catalogErrors';
@@ -363,10 +376,33 @@ export default function ImportMasterDialog({
                                                             {item.code}
                                                         </td>
                                                         <td className="py-2.5 px-3 text-gray-700 dark:text-gray-300">
-                                                            <div>{item.name}</div>
-                                                            {item.description && (
-                                                                <div className="text-[11px] text-gray-400 truncate max-w-xs">{item.description}</div>
-                                                            )}
+                                                            <div className="flex items-center gap-2.5">
+                                                                {item.image_url ? (
+                                                                    <img
+                                                                        src={item.image_url}
+                                                                        alt={item.name}
+                                                                        className="w-7 h-7 rounded-lg object-cover shrink-0 border border-gray-200 dark:border-gh-border bg-gray-50 dark:bg-gh-subtle"
+                                                                    />
+                                                                ) : (
+                                                                    <div className="w-7 h-7 rounded-lg shrink-0 flex items-center justify-center bg-gray-100 dark:bg-gh-subtle border border-gray-200 dark:border-gh-border text-gray-400">
+                                                                        {entityType === 'activity' ? (
+                                                                            <Layers size={14} className="text-blue-500" />
+                                                                        ) : item.kind === 'material' ? (
+                                                                            <Package size={14} />
+                                                                        ) : item.kind === 'labour' ? (
+                                                                            <HardHat size={14} />
+                                                                        ) : (
+                                                                            <Truck size={14} />
+                                                                        )}
+                                                                    </div>
+                                                                )}
+                                                                <div className="min-w-0">
+                                                                    <div className="font-medium text-gray-900 dark:text-gray-100 truncate">{item.name}</div>
+                                                                    {item.description && (
+                                                                        <div className="text-[11px] text-gray-400 truncate max-w-xs">{item.description}</div>
+                                                                    )}
+                                                                </div>
+                                                            </div>
                                                         </td>
                                                         <td className="py-2.5 px-3 font-mono text-gray-600 dark:text-gray-400">
                                                             {unitCode || '—'}

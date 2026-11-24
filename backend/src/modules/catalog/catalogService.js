@@ -3224,3 +3224,18 @@ export async function checkIntegrity(scope = {}, externalTrx = null) {
     });
 }
 
+/**
+ * Checks whether an image URL is in use by another resource or activity row.
+ * Used to prevent deleting shared S3 files when Master and Project copies share the same image.
+ */
+export async function isMediaReferencedElsewhere(imageUrl, excludeId = null, entity = 'resource') {
+    if (!imageUrl) return false;
+    const table = entity === 'activity' ? 'cat_activity' : 'cat_resource';
+    let query = db(table).where('image_url', imageUrl);
+    if (excludeId) {
+        query = query.whereNot('id', excludeId);
+    }
+    const match = await query.first('id');
+    return Boolean(match);
+}
+

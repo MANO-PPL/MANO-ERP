@@ -13,7 +13,8 @@ import {
     Eye,
     Calculator,
     RefreshCw,
-    Loader2
+    Loader2,
+    X
 } from 'lucide-react';
 import catalogApi from '../../services/catalogApi';
 import catalogCache from './catalogCache';
@@ -50,6 +51,17 @@ export default function ActivitiesTab({
     const [actionActivity, setActionActivity] = useState(null);
     const [actionType, setActionType] = useState(null); // 'delete' | 'archive' | 'restore'
     const [isReasonModalOpen, setIsReasonModalOpen] = useState(false);
+
+    // Image Preview Lightbox State
+    const [previewImage, setPreviewImage] = useState(null); // { url, name, code }
+
+    useEffect(() => {
+        const handleKeyDown = (e) => {
+            if (e.key === 'Escape') setPreviewImage(null);
+        };
+        window.addEventListener('keydown', handleKeyDown);
+        return () => window.removeEventListener('keydown', handleKeyDown);
+    }, []);
 
     // Load Activities (uses in-memory cache on tab switch; fetches once per scope)
     const loadActivities = useCallback(async (forceRefresh = false) => {
@@ -344,11 +356,24 @@ export default function ActivitiesTab({
                                             <td className="py-2.5 px-3.5 text-gray-800 dark:text-gray-200">
                                                 <div className="flex items-center gap-2.5">
                                                     {a.image_url ? (
-                                                        <img
-                                                            src={a.image_url}
-                                                            alt={a.name}
-                                                            className="w-7 h-7 rounded-lg object-cover shrink-0 border border-gray-200 dark:border-gh-border bg-gray-50 dark:bg-gh-subtle"
-                                                        />
+                                                        <div className="relative w-7 h-7 rounded-lg shrink-0 overflow-hidden border border-gray-200 dark:border-gh-border bg-gray-50 dark:bg-gh-subtle group/img">
+                                                            <img
+                                                                src={a.image_url}
+                                                                alt={a.name}
+                                                                className="w-full h-full object-cover"
+                                                            />
+                                                            <button
+                                                                type="button"
+                                                                onClick={(e) => {
+                                                                    e.stopPropagation();
+                                                                    setPreviewImage({ url: a.image_url, name: a.name, code: a.code });
+                                                                }}
+                                                                className="absolute inset-0 bg-black/55 opacity-0 group-hover/img:opacity-100 flex items-center justify-center transition-opacity cursor-pointer text-white"
+                                                                title="View full image"
+                                                            >
+                                                                <Eye size={13} />
+                                                            </button>
+                                                        </div>
                                                     ) : (
                                                         <div className="w-7 h-7 rounded-lg shrink-0 flex items-center justify-center bg-blue-50 dark:bg-blue-950/30 border border-blue-200/50 dark:border-blue-800/40 text-blue-500">
                                                             <Layers size={14} />
@@ -506,6 +531,37 @@ export default function ActivitiesTab({
                 }}
                 onConfirm={handleConfirmAction}
             />
+
+            {/* Fullscreen Image Lightbox Modal */}
+            {previewImage && (
+                <div
+                    className="fixed inset-0 z-50 bg-black/85 backdrop-blur-sm flex flex-col items-center justify-center p-4 animate-fade-in"
+                    onClick={() => setPreviewImage(null)}
+                >
+                    <div className="absolute top-4 right-4 flex items-center gap-2 z-10" onClick={(e) => e.stopPropagation()}>
+                        <button
+                            type="button"
+                            onClick={() => setPreviewImage(null)}
+                            className="p-1.5 rounded-lg bg-white/10 hover:bg-white/20 text-white transition-colors cursor-pointer"
+                            title="Close (Esc)"
+                        >
+                            <X size={20} />
+                        </button>
+                    </div>
+
+                    <div className="max-w-4xl max-h-[85vh] flex flex-col items-center justify-center select-none" onClick={(e) => e.stopPropagation()}>
+                        <img
+                            src={previewImage.url}
+                            alt={previewImage.name || 'Activity photo'}
+                            className="max-w-full max-h-[75vh] object-contain rounded-xl shadow-2xl"
+                        />
+                        <div className="mt-3 text-center">
+                            <span className="text-white text-sm font-semibold block">{previewImage.name}</span>
+                            <span className="text-white/60 text-xs font-mono">{previewImage.code}</span>
+                        </div>
+                    </div>
+                </div>
+            )}
         </div>
     );
 }

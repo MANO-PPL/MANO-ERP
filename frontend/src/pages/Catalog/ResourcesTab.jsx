@@ -13,7 +13,9 @@ import {
     RotateCcw,
     GitCompare,
     RefreshCw,
-    Loader2
+    Loader2,
+    Eye,
+    X
 } from 'lucide-react';
 import catalogApi from '../../services/catalogApi';
 import catalogCache from './catalogCache';
@@ -53,6 +55,17 @@ export default function ResourcesTab({
     const [actionResource, setActionResource] = useState(null);
     const [actionType, setActionType] = useState(null);
     const [isReasonModalOpen, setIsReasonModalOpen] = useState(false);
+
+    // Image Preview Lightbox State
+    const [previewImage, setPreviewImage] = useState(null); // { url, name, code }
+
+    useEffect(() => {
+        const handleKeyDown = (e) => {
+            if (e.key === 'Escape') setPreviewImage(null);
+        };
+        window.addEventListener('keydown', handleKeyDown);
+        return () => window.removeEventListener('keydown', handleKeyDown);
+    }, []);
 
     const todayStr = useMemo(() => getTodayDateStr(), []);
 
@@ -460,11 +473,24 @@ export default function ResourcesTab({
                                             <td className="py-2.5 px-3.5 text-gray-800 dark:text-gray-200">
                                                 <div className="flex items-center gap-2.5">
                                                     {r.image_url ? (
-                                                        <img
-                                                            src={r.image_url}
-                                                            alt={r.name}
-                                                            className="w-7 h-7 rounded-lg object-cover shrink-0 border border-gray-200 dark:border-gh-border bg-gray-50 dark:bg-gh-subtle"
-                                                        />
+                                                        <div className="relative w-7 h-7 rounded-lg shrink-0 overflow-hidden border border-gray-200 dark:border-gh-border bg-gray-50 dark:bg-gh-subtle group/img">
+                                                            <img
+                                                                src={r.image_url}
+                                                                alt={r.name}
+                                                                className="w-full h-full object-cover"
+                                                            />
+                                                            <button
+                                                                type="button"
+                                                                onClick={(e) => {
+                                                                    e.stopPropagation();
+                                                                    setPreviewImage({ url: r.image_url, name: r.name, code: r.code });
+                                                                }}
+                                                                className="absolute inset-0 bg-black/55 opacity-0 group-hover/img:opacity-100 flex items-center justify-center transition-opacity cursor-pointer text-white"
+                                                                title="View full image"
+                                                            >
+                                                                <Eye size={13} />
+                                                            </button>
+                                                        </div>
                                                     ) : (
                                                         <div className="w-7 h-7 rounded-lg shrink-0 flex items-center justify-center bg-gray-100 dark:bg-gh-subtle border border-gray-200 dark:border-gh-border text-gray-400">
                                                             {r.kind === 'material' ? <Package size={14} /> : r.kind === 'labour' ? <HardHat size={14} /> : <Truck size={14} />}
@@ -617,20 +643,36 @@ export default function ResourcesTab({
                 />
             )}
 
-            {/* Reason Modal (Archive / Restore / Delete) */}
-            <ReasonModal
-                isOpen={isReasonModalOpen}
-                title={`${actionType === 'delete' ? 'Delete' : actionType === 'archive' ? 'Archive' : 'Restore'} Resource`}
-                subtitle={`Target: ${actionResource?.code} - ${actionResource?.name}`}
-                confirmText={actionType === 'delete' ? 'Delete Permanently' : actionType === 'archive' ? 'Archive Resource' : 'Restore Resource'}
-                confirmCls={actionType === 'delete' ? 'bg-red-600 hover:bg-red-700 text-white' : actionType === 'archive' ? 'bg-amber-600 hover:bg-amber-700 text-white' : 'bg-teal-600 hover:bg-teal-700 text-white'}
-                onClose={() => {
-                    setIsReasonModalOpen(false);
-                    setActionResource(null);
-                    setActionType(null);
-                }}
-                onConfirm={handleConfirmAction}
-            />
+            {/* Fullscreen Image Lightbox Modal */}
+            {previewImage && (
+                <div
+                    className="fixed inset-0 z-50 bg-black/85 backdrop-blur-sm flex flex-col items-center justify-center p-4 animate-fade-in"
+                    onClick={() => setPreviewImage(null)}
+                >
+                    <div className="absolute top-4 right-4 flex items-center gap-2 z-10" onClick={(e) => e.stopPropagation()}>
+                        <button
+                            type="button"
+                            onClick={() => setPreviewImage(null)}
+                            className="p-1.5 rounded-lg bg-white/10 hover:bg-white/20 text-white transition-colors cursor-pointer"
+                            title="Close (Esc)"
+                        >
+                            <X size={20} />
+                        </button>
+                    </div>
+
+                    <div className="max-w-4xl max-h-[85vh] flex flex-col items-center justify-center select-none" onClick={(e) => e.stopPropagation()}>
+                        <img
+                            src={previewImage.url}
+                            alt={previewImage.name || 'Resource photo'}
+                            className="max-w-full max-h-[75vh] object-contain rounded-xl shadow-2xl"
+                        />
+                        <div className="mt-3 text-center">
+                            <span className="text-white text-sm font-semibold block">{previewImage.name}</span>
+                            <span className="text-white/60 text-xs font-mono">{previewImage.code}</span>
+                        </div>
+                    </div>
+                </div>
+            )}
         </div>
     );
 }
