@@ -27,6 +27,7 @@ import ImportMasterDialog from './ImportMasterDialog';
 import SyncReviewModal from './SyncReviewModal';
 import ReasonModal from './ReasonModal';
 import CatalogToolbar from './CatalogToolbar';
+import ImportFromProjectDialog from './ImportFromProjectDialog';
 
 export default function ResourcesTab({
     scope = 'master',
@@ -50,6 +51,7 @@ export default function ResourcesTab({
     const [selectedResource, setSelectedResource] = useState(null);
     const [isImportModalOpen, setIsImportModalOpen] = useState(false);
     const [syncItem, setSyncItem] = useState(null);
+    const [isImportFromProjectOpen, setIsImportFromProjectOpen] = useState(false);
 
     // Reason modals for delete / archive / restore
     const [actionResource, setActionResource] = useState(null);
@@ -77,7 +79,7 @@ export default function ResourcesTab({
         for (const r of resList) {
             const cachedRate = catalogCache.getRate(r.id, todayStr);
             if (cachedRate !== undefined) {
-                if (cachedRate) initialMap[r.id] = cachedRate;
+                initialMap[r.id] = cachedRate;
             } else {
                 missing.push(r);
             }
@@ -95,11 +97,10 @@ export default function ResourcesTab({
                 try {
                     const rateRes = await catalogApi.getRate(r.id, todayStr);
                     catalogCache.setRate(r.id, todayStr, rateRes || null);
-                    if (rateRes) {
-                        setRatesMap(prev => ({ ...prev, [r.id]: rateRes }));
-                    }
+                    setRatesMap(prev => ({ ...prev, [r.id]: rateRes || null }));
                 } catch (_) {
                     catalogCache.setRate(r.id, todayStr, null);
+                    setRatesMap(prev => ({ ...prev, [r.id]: null }));
                 }
             }));
         }
@@ -393,6 +394,17 @@ export default function ResourcesTab({
                 filteredCount={filteredResources.length}
                 actions={(
                     <>
+                        {scope === 'master' && (
+                            <button
+                                type="button"
+                                onClick={() => setIsImportFromProjectOpen(true)}
+                                className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-lg bg-gray-100 dark:bg-gh-hover text-gray-700 dark:text-gray-200 hover:bg-gray-200 dark:hover:bg-gh-subtle border border-gray-300 dark:border-gh-border transition-colors shadow-xs cursor-pointer"
+                            >
+                                <Download size={14} className="text-indigo-500" />
+                                Import from Project
+                            </button>
+                        )}
+
                         {scope === 'project' && (
                             <button
                                 type="button"
@@ -526,10 +538,8 @@ export default function ResourcesTab({
                                                             / {currentRate.unit_code}
                                                         </span>
                                                     </div>
-                                                ) : currentRate === undefined ? (
-                                                    <span className="text-gray-400 italic font-mono text-[11px]">Loading...</span>
                                                 ) : (
-                                                    <span className="text-gray-400 italic">No active rate</span>
+                                                    <span className="text-gray-400 italic">No rate</span>
                                                 )}
                                             </td>
                                             <td className="py-2.5 px-3.5">
@@ -642,6 +652,17 @@ export default function ResourcesTab({
                     }}
                 />
             )}
+
+            {/* Import from Project Modal (Master Scope) */}
+            <ImportFromProjectDialog
+                isOpen={isImportFromProjectOpen}
+                existingMasterItems={resources}
+                onClose={() => setIsImportFromProjectOpen(false)}
+                onSuccess={() => {
+                    catalogCache.invalidateResources('master');
+                    loadResources(true);
+                }}
+            />
 
             {/* Fullscreen Image Lightbox Modal */}
             {previewImage && (

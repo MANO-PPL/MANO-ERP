@@ -1311,6 +1311,195 @@ export async function importResource(masterId, projectId, options = {}, external
     });
 }
 
+export async function promoteResourceToMaster(projectResourceId, options = {}, externalTrx = null) {
+    if (!projectResourceId) {
+        throw new CatalogError(CatalogErrorCodes.CAT_INVALID_VALUE, 'Project resource ID is required');
+    }
+
+    const {
+        masterCode = null,
+        masterName = null,
+        description = undefined,
+        remarks = undefined,
+        includeRates = 'latest',
+        includeConversions = true,
+        asNewVariant = false,
+        reparentProjectResource = true,
+        reason = null,
+        userId = null,
+        orgId = null,
+    } = options || {};
+
+    return withTransaction(externalTrx, async trx => {
+        // Lock project resource row so concurrent mutations serialize
+        const projectResource = await trx('cat_resource').where({ id: projectResourceId }).forUpdate().first();
+        if (!projectResource) {
+            throw new CatalogError(CatalogErrorCodes.CAT_NOT_FOUND, 'Project resource not found');
+        }
+
+        if (projectResource.project_id === null) {
+            throw new CatalogError(CatalogErrorCodes.CAT_SCOPE_MISMATCH, 'Resource is already in the Master Catalog');
+        }
+
+        if (orgId && String(projectResource.org_id) !== String(orgId)) {
+            throw new CatalogError(CatalogErrorCodes.CAT_SCOPE_MISMATCH, 'Resource belongs to another organization');
+        }
+
+        if (projectResource.status === 'archived') {
+            throw new CatalogError(CatalogErrorCodes.CAT_ARCHIVED, 'Archived project resource cannot be promoted to Master');
+        }
+
+        if (projectResource.parent_id !== null && !asNewVariant) {
+            throw new CatalogError(
+                CatalogErrorCodes.CAT_INVALID_VALUE,
+                'Resource is already linked to an existing master template. Set asNewVariant=true to promote as a new master variant.'
+            );
+        }
+
+        const newCode = validateNonEmptyCode(masterCode || projectResource.code, 'Master resource code');
+        const newName = validateNonEmptyName(masterName || projectResource.name, 'Master resource name');
+
+        // Check collision in Master scope (scope_key = 0)
+        const dup = await trx('cat_resource')
+            .where({ org_id: projectResource.org_id, scope_key: 0, code: newCode })
+            .first();
+        if (dup) {
+            throw new CatalogError(CatalogErrorCodes.CAT_DUPLICATE_CODE, `Master resource code "${newCode}" already exists`);
+        }
+
+        // Verify base unit is accessible at org level
+        const baseUnit = await trx('cat_unit').where({ id: projectResource.base_unit_id }).first();
+        if (!baseUnit) {
+            throw new CatalogError(CatalogErrorCodes.CAT_NOT_FOUND, 'Resource base unit not found');
+        }
+        if (!isUnitAccessibleForOrg(baseUnit.org_id, projectResource.org_id)) {
+            throw new CatalogError(CatalogErrorCodes.CAT_UNIT_INCOMPATIBLE, 'Resource base unit is not accessible at organization level');
+        }
+
+        // Insert new master resource
+        const [newMasterId] = await trx('cat_resource').insert({
+            org_id: projectResource.org_id,
+            project_id: null,
+            parent_id: null,
+            kind: projectResource.kind,
+            code: newCode,
+            name: newName,
+            base_unit_id: projectResource.base_unit_id,
+            description: description !== undefined ? (description ? String(description).slice(0, 500) : null) : projectResource.description,
+            remarks: remarks !== undefined ? (remarks ? String(remarks).slice(0, 500) : null) : projectResource.remarks,
+            image_url: projectResource.image_url || null,
+            status: 'active',
+            version: 1,
+            synced_version: null,
+        });
+
+        // Copy packaging conversions
+        if (includeConversions !== false) {
+            const conversions = await trx('cat_resource_conversion').where({ resource_id: projectResource.id });
+            for (const c of conversions) {
+                await trx('cat_resource_conversion').insert({
+                    resource_id: newMasterId,
+                    from_unit_id: c.from_unit_id,
+                    to_unit_id: c.to_unit_id,
+                    factor: c.factor,
+                });
+            }
+        }
+
+        // Copy rates
+        if (includeRates === 'all') {
+            const rates = await trx('cat_rate').where({ resource_id: projectResource.id }).orderBy('effective_from', 'asc');
+            for (const r of rates) {
+                await trx('cat_rate').insert({
+                    resource_id: newMasterId,
+                    rate: r.rate,
+                    unit_id: r.unit_id,
+                    effective_from: toDateStr(r.effective_from, 'effective_from'),
+                    effective_to: optionalDateStr(r.effective_to, 'effective_to'),
+                    note: r.note ? `[Promoted] ${r.note}` : 'Promoted rate',
+                    created_by: userId || r.created_by,
+                });
+            }
+        } else if (includeRates === 'latest') {
+            const today = todayStr();
+            let targetRate = await trx('cat_rate')
+                .where({ resource_id: projectResource.id })
+                .where('effective_from', '<=', today)
+                .where(q => q.whereNull('effective_to').orWhere('effective_to', '>=', today))
+                .orderBy('effective_from', 'desc')
+                .first();
+
+            if (!targetRate) {
+                targetRate = await trx('cat_rate')
+                    .where({ resource_id: projectResource.id })
+                    .orderBy('effective_from', 'desc')
+                    .first();
+            }
+
+            if (targetRate) {
+                await trx('cat_rate').insert({
+                    resource_id: newMasterId,
+                    rate: targetRate.rate,
+                    unit_id: targetRate.unit_id,
+                    effective_from: toDateStr(targetRate.effective_from, 'effective_from'),
+                    effective_to: null,
+                    note: targetRate.note ? `[Promoted] ${targetRate.note}` : 'Promoted benchmark rate',
+                    created_by: userId || targetRate.created_by,
+                });
+            }
+        }
+
+        // Link project resource lineage to the newly created master template
+        if (projectResource.parent_id === null || (asNewVariant && reparentProjectResource !== false)) {
+            await trx('cat_resource').where({ id: projectResource.id }).update({
+                parent_id: newMasterId,
+                synced_version: 1,
+            });
+        }
+
+        // Write change logs
+        await writeChangeLog(trx, {
+            orgId: projectResource.org_id,
+            entity: 'resource',
+            entityId: newMasterId,
+            action: 'promote_create',
+            beforeData: null,
+            afterData: {
+                promotedFromResourceId: projectResource.id,
+                promotedFromProjectId: projectResource.project_id,
+                code: newCode,
+                name: newName,
+                includeRates,
+                includeConversions: Boolean(includeConversions !== false),
+                asNewVariant: Boolean(asNewVariant),
+            },
+            reason: reason || 'Promoted project resource to Master Catalog',
+            userId,
+        });
+
+        if (projectResource.parent_id === null || (asNewVariant && reparentProjectResource !== false)) {
+            await writeChangeLog(trx, {
+                orgId: projectResource.org_id,
+                entity: 'resource',
+                entityId: projectResource.id,
+                action: 'promote_link',
+                beforeData: {
+                    parent_id: projectResource.parent_id,
+                    synced_version: projectResource.synced_version,
+                },
+                afterData: {
+                    parent_id: newMasterId,
+                    synced_version: 1,
+                },
+                reason: reason || 'Linked project resource to newly created master template',
+                userId,
+            });
+        }
+
+        return fetchResourceWithUnit(trx, newMasterId);
+    });
+}
+
 // =========================================================================
 // 3. Rates
 // =========================================================================
@@ -2362,6 +2551,174 @@ export async function importActivity(masterId, projectId, options = {}, external
         });
 
         return created;
+    });
+}
+
+export async function promoteActivityToMaster(projectActivityId, options = {}, externalTrx = null) {
+    if (!projectActivityId) {
+        throw new CatalogError(CatalogErrorCodes.CAT_INVALID_VALUE, 'Project activity ID is required');
+    }
+
+    const {
+        masterCode = null,
+        masterName = null,
+        description = undefined,
+        remarks = undefined,
+        asNewVariant = false,
+        reparentProjectActivity = true,
+        reason = null,
+        userId = null,
+        orgId = null,
+    } = options || {};
+
+    return withTransaction(externalTrx, async trx => {
+        // Lock project activity row so concurrent promotions serialize cleanly
+        const projectActivity = await trx('cat_activity').where({ id: projectActivityId }).forUpdate().first();
+        if (!projectActivity) {
+            throw new CatalogError(CatalogErrorCodes.CAT_NOT_FOUND, 'Project activity not found');
+        }
+
+        if (projectActivity.project_id === null) {
+            throw new CatalogError(CatalogErrorCodes.CAT_SCOPE_MISMATCH, 'Activity is already in the Master Catalog');
+        }
+
+        if (orgId && String(projectActivity.org_id) !== String(orgId)) {
+            throw new CatalogError(CatalogErrorCodes.CAT_SCOPE_MISMATCH, 'Activity belongs to another organization');
+        }
+
+        if (projectActivity.status === 'archived') {
+            throw new CatalogError(CatalogErrorCodes.CAT_ARCHIVED, 'Archived project activity cannot be promoted to Master');
+        }
+
+        if (projectActivity.parent_id !== null && !asNewVariant) {
+            throw new CatalogError(
+                CatalogErrorCodes.CAT_INVALID_VALUE,
+                'Activity is already linked to an existing master template. Set asNewVariant=true to promote as a new master variant.'
+            );
+        }
+
+        const newCode = validateNonEmptyCode(masterCode || projectActivity.code, 'Master activity code');
+        const newName = validateNonEmptyName(masterName || projectActivity.name, 'Master activity name');
+
+        // Check collision in Master scope (scope_key = 0)
+        const dup = await trx('cat_activity')
+            .where({ org_id: projectActivity.org_id, scope_key: 0, code: newCode })
+            .first();
+        if (dup) {
+            throw new CatalogError(CatalogErrorCodes.CAT_DUPLICATE_CODE, `Master activity code "${newCode}" already exists`);
+        }
+
+        // Verify output unit is accessible at org level
+        const outputUnit = await trx('cat_unit').where({ id: projectActivity.output_unit_id }).first();
+        if (!outputUnit) {
+            throw new CatalogError(CatalogErrorCodes.CAT_NOT_FOUND, 'Activity output unit not found');
+        }
+        if (!isUnitAccessibleForOrg(outputUnit.org_id, projectActivity.org_id)) {
+            throw new CatalogError(CatalogErrorCodes.CAT_UNIT_INCOMPATIBLE, 'Activity output unit is not accessible at organization level');
+        }
+
+        // Insert new master activity
+        const [newMasterActId] = await trx('cat_activity').insert({
+            org_id: projectActivity.org_id,
+            project_id: null,
+            parent_id: null,
+            code: newCode,
+            name: newName,
+            output_unit_id: projectActivity.output_unit_id,
+            description: description !== undefined ? (description ? String(description).slice(0, 500) : null) : projectActivity.description,
+            remarks: remarks !== undefined ? (remarks ? String(remarks).slice(0, 500) : null) : projectActivity.remarks,
+            image_url: projectActivity.image_url || null,
+            status: 'active',
+            version: 1,
+            synced_version: null,
+        });
+
+        // Copy norms and ensure each resource exists in Master
+        const norms = await trx('cat_activity_norm')
+            .where({ activity_id: projectActivity.id })
+            .orderBy('effective_from', 'asc');
+
+        const resourceMap = new Map();
+        for (const n of norms) {
+            let masterResId = resourceMap.get(n.resource_id);
+            if (!masterResId) {
+                const projectRes = await trx('cat_resource').where({ id: n.resource_id }).first();
+                if (!projectRes) {
+                    throw new CatalogError(CatalogErrorCodes.CAT_NOT_FOUND, `Referenced resource #${n.resource_id} not found`);
+                }
+                if (projectRes.parent_id !== null) {
+                    // Resource is already linked to a master resource
+                    masterResId = projectRes.parent_id;
+                } else {
+                    // Local project resource: promote it to master as well!
+                    const promotedMasterRes = await promoteResourceToMaster(projectRes.id, {
+                        userId,
+                        reason: `Auto-promoted for activity "${newName}" (${newCode})`,
+                    }, trx);
+                    masterResId = promotedMasterRes.id;
+                }
+                resourceMap.set(n.resource_id, masterResId);
+            }
+
+            await trx('cat_activity_norm').insert({
+                activity_id: newMasterActId,
+                resource_id: masterResId,
+                qty_per_unit: n.qty_per_unit,
+                unit_id: n.unit_id,
+                wastage_pct: n.wastage_pct ?? 0,
+                effective_from: toDateStr(n.effective_from, 'effective_from'),
+                effective_to: optionalDateStr(n.effective_to, 'effective_to'),
+                note: n.note,
+            });
+        }
+
+        // Link project activity lineage to the newly created master template
+        if (projectActivity.parent_id === null || (asNewVariant && reparentProjectActivity !== false)) {
+            await trx('cat_activity').where({ id: projectActivity.id }).update({
+                parent_id: newMasterActId,
+                synced_version: 1,
+            });
+        }
+
+        // Write change logs
+        await writeChangeLog(trx, {
+            orgId: projectActivity.org_id,
+            entity: 'activity',
+            entityId: newMasterActId,
+            action: 'promote_create',
+            beforeData: null,
+            afterData: {
+                promotedFromActivityId: projectActivity.id,
+                promotedFromProjectId: projectActivity.project_id,
+                code: newCode,
+                name: newName,
+                normsCount: norms.length,
+                asNewVariant: Boolean(asNewVariant),
+            },
+            reason: reason || 'Promoted project activity to Master Catalog',
+            userId,
+        });
+
+        if (projectActivity.parent_id === null || (asNewVariant && reparentProjectActivity !== false)) {
+            await writeChangeLog(trx, {
+                orgId: projectActivity.org_id,
+                entity: 'activity',
+                entityId: projectActivity.id,
+                action: 'promote_link',
+                beforeData: {
+                    parent_id: projectActivity.parent_id,
+                    synced_version: projectActivity.synced_version,
+                },
+                afterData: {
+                    parent_id: newMasterActId,
+                    synced_version: 1,
+                },
+                reason: reason || 'Linked project activity to newly created master template',
+                userId,
+            });
+        }
+
+        return fetchActivityWithNorms(trx, newMasterActId);
     });
 }
 

@@ -25,6 +25,7 @@ import ImportMasterDialog from './ImportMasterDialog';
 import SyncReviewModal from './SyncReviewModal';
 import ReasonModal from './ReasonModal';
 import CatalogToolbar from './CatalogToolbar';
+import ImportFromProjectDialog from './ImportFromProjectDialog';
 
 export default function ActivitiesTab({
     scope = 'master',
@@ -45,6 +46,7 @@ export default function ActivitiesTab({
     // Modals & Details
     const [selectedActivity, setSelectedActivity] = useState(null); // for detail view
     const [isImportModalOpen, setIsImportModalOpen] = useState(false);
+    const [isImportFromProjectOpen, setIsImportFromProjectOpen] = useState(false);
     const [syncItem, setSyncItem] = useState(null); // for sync review modal
 
     // Reason modals for delete / archive / restore
@@ -279,6 +281,17 @@ export default function ActivitiesTab({
                 filteredCount={filteredActivities.length}
                 actions={(
                     <>
+                        {scope === 'master' && (
+                            <button
+                                type="button"
+                                onClick={() => setIsImportFromProjectOpen(true)}
+                                className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-lg bg-gray-100 dark:bg-gh-hover text-gray-700 dark:text-gray-200 hover:bg-gray-200 dark:hover:bg-gh-subtle border border-gray-300 dark:border-gh-border transition-colors shadow-xs cursor-pointer"
+                            >
+                                <Download size={14} className="text-indigo-500" />
+                                Import from Project
+                            </button>
+                        )}
+
                         {scope === 'project' && (
                             <button
                                 type="button"
@@ -497,6 +510,18 @@ export default function ActivitiesTab({
                 onClose={() => setIsImportModalOpen(false)}
                 onSuccess={() => {
                     catalogCache.invalidateActivities(scope, projectId);
+                    loadActivities(true);
+                }}
+            />
+
+            {/* Import from Project Dialog (Master Scope) */}
+            <ImportFromProjectDialog
+                isOpen={isImportFromProjectOpen}
+                entityType="activity"
+                existingMasterItems={activities}
+                onClose={() => setIsImportFromProjectOpen(false)}
+                onSuccess={() => {
+                    catalogCache.invalidateActivities('master');
                     loadActivities(true);
                 }}
             />

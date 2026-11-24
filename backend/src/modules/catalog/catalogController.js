@@ -1031,6 +1031,34 @@ export async function importResourceToProject(req, res) {
     }
 }
 
+export async function promoteResourceToMaster(req, res) {
+    try {
+        const resourceId = Number(req.params.id);
+        const options = req.body || {};
+        const data = await catalogService.promoteResourceToMaster(
+            resourceId,
+            { ...(options || {}), orgId: req.user?.org_id, userId: req.user?.id }
+        );
+        res.status(201).json({ success: true, data });
+    } catch (err) {
+        handleCatalogError(res, err);
+    }
+}
+
+export async function promoteActivityToMaster(req, res) {
+    try {
+        const activityId = Number(req.params.id);
+        const options = req.body || {};
+        const data = await catalogService.promoteActivityToMaster(
+            activityId,
+            { ...(options || {}), orgId: req.user?.org_id, userId: req.user?.id }
+        );
+        res.status(201).json({ success: true, data });
+    } catch (err) {
+        handleCatalogError(res, err);
+    }
+}
+
 export async function importActivityToProject(req, res) {
     try {
         const projectId = Number(req.params.projectId);

@@ -1579,6 +1579,8 @@ export default function ResourceDetailPage({
                     </div>
                 </div>
             )}
+
+
         </div>
     );
 }

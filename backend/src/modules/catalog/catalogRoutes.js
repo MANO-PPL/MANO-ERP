@@ -32,6 +32,7 @@ router.put('/resources/:id', catalogController.updateResource);
 router.delete('/resources/:id', catalogController.deleteResource);
 router.post('/resources/:id/archive', catalogController.archiveResource);
 router.post('/resources/:id/restore', catalogController.restoreResource);
+router.post('/resources/:id/promote', catalogController.promoteResourceToMaster);
 router.post('/resources/:id/image', singleImageUpload('image'), catalogController.uploadResourceImage);
 router.delete('/resources/:id/image', catalogController.removeResourceImage);
 
@@ -62,6 +63,7 @@ router.post('/activities/:id/archive', catalogController.archiveActivity);
 router.post('/activities/:id/restore', catalogController.restoreActivity);
 router.post('/activities/:id/image', singleImageUpload('image'), catalogController.uploadActivityImage);
 router.delete('/activities/:id/image', catalogController.removeActivityImage);
+router.post('/activities/:id/promote', catalogController.promoteActivityToMaster);
 
 // ─── 5. Norms ────────────────────────────────────────────────────────────────
 router.get('/activities/:id/norms', catalogController.getNorms);

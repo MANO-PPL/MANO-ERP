@@ -48,7 +48,7 @@ async function cleanupTestData() {
  */
 export async function runCatalogTestSuite({ targetCase = null, closeDb = false } = {}) {
     const targetNum = targetCase && targetCase !== 'all' ? Number(targetCase) : null;
-    const TOTAL_CASES = 48;
+    const TOTAL_CASES = 49;
     const headerTitle = targetNum
         ? `RUNNING MODULE 2: CATALOG SPEC TEST (CASE ${targetNum})`
         : `RUNNING MODULE 2: CATALOG SPEC TEST SUITE (${TOTAL_CASES} CASES)`;
@@ -1460,6 +1460,100 @@ export async function runCatalogTestSuite({ targetCase = null, closeDb = false }
             assert.throws(() => getOrgId({ user: { org_id: 'invalid' } }), err => err.statusCode === 403);
             assert.strictEqual(getOrgId({ user: { org_id: 10 } }), 10);
             assert.strictEqual(getOrgId({ user: { org_id: '15' } }), 15);
+        });
+
+        // Case 49: promoteResourceToMaster promotes project resource to Master Catalog and binds lineage
+        await runTestCase(49, 'promoteResourceToMaster promotes project resource to Master Catalog and binds lineage', async () => {
+            const kg = u.kg;
+            const bag = u.bag;
+
+            // 1. Create a project-scoped resource in TEST_PROJECT_1
+            const projectRes = await catalogService.createResource({
+                orgId: TEST_ORG_1,
+                projectId: TEST_PROJECT_1,
+                kind: 'material',
+                code: 'PRJ-SPEC-POLYMER',
+                name: 'Project Polymer Waterproofing',
+                baseUnitId: kg.id,
+                description: 'Special waterproofing membrane',
+            });
+            assert.strictEqual(projectRes.project_id, TEST_PROJECT_1);
+            assert.strictEqual(projectRes.parent_id, null);
+
+            // 2. Add conversion on project resource (1 bag = 25 kg)
+            await catalogService.setConversion(projectRes.id, bag.id, kg.id, 25);
+
+            // 3. Add rate on project resource (450 per bag)
+            await catalogService.setRate(projectRes.id, 450, bag.id, '2026-01-01', 'Initial site rate');
+
+            // 4. Try promoting with duplicate code in master (if any exists) - test collision
+            const existingMaster = await catalogService.createResource({
+                orgId: TEST_ORG_1,
+                projectId: null,
+                kind: 'material',
+                code: 'COLLIDE-MASTER-CODE',
+                name: 'Colliding Master',
+                baseUnitId: kg.id,
+            });
+
+            await assert.rejects(
+                () => catalogService.promoteResourceToMaster(projectRes.id, { masterCode: 'COLLIDE-MASTER-CODE' }),
+                err => err instanceof CatalogError && err.code === CatalogErrorCodes.CAT_DUPLICATE_CODE
+            );
+
+            // 5. Test rejecting promotion of an already-master resource
+            await assert.rejects(
+                () => catalogService.promoteResourceToMaster(existingMaster.id),
+                err => err instanceof CatalogError && err.code === CatalogErrorCodes.CAT_SCOPE_MISMATCH
+            );
+
+            // 6. Promote successfully
+            const result = await catalogService.promoteResourceToMaster(projectRes.id, {
+                masterCode: 'MST-POLY-MEMBRANE',
+                masterName: 'Corporate Polymer Membrane',
+                includeRates: 'latest',
+                includeConversions: true,
+                reason: 'Standardizing waterproofing polymer company-wide',
+            });
+
+            assert(result.masterResource, 'Must return created master resource');
+            assert.strictEqual(result.masterResource.project_id, null, 'Master resource project_id must be null');
+            assert.strictEqual(result.masterResource.parent_id, null, 'Master resource parent_id must be null');
+            assert.strictEqual(result.masterResource.code, 'MST-POLY-MEMBRANE');
+            assert.strictEqual(result.masterResource.name, 'Corporate Polymer Membrane');
+            assert.strictEqual(result.masterResource.version, 1);
+
+            // Check that project resource now links to master
+            assert(result.projectResource, 'Must return updated project resource');
+            assert.strictEqual(result.projectResource.parent_id, result.masterResource.id, 'Project resource parent_id must link to master');
+            assert.strictEqual(result.projectResource.synced_version, 1, 'Project resource synced_version must match master version');
+
+            // Check conversions copied to master
+            const masterConvs = await catalogService.listConversions(result.masterResource.id);
+            assert.strictEqual(masterConvs.length, 1);
+            assert.strictEqual(masterConvs[0].from_unit_id, bag.id);
+            assert.strictEqual(masterConvs[0].to_unit_id, kg.id);
+            assert.strictEqual(masterConvs[0].factor, '25.0000000000');
+
+            // Check rate copied to master
+            const masterRates = await catalogService.listRates(result.masterResource.id);
+            assert.strictEqual(masterRates.length, 1);
+            assert.strictEqual(masterRates[0].rate, '450.0000');
+            assert.strictEqual(masterRates[0].unit_id, bag.id);
+
+            // 7. Test trying to promote again without asNewVariant
+            await assert.rejects(
+                () => catalogService.promoteResourceToMaster(projectRes.id),
+                err => err instanceof CatalogError && err.code === CatalogErrorCodes.CAT_INVALID_VALUE
+            );
+
+            // 8. Test promoting with asNewVariant=true with a new code
+            const variantResult = await catalogService.promoteResourceToMaster(projectRes.id, {
+                asNewVariant: true,
+                masterCode: 'MST-POLY-MEMBRANE-V2',
+                masterName: 'Corporate Polymer Membrane Variant 2',
+            });
+            assert.strictEqual(variantResult.masterResource.code, 'MST-POLY-MEMBRANE-V2');
         });
 
         // Final integrity verification on the test tenant before cleanup

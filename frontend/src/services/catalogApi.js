@@ -77,6 +77,11 @@ export const catalogApi = {
         return res.data?.data;
     },
 
+    async promoteResourceToMaster(id, payload = {}) {
+        const res = await api.post(`/catalog/resources/${id}/promote`, payload);
+        return res.data?.data;
+    },
+
     async deleteResource(id, reason) {
         const res = await api.delete(`/catalog/resources/${id}`, { data: { reason } });
         return res.data?.data;
@@ -216,6 +221,11 @@ export const catalogApi = {
 
     async removeActivityImage(id) {
         const res = await api.delete(`/catalog/activities/${id}/image`);
+        return res.data?.data;
+    },
+
+    async promoteActivityToMaster(id, payload = {}) {
+        const res = await api.post(`/catalog/activities/${id}/promote`, payload);
         return res.data?.data;
     },
 

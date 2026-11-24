@@ -330,6 +330,22 @@ export async function importResource(req, res) {
     }
 }
 
+export async function promoteResource(req, res) {
+    try {
+        const orgId = getOrgId(req);
+        const resourceId = Number(req.params.id);
+        await verifyEntityInOrg('cat_resource', resourceId, orgId);
+        const data = await catalogService.promoteResourceToMaster(resourceId, {
+            ...(req.body || {}),
+            orgId,
+            userId: req.user.id,
+        });
+        res.status(201).json({ success: true, data });
+    } catch (err) {
+        handleError(res, err);
+    }
+}
+
 export async function getResourceSyncStatus(req, res) {
     try {
         const orgId = getOrgId(req);
@@ -540,6 +556,22 @@ export async function restoreActivity(req, res) {
             reason: req.body?.reason,
         });
         res.json({ success: true, data });
+    } catch (err) {
+        handleError(res, err);
+    }
+}
+
+export async function promoteActivity(req, res) {
+    try {
+        const orgId = getOrgId(req);
+        const activityId = Number(req.params.id);
+        await verifyEntityInOrg('cat_activity', activityId, orgId);
+        const data = await catalogService.promoteActivityToMaster(activityId, {
+            ...(req.body || {}),
+            orgId,
+            userId: req.user.id,
+        });
+        res.status(201).json({ success: true, data });
     } catch (err) {
         handleError(res, err);
     }
