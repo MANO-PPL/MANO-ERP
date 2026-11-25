@@ -7,7 +7,7 @@ import { findOrCreateJobNature } from '../shared/jobNatureService.js';
  * Startup self-healing schema migration to introduce org_id columns for CRM tables
  */
 export async function initializeCrmSchema() {
-    const tables = ['crm_contacts', 'crm_interactions', 'crm_job_nature', 'crm_sectors'];
+    const tables = ['crm_contacts', 'crm_job_nature', 'crm_sectors'];
     for (const t of tables) {
         const hasTable = await db.schema.hasTable(t);
         if (hasTable) {
@@ -99,7 +99,6 @@ export async function getClients(orgId, query = {}) {
     // Fetch latest interaction for each type for these clients
     const aggregatedInteractions = await db('crm_interactions')
         .whereIn('contact_id', clientIds)
-        .andWhere('org_id', orgId)
         .select('contact_id', 'type', 'interaction_date', 'follow_up_date', 'remarks')
         .orderBy('interaction_date', 'asc');
 
@@ -172,7 +171,7 @@ export async function getClientById(orgId, id, options = {}) {
 
     const interactions = await db('crm_interactions as i')
         .leftJoin('iam_users as u', 'i.interacted_by', 'u.id')
-        .where({ 'i.contact_id': id, 'i.org_id': orgId })
+        .where({ 'i.contact_id': id })
         .select('i.*', 'u.user_name as interacted_by_name')
         .orderBy('i.interaction_date', 'desc');
 
@@ -378,7 +377,7 @@ export async function deleteClient(orgId, id) {
     }
 
     // Delete related interactions first
-    await db('crm_interactions').where({ contact_id: id, org_id: orgId }).delete();
+    await db('crm_interactions').where({ contact_id: id }).delete();
 
     // Delete contact
     await db('crm_contacts').where({ id, org_id: orgId }).delete();
@@ -392,7 +391,13 @@ export async function deleteClients(orgId, ids) {
     const validIds = ids.filter(id => id && !String(id).startsWith('temp_'));
     if (validIds.length === 0) return true;
 
-    await db('crm_interactions').whereIn('contact_id', validIds).andWhere('org_id', orgId).delete();
+    const scopedIdsQuery = db('crm_contacts')
+        .whereIn('id', validIds)
+        .andWhere('org_id', orgId)
+        .whereRaw('LOWER(??) = ?', ['category', 'client'])
+        .select('id');
+
+    await db('crm_interactions').whereIn('contact_id', scopedIdsQuery).delete();
     await db('crm_contacts')
         .whereIn('id', validIds)
         .andWhere('org_id', orgId)
@@ -529,8 +534,9 @@ export async function createInteraction(orgId, data, options = {}) {
         throw new AppError('Missing required interaction fields', 400);
     }
 
+    await getScopedContact(connection, contact_id, orgId);
+
     const [newId] = await connection('crm_interactions').insert({
-        org_id: orgId,
         contact_id,
         type,
         interaction_date,
@@ -546,11 +552,11 @@ export async function createInteraction(orgId, data, options = {}) {
 
 export async function deleteInteraction(orgId, contactId, interactionId, options = {}) {
     const connection = options.transaction || db;
+    await getScopedContact(connection, contactId, orgId);
     const deletedCount = await connection('crm_interactions')
         .where({
             id: interactionId,
-            contact_id: contactId,
-            org_id: orgId
+            contact_id: contactId
         })
         .delete();
 

@@ -655,8 +655,11 @@ export function createReadService({ db, projects, clients, vendors, resources, p
                 await walk(args.resourceId, 0, new Set()); break;
             }
             case 'projectParties.list': result = (await parties.getProjectParties(args.projectId, 'name,category', orgId, { ...paging, category: args.category, agentRead: true })).parties; break;
-            case 'interactions.search': result = await db('crm_interactions').where({ contact_id: args.contactId, org_id: orgId })
-                .select('id', 'contact_id', 'type', 'interaction_date', 'follow_up_date', 'remarks').orderBy('interaction_date', 'desc').orderBy('id', 'desc').limit(paging.limit).offset(paging.offset); break;
+            case 'interactions.search': result = await db('crm_interactions as i')
+                .join('crm_contacts as c', 'i.contact_id', 'c.id')
+                .where({ 'i.contact_id': args.contactId, 'c.org_id': orgId })
+                .select('i.id', 'i.contact_id', 'i.type', 'i.interaction_date', 'i.follow_up_date', 'i.remarks')
+                .orderBy('i.interaction_date', 'desc').orderBy('i.id', 'desc').limit(paging.limit).offset(paging.offset); break;
             case 'transactions.search': {
                 let q = db('txn_transactions as t')
                     .leftJoin('proj_projects as p', 't.project_id', 'p.id')

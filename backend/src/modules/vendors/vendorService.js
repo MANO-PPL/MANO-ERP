@@ -79,7 +79,6 @@ export async function getVendors(orgId, query = {}) {
     if (query.include_interactions === 'true' || query.include_interactions === true) {
         const interactions = await db('crm_interactions')
             .whereIn('contact_id', vendorIds)
-            .andWhere('org_id', orgId)
             .whereNull('interacted_by')
             .select('*');
 
@@ -125,7 +124,7 @@ export async function getVendorById(orgId, id, options = {}) {
 
     const interactions = await db('crm_interactions as i')
         .leftJoin('iam_users as u', 'i.interacted_by', 'u.id')
-        .where({ 'i.contact_id': id, 'i.org_id': orgId })
+        .where({ 'i.contact_id': id })
         .select('i.*', 'u.user_name as interacted_by_name')
         .orderBy('i.interaction_date', 'desc');
 
@@ -140,8 +139,12 @@ export async function createInteraction(orgId, id, data) {
         throw new AppError('Interaction type and date are required', 400);
     }
 
+    const vendor = await db('crm_contacts').where({ id, org_id: orgId }).first();
+    if (!vendor) {
+        throw new AppError('Vendor not found', 404);
+    }
+
     const insertData = {
-        org_id: orgId,
         contact_id: id,
         type: data.type.toLowerCase(),
         interaction_date: data.interaction_date,
@@ -286,7 +289,15 @@ export async function deleteVendors(orgId, ids) {
     }
 
     // Delete related interactions first
-    await db('crm_interactions').whereIn('contact_id', ids).andWhere('org_id', orgId).delete();
+    const scopedVendorIds = db('crm_contacts')
+        .whereIn('id', ids)
+        .where({ org_id: orgId })
+        .where(function () {
+            this.whereNull('category')
+                .orWhereRaw('LOWER(??) NOT IN (?, ?)', ['category', 'client', 'pmc']);
+        })
+        .select('id');
+    await db('crm_interactions').whereIn('contact_id', scopedVendorIds).delete();
 
     // Delete contact
     const deletedCount = await db('crm_contacts')
@@ -443,7 +454,15 @@ export async function batchSaveVendors(orgId, { created = [], updated = [], dele
         if (deleted && Array.isArray(deleted) && deleted.length > 0) {
             const validIds = deleted.map(id => parseInt(id, 10)).filter(id => !isNaN(id) && id > 0);
             if (validIds.length > 0) {
-                await trx('crm_interactions').whereIn('contact_id', validIds).andWhere('org_id', orgId).delete();
+                const scopedVendorIds = trx('crm_contacts')
+                    .whereIn('id', validIds)
+                    .where({ org_id: orgId })
+                    .where(function () {
+                        this.whereNull('category')
+                            .orWhereRaw('LOWER(??) NOT IN (?, ?)', ['category', 'client', 'pmc']);
+                    })
+                    .select('id');
+                await trx('crm_interactions').whereIn('contact_id', scopedVendorIds).delete();
                 deletedCount = await trx('crm_contacts')
                     .whereIn('id', validIds)
                     .where({ org_id: orgId })

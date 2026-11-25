@@ -83,7 +83,7 @@ function buildEntityRegistry(db) {
 
         interactions: {
             label: 'CRM Interactions',
-            base: orgId => db('crm_interactions').where({ org_id: orgId }),
+            base: orgId => db('crm_interactions').whereIn('contact_id', db('crm_contacts').where({ org_id: orgId }).select('id')),
             dimensions: {
                 type: { col: () => db.raw("COALESCE(NULLIF(TRIM(type),''),'General') as label"), title: 'CRM Interactions by Channel', viz: 'donut' },
                 month: {
