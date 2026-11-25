@@ -1,9 +1,10 @@
 import { useCallback, useEffect, useState } from 'react';
-import clientApi from '../../services/clientApi.js';
+import { createPartyApi } from '../../services/partyApi.js';
 import api from '../../services/api.js';
 import { createRequestLoader } from '../utils/createRequestLoader.js';
 
-export const loadMobileClients = createRequestLoader(() => clientApi.getClients({ limit: 50000 }));
+const clientApi = createPartyApi('client');
+export const loadMobileClients = createRequestLoader(() => clientApi.list({ limit: 50000 }));
 export const loadClientMetadata = createRequestLoader(() => Promise.all([
     api.get('/admin/job-natures'), api.get('/admin/sectors'),
 ]).then(([jobs, sectors]) => ({

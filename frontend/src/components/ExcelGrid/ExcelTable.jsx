@@ -1,6 +1,6 @@
 import React, { useRef, useCallback, useState, useEffect } from 'react';
 import { ExcelCell } from './ExcelCell';
-import { ArrowUp, ArrowDown, Eye, Trash2, Check, Plus, Table as TableIcon, ChevronDown, ChevronUp } from 'lucide-react';
+import { ArrowUp, ArrowDown, Eye, Trash2, Check, Plus, Table as TableIcon, ChevronDown, ChevronUp, Archive, RotateCcw } from 'lucide-react';
 import { getColumnLetter } from './excelUtils';
 
 const CustomCheckbox = ({ checked, onChange, title }) => (
@@ -61,6 +61,8 @@ export const ExcelTable = ({
     onPasteCell = null,
     onViewRow = null,
     onDeleteRow = null,
+    onArchiveRow = null,
+    onRestoreRow = null,
     emptyMessage = 'No records found',
     onAddRows = null,
     onOpenImportModal = null,
@@ -163,7 +165,7 @@ export const ExcelTable = ({
         document.addEventListener('mouseup', handleMouseUp);
     };
 
-    const hasActions = Boolean(onViewRow || onDeleteRow);
+    const hasActions = Boolean(onViewRow || onDeleteRow || onArchiveRow || onRestoreRow);
 
     return (
         <div
@@ -563,6 +565,26 @@ export const ExcelTable = ({
                                                             title={isNew ? 'Save row before viewing details' : 'View Details'}
                                                         >
                                                             <Eye size={13} />
+                                                        </button>
+                                                    )}
+                                                    {canWrite && !isNew && row.status === 'archived' && onRestoreRow && (
+                                                        <button
+                                                            type="button"
+                                                            onClick={() => onRestoreRow(row)}
+                                                            className="p-1 hover:bg-emerald-50 dark:hover:bg-emerald-950/30 text-gray-500 hover:text-emerald-600 rounded transition cursor-pointer"
+                                                            title="Restore Row"
+                                                        >
+                                                            <RotateCcw size={13} />
+                                                        </button>
+                                                    )}
+                                                    {canWrite && !isNew && row.status !== 'archived' && onArchiveRow && (
+                                                        <button
+                                                            type="button"
+                                                            onClick={() => onArchiveRow(row)}
+                                                            className="p-1 hover:bg-amber-50 dark:hover:bg-amber-950/30 text-gray-500 hover:text-amber-600 rounded transition cursor-pointer"
+                                                            title="Archive Row"
+                                                        >
+                                                            <Archive size={13} />
                                                         </button>
                                                     )}
                                                     {canWrite && onDeleteRow && (

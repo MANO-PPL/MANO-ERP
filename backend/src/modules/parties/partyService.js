@@ -9,7 +9,7 @@ const CONTACT_CATEGORIES = ['Contractor', 'Consultants', 'Supplier', 'Client', '
 const CONTACT_FIELDS = [
     'id', 'org_id', 'name', 'scope', 'sector_id', 'job_nature_id', 'category',
     'contact_person', 'designation', 'telephone_no', 'mobile', 'email', 'address',
-    'location', 'website', 'gst_no', 'constitution', 'reference', 'responsibility',
+    'location', 'website', 'gst_no', 'constitution', 'reference',
     'remarks', 'status', 'created_by', 'updated_by', 'created_at', 'updated_at'
 ];
 
@@ -17,7 +17,7 @@ const CONTACT_FIELDS = [
  * Startup self-healing schema migration for CRM/Parties tables.
  */
 export async function initializeCrmSchema() {
-    const tables = ['crm_contacts', 'crm_interactions', 'crm_job_nature', 'crm_sectors'];
+    const tables = ['crm_contacts', 'crm_job_nature', 'crm_sectors'];
     for (const t of tables) {
         const hasTable = await db.schema.hasTable(t);
         if (!hasTable) continue;
@@ -93,6 +93,35 @@ export async function initializeCrmSchema() {
             });
         }
     }
+
+    if (!(await db.schema.hasTable('crm_change_log'))) {
+        await db.schema.createTable('crm_change_log', (table) => {
+            table.increments('id');
+            table.integer('org_id').unsigned().notNullable();
+            table.integer('entity_id').unsigned().notNullable();
+            table.string('action', 30).notNullable();
+            table.json('before_data').nullable();
+            table.json('after_data').nullable();
+            table.string('reason', 255).nullable();
+            table.integer('user_id').unsigned().nullable();
+            table.dateTime('at').notNullable().defaultTo(db.fn.now());
+            table.index(['org_id', 'entity_id', 'at'], 'idx_crm_log_entity');
+        });
+        console.log('Created crm_change_log table');
+    }
+}
+
+export async function writePartyChangeLog(connection, { orgId, entityId, action, beforeData = null, afterData = null, reason = null, userId = null }) {
+    if (!(await connection.schema.hasTable('crm_change_log'))) return;
+    await connection('crm_change_log').insert({
+        org_id: orgId,
+        entity_id: entityId,
+        action,
+        before_data: beforeData !== null && beforeData !== undefined ? JSON.stringify(beforeData) : null,
+        after_data: afterData !== null && afterData !== undefined ? JSON.stringify(afterData) : null,
+        reason: reason ? String(reason).trim().slice(0, 255) : null,
+        user_id: userId || null
+    });
 }
 
 export function resolveCategory(cat, fallback = 'Contractor') {
@@ -251,7 +280,7 @@ export async function listParties(orgId, query = {}, options = {}) {
         'jn.job_name',
         's.sector_name',
         'cu.user_name as created_by_name',
-        db.raw('COALESCE(cu.user_name, c.responsibility) as responsibility')
+        'cu.user_name as responsibility'
     ];
     if (includeProjectInfo) {
         selectFields.push('pp.project_id', 'p.name as project_name');
@@ -325,7 +354,7 @@ export async function getPartyById(orgId, id, options = {}) {
         'jn.job_name',
         's.sector_name',
         'cu.user_name as created_by_name',
-        db.raw('COALESCE(cu.user_name, c.responsibility) as responsibility')
+        'cu.user_name as responsibility'
     ).first();
 
     if (!party) {
@@ -390,43 +419,28 @@ export async function createParty(orgId, data, options = {}) {
             }
         }
 
+        const resolved = await resolveContactReferences(orgId, data, connection);
         const resolvedCategory = scopeMode === 'client'
             ? 'Client'
-            : data.category;
-
-        const insertData = {
-            org_id: orgId,
-            name: data.name,
-            scope: data.scope === 'project' ? 'project' : 'master',
-            sector_id: data.sector_id || null,
-            job_nature_id: data.job_nature_id || data.job_id || null,
-            category: resolvedCategory,
-            contact_person: data.contact_person || null,
-            designation: data.designation || null,
-            telephone_no: (data.telephone_no !== undefined ? data.telephone_no : data.contact_no) || null,
-            mobile: data.mobile || null,
-            email: data.email || null,
-            address: data.address || null,
-            location: data.location || null,
-            website: (data.website !== undefined ? data.website : data.web_site) || null,
-            gst_no: (data.gst_no !== undefined ? data.gst_no : data.qst_no) || null,
-            constitution: data.constitution || null,
-            reference: data.reference || null,
-            responsibility: data.responsibility || null,
-            remarks: (data.remarks !== undefined ? data.remarks : (data.remark !== undefined ? data.remark : data.self_remark)) || null,
-            status: data.status === 'archived' ? 'archived' : 'active',
-            created_by: options.userId || null,
-            updated_by: options.userId || null
-        };
-
-        if ((data.sector || data.sector_name) && !insertData.sector_id) {
-            insertData.sector_id = await findOrCreateSector(orgId, data.sector || data.sector_name, connection);
-        }
-        if ((data.job_nature || data.job_nature_name || data.job_name) && !insertData.job_nature_id) {
-            insertData.job_nature_id = await findOrCreateJobNature(orgId, data.job_nature || data.job_nature_name || data.job_name, connection);
-        }
+            : resolveCategory(data.category, 'Contractor');
+        const insertData = buildScopedContact(
+            orgId,
+            { ...resolved, category: resolvedCategory, status: data.status === 'archived' ? 'archived' : 'active' },
+            data.scope === 'project' ? 'project' : 'master',
+            options
+        );
 
         const [newId] = await connection('crm_contacts').insert(insertData);
+
+        await writePartyChangeLog(connection, {
+            orgId,
+            entityId: newId,
+            action: 'create',
+            beforeData: null,
+            afterData: { name: insertData.name, category: insertData.category, scope: insertData.scope },
+            reason: data.reason || null,
+            userId: options.userId || null
+        });
 
         await interactionService.createInteractionsBatch(
             orgId,
@@ -483,7 +497,6 @@ export async function updateParty(orgId, id, data, options = {}) {
         else if (data.qst_no !== undefined) updateData.gst_no = data.qst_no;
         if (data.constitution !== undefined) updateData.constitution = data.constitution;
         if (data.reference !== undefined) updateData.reference = data.reference;
-        if (data.responsibility !== undefined) updateData.responsibility = data.responsibility;
         if (data.remarks !== undefined) updateData.remarks = data.remarks;
         else if (data.remark !== undefined) updateData.remarks = data.remark;
         else if (data.self_remark !== undefined) updateData.remarks = data.self_remark;
@@ -505,6 +518,16 @@ export async function updateParty(orgId, id, data, options = {}) {
 
         await connection('crm_contacts').where({ id, org_id: orgId }).update(updateData);
 
+        await writePartyChangeLog(connection, {
+            orgId,
+            entityId: Number(id),
+            action: 'update',
+            beforeData: { name: existing.name, category: existing.category, status: existing.status },
+            afterData: { name: updateData.name ?? existing.name, category: updateData.category ?? existing.category, status: updateData.status ?? existing.status },
+            reason: data.reason || null,
+            userId: options.userId || null
+        });
+
         await interactionService.createInteractionsBatch(
             orgId,
             id,
@@ -522,21 +545,50 @@ export async function updateParty(orgId, id, data, options = {}) {
 }
 
 /**
- * Archive or restore a party (soft lifecycle state).
+ * Archive or restore a party (soft lifecycle state) and write audit log.
  */
 export async function setPartyStatus(orgId, id, status, options = {}) {
     if (status !== 'active' && status !== 'archived') {
         throw new AppError('Status must be active or archived', 400);
     }
-    const q = db('crm_contacts').where({ id, org_id: orgId });
-    applyPartyScopeFilter(q, options.scopeMode || 'all', null);
-    const updated = await q.update({
-        status,
-        updated_by: options.userId || null,
-        updated_at: db.fn.now()
+    return db.transaction(async (trx) => {
+        const beforeQuery = trx('crm_contacts').where({ id, org_id: orgId });
+        applyPartyScopeFilter(beforeQuery, options.scopeMode || 'all', null);
+        const before = await beforeQuery.first();
+        if (!before) throw new AppError('Party not found', 404);
+
+        await trx('crm_contacts')
+            .where({ id, org_id: orgId })
+            .update({
+                status,
+                updated_by: options.userId || null,
+                updated_at: trx.fn.now()
+            });
+
+        const after = await getScopedContact(trx, id, orgId);
+        await writePartyChangeLog(trx, {
+            orgId,
+            entityId: id,
+            action: status === 'archived' ? 'archive' : 'restore',
+            beforeData: { status: before.status },
+            afterData: { status: after.status },
+            reason: options.reason || null,
+            userId: options.userId || null
+        });
+        return after;
     });
-    if (!updated) throw new AppError('Party not found', 404);
-    return getScopedContact(db, id, orgId);
+}
+
+export async function listPartyChangeLog(orgId, id) {
+    const contactId = positiveId(id, 'contact_id');
+    await getScopedContact(db, contactId, orgId);
+    if (!(await db.schema.hasTable('crm_change_log'))) return [];
+    return db('crm_change_log as l')
+        .leftJoin('iam_users as u', 'l.user_id', 'u.id')
+        .where({ 'l.org_id': orgId, 'l.entity_id': contactId })
+        .select('l.*', 'u.user_name')
+        .orderBy('l.at', 'desc')
+        .orderBy('l.id', 'desc');
 }
 
 /**
@@ -550,17 +602,34 @@ export async function deleteParties(orgId, ids, options = {}) {
         throw new AppError(`No ${label} IDs provided`, 400);
     }
 
+    const scopedRowsQuery = db('crm_contacts').whereIn('id', validIds).where({ org_id: orgId }).select('id', 'name', 'category', 'status');
+    applyPartyScopeFilter(scopedRowsQuery, scopeMode, null);
+    const toDelete = await scopedRowsQuery;
+
     const scopedIdsQuery = db('crm_contacts').whereIn('id', validIds).where({ org_id: orgId }).select('id');
     applyPartyScopeFilter(scopedIdsQuery, scopeMode, null);
 
     try {
-        await interactionService.deleteInteractionsByContactIds(scopedIdsQuery);
-        const delQuery = db('crm_contacts').whereIn('id', validIds).where({ org_id: orgId });
-        applyPartyScopeFilter(delQuery, scopeMode, null);
-        const deletedCount = await delQuery.delete();
-        if (options.requireMatch !== false && deletedCount === 0) {
-            throw new AppError(`${label} not found`, 404);
-        }
+        await db.transaction(async (trx) => {
+            await interactionService.deleteInteractionsByContactIds(scopedIdsQuery, { transaction: trx });
+            const delQuery = trx('crm_contacts').whereIn('id', validIds).where({ org_id: orgId });
+            applyPartyScopeFilter(delQuery, scopeMode, null);
+            const deletedCount = await delQuery.delete();
+            if (options.requireMatch !== false && deletedCount === 0) {
+                throw new AppError(`${label} not found`, 404);
+            }
+            for (const row of toDelete) {
+                await writePartyChangeLog(trx, {
+                    orgId,
+                    entityId: row.id,
+                    action: 'delete',
+                    beforeData: { name: row.name, category: row.category, status: row.status },
+                    afterData: null,
+                    reason: options.reason || null,
+                    userId: options.userId || null
+                });
+            }
+        });
     } catch (error) {
         if (error?.code === 'ER_ROW_IS_REFERENCED_2' || error?.errno === 1451) {
             throw new AppError(`${label} is linked to existing projects and cannot be deleted; archive it instead`, 409);
@@ -603,9 +672,8 @@ function buildScopedContact(orgId, data, scope, options = {}) {
         gst_no: data.gst_no || data.qst_no || null,
         constitution: data.constitution || null,
         reference: data.reference || null,
-        responsibility: data.responsibility || null,
-        remarks: data.remarks || data.self_remark || null,
-        status: 'active',
+        remarks: (data.remarks !== undefined ? data.remarks : (data.remark !== undefined ? data.remark : data.self_remark)) || null,
+        status: data.status === 'archived' ? 'archived' : 'active',
         created_by: options.userId || null,
         updated_by: options.userId || null
     };
@@ -755,13 +823,25 @@ export async function getAvailableContactCandidates(orgId, projectId, query = {}
     return { parties: candidates, count: candidates.length };
 }
 
-export async function promoteContactToMaster(orgId, contactId) {
+export async function promoteContactToMaster(orgId, contactId, options = {}) {
     const contactIdValue = positiveId(contactId, 'contact_id');
-    await getScopedContact(db, contactIdValue, orgId);
-    await db('crm_contacts')
-        .where({ id: contactIdValue, org_id: orgId })
-        .update({ scope: 'master', updated_at: db.fn.now() });
-    return getScopedContact(db, contactIdValue, orgId);
+    return db.transaction(async (trx) => {
+        const before = await getScopedContact(trx, contactIdValue, orgId);
+        await trx('crm_contacts')
+            .where({ id: contactIdValue, org_id: orgId })
+            .update({ scope: 'master', updated_by: options.userId || null, updated_at: trx.fn.now() });
+        const after = await getScopedContact(trx, contactIdValue, orgId);
+        await writePartyChangeLog(trx, {
+            orgId,
+            entityId: contactIdValue,
+            action: 'promote',
+            beforeData: { scope: before.scope },
+            afterData: { scope: after.scope },
+            reason: options.reason || 'Promoted project party to Master',
+            userId: options.userId || null
+        });
+        return after;
+    });
 }
 
 /**
@@ -821,6 +901,7 @@ export default {
     createParty,
     updateParty,
     setPartyStatus,
+    listPartyChangeLog,
     deleteParties,
     createMasterContact,
     createProjectContact,

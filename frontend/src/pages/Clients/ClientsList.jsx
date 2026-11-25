@@ -10,16 +10,20 @@ import {
     Trash2
 } from 'lucide-react';
 import api from '../../services/api';
-import clientApi from '../../services/clientApi';
+import { createPartyApi } from '../../services/partyApi';
 import { toast } from 'react-toastify';
 import ClientDetails from './ClientDetails';
 import ClientFilterDropdown from './ClientFilterDropdown';
 import AddEditClient from './AddEditClient';
 import ManageMetadataModal from '../../components/ManageMetadataModal';
 import ImportPartyFromProjectDialog from '../../components/ImportPartyFromProjectDialog';
+import PartyStatusFilter from '../../components/PartyStatusFilter';
+import PartyReasonModal from '../../components/PartyReasonModal';
 import { ExcelGrid } from '../../components/ExcelGrid';
 import { evaluateFormula } from '../../utils/excelFormulaEngine';
 import { useAuth } from '../../context/AuthContext';
+
+const clientApi = createPartyApi('client');
 
 const COLUMN_ALIASES = {
     name: ['company name', 'client name', 'client', 'firm', 'agency', 'organization', 'name', 'party name', 'title'],
@@ -63,6 +67,7 @@ export const ClientsList = () => {
     const [viewingClient, setViewingClient] = useState(null);
     const [isDuplicateModalOpen, setIsDuplicateModalOpen] = useState(false);
     const [isImportFromProjectOpen, setIsImportFromProjectOpen] = useState(false);
+    const [reasonAction, setReasonAction] = useState(null); // { row, type: 'archive' | 'restore' | 'delete' }
     const [isJobNatureModalOpen, setIsJobNatureModalOpen] = useState(false);
     const [isSectorModalOpen, setIsSectorModalOpen] = useState(false);
     const [isMetadataMenuOpen, setIsMetadataMenuOpen] = useState(false);
@@ -89,7 +94,7 @@ export const ClientsList = () => {
     const fetchClients = async (targetStatus = statusFilter) => {
         setIsLoading(true);
         try {
-            const res = await clientApi.getClients({ limit: 50000, status: targetStatus });
+            const res = await clientApi.list({ limit: 50000, status: targetStatus });
             const list = res.clients || [];
             setClients(list);
         } catch (err) {
@@ -240,11 +245,11 @@ export const ClientsList = () => {
                 aliases: COLUMN_ALIASES.location
             },
             {
-                key: 'responsibility',
+                key: 'created_by_name',
                 label: 'Responsibility',
+                readOnly: true,
                 width: '160px',
-                minWidth: '150px',
-                aliases: COLUMN_ALIASES.responsibility
+                minWidth: '150px'
             },
 
             {
@@ -314,7 +319,7 @@ export const ClientsList = () => {
 
         const realDeleted = (deleted || []).filter((id) => id && !String(id).startsWith('temp_'));
 
-        await clientApi.batchSaveClients({
+        await clientApi.batchSave({
             created: resolvedCreated,
             updated: resolvedUpdated,
             deleted: realDeleted
@@ -333,7 +338,7 @@ export const ClientsList = () => {
             return;
         }
         try {
-            const res = await clientApi.getClientById(client.id);
+            const res = await clientApi.getById(client.id);
             setViewingClient(res?.client || client);
         } catch (err) {
             setViewingClient(client);
@@ -344,10 +349,10 @@ export const ClientsList = () => {
     const handleSaveClientFromModal = async (formData) => {
         try {
             if (editingClient) {
-                await clientApi.updateClient(editingClient.id, formData);
+                await clientApi.update(editingClient.id, formData);
                 toast.success('Client updated successfully');
             } else {
-                await clientApi.createClient(formData);
+                await clientApi.create(formData);
                 toast.success('Client created successfully');
             }
             setIsAddModalOpen(false);
@@ -422,30 +427,14 @@ export const ClientsList = () => {
                 isDuplicateModalOpen={isDuplicateModalOpen}
                 setIsDuplicateModalOpen={setIsDuplicateModalOpen}
                 onViewRow={handleViewClientDetails}
+                onArchiveRow={(row) => setReasonAction({ row, type: 'archive' })}
+                onRestoreRow={(row) => setReasonAction({ row, type: 'restore' })}
+                onDeleteRow={(row) => setReasonAction({ row, type: 'delete' })}
                 allowAddColumn={false}
                 emptyMessage="No clients found in database"
                 extraFilters={
                     <div className="flex items-center gap-2">
-                        <div className="inline-flex items-center bg-gray-100 dark:bg-white/5 p-0.5 rounded-lg border border-gray-200 dark:border-white/10 text-[11px] font-semibold">
-                            {[
-                                { id: 'active', label: 'Active' },
-                                { id: 'archived', label: 'Archived' },
-                                { id: 'all', label: 'All' }
-                            ].map((opt) => (
-                                <button
-                                    key={opt.id}
-                                    type="button"
-                                    onClick={() => setStatusFilter(opt.id)}
-                                    className={`px-2.5 py-1 rounded-md transition cursor-pointer ${
-                                        statusFilter === opt.id
-                                            ? 'bg-white dark:bg-[#161b22] text-blue-600 dark:text-blue-400 shadow-xs'
-                                            : 'text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-200'
-                                    }`}
-                                >
-                                    {opt.label}
-                                </button>
-                            ))}
-                        </div>
+                        <PartyStatusFilter value={statusFilter} onChange={setStatusFilter} />
                         <ClientFilterDropdown
                             activeFilters={activeFilters}
                             setActiveFilters={setActiveFilters}
@@ -542,30 +531,22 @@ export const ClientsList = () => {
                     setIsAddModalOpen(true);
                     setViewingClient(null);
                 }}
-                onArchive={async (id) => {
-                    try {
-                        await clientApi.archiveClient(id);
-                        toast.success('Client archived');
-                        setViewingClient(null);
-                        fetchClients(statusFilter);
-                    } catch (err) {
-                        toast.error(err.response?.data?.message || 'Failed to archive client');
-                    }
+                onArchive={(id) => {
+                    const target = clients.find((c) => c.id === id) || viewingClient;
+                    setReasonAction({ row: target, type: 'archive' });
                 }}
-                onRestore={async (id) => {
-                    try {
-                        await clientApi.restoreClient(id);
-                        toast.success('Client restored');
-                        setViewingClient(null);
-                        fetchClients(statusFilter);
-                    } catch (err) {
-                        toast.error(err.response?.data?.message || 'Failed to restore client');
-                    }
+                onRestore={(id) => {
+                    const target = clients.find((c) => c.id === id) || viewingClient;
+                    setReasonAction({ row: target, type: 'restore' });
+                }}
+                onDelete={(id) => {
+                    const target = clients.find((c) => c.id === id) || viewingClient;
+                    setReasonAction({ row: target, type: 'delete' });
                 }}
                 onUpdate={async () => {
                     if (viewingClient?.id && !String(viewingClient.id).startsWith('temp_') && !isNaN(Number(viewingClient.id))) {
                         try {
-                            const res = await clientApi.getClientById(viewingClient.id);
+                            const res = await clientApi.getById(viewingClient.id);
                             if (res?.client) setViewingClient(res.client);
                         } catch (err) {
                             console.error('Failed to refresh viewing client:', err);
@@ -625,6 +606,20 @@ export const ClientsList = () => {
                 partyType="client"
                 onClose={() => setIsImportFromProjectOpen(false)}
                 onSuccess={() => fetchClients(statusFilter)}
+            />
+
+            <PartyReasonModal
+                action={reasonAction}
+                entityLabel="Client"
+                onArchive={clientApi.archive}
+                onRestore={clientApi.restore}
+                onDelete={clientApi.remove}
+                onClose={() => setReasonAction(null)}
+                onSuccess={() => {
+                    setReasonAction(null);
+                    setViewingClient(null);
+                    fetchClients(statusFilter);
+                }}
             />
         </div>
     );

@@ -5,11 +5,12 @@ import { toast } from 'react-toastify';
 import CustomDatePicker from '../../components/CustomDatePicker';
 import CustomSelect from '../../components/CustomSelect';
 import ConfirmModal from '../../components/ConfirmModal';
+import PartyChangeLogSection from '../../components/PartyChangeLogSection';
 
 const INTERACTION_TYPES = ['All', 'Call', 'WhatsApp', 'Email', 'Site Visit', 'Meeting'];
 const typeOptions = INTERACTION_TYPES.slice(1).map(t => ({ label: t, value: t }));
 
-const ClientDetails = ({ isOpen, onClose, client, onUpdate, onEdit, onArchive, onRestore, canWrite = true }) => {
+const ClientDetails = ({ isOpen, onClose, client, onUpdate, onEdit, onArchive, onRestore, onDelete, canWrite = true }) => {
     const [copiedAll, setCopiedAll] = useState(false);
     const [copiedField, setCopiedField] = useState(null);
     const [isLogging, setIsLogging] = useState(false);
@@ -523,6 +524,8 @@ const ClientDetails = ({ isOpen, onClose, client, onUpdate, onEdit, onArchive, o
                             <p className="text-xs text-gray-400 py-3 text-center italic">No interactions recorded.</p>
                         )}
                     </div>
+
+                    <PartyChangeLogSection partyId={client.id} />
                 </div>
 
                 {/* 6. Footer */}
@@ -559,6 +562,15 @@ const ClientDetails = ({ isOpen, onClose, client, onUpdate, onEdit, onArchive, o
                         >
                             <Edit3 size={13} />
                             <span>Edit Client</span>
+                        </button>
+                    )}
+                    {canWrite && onDelete && (
+                        <button
+                            onClick={() => onDelete(client.id)}
+                            className="flex items-center gap-1.5 px-3 py-1.5 bg-rose-600 hover:bg-rose-700 text-white rounded-lg text-xs font-semibold transition cursor-pointer"
+                        >
+                            <Trash2 size={13} />
+                            <span>Delete</span>
                         </button>
                     )}
                 </div>

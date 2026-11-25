@@ -4,7 +4,7 @@ import { db } from '../../config/database.js';
 import AppError from '../../utils/AppError.js';
 import { findOrCreateSector } from '../shared/sectorService.js';
 import { findOrCreateJobNature } from '../shared/jobNatureService.js';
-import { applyPartyScopeFilter, createParty, resolveCategory } from './partyService.js';
+import { applyPartyScopeFilter, createParty, resolveCategory, writePartyChangeLog } from './partyService.js';
 import interactionService from '../interactions/interactionService.js';
 
 /**
@@ -92,7 +92,6 @@ export async function bulkInsertParties(orgId, rowsData, options = {}) {
                 category: row['category'] || row['Category'] || null,
                 sector: rawSector,
                 job_nature: rawJobNature,
-                responsibility: row['responsibility'] || row['Responsibility'] || null,
                 reference: row['reference'] || row['Reference'] || null,
                 remarks: row['remarks'] || row['Remarks'] || row['self_remark'] || null
             }, { scopeMode, userId: options.userId });
@@ -199,6 +198,10 @@ export async function batchSaveParties(orgId, payload = {}, options = {}) {
         if (Array.isArray(deleted) && deleted.length > 0) {
             const validIds = deleted.map(id => parseInt(id, 10)).filter(id => !isNaN(id) && id > 0);
             if (validIds.length > 0) {
+                const toDeleteQuery = trx('crm_contacts').whereIn('id', validIds).where({ org_id: orgId }).select('id', 'name', 'category', 'status');
+                applyPartyScopeFilter(toDeleteQuery, scopeMode, null);
+                const toDelete = await toDeleteQuery;
+
                 const scopedIds = trx('crm_contacts').whereIn('id', validIds).where({ org_id: orgId }).select('id');
                 applyPartyScopeFilter(scopedIds, scopeMode, null);
                 await interactionService.deleteInteractionsByContactIds(scopedIds, { transaction: trx });
@@ -206,6 +209,18 @@ export async function batchSaveParties(orgId, payload = {}, options = {}) {
                 const delQuery = trx('crm_contacts').whereIn('id', validIds).where({ org_id: orgId });
                 applyPartyScopeFilter(delQuery, scopeMode, null);
                 deletedCount = await delQuery.delete();
+
+                for (const row of toDelete) {
+                    await writePartyChangeLog(trx, {
+                        orgId,
+                        entityId: row.id,
+                        action: 'delete',
+                        beforeData: { name: row.name, category: row.category, status: row.status },
+                        afterData: null,
+                        reason: payload.reason || 'Deleted via grid batch save',
+                        userId: options.userId || null
+                    });
+                }
             }
         }
 
@@ -225,7 +240,6 @@ export async function batchSaveParties(orgId, payload = {}, options = {}) {
             if (item.address !== undefined) updateData.address = item.address;
             if (item.location !== undefined) updateData.location = item.location;
             if (item.gst_no !== undefined) updateData.gst_no = item.gst_no;
-            if (item.responsibility !== undefined) updateData.responsibility = item.responsibility;
             if (item.reference !== undefined) updateData.reference = item.reference;
             if (item.remarks !== undefined) updateData.remarks = item.remarks;
             else if (item.remark !== undefined) updateData.remarks = item.remark;
@@ -280,7 +294,7 @@ export async function batchSaveParties(orgId, payload = {}, options = {}) {
                     sectorId = await findOrCreateSector(orgId, item.sector_name || item.sector, trx);
                 }
 
-                await trx('crm_contacts').insert({
+                const [newId] = await trx('crm_contacts').insert({
                     org_id: orgId,
                     category: scopeMode === 'client' ? 'Client' : resolveCategory(item.category, 'Contractor'),
                     name: String(partyName).trim(),
@@ -294,12 +308,20 @@ export async function batchSaveParties(orgId, payload = {}, options = {}) {
                     address: item.address || null,
                     location: item.location || null,
                     gst_no: item.gst_no || null,
-                    responsibility: item.responsibility || null,
                     reference: item.reference || null,
                     remarks: (item.remarks !== undefined ? item.remarks : (item.remark !== undefined ? item.remark : item.self_remark)) || null,
                     status: 'active',
                     created_by: options.userId || null,
                     updated_by: options.userId || null
+                });
+                await writePartyChangeLog(trx, {
+                    orgId,
+                    entityId: newId,
+                    action: 'create',
+                    beforeData: null,
+                    afterData: { name: String(partyName).trim(), category: scopeMode === 'client' ? 'Client' : resolveCategory(item.category, 'Contractor') },
+                    reason: payload.reason || 'Created via grid batch save',
+                    userId: options.userId || null
                 });
                 createdCount++;
             }

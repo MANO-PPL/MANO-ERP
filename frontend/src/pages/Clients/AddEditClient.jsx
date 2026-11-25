@@ -601,18 +601,6 @@ const AddEditClient = ({
                         </div>
 
                         <div>
-                            <label className={labelClasses}>Responsibility</label>
-                            <input
-                                type="text"
-                                name="responsibility"
-                                value={formData.responsibility}
-                                onChange={handleChange}
-                                placeholder="e.g. Sales, Technical"
-                                className={inputClasses}
-                            />
-                        </div>
-
-                        <div>
                             <label className={labelClasses}>Reference</label>
                             <input
                                 type="text"

@@ -15,6 +15,7 @@ router.post('/batch-save', partyController.batchSave);
 router.post('/bulk', upload.single('file'), partyController.bulkUpload);
 router.post('/bulk-validate', partyController.bulkValidate);
 router.post('/bulk-json', partyController.bulkJson);
+router.get('/:id/changelog', partyController.getPartyChangeLog);
 router.get('/:id', partyController.getParty);
 router.post('/', partyController.createParty);
 router.put('/:id', partyController.updateParty);

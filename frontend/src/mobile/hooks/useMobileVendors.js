@@ -1,9 +1,10 @@
 import { useCallback, useEffect, useState } from 'react';
-import vendorApi from '../../services/vendorApi.js';
+import { createPartyApi } from '../../services/partyApi.js';
 import api from '../../services/api.js';
 import { createRequestLoader } from '../utils/createRequestLoader.js';
 
-export const loadMobileVendors = createRequestLoader(() => vendorApi.getVendors({ limit: 50000 }));
+const vendorApi = createPartyApi('vendor');
+export const loadMobileVendors = createRequestLoader(() => vendorApi.list({ limit: 50000 }));
 export const loadVendorJobNatures = createRequestLoader(() => api.get('/admin/job-natures').then(({ data }) => data));
 
 export default function useMobileVendors({ loadVendors = loadMobileVendors, loadJobNatures = loadVendorJobNatures } = {}) {

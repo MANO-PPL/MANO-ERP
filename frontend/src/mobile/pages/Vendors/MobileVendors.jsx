@@ -2,7 +2,7 @@ import React, { useMemo, useState } from 'react';
 import { Building2, MoreVertical, Plus, SlidersHorizontal, Upload } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../../../context/AuthContext';
-import vendorApi from '../../../services/vendorApi.js';
+import { createPartyApi } from '../../../services/partyApi.js';
 import { customToast } from '../../../utils/toast';
 import MobileBottomSheet, { MobileActionSheet } from '../../components/MobileBottomSheet';
 import MobileCard from '../../components/MobileCard';
@@ -19,9 +19,10 @@ import MobileVendorDetail from './MobileVendorDetail';
 import MobileVendorForm from './MobileVendorForm';
 import { filterVendors, normalizeVendor, VENDOR_CATEGORIES } from './vendorModel.js';
 
+const defaultVendorService = createPartyApi('vendor');
 const Choices = ({ values, selected, onChange }) => <div className="flex flex-wrap gap-2">{values.map((value) => <button key={value} type="button" aria-pressed={selected.includes(value)} onClick={() => onChange(selected.includes(value) ? selected.filter((item) => item !== value) : [...selected, value])} className={`min-h-11 rounded-xl border px-3 text-xs font-bold ${selected.includes(value) ? 'border-blue-500 bg-blue-50 text-blue-700 dark:bg-blue-950/40' : 'border-gray-200 dark:border-gh-border'}`}>{value}</button>)}</div>;
 
-export default function MobileVendors({ authOverride, service = vendorApi, loadVendors, loadJobNatures, metadataService, onNavigate }) {
+export default function MobileVendors({ authOverride, service = defaultVendorService, loadVendors, loadJobNatures, metadataService, onNavigate }) {
     const auth = useAuth(); const activeAuth = authOverride || auth; const navigate = useNavigate();
     const { vendors: raw, jobNatures, loading, error, refresh } = useMobileVendors({ loadVendors, loadJobNatures });
     const [query, setQuery] = useState(''); const [filters, setFilters] = useState({ categories: [], jobs: [] }); const [draft, setDraft] = useState(filters);
@@ -41,8 +42,8 @@ export default function MobileVendors({ authOverride, service = vendorApi, loadV
         return Array.from(set).sort((a, b) => a.localeCompare(b));
     }, [jobNatures, raw]);
     const go = (path) => onNavigate ? onNavigate(path) : navigate(path);
-    const save = async (payload) => { setPending(true); try { const result = editing ? await service.updateVendor(editing.id, payload) : await service.createVendor(payload); if (result?.success === false) throw new Error(result.message); customToast.success(editing ? 'Vendor updated' : 'Vendor created'); setEditing(undefined); await refresh(); } catch (nextError) { customToast.error(nextError?.response?.data?.message || nextError.message || 'Vendor save failed'); } finally { setPending(false); } };
-    const destroy = async () => { if (!canWrite || !remove) return; setPending(true); try { await service.deleteVendor(remove.id); setRemove(null); setSelected(null); customToast.success('Vendor deleted'); await refresh(); } catch (nextError) { customToast.error(nextError?.response?.data?.message || nextError.message || 'Vendor delete failed'); } finally { setPending(false); } };
+    const save = async (payload) => { setPending(true); try { const result = editing ? await service.update(editing.id, payload) : await service.create(payload); if (result?.success === false) throw new Error(result.message); customToast.success(editing ? 'Vendor updated' : 'Vendor created'); setEditing(undefined); await refresh(); } catch (nextError) { customToast.error(nextError?.response?.data?.message || nextError.message || 'Vendor save failed'); } finally { setPending(false); } };
+    const destroy = async () => { if (!canWrite || !remove) return; setPending(true); try { await service.remove(remove.id); setRemove(null); setSelected(null); customToast.success('Vendor deleted'); await refresh(); } catch (nextError) { customToast.error(nextError?.response?.data?.message || nextError.message || 'Vendor delete failed'); } finally { setPending(false); } };
 
     return <div data-mobile-page="vendors" className="w-full min-w-0 space-y-2 px-2 sm:px-3 pb-24">
         <MobilePageHeader eyebrow="Directory" title="Vendors" subtitle={`${vendors.length} vendor${vendors.length === 1 ? '' : 's'}`} actions={<>{isAdmin && <button aria-label="Manage job natures" onClick={() => setMetadataOpen(true)} className="inline-flex h-9 w-9 items-center justify-center rounded-lg border border-gray-200 text-gray-600 dark:border-gh-border dark:text-gh-muted"><SlidersHorizontal size={17} /></button>}{canWrite && <button aria-label="Vendor bulk upload" onClick={() => go('/vendors/bulk-upload')} className="inline-flex h-9 w-9 items-center justify-center rounded-lg border border-gray-200 text-gray-600 dark:border-gh-border dark:text-gh-muted"><Upload size={17} /></button>}</>} />

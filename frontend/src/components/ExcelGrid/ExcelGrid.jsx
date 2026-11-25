@@ -87,6 +87,9 @@ export const ExcelGrid = ({
     onDelete = null,
     onRefresh = null,
     onViewRow = null,
+    onArchiveRow = null,
+    onRestoreRow = null,
+    onDeleteRow = null,
     customActions = null,
     extraTools = null,
     bulkActions = null,
@@ -734,7 +737,20 @@ onOpenAddColumn={allowAddColumn ? () => setIsAddColumnModalOpen(true) : null}
                 onStartFillDrag={() => grid.setIsFillDragging(true)}
                 onAutoFillDown={grid.handleAutoFillDown}
                 onViewRow={onViewRow}
-                onDeleteRow={handleRequestDeleteRow}
+                onArchiveRow={onArchiveRow}
+                onRestoreRow={onRestoreRow}
+                onDeleteRow={
+                    onDeleteRow
+                        ? (row) => {
+                              const rowId = row[primaryKey];
+                              if (String(rowId).startsWith('temp_') || row._status === 'new') {
+                                  handleRequestDeleteRow(row);
+                              } else {
+                                  onDeleteRow(row);
+                              }
+                          }
+                        : handleRequestDeleteRow
+                }
                 emptyMessage={emptyMessage}
                 onAddRows={handleUnifiedAddRows}
                 onOpenImportModal={(tab) => {

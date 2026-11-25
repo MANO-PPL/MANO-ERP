@@ -53,39 +53,63 @@ export const updateParty = catchAsync(async (req, res) => {
 export const archiveParty = catchAsync(async (req, res) => {
     const scopeMode = resolveScopeMode(req);
     const id = parsePositiveId(req.params.id, 'Party ID');
-    const party = await partyService.setPartyStatus(req.user.org_id, id, 'archived', { scopeMode, userId: req.user?.id });
+    const party = await partyService.setPartyStatus(req.user.org_id, id, 'archived', {
+        scopeMode,
+        userId: req.user?.id,
+        reason: req.body?.reason || null
+    });
     res.json({ success: true, message: 'Party archived successfully', party });
 });
 
 export const restoreParty = catchAsync(async (req, res) => {
     const scopeMode = resolveScopeMode(req);
     const id = parsePositiveId(req.params.id, 'Party ID');
-    const party = await partyService.setPartyStatus(req.user.org_id, id, 'active', { scopeMode, userId: req.user?.id });
+    const party = await partyService.setPartyStatus(req.user.org_id, id, 'active', {
+        scopeMode,
+        userId: req.user?.id,
+        reason: req.body?.reason || null
+    });
     res.json({ success: true, message: 'Party restored successfully', party });
 });
 
 export const promoteParty = catchAsync(async (req, res) => {
     const id = parsePositiveId(req.params.id, 'contact_id');
-    const contact = await partyService.promoteContactToMaster(req.user.org_id, id);
+    const contact = await partyService.promoteContactToMaster(req.user.org_id, id, {
+        userId: req.user?.id,
+        reason: req.body?.reason || null
+    });
     res.json({ success: true, contact, party: contact });
+});
+
+export const getPartyChangeLog = catchAsync(async (req, res) => {
+    const id = parsePositiveId(req.params.id, 'Party ID');
+    const logs = await partyService.listPartyChangeLog(req.user.org_id, id);
+    res.json({ success: true, logs });
 });
 
 export const deleteParty = catchAsync(async (req, res) => {
     const scopeMode = resolveScopeMode(req);
     const id = parsePositiveId(req.params.id, `${labelForScope(scopeMode)} ID`);
-    await partyService.deleteParties(req.user.org_id, [id], { scopeMode, requireMatch: true });
+    await partyService.deleteParties(req.user.org_id, [id], {
+        scopeMode,
+        requireMatch: true,
+        reason: req.body?.reason || req.query?.reason || null,
+        userId: req.user?.id
+    });
     res.json({ success: true, message: `${labelForScope(scopeMode)} deleted successfully` });
 });
 
 export const deleteParties = catchAsync(async (req, res) => {
     const scopeMode = resolveScopeMode(req);
-    const { ids } = req.body;
+    const { ids, reason } = req.body;
     if (!ids || !Array.isArray(ids) || ids.length === 0) {
         throw new AppError(`Please provide an array of ${labelForScope(scopeMode).toLowerCase()} IDs`, 400);
     }
     await partyService.deleteParties(req.user.org_id, ids, {
         scopeMode,
-        requireMatch: scopeMode === 'vendor'
+        requireMatch: scopeMode === 'vendor',
+        reason: reason || null,
+        userId: req.user?.id
     });
     res.json({ success: true, message: `${labelForScope(scopeMode)}s deleted successfully` });
 });
@@ -163,6 +187,7 @@ export default {
     archiveParty,
     restoreParty,
     promoteParty,
+    getPartyChangeLog,
     deleteParty,
     deleteParties,
     bulkUpload,

@@ -9,16 +9,20 @@ import {
     Check
 } from 'lucide-react';
 import api from '../../services/api';
-import vendorApi from '../../services/vendorApi';
+import { createPartyApi } from '../../services/partyApi';
 import { toast } from 'react-toastify';
 import VendorDetails from './VendorDetails';
 import VendorFilterDropdown from './VendorFilterDropdown';
 import AddEditVendor from './AddEditVendor';
 import ManageMetadataModal from '../../components/ManageMetadataModal';
 import ImportPartyFromProjectDialog from '../../components/ImportPartyFromProjectDialog';
+import PartyStatusFilter from '../../components/PartyStatusFilter';
+import PartyReasonModal from '../../components/PartyReasonModal';
 import { ExcelGrid } from '../../components/ExcelGrid';
 import { evaluateFormula } from '../../utils/excelFormulaEngine';
 import { useAuth } from '../../context/AuthContext';
+
+const vendorApi = createPartyApi('vendor');
 
 const CATEGORY_OPTIONS = [
     'Consultant',
@@ -70,6 +74,7 @@ export const VendorsList = () => {
     const [viewingVendor, setViewingVendor] = useState(null);
     const [isDuplicateModalOpen, setIsDuplicateModalOpen] = useState(false);
     const [isImportFromProjectOpen, setIsImportFromProjectOpen] = useState(false);
+    const [reasonAction, setReasonAction] = useState(null); // { row, type: 'archive' | 'restore' | 'delete' }
     const [isJobNatureModalOpen, setIsJobNatureModalOpen] = useState(false);
 
     // Fetch Metadata
@@ -88,7 +93,7 @@ export const VendorsList = () => {
     const fetchVendors = async (targetStatus = statusFilter) => {
         setIsLoading(true);
         try {
-            const res = await vendorApi.getVendors({ limit: 50000, status: targetStatus });
+            const res = await vendorApi.list({ limit: 50000, status: targetStatus });
             const list = res.vendors || [];
             setVendors(list);
         } catch (err) {
@@ -301,7 +306,7 @@ export const VendorsList = () => {
 
         const realDeleted = (deleted || []).filter((id) => id && !String(id).startsWith('temp_'));
 
-        await vendorApi.batchSaveVendors({
+        await vendorApi.batchSave({
             created: resolvedCreated,
             updated: resolvedUpdated,
             deleted: realDeleted
@@ -319,7 +324,7 @@ export const VendorsList = () => {
             return;
         }
         try {
-            const res = await vendorApi.getVendorById(vendor.id);
+            const res = await vendorApi.getById(vendor.id);
             setViewingVendor(res?.vendor || vendor);
         } catch (err) {
             setViewingVendor(vendor);
@@ -330,15 +335,19 @@ export const VendorsList = () => {
     const handleSaveVendorFromModal = async (formData) => {
         try {
             if (editingVendor) {
-                await vendorApi.updateVendor(editingVendor.id, formData);
+                await vendorApi.update(editingVendor.id, formData);
+                toast.success('Vendor updated successfully');
             } else {
-                await vendorApi.createVendor(formData);
+                await vendorApi.create(formData);
+                toast.success('Vendor created successfully');
             }
             setIsAddModalOpen(false);
             setEditingVendor(null);
             fetchVendors();
         } catch (err) {
             console.error('Failed to save vendor from modal:', err);
+            const msg = err.response?.data?.message || err.message || 'Failed to save vendor';
+            toast.error(msg);
         }
     };
 
@@ -404,30 +413,14 @@ export const VendorsList = () => {
                 isDuplicateModalOpen={isDuplicateModalOpen}
                 setIsDuplicateModalOpen={setIsDuplicateModalOpen}
                 onViewRow={handleViewVendorDetails}
+                onArchiveRow={(row) => setReasonAction({ row, type: 'archive' })}
+                onRestoreRow={(row) => setReasonAction({ row, type: 'restore' })}
+                onDeleteRow={(row) => setReasonAction({ row, type: 'delete' })}
                 allowAddColumn={false}
                 emptyMessage="No vendors found in database"
                 extraFilters={
                     <div className="flex items-center gap-2">
-                        <div className="inline-flex items-center bg-gray-100 dark:bg-white/5 p-0.5 rounded-lg border border-gray-200 dark:border-white/10 text-[11px] font-semibold">
-                            {[
-                                { id: 'active', label: 'Active' },
-                                { id: 'archived', label: 'Archived' },
-                                { id: 'all', label: 'All' }
-                            ].map((opt) => (
-                                <button
-                                    key={opt.id}
-                                    type="button"
-                                    onClick={() => setStatusFilter(opt.id)}
-                                    className={`px-2.5 py-1 rounded-md transition cursor-pointer ${
-                                        statusFilter === opt.id
-                                            ? 'bg-white dark:bg-[#161b22] text-blue-600 dark:text-blue-400 shadow-xs'
-                                            : 'text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-200'
-                                    }`}
-                                >
-                                    {opt.label}
-                                </button>
-                            ))}
-                        </div>
+                        <PartyStatusFilter value={statusFilter} onChange={setStatusFilter} />
                         <VendorFilterDropdown
                             activeFilters={activeFilters}
                             setActiveFilters={setActiveFilters}
@@ -501,35 +494,17 @@ export const VendorsList = () => {
                     setIsAddModalOpen(true);
                     setViewingVendor(null);
                 }}
-                onArchive={async (id) => {
-                    try {
-                        await vendorApi.archiveVendor(id);
-                        toast.success('Vendor archived');
-                        setViewingVendor(null);
-                        fetchVendors(statusFilter);
-                    } catch (err) {
-                        toast.error(err.response?.data?.message || 'Failed to archive vendor');
-                    }
+                onArchive={(id) => {
+                    const target = vendors.find((v) => v.id === id) || viewingVendor;
+                    setReasonAction({ row: target, type: 'archive' });
                 }}
-                onRestore={async (id) => {
-                    try {
-                        await vendorApi.restoreVendor(id);
-                        toast.success('Vendor restored');
-                        setViewingVendor(null);
-                        fetchVendors(statusFilter);
-                    } catch (err) {
-                        toast.error(err.response?.data?.message || 'Failed to restore vendor');
-                    }
+                onRestore={(id) => {
+                    const target = vendors.find((v) => v.id === id) || viewingVendor;
+                    setReasonAction({ row: target, type: 'restore' });
                 }}
-                onDelete={async (id) => {
-                    try {
-                        await vendorApi.deleteVendor(id);
-                        toast.success('Vendor deleted');
-                        setViewingVendor(null);
-                        fetchVendors(statusFilter);
-                    } catch (err) {
-                        toast.error(err.response?.data?.message || 'Failed to delete vendor');
-                    }
+                onDelete={(id) => {
+                    const target = vendors.find((v) => v.id === id) || viewingVendor;
+                    setReasonAction({ row: target, type: 'delete' });
                 }}
             />
 
@@ -569,6 +544,20 @@ export const VendorsList = () => {
                 partyType="vendor"
                 onClose={() => setIsImportFromProjectOpen(false)}
                 onSuccess={() => fetchVendors(statusFilter)}
+            />
+
+            <PartyReasonModal
+                action={reasonAction}
+                entityLabel="Vendor"
+                onArchive={vendorApi.archive}
+                onRestore={vendorApi.restore}
+                onDelete={vendorApi.remove}
+                onClose={() => setReasonAction(null)}
+                onSuccess={() => {
+                    setReasonAction(null);
+                    setViewingVendor(null);
+                    fetchVendors(statusFilter);
+                }}
             />
         </div>
     );

@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { X, Copy, Pencil, Trash2, Check, Archive, RotateCcw } from 'lucide-react';
+import PartyChangeLogSection from '../../components/PartyChangeLogSection';
 
 const VendorDetails = ({ isOpen, onClose, vendor, onEdit, onDelete, onArchive, onRestore, canWrite }) => {
     const [copied, setCopied] = useState(false);
@@ -97,7 +98,7 @@ Reference     : ${vendor.reference || '-'}
                             <p className="text-sm font-medium text-gray-900 dark:text-gray-200">{vendor.location || '-'}</p>
                         </div>
                         <div>
-                            <p className="text-[10px] uppercase tracking-widest text-gray-400 font-bold mb-1">Created By</p>
+                            <p className="text-[10px] uppercase tracking-widest text-gray-400 font-bold mb-1">Responsibility</p>
                             <p className="text-sm font-medium text-gray-900 dark:text-gray-200">{vendor.created_by_name || vendor.responsibility || '-'}</p>
                         </div>
                         <div>
@@ -125,6 +126,8 @@ Reference     : ${vendor.reference || '-'}
                             <p className="text-sm font-medium text-gray-900 dark:text-gray-300 italic">"{vendor.reference}"</p>
                         </div>
                     )}
+
+                    <PartyChangeLogSection partyId={vendor.id} />
                 </div>
 
                 {/* Footer Actions */}

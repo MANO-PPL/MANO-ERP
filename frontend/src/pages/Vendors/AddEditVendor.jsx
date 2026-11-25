@@ -332,17 +332,6 @@ const AddEditVendor = ({
                             />
                         </div>
                         <div>
-                            <label className={labelClasses}>Responsibility</label>
-                            <input
-                                type="text"
-                                name="responsibility"
-                                value={formData.responsibility}
-                                onChange={handleChange}
-                                placeholder="e.g. Sales"
-                                className={inputClasses}
-                            />
-                        </div>
-                        <div>
                             <label className={labelClasses}>Remarks</label>
                             <input
                                 type="text"
