@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { X, Copy, Plus, Phone, Mail, Globe, Send, Clock, Check, Edit3, User, Trash2 } from 'lucide-react';
+import { X, Copy, Plus, Phone, Mail, Globe, Send, Clock, Check, Edit3, User, Trash2, Archive, RotateCcw } from 'lucide-react';
 import api from '../../services/api';
 import { toast } from 'react-toastify';
 import CustomDatePicker from '../../components/CustomDatePicker';
@@ -9,7 +9,7 @@ import ConfirmModal from '../../components/ConfirmModal';
 const INTERACTION_TYPES = ['All', 'Call', 'WhatsApp', 'Email', 'Site Visit', 'Meeting'];
 const typeOptions = INTERACTION_TYPES.slice(1).map(t => ({ label: t, value: t }));
 
-const ClientDetails = ({ isOpen, onClose, client, onUpdate, onEdit }) => {
+const ClientDetails = ({ isOpen, onClose, client, onUpdate, onEdit, onArchive, onRestore, canWrite = true }) => {
     const [copiedAll, setCopiedAll] = useState(false);
     const [copiedField, setCopiedField] = useState(null);
     const [isLogging, setIsLogging] = useState(false);
@@ -89,7 +89,7 @@ const ClientDetails = ({ isOpen, onClose, client, onUpdate, onEdit }) => {
         }
         setIsSubmitting(true);
         try {
-            const res = await api.post(`/clients/${client.id}/interactions`, form);
+            const res = await api.post(`/parties/${client.id}/interactions`, form);
             if (res.data.success) {
                 toast.success('Interaction logged!');
                 setLocalInteractions(prev => [{ ...form, id: res.data.id, interacted_by_name: 'You' }, ...prev]);
@@ -120,7 +120,7 @@ const ClientDetails = ({ isOpen, onClose, client, onUpdate, onEdit }) => {
         if (!deleteModal.interactionId) return;
         setDeleteModal(prev => ({ ...prev, isLoading: true }));
         try {
-            await api.delete(`/clients/${client.id}/interactions/${deleteModal.interactionId}`);
+            await api.delete(`/parties/${client.id}/interactions/${deleteModal.interactionId}`);
             toast.success('Interaction deleted successfully');
             setLocalInteractions(prev => prev.filter(item => item.id !== deleteModal.interactionId));
             setDeleteModal({ isOpen: false, interactionId: null, interactionType: '', isLoading: false });
@@ -168,7 +168,7 @@ const ClientDetails = ({ isOpen, onClose, client, onUpdate, onEdit }) => {
 
     const companyFields = [
         { label: 'Sector', value: client.sector_name || client.sector },
-        { label: 'Responsibility', value: client.responsibility },
+        { label: 'Created By', value: client.created_by_name || client.responsibility },
         { label: 'Nature of Job', value: client.job_name || client.job_nature },
         { label: 'Location', value: client.location },
         { label: 'Created At', value: client.created_at ? new Date(client.created_at).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }) : null }
@@ -214,9 +214,16 @@ const ClientDetails = ({ isOpen, onClose, client, onUpdate, onEdit }) => {
                 {/* 1. Header */}
                 <div className="px-5 py-3 border-b border-gray-200/80 dark:border-white/10 flex items-center justify-between shrink-0">
                     <div className="min-w-0 pr-3">
-                        <span className="text-[10px] font-bold text-blue-600 dark:text-blue-400 uppercase tracking-widest bg-blue-50 dark:bg-blue-500/10 px-2 py-0.5 rounded">
-                            {client.category || 'CLIENT'}
-                        </span>
+                        <div className="flex items-center gap-1.5">
+                            <span className="text-[10px] font-bold text-blue-600 dark:text-blue-400 uppercase tracking-widest bg-blue-50 dark:bg-blue-500/10 px-2 py-0.5 rounded">
+                                {client.category || 'CLIENT'}
+                            </span>
+                            {client.status === 'archived' && (
+                                <span className="text-[10px] font-bold text-amber-700 dark:text-amber-400 uppercase tracking-widest bg-amber-50 dark:bg-amber-500/10 border border-amber-200 dark:border-amber-500/20 px-2 py-0.5 rounded">
+                                    ARCHIVED
+                                </span>
+                            )}
+                        </div>
                         <h2 className="text-base sm:text-lg font-bold text-gray-900 dark:text-white truncate mt-1">
                             {client.name}
                         </h2>
@@ -527,13 +534,33 @@ const ClientDetails = ({ isOpen, onClose, client, onUpdate, onEdit }) => {
                         {copiedAll ? <Check size={13} className="text-emerald-500" /> : <Copy size={13} />}
                         <span>{copiedAll ? 'Copied' : 'Copy Details'}</span>
                     </button>
-                    <button
-                        onClick={() => onEdit?.(client)}
-                        className="flex items-center gap-1.5 px-3.5 py-1.5 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-xs font-semibold transition active:scale-[0.98] cursor-pointer"
-                    >
-                        <Edit3 size={13} />
-                        <span>Edit Client</span>
-                    </button>
+                    {canWrite && client.status === 'archived' && onRestore && (
+                        <button
+                            onClick={() => onRestore(client.id)}
+                            className="flex items-center gap-1.5 px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-xs font-semibold transition cursor-pointer"
+                        >
+                            <RotateCcw size={13} />
+                            <span>Restore</span>
+                        </button>
+                    )}
+                    {canWrite && client.status !== 'archived' && onArchive && (
+                        <button
+                            onClick={() => onArchive(client.id)}
+                            className="flex items-center gap-1.5 px-3 py-1.5 bg-amber-600 hover:bg-amber-700 text-white rounded-lg text-xs font-semibold transition cursor-pointer"
+                        >
+                            <Archive size={13} />
+                            <span>Archive</span>
+                        </button>
+                    )}
+                    {canWrite && (
+                        <button
+                            onClick={() => onEdit?.(client)}
+                            className="flex items-center gap-1.5 px-3.5 py-1.5 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-xs font-semibold transition active:scale-[0.98] cursor-pointer"
+                        >
+                            <Edit3 size={13} />
+                            <span>Edit Client</span>
+                        </button>
+                    )}
                 </div>
             </div>
 

@@ -16,7 +16,7 @@ export const allowedOrigins = [
 ];
 
 import app from './src/app.js';
-import { initializeCrmSchema } from './src/modules/clients/clientService.js';
+import { initializeCrmSchema } from './src/modules/parties/partyService.js';
 import { initializeQualitySchema } from './src/modules/projects/quality/qualityService.js';
 import { initializeProjectSchema } from './src/modules/projects/core/projectService.js';
 import { initializeResourceSchema } from './src/modules/inventory/resourceService.js';

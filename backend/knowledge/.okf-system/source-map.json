@@ -15,8 +15,9 @@
       "res_conversions"
     ],
     "primarySources": [
-      "backend/src/modules/vendors/vendorService.js",
-      "backend/src/modules/clients/clientService.js",
+      "backend/src/modules/parties/partyService.js",
+      "backend/src/modules/parties/partyBulkService.js",
+      "backend/src/modules/interactions/interactionService.js",
       "backend/src/modules/projects/core/projectService.js",
       "backend/src/modules/projects/parties/partyService.js",
       "backend/src/modules/inventory/resourceService.js",
@@ -42,10 +43,10 @@
       "crm_sectors"
     ],
     "primarySources": [
-      "backend/src/modules/vendors/vendorService.js",
-      "backend/src/modules/vendors/vendorController.js",
-      "backend/src/modules/vendors/vendorRoutes.js",
-      "backend/src/modules/clients/clientService.js",
+      "backend/src/modules/parties/partyService.js",
+      "backend/src/modules/parties/partyBulkService.js",
+      "backend/src/modules/parties/partyController.js",
+      "backend/src/modules/parties/partyRoutes.js",
       "backend/src/modules/shared/jobNatureService.js",
       "backend/src/modules/shared/sectorService.js",
       "backend/src/modules/admin/adminController.js",
@@ -67,9 +68,8 @@
       "backend/src/modules/projects/parties/partyService.js",
       "backend/src/modules/projects/parties/partyController.js",
       "backend/src/modules/projects/parties/partyRoutes.js",
-      "backend/src/modules/vendors/vendorService.js",
-      "backend/src/modules/clients/clientService.js",
-      "backend/src/modules/clients/clientController.js",
+      "backend/src/modules/parties/partyService.js",
+      "backend/src/modules/parties/partyController.js",
       "backend/src/modules/projects/projectRoutes.js"
     ],
     "schemaInitFunctions": [
@@ -87,9 +87,10 @@
       "crm_sectors"
     ],
     "primarySources": [
-      "backend/src/modules/clients/clientService.js",
-      "backend/src/modules/clients/clientController.js",
-      "backend/src/modules/clients/clientRoutes.js",
+      "backend/src/modules/parties/partyService.js",
+      "backend/src/modules/parties/partyBulkService.js",
+      "backend/src/modules/parties/partyController.js",
+      "backend/src/modules/parties/partyRoutes.js",
       "backend/src/modules/shared/jobNatureService.js",
       "backend/src/modules/shared/sectorService.js",
       "backend/src/modules/admin/adminController.js",
@@ -186,10 +187,10 @@
       "crm_contacts"
     ],
     "primarySources": [
-      "backend/src/modules/vendors/vendorService.js",
-      "backend/src/modules/vendors/vendorController.js",
-      "backend/src/modules/clients/clientService.js",
-      "backend/src/modules/clients/clientController.js"
+      "backend/src/modules/interactions/interactionService.js",
+      "backend/src/modules/interactions/interactionController.js",
+      "backend/src/modules/interactions/interactionRoutes.js",
+      "backend/src/modules/parties/partyService.js"
     ],
     "schemaInitFunctions": [
       "initializeCrmSchema"
@@ -210,8 +211,8 @@
       "backend/src/modules/projects/projectRoutes.js",
       "backend/src/modules/projects/parties/partyService.js",
       "backend/src/modules/projects/resources/projectResourceService.js",
-      "backend/src/modules/clients/clientService.js",
-      "backend/src/modules/clients/clientController.js",
+      "backend/src/modules/parties/partyService.js",
+      "backend/src/modules/parties/partyController.js",
       "backend/src/modules/admin/adminController.js",
       "backend/src/modules/admin/adminRoutes.js",
       "backend/src/modules/projects/resources/projectResourceController.js",

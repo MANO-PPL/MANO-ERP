@@ -4,6 +4,7 @@ import {
     Plus,
     SlidersHorizontal,
     CopyCheck,
+    Download,
     Eye,
     Edit3,
     Trash2
@@ -15,6 +16,7 @@ import ClientDetails from './ClientDetails';
 import ClientFilterDropdown from './ClientFilterDropdown';
 import AddEditClient from './AddEditClient';
 import ManageMetadataModal from '../../components/ManageMetadataModal';
+import ImportPartyFromProjectDialog from '../../components/ImportPartyFromProjectDialog';
 import { ExcelGrid } from '../../components/ExcelGrid';
 import { evaluateFormula } from '../../utils/excelFormulaEngine';
 import { useAuth } from '../../context/AuthContext';
@@ -45,6 +47,7 @@ export const ClientsList = () => {
     const canWrite = hasPermission('clients', 2);
 
     const [clients, setClients] = useState([]);
+    const [statusFilter, setStatusFilter] = useState('active');
     const [isLoading, setIsLoading] = useState(true);
     const [allJobNatures, setAllJobNatures] = useState([]);
     const [allSectors, setAllSectors] = useState([]);
@@ -59,6 +62,7 @@ export const ClientsList = () => {
     const [editingClient, setEditingClient] = useState(null);
     const [viewingClient, setViewingClient] = useState(null);
     const [isDuplicateModalOpen, setIsDuplicateModalOpen] = useState(false);
+    const [isImportFromProjectOpen, setIsImportFromProjectOpen] = useState(false);
     const [isJobNatureModalOpen, setIsJobNatureModalOpen] = useState(false);
     const [isSectorModalOpen, setIsSectorModalOpen] = useState(false);
     const [isMetadataMenuOpen, setIsMetadataMenuOpen] = useState(false);
@@ -82,10 +86,10 @@ export const ClientsList = () => {
     };
 
     // Fetch Clients List
-    const fetchClients = async () => {
+    const fetchClients = async (targetStatus = statusFilter) => {
         setIsLoading(true);
         try {
-            const res = await clientApi.getClients({ limit: 50000 });
+            const res = await clientApi.getClients({ limit: 50000, status: targetStatus });
             const list = res.clients || [];
             setClients(list);
         } catch (err) {
@@ -97,8 +101,11 @@ export const ClientsList = () => {
 
     useEffect(() => {
         fetchMetadata();
-        fetchClients();
     }, []);
+
+    useEffect(() => {
+        fetchClients(statusFilter);
+    }, [statusFilter]);
 
     // Filtered data by active job/sector filters
     const filteredClients = useMemo(() => {
@@ -418,16 +425,38 @@ export const ClientsList = () => {
                 allowAddColumn={false}
                 emptyMessage="No clients found in database"
                 extraFilters={
-                    <ClientFilterDropdown
-                        activeFilters={activeFilters}
-                        setActiveFilters={setActiveFilters}
-                        allJobNatures={allJobNatures}
-                        allSectors={allSectors}
-                        filterJobSearch={filterJobSearch}
-                        setFilterJobSearch={setFilterJobSearch}
-                        filterSectorSearch={filterSectorSearch}
-                        setFilterSectorSearch={setFilterSectorSearch}
-                    />
+                    <div className="flex items-center gap-2">
+                        <div className="inline-flex items-center bg-gray-100 dark:bg-white/5 p-0.5 rounded-lg border border-gray-200 dark:border-white/10 text-[11px] font-semibold">
+                            {[
+                                { id: 'active', label: 'Active' },
+                                { id: 'archived', label: 'Archived' },
+                                { id: 'all', label: 'All' }
+                            ].map((opt) => (
+                                <button
+                                    key={opt.id}
+                                    type="button"
+                                    onClick={() => setStatusFilter(opt.id)}
+                                    className={`px-2.5 py-1 rounded-md transition cursor-pointer ${
+                                        statusFilter === opt.id
+                                            ? 'bg-white dark:bg-[#161b22] text-blue-600 dark:text-blue-400 shadow-xs'
+                                            : 'text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-200'
+                                    }`}
+                                >
+                                    {opt.label}
+                                </button>
+                            ))}
+                        </div>
+                        <ClientFilterDropdown
+                            activeFilters={activeFilters}
+                            setActiveFilters={setActiveFilters}
+                            allJobNatures={allJobNatures}
+                            allSectors={allSectors}
+                            filterJobSearch={filterJobSearch}
+                            setFilterJobSearch={setFilterJobSearch}
+                            filterSectorSearch={filterSectorSearch}
+                            setFilterSectorSearch={setFilterSectorSearch}
+                        />
+                    </div>
                 }
                 customActions={
                     <div className="flex items-center gap-1.5">
@@ -452,6 +481,15 @@ export const ClientsList = () => {
                                 >
                                     <CopyCheck size={13} className="text-amber-500 stroke-[2.5]" />
                                     <span>Resolve Duplicates</span>
+                                </button>
+                                <button
+                                    type="button"
+                                    onClick={() => setIsImportFromProjectOpen(true)}
+                                    className="px-2.5 py-1.5 bg-gray-100 hover:bg-gray-200 dark:bg-white/5 dark:hover:bg-white/10 text-gray-700 dark:text-gray-300 border border-gray-200 dark:border-white/10 rounded-lg text-xs font-semibold transition-all cursor-pointer flex items-center gap-1.5"
+                                    title="Import Project-Scoped Clients to Master"
+                                >
+                                    <Download size={13} className="text-blue-500 stroke-[2.5]" />
+                                    <span>Import from Project</span>
                                 </button>
                                 <div className="relative">
                                     <button
@@ -497,11 +535,32 @@ export const ClientsList = () => {
             <ClientDetails
                 client={viewingClient}
                 isOpen={Boolean(viewingClient)}
+                canWrite={canWrite}
                 onClose={() => setViewingClient(null)}
                 onEdit={(c) => {
                     setEditingClient(c);
                     setIsAddModalOpen(true);
                     setViewingClient(null);
+                }}
+                onArchive={async (id) => {
+                    try {
+                        await clientApi.archiveClient(id);
+                        toast.success('Client archived');
+                        setViewingClient(null);
+                        fetchClients(statusFilter);
+                    } catch (err) {
+                        toast.error(err.response?.data?.message || 'Failed to archive client');
+                    }
+                }}
+                onRestore={async (id) => {
+                    try {
+                        await clientApi.restoreClient(id);
+                        toast.success('Client restored');
+                        setViewingClient(null);
+                        fetchClients(statusFilter);
+                    } catch (err) {
+                        toast.error(err.response?.data?.message || 'Failed to restore client');
+                    }
                 }}
                 onUpdate={async () => {
                     if (viewingClient?.id && !String(viewingClient.id).startsWith('temp_') && !isNaN(Number(viewingClient.id))) {
@@ -512,7 +571,7 @@ export const ClientsList = () => {
                             console.error('Failed to refresh viewing client:', err);
                         }
                     }
-                    fetchClients();
+                    fetchClients(statusFilter);
                 }}
             />
 
@@ -560,6 +619,13 @@ export const ClientsList = () => {
                     onUpdate={fetchMetadata}
                 />
             )}
+
+            <ImportPartyFromProjectDialog
+                isOpen={isImportFromProjectOpen}
+                partyType="client"
+                onClose={() => setIsImportFromProjectOpen(false)}
+                onSuccess={() => fetchClients(statusFilter)}
+            />
         </div>
     );
 };

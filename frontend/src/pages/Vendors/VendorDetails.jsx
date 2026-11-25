@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
-import { X, Copy, Pencil, Trash2, Check } from 'lucide-react';
+import { X, Copy, Pencil, Trash2, Check, Archive, RotateCcw } from 'lucide-react';
 
-const VendorDetails = ({ isOpen, onClose, vendor, onEdit, onDelete, canWrite }) => {
+const VendorDetails = ({ isOpen, onClose, vendor, onEdit, onDelete, onArchive, onRestore, canWrite }) => {
     const [copied, setCopied] = useState(false);
 
     if (!isOpen || !vendor) return null;
@@ -45,7 +45,14 @@ Reference     : ${vendor.reference || '-'}
                 <div className="px-6 py-5 border-b border-gray-100 dark:border-white/5 flex justify-between items-start">
                     <div>
                         <h2 className="text-xl font-bold text-gray-900 dark:text-white mb-1">{vendor.name}</h2>
-                        <span className="text-xs font-bold text-blue-600 dark:text-blue-500 uppercase tracking-wider">{vendor.category || 'VENDOR'}</span>
+                        <div className="flex items-center gap-2">
+                            <span className="text-xs font-bold text-blue-600 dark:text-blue-500 uppercase tracking-wider">{vendor.category || 'VENDOR'}</span>
+                            {vendor.status === 'archived' && (
+                                <span className="text-[10px] font-bold text-amber-700 dark:text-amber-400 uppercase tracking-widest bg-amber-50 dark:bg-amber-500/10 border border-amber-200 dark:border-amber-500/20 px-2 py-0.5 rounded">
+                                    ARCHIVED
+                                </span>
+                            )}
+                        </div>
                     </div>
                     <button
                         onClick={onClose}
@@ -90,6 +97,10 @@ Reference     : ${vendor.reference || '-'}
                             <p className="text-sm font-medium text-gray-900 dark:text-gray-200">{vendor.location || '-'}</p>
                         </div>
                         <div>
+                            <p className="text-[10px] uppercase tracking-widest text-gray-400 font-bold mb-1">Created By</p>
+                            <p className="text-sm font-medium text-gray-900 dark:text-gray-200">{vendor.created_by_name || vendor.responsibility || '-'}</p>
+                        </div>
+                        <div>
                             <p className="text-[10px] uppercase tracking-widest text-gray-400 font-bold mb-1">Website</p>
                             {vendor.website && vendor.website !== 'NA' ? (
                                 <a href={vendor.website.startsWith('http') ? vendor.website : `https://${vendor.website}`} target="_blank" rel="noopener noreferrer" className="text-sm font-medium text-blue-600 dark:text-blue-400 hover:underline">
@@ -130,10 +141,28 @@ Reference     : ${vendor.reference || '-'}
 
                     {canWrite && (
                         <div className="flex items-center space-x-2">
+                            {vendor.status === 'archived' && onRestore && (
+                                <button
+                                    onClick={() => onRestore(vendor.id)}
+                                    className="flex items-center space-x-1.5 px-3.5 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-sm font-semibold transition-all shadow-sm cursor-pointer"
+                                >
+                                    <RotateCcw size={15} />
+                                    <span>Restore</span>
+                                </button>
+                            )}
+                            {vendor.status !== 'archived' && onArchive && (
+                                <button
+                                    onClick={() => onArchive(vendor.id)}
+                                    className="flex items-center space-x-1.5 px-3.5 py-2 bg-amber-600 hover:bg-amber-700 text-white rounded-lg text-sm font-semibold transition-all shadow-sm cursor-pointer"
+                                >
+                                    <Archive size={15} />
+                                    <span>Archive</span>
+                                </button>
+                            )}
                             {onEdit && (
                                 <button
                                     onClick={() => onEdit(vendor)}
-                                    className="flex items-center space-x-1.5 px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-sm font-semibold transition-all shadow-sm"
+                                    className="flex items-center space-x-1.5 px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-sm font-semibold transition-all shadow-sm cursor-pointer"
                                 >
                                     <Pencil size={15} />
                                     <span>Edit</span>
@@ -142,7 +171,7 @@ Reference     : ${vendor.reference || '-'}
                             {onDelete && (
                                 <button
                                     onClick={() => onDelete(vendor.id)}
-                                    className="flex items-center space-x-1.5 px-4 py-2 bg-red-600 hover:bg-red-700 text-white rounded-lg text-sm font-semibold transition-all shadow-sm"
+                                    className="flex items-center space-x-1.5 px-4 py-2 bg-red-600 hover:bg-red-700 text-white rounded-lg text-sm font-semibold transition-all shadow-sm cursor-pointer"
                                 >
                                     <Trash2 size={15} />
                                     <span>Delete</span>

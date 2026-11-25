@@ -57,7 +57,13 @@ test('REAL disposable MySQL: actual vendor/rate services, durable result/event a
         });
         await db.schema.createTable('res_resources', t => { t.engine('InnoDB'); t.increments('id'); t.integer('org_id'); t.string('type'); t.integer('project_id'); t.integer('parent_id'); t.string('base_unit_code'); });
         await db.schema.createTable('res_rates', t => { t.engine('InnoDB'); t.increments('id'); t.integer('resource_id'); t.decimal('rate', 18, 2); t.string('unit_code'); t.date('effective_from'); t.date('effective_to'); t.integer('is_active'); t.text('remarks'); });
-        const [{ default: globalDb }, vendors, resources] = await Promise.all([import('../../src/config/database.js'), import('../../src/modules/vendors/vendorService.js'), import('../../src/modules/inventory/resourceService.js')]);
+        const [{ default: globalDb }, partyMod, interactionMod, resources] = await Promise.all([
+            import('../../src/config/database.js'),
+            import('../../src/modules/parties/partyService.js'),
+            import('../../src/modules/interactions/interactionService.js'),
+            import('../../src/modules/inventory/resourceService.js')
+        ]);
+        const vendors = partyMod.default.createVendorServiceFacade(interactionMod.default);
         // An accidental global service query fails before acquiring any production connection.
         const acquire = globalDb.client.acquireConnection;
         globalDb.client.acquireConnection = async () => { throw Error('GLOBAL DATABASE ESCAPE'); };

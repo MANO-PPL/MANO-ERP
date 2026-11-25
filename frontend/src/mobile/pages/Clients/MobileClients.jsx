@@ -22,7 +22,7 @@ import { filterClients, normalizeClient } from './clientModel.js';
 
 const Choices = ({ values, selected, onChange }) => <div className="flex flex-wrap gap-2">{values.map((value) => <button key={value} type="button" aria-pressed={selected.includes(value)} onClick={() => onChange(selected.includes(value) ? selected.filter((item) => item !== value) : [...selected, value])} className={`min-h-11 rounded-xl border px-3 text-xs font-bold ${selected.includes(value) ? 'border-blue-500 bg-blue-50 text-blue-700 dark:bg-blue-950/40' : 'border-gray-200 dark:border-gh-border'}`}>{value}</button>)}</div>;
 
-export default function MobileClients({ authOverride, service = clientApi, loadClients, loadMetadata, metadataService, interactionRequest = (id, payload) => api.post(`/clients/${id}/interactions`, payload).then(({ data }) => data), onNavigate }) {
+export default function MobileClients({ authOverride, service = clientApi, loadClients, loadMetadata, metadataService, interactionRequest = (id, payload) => api.post(`/parties/${id}/interactions`, payload).then(({ data }) => data), onNavigate }) {
     const auth = useAuth(); const activeAuth = authOverride || auth; const navigate = useNavigate();
     const { clients: raw, jobNatures, sectors, loading, error, refresh } = useMobileClients({ loadClients, loadMetadata });
     const [query, setQuery] = useState(''); const [filters, setFilters] = useState({ jobs: [], sectors: [] }); const [draft, setDraft] = useState(filters); const [filtersOpen, setFiltersOpen] = useState(false);

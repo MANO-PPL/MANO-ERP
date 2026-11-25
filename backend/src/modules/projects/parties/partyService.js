@@ -3,7 +3,7 @@ import AppError from '../../../utils/AppError.js';
 import {
     getAvailableContactCandidates,
     linkContactsToProject
-} from '../../clients/clientService.js';
+} from '../../parties/partyService.js';
 import { findOrCreateJobNature } from '../../shared/jobNatureService.js';
 
 // Project parties are stored in proj_parties and resolved from CRM contacts.

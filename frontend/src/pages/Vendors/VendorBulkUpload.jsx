@@ -55,7 +55,7 @@ const VendorBulkUpload = () => {
 
     const processParsedData = async (data) => {
         try {
-            const res = await api.post('/vendors/bulk-validate', { vendors: data });
+            const res = await api.post('/parties/bulk-validate', { vendors: data }, { params: { party_type: 'vendor' } });
             const report = res.data.validation;
             setValidation(report);
 
@@ -146,7 +146,7 @@ const VendorBulkUpload = () => {
             }
 
             // In Step 2, user verified exactly these values. Send whole payload.
-            const response = await api.post('/vendors/bulk-json', { vendors: validRows });
+            const response = await api.post('/parties/bulk-json', { vendors: validRows }, { params: { party_type: 'vendor' } });
 
             if (response.data.ok || response.data.success) {
                 const results = response.data.report;

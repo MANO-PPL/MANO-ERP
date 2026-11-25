@@ -55,7 +55,7 @@ const ClientBulkUpload = () => {
 
     const processParsedData = async (data) => {
         try {
-            const res = await api.post('/clients/bulk-validate', { clients: data });
+            const res = await api.post('/parties/bulk-validate', { clients: data }, { params: { party_type: 'client' } });
             const report = res.data.validation;
             setValidation(report);
 
@@ -146,7 +146,7 @@ const ClientBulkUpload = () => {
                 return;
             }
 
-            const response = await api.post('/clients/bulk-json', { clients: validRows });
+            const response = await api.post('/parties/bulk-json', { clients: validRows }, { params: { party_type: 'client' } });
 
             if (response.data.ok || response.data.success) {
                 const results = response.data.report;

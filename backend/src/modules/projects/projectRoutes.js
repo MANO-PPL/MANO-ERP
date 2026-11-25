@@ -13,7 +13,7 @@ import tasksRoutes from './tasks/tasksRoutes.js';
 import drawingsRoutes from './drawings/drawingsRoutes.js';
 import qualityRoutes from './quality/qualityRoutes.js';
 import projectResourceRoutes from './resources/projectResourceRoutes.js';
-import clientController from '../clients/clientController.js';
+import partyMasterController from '../parties/partyController.js';
 import { authenticateJWT, restrictTo, requireProjectPermission, requireProjectAssignment } from '../../middleware/auth.js';
 
 const router = express.Router();
@@ -44,8 +44,8 @@ router.use('/:id/directory', requireProjectPermission('directory'), directoryRou
 router.use('/:id/parties', requireProjectPermission('parties'), partyRoutes);
 
 // Scope-aware contacts: project-exclusive creation and project dropdown data.
-router.post('/:id/contacts', requireProjectPermission('parties'), clientController.createProjectContact);
-router.get('/:id/available-contacts', requireProjectPermission('parties'), clientController.listAvailableContacts);
+router.post('/:id/contacts', requireProjectPermission('parties'), partyMasterController.createProjectContact);
+router.get('/:id/available-contacts', requireProjectPermission('parties'), partyMasterController.listAvailableContacts);
 
 // Project Summary (sub-resource under each project)
 router.use('/:id/summary', requireProjectPermission('summary'), summaryRoutes);

@@ -11,13 +11,14 @@ export const CANONICAL = Object.freeze(['index.md', 'vendors/index.md', 'vendors
 export const TRUSTED_STAGE9_SHA = 'f01f2c4f664223e769e9dfb70b9cbd0425328b87b9af906ebd75369edded9020';
 const SOURCE_FILES = Object.freeze([
     'modules/admin/adminController.js', 'modules/admin/adminRoutes.js', 'modules/ai/ai.controller.js', 'modules/ai/ai.service.js',
-    'modules/clients/clientController.js', 'modules/clients/clientRoutes.js', 'modules/clients/clientService.js',
+    'modules/interactions/interactionController.js', 'modules/interactions/interactionRoutes.js', 'modules/interactions/interactionService.js',
     'modules/inventory/resourceController.js', 'modules/inventory/resourceRoutes.js', 'modules/inventory/resourceService.js',
+    'modules/parties/partyBulkService.js', 'modules/parties/partyController.js', 'modules/parties/partyRoutes.js', 'modules/parties/partyService.js',
     'modules/projects/core/projectController.js', 'modules/projects/core/projectService.js',
     'modules/projects/parties/partyController.js', 'modules/projects/parties/partyRoutes.js', 'modules/projects/parties/partyService.js',
     'modules/projects/projectRoutes.js', 'modules/projects/resources/projectResourceController.js', 'modules/projects/resources/projectResourceRoutes.js',
     'modules/projects/resources/projectResourceService.js', 'modules/shared/jobNatureService.js', 'modules/shared/sectorService.js',
-    'modules/vendors/vendorController.js', 'modules/vendors/vendorRoutes.js', 'modules/vendors/vendorService.js', 'services/compositionResolver.js', 'services/unitRegistry.js'
+    'services/compositionResolver.js', 'services/unitRegistry.js'
 ].map(p => `backend/src/${p}`));
 export const VALIDATION_SOURCES = SOURCE_FILES;
 export function mappedDependencies(sourceMap) {

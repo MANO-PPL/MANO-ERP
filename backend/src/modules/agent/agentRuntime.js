@@ -30,10 +30,12 @@ export async function getAgentService() {
     return initPromise;
 }
 export async function initializeAgentRuntime() {
-    const [{ db }, projects, clients, vendors, resources, parties] = await Promise.all([
-        import('../../config/database.js'), import('../projects/core/projectService.js'), import('../clients/clientService.js'),
-        import('../vendors/vendorService.js'), import('../inventory/resourceService.js'), import('../projects/parties/partyService.js')
+    const [{ db }, projects, partyMod, interactionMod, resources, parties] = await Promise.all([
+        import('../../config/database.js'), import('../projects/core/projectService.js'), import('../parties/partyService.js'),
+        import('../interactions/interactionService.js'), import('../inventory/resourceService.js'), import('../projects/parties/partyService.js')
     ]);
+    const clients = partyMod.default.createClientServiceFacade(interactionMod.default);
+    const vendors = partyMod.default.createVendorServiceFacade(interactionMod.default);
     await initializeAgentSchema(db);
     const store = createAgentStore(db); const authorize = createPolicy(db); const okf = createSafeOkfProvider();
     await okf.acquire();

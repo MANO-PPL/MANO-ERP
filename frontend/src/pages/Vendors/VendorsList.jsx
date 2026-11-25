@@ -4,6 +4,7 @@ import {
     Plus,
     SlidersHorizontal,
     CopyCheck,
+    Download,
     ChevronDown,
     Check
 } from 'lucide-react';
@@ -14,6 +15,7 @@ import VendorDetails from './VendorDetails';
 import VendorFilterDropdown from './VendorFilterDropdown';
 import AddEditVendor from './AddEditVendor';
 import ManageMetadataModal from '../../components/ManageMetadataModal';
+import ImportPartyFromProjectDialog from '../../components/ImportPartyFromProjectDialog';
 import { ExcelGrid } from '../../components/ExcelGrid';
 import { evaluateFormula } from '../../utils/excelFormulaEngine';
 import { useAuth } from '../../context/AuthContext';
@@ -53,6 +55,7 @@ export const VendorsList = () => {
     const canWrite = hasPermission('vendors', 2);
 
     const [vendors, setVendors] = useState([]);
+    const [statusFilter, setStatusFilter] = useState('active');
     const [isLoading, setIsLoading] = useState(true);
     const [allJobNatures, setAllJobNatures] = useState([]);
 
@@ -66,6 +69,7 @@ export const VendorsList = () => {
     const [editingVendor, setEditingVendor] = useState(null);
     const [viewingVendor, setViewingVendor] = useState(null);
     const [isDuplicateModalOpen, setIsDuplicateModalOpen] = useState(false);
+    const [isImportFromProjectOpen, setIsImportFromProjectOpen] = useState(false);
     const [isJobNatureModalOpen, setIsJobNatureModalOpen] = useState(false);
 
     // Fetch Metadata
@@ -81,10 +85,10 @@ export const VendorsList = () => {
     };
 
     // Fetch Vendors List
-    const fetchVendors = async () => {
+    const fetchVendors = async (targetStatus = statusFilter) => {
         setIsLoading(true);
         try {
-            const res = await vendorApi.getVendors({ limit: 50000 });
+            const res = await vendorApi.getVendors({ limit: 50000, status: targetStatus });
             const list = res.vendors || [];
             setVendors(list);
         } catch (err) {
@@ -96,8 +100,11 @@ export const VendorsList = () => {
 
     useEffect(() => {
         fetchMetadata();
-        fetchVendors();
     }, []);
+
+    useEffect(() => {
+        fetchVendors(statusFilter);
+    }, [statusFilter]);
 
     // Filtered data by category / job filters
     const filteredVendors = useMemo(() => {
@@ -400,19 +407,41 @@ export const VendorsList = () => {
                 allowAddColumn={false}
                 emptyMessage="No vendors found in database"
                 extraFilters={
-                    <VendorFilterDropdown
-                        activeFilters={activeFilters}
-                        setActiveFilters={setActiveFilters}
-                        onApply={setActiveFilters}
-                        categoryOptions={CATEGORY_OPTIONS}
-                        allJobNatures={allJobNatures}
-                        availableJobNatures={allJobNatures}
-                        vendors={vendors}
-                        filterCategorySearch={filterCategorySearch}
-                        setFilterCategorySearch={setFilterCategorySearch}
-                        filterJobSearch={filterJobSearch}
-                        setFilterJobSearch={setFilterJobSearch}
-                    />
+                    <div className="flex items-center gap-2">
+                        <div className="inline-flex items-center bg-gray-100 dark:bg-white/5 p-0.5 rounded-lg border border-gray-200 dark:border-white/10 text-[11px] font-semibold">
+                            {[
+                                { id: 'active', label: 'Active' },
+                                { id: 'archived', label: 'Archived' },
+                                { id: 'all', label: 'All' }
+                            ].map((opt) => (
+                                <button
+                                    key={opt.id}
+                                    type="button"
+                                    onClick={() => setStatusFilter(opt.id)}
+                                    className={`px-2.5 py-1 rounded-md transition cursor-pointer ${
+                                        statusFilter === opt.id
+                                            ? 'bg-white dark:bg-[#161b22] text-blue-600 dark:text-blue-400 shadow-xs'
+                                            : 'text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-200'
+                                    }`}
+                                >
+                                    {opt.label}
+                                </button>
+                            ))}
+                        </div>
+                        <VendorFilterDropdown
+                            activeFilters={activeFilters}
+                            setActiveFilters={setActiveFilters}
+                            onApply={setActiveFilters}
+                            categoryOptions={CATEGORY_OPTIONS}
+                            allJobNatures={allJobNatures}
+                            availableJobNatures={allJobNatures}
+                            vendors={vendors}
+                            filterCategorySearch={filterCategorySearch}
+                            setFilterCategorySearch={setFilterCategorySearch}
+                            filterJobSearch={filterJobSearch}
+                            setFilterJobSearch={setFilterJobSearch}
+                        />
+                    </div>
                 }
                 customActions={
                     <div className="flex items-center gap-1.5">
@@ -440,6 +469,15 @@ export const VendorsList = () => {
                                 </button>
                                 <button
                                     type="button"
+                                    onClick={() => setIsImportFromProjectOpen(true)}
+                                    className="px-2.5 py-1.5 bg-gray-100 hover:bg-gray-200 dark:bg-white/5 dark:hover:bg-white/10 text-gray-700 dark:text-gray-300 border border-gray-200 dark:border-white/10 rounded-lg text-xs font-semibold transition-all cursor-pointer flex items-center gap-1.5"
+                                    title="Import Project-Scoped Vendors to Master"
+                                >
+                                    <Download size={13} className="text-blue-500 stroke-[2.5]" />
+                                    <span>Import from Project</span>
+                                </button>
+                                <button
+                                    type="button"
                                     onClick={() => setIsJobNatureModalOpen(true)}
                                     className="p-1.5 hover:bg-gray-100 dark:hover:bg-white/5 text-gray-600 dark:text-gray-400 rounded-lg border border-gray-200 dark:border-white/10 transition cursor-pointer"
                                     title="Manage Job Natures"
@@ -456,11 +494,42 @@ export const VendorsList = () => {
             <VendorDetails
                 vendor={viewingVendor}
                 isOpen={Boolean(viewingVendor)}
+                canWrite={canWrite}
                 onClose={() => setViewingVendor(null)}
                 onEdit={(v) => {
                     setEditingVendor(v);
                     setIsAddModalOpen(true);
                     setViewingVendor(null);
+                }}
+                onArchive={async (id) => {
+                    try {
+                        await vendorApi.archiveVendor(id);
+                        toast.success('Vendor archived');
+                        setViewingVendor(null);
+                        fetchVendors(statusFilter);
+                    } catch (err) {
+                        toast.error(err.response?.data?.message || 'Failed to archive vendor');
+                    }
+                }}
+                onRestore={async (id) => {
+                    try {
+                        await vendorApi.restoreVendor(id);
+                        toast.success('Vendor restored');
+                        setViewingVendor(null);
+                        fetchVendors(statusFilter);
+                    } catch (err) {
+                        toast.error(err.response?.data?.message || 'Failed to restore vendor');
+                    }
+                }}
+                onDelete={async (id) => {
+                    try {
+                        await vendorApi.deleteVendor(id);
+                        toast.success('Vendor deleted');
+                        setViewingVendor(null);
+                        fetchVendors(statusFilter);
+                    } catch (err) {
+                        toast.error(err.response?.data?.message || 'Failed to delete vendor');
+                    }
                 }}
             />
 
@@ -494,6 +563,13 @@ export const VendorsList = () => {
                     onUpdate={fetchMetadata}
                 />
             )}
+
+            <ImportPartyFromProjectDialog
+                isOpen={isImportFromProjectOpen}
+                partyType="vendor"
+                onClose={() => setIsImportFromProjectOpen(false)}
+                onSuccess={() => fetchVendors(statusFilter)}
+            />
         </div>
     );
 };
