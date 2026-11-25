@@ -144,6 +144,7 @@ export async function createInteraction(orgId, id, data) {
         throw new AppError('Vendor not found', 404);
     }
 
+    const hasOrgIdCol = await db.schema.hasColumn('crm_interactions', 'org_id');
     const insertData = {
         contact_id: id,
         type: data.type.toLowerCase(),
@@ -154,6 +155,7 @@ export async function createInteraction(orgId, id, data) {
         created_at: db.fn.now(),
         updated_at: db.fn.now()
     };
+    if (hasOrgIdCol) insertData.org_id = orgId;
 
     const [newId] = await db('crm_interactions').insert(insertData);
     return newId;

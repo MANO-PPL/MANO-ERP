@@ -536,7 +536,8 @@ export async function createInteraction(orgId, data, options = {}) {
 
     await getScopedContact(connection, contact_id, orgId);
 
-    const [newId] = await connection('crm_interactions').insert({
+    const hasOrgIdCol = await connection.schema.hasColumn('crm_interactions', 'org_id');
+    const insertPayload = {
         contact_id,
         type,
         interaction_date,
@@ -545,7 +546,10 @@ export async function createInteraction(orgId, data, options = {}) {
         interacted_by: interacted_by || null,
         created_at: connection.fn.now(),
         updated_at: connection.fn.now()
-    });
+    };
+    if (hasOrgIdCol) insertPayload.org_id = orgId;
+
+    const [newId] = await connection('crm_interactions').insert(insertPayload);
 
     return newId;
 }
