@@ -185,9 +185,9 @@ const ClientDetails = ({ isOpen, onClose, client, onUpdate, onEdit, onArchive, o
         },
         {
             label: 'Phone',
-            value: client.contact_no,
-            displayValue: client.contact_no,
-            href: `tel:${client.contact_no}`,
+            value: client.contact_no || client.telephone_no || client.mobile,
+            displayValue: client.contact_no || client.telephone_no || client.mobile,
+            href: `tel:${client.contact_no || client.telephone_no || client.mobile}`,
             Icon: Phone
         },
         {

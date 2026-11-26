@@ -366,6 +366,16 @@ export async function getPartyById(orgId, id, options = {}) {
 
     const interactions = await interactionService.getInteractionsForContact(id);
 
+    const baseParty = {
+        ...party,
+        contact_no: party.telephone_no || party.mobile || null,
+        telephone: party.telephone_no || null,
+        web_site: party.website,
+        self_remark: party.remarks,
+        job_id: party.job_nature_id,
+        interactions
+    };
+
     if (scopeMode === 'client') {
         const latestByType = interactions.reduce((acc, interaction) => {
             const type = interaction.type.toLowerCase();
@@ -375,8 +385,7 @@ export async function getPartyById(orgId, id, options = {}) {
         const latestOverall = interactions[0];
 
         return {
-            ...party,
-            interactions,
+            ...baseParty,
             called_date: latestByType['call'] || null,
             visited_date: latestByType['site visit'] || null,
             call_on_date: latestOverall ? latestOverall.follow_up_date : null,
@@ -384,12 +393,7 @@ export async function getPartyById(orgId, id, options = {}) {
         };
     }
 
-    return {
-        ...party,
-        interactions,
-        self_remark: party.remarks,
-        job_id: party.job_nature_id
-    };
+    return baseParty;
 }
 
 /**

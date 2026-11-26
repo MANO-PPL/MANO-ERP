@@ -165,7 +165,7 @@ const AddEditClient = ({
                 contact_person: initialData.contact_person || '',
                 designation: initialData.designation || '',
                 email: initialData.email || '',
-                contact_no: initialData.contact_no || '',
+                contact_no: initialData.contact_no || initialData.telephone_no || initialData.mobile || '',
                 website: initialData.website || '',
                 address: initialData.address || '',
                 reference: initialData.reference || '',

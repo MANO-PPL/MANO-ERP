@@ -86,7 +86,7 @@ Reference     : ${vendor.reference || '-'}
 
                         <div>
                             <p className="text-[10px] uppercase tracking-widest text-gray-400 font-bold mb-1">Telephone</p>
-                            <p className="text-sm font-medium text-gray-900 dark:text-gray-200">{vendor.telephone || '-'}</p>
+                            <p className="text-sm font-medium text-gray-900 dark:text-gray-200">{vendor.telephone_no || vendor.contact_no || vendor.telephone || '-'}</p>
                         </div>
                         <div>
                             <p className="text-[10px] uppercase tracking-widest text-gray-400 font-bold mb-1">GST NO</p>
