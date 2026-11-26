@@ -60,6 +60,26 @@ export function createPartyApi(partyType) {
         getChangeLog: async (id) => {
             const response = await api.get(`/parties/${id}/changelog`);
             return response.data;
+        },
+        listContacts: async (id) => {
+            const response = await api.get(`/parties/${id}/contacts`);
+            return response.data;
+        },
+        addContact: async (id, data) => {
+            const response = await api.post(`/parties/${id}/contacts`, data);
+            return response.data;
+        },
+        updateContact: async (id, personId, data) => {
+            const response = await api.put(`/parties/${id}/contacts/${personId}`, data);
+            return response.data;
+        },
+        setPrimaryContact: async (id, personId) => {
+            const response = await api.patch(`/parties/${id}/contacts/${personId}/primary`);
+            return response.data;
+        },
+        deleteContact: async (id, personId, reason = null) => {
+            const response = await api.delete(`/parties/${id}/contacts/${personId}`, { data: { reason } });
+            return response.data;
         }
     };
 }

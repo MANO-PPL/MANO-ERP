@@ -2,6 +2,7 @@ import catchAsync from '../../utils/catchAsync.js';
 import AppError from '../../utils/AppError.js';
 import partyService from './partyService.js';
 import partyBulkService from './partyBulkService.js';
+import partyContactService from './partyContactService.js';
 
 const parsePositiveId = (value, field) => {
     const id = Number(value);
@@ -179,6 +180,48 @@ export const listAvailableContacts = catchAsync(async (req, res) => {
     res.json({ success: true, ...result });
 });
 
+export const listPartyContactPersons = catchAsync(async (req, res) => {
+    const partyId = parsePositiveId(req.params.id, 'Party ID');
+    const contacts = await partyContactService.listContactPersons(req.user.org_id, partyId);
+    res.json({ success: true, contacts });
+});
+
+export const addPartyContactPerson = catchAsync(async (req, res) => {
+    const partyId = parsePositiveId(req.params.id, 'Party ID');
+    const contact = await partyContactService.addContactPerson(req.user.org_id, partyId, req.body, {
+        userId: req.user?.id
+    });
+    res.status(201).json({ success: true, contact });
+});
+
+export const updatePartyContactPerson = catchAsync(async (req, res) => {
+    const partyId = parsePositiveId(req.params.id, 'Party ID');
+    const personId = parsePositiveId(req.params.personId, 'Contact person ID');
+    const contact = await partyContactService.updateContactPerson(req.user.org_id, partyId, personId, req.body, {
+        userId: req.user?.id
+    });
+    res.json({ success: true, contact });
+});
+
+export const setPrimaryPartyContactPerson = catchAsync(async (req, res) => {
+    const partyId = parsePositiveId(req.params.id, 'Party ID');
+    const personId = parsePositiveId(req.params.personId, 'Contact person ID');
+    const contact = await partyContactService.setPrimaryContactPerson(req.user.org_id, partyId, personId, {
+        userId: req.user?.id
+    });
+    res.json({ success: true, contact });
+});
+
+export const deletePartyContactPerson = catchAsync(async (req, res) => {
+    const partyId = parsePositiveId(req.params.id, 'Party ID');
+    const personId = parsePositiveId(req.params.personId, 'Contact person ID');
+    await partyContactService.deleteContactPerson(req.user.org_id, partyId, personId, {
+        userId: req.user?.id,
+        reason: req.body?.reason || req.query?.reason || null
+    });
+    res.json({ success: true, message: 'Contact person deleted successfully' });
+});
+
 export default {
     listParties,
     getParty,
@@ -196,5 +239,10 @@ export default {
     batchSave,
     createMasterContact,
     createProjectContact,
-    listAvailableContacts
+    listAvailableContacts,
+    listPartyContactPersons,
+    addPartyContactPerson,
+    updatePartyContactPerson,
+    setPrimaryPartyContactPerson,
+    deletePartyContactPerson
 };

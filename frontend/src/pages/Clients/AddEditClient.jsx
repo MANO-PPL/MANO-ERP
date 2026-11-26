@@ -17,6 +17,7 @@ import {
 import { toast } from 'react-toastify';
 import api from '../../services/api';
 import ManageMetadataModal from '../../components/ManageMetadataModal';
+import PartyContactsRepeater, { buildInitialContactPersons } from '../../components/PartyContactsRepeater';
 
 const INTERACTION_TYPES = [
     { type: 'Call', label: 'Call', icon: Phone },
@@ -59,6 +60,7 @@ const AddEditClient = ({
     });
 
     const [sectorSearch, setSectorSearch] = useState('');
+    const [contactPersons, setContactPersons] = useState([]);
     const [jobNatureSearch, setJobNatureSearch] = useState('');
     const [showSectorDropdown, setShowSectorDropdown] = useState(false);
     const [showJobNatureDropdown, setShowJobNatureDropdown] = useState(false);
@@ -177,6 +179,7 @@ const AddEditClient = ({
             });
             setSectorSearch(initialData.sector_name || initialData.sector || '');
             setJobNatureSearch(initialData.job_name || initialData.job_nature || '');
+            setContactPersons(buildInitialContactPersons(initialData));
             setInteractions([]);
         } else {
             setFormData({
@@ -196,6 +199,7 @@ const AddEditClient = ({
             });
             setSectorSearch('');
             setJobNatureSearch('');
+            setContactPersons(buildInitialContactPersons(null));
             setInteractions([]);
         }
     }, [initialData, isOpen]);
@@ -216,8 +220,16 @@ const AddEditClient = ({
                 remarks: i.remarks?.trim() || null
             }));
 
+        const primaryPoc = contactPersons.find((c) => c.is_primary) || contactPersons[0] || {};
         onSave({
             ...formData,
+            contact_person: primaryPoc.name || formData.contact_person || '',
+            designation: primaryPoc.designation || formData.designation || '',
+            contact_no: primaryPoc.telephone_no || formData.contact_no || '',
+            telephone_no: primaryPoc.telephone_no || formData.contact_no || '',
+            mobile: primaryPoc.mobile || '',
+            email: primaryPoc.email || formData.email || '',
+            contact_persons: contactPersons,
             interactions: validInteractions
         });
         onClose();
@@ -305,48 +317,11 @@ const AddEditClient = ({
                                 required
                             />
                         </div>
-                        <div>
-                            <label className={labelClasses}>Contact Person</label>
-                            <input
-                                type="text"
-                                name="contact_person"
-                                value={formData.contact_person}
-                                onChange={handleChange}
-                                className={inputClasses}
-                            />
-                        </div>
-                        <div>
-                            <label className={labelClasses}>Designation</label>
-                            <input
-                                type="text"
-                                name="designation"
-                                value={formData.designation}
-                                onChange={handleChange}
-                                placeholder="e.g. Manager, CEO"
-                                className={inputClasses}
-                            />
-                        </div>
-
-                        <div>
-                            <label className={labelClasses}>Email Address</label>
-                            <input
-                                type="email"
-                                name="email"
-                                value={formData.email}
-                                onChange={handleChange}
-                                className={inputClasses}
-                            />
-                        </div>
-                        <div>
-                            <label className={labelClasses}>Contact Number</label>
-                            <input
-                                type="text"
-                                name="contact_no"
-                                value={formData.contact_no}
-                                onChange={handleChange}
-                                className={inputClasses}
-                            />
-                        </div>
+                        <PartyContactsRepeater
+                            contacts={contactPersons}
+                            onChange={setContactPersons}
+                            inputClasses={inputClasses}
+                        />
 
                         <div>
                             <label className={labelClasses}>Website</label>

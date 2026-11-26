@@ -3,6 +3,7 @@ import AppError from '../../utils/AppError.js';
 import { findOrCreateSector } from '../shared/sectorService.js';
 import { findOrCreateJobNature } from '../shared/jobNatureService.js';
 import interactionService from '../interactions/interactionService.js';
+import partyContactService from './partyContactService.js';
 
 const VALID_CATEGORIES = ['Contractor', 'Supplier', 'Consultant', 'Manufacturer', 'Service Provider', 'Client', 'PMC'];
 const CONTACT_CATEGORIES = ['Contractor', 'Consultants', 'Supplier', 'Client', 'PMC'];
@@ -108,6 +109,71 @@ export async function initializeCrmSchema() {
             table.index(['org_id', 'entity_id', 'at'], 'idx_crm_log_entity');
         });
         console.log('Created crm_change_log table');
+    }
+
+    if (!(await db.schema.hasTable('crm_contact_persons'))) {
+        await db.schema.createTable('crm_contact_persons', (table) => {
+            table.increments('id');
+            table.integer('contact_id').unsigned().notNullable()
+                .references('id').inTable('crm_contacts').onDelete('CASCADE');
+            table.string('name', 100).notNullable();
+            table.string('designation', 100).nullable();
+            table.string('department', 100).nullable();
+            table.string('telephone_no', 100).nullable();
+            table.string('mobile', 100).nullable();
+            table.string('email', 255).nullable();
+            table.boolean('is_primary').notNullable().defaultTo(false);
+            table.enum('status', ['active', 'archived']).notNullable().defaultTo('active');
+            table.integer('created_by').unsigned().nullable();
+            table.integer('updated_by').unsigned().nullable();
+            table.timestamps(true, true);
+            table.index(['contact_id', 'status'], 'idx_cp_contact');
+            table.index(['mobile'], 'idx_cp_mobile');
+            table.index(['email'], 'idx_cp_email');
+        });
+        console.log('Created crm_contact_persons table');
+
+        await db.raw(`
+            INSERT INTO crm_contact_persons (
+                contact_id, name, designation, telephone_no, mobile, email, is_primary, status, created_by, updated_by
+            )
+            SELECT
+                c.id,
+                COALESCE(NULLIF(TRIM(c.contact_person), ''), c.name),
+                c.designation,
+                c.telephone_no,
+                c.mobile,
+                c.email,
+                1,
+                'active',
+                c.created_by,
+                c.updated_by
+            FROM crm_contacts c
+            WHERE NOT EXISTS (
+                SELECT 1 FROM crm_contact_persons cp WHERE cp.contact_id = c.id
+            )
+              AND (
+                (c.contact_person IS NOT NULL AND TRIM(c.contact_person) != '')
+                OR (c.telephone_no IS NOT NULL AND TRIM(c.telephone_no) != '')
+                OR (c.mobile IS NOT NULL AND TRIM(c.mobile) != '')
+                OR (c.email IS NOT NULL AND TRIM(c.email) != '')
+              )
+        `);
+        console.log('Backfilled crm_contact_persons from crm_contacts');
+    } else if (await db.schema.hasColumn('crm_contact_persons', 'org_id')) {
+        for (const idxName of ['idx_cp_org_contact', 'idx_cp_mobile', 'idx_cp_email']) {
+            const [idx] = await db.raw(`SHOW INDEXES FROM crm_contact_persons WHERE Key_name = ?`, [idxName]);
+            if (idx && idx.length > 0) {
+                await db.raw(`ALTER TABLE crm_contact_persons DROP INDEX ${idxName}`);
+            }
+        }
+        await db.schema.alterTable('crm_contact_persons', (table) => {
+            table.dropColumn('org_id');
+        });
+        await db.raw('ALTER TABLE crm_contact_persons ADD INDEX idx_cp_contact (contact_id, status)');
+        await db.raw('ALTER TABLE crm_contact_persons ADD INDEX idx_cp_mobile (mobile)');
+        await db.raw('ALTER TABLE crm_contact_persons ADD INDEX idx_cp_email (email)');
+        console.log('Dropped org_id from crm_contact_persons');
     }
 }
 
@@ -235,7 +301,19 @@ export async function listParties(orgId, query = {}, options = {}) {
                     .orWhere('c.mobile', 'like', term)
                     .orWhere('c.email', 'like', term)
                     .orWhere('c.location', 'like', term)
-                    .orWhere('jn.job_name', 'like', term);
+                    .orWhere('jn.job_name', 'like', term)
+                    .orWhereExists(function () {
+                        this.select(db.raw('1'))
+                            .from('crm_contact_persons as cp')
+                            .whereRaw('cp.contact_id = c.id')
+                            .andWhere('cp.status', 'active')
+                            .andWhere(function () {
+                                this.where('cp.name', 'like', term)
+                                    .orWhere('cp.mobile', 'like', term)
+                                    .orWhere('cp.telephone_no', 'like', term)
+                                    .orWhere('cp.email', 'like', term);
+                            });
+                    });
             });
         }
         if (query.company || query.name) qb = qb.where('c.name', 'like', `%${query.company || query.name}%`);
@@ -297,18 +375,23 @@ export async function listParties(orgId, query = {}, options = {}) {
     }
 
     const ids = rows.map(r => r.id);
+    const contactSummaries = await partyContactService.getContactSummariesByPartyIds(orgId, ids);
 
     if (scopeMode === 'client') {
         const latestByContact = await interactionService.getLatestSummaryByContactIds(ids);
 
         return {
-            parties: rows.map(c => ({
-                ...c,
-                called_date: latestByContact[c.id]?.called_date || null,
-                visited_date: latestByContact[c.id]?.visited_date || null,
-                call_on_date: latestByContact[c.id]?.call_on_date || null,
-                interaction_remark: latestByContact[c.id]?.interaction_remark || null
-            })),
+            parties: rows.map(c => {
+                const summary = contactSummaries[c.id];
+                return {
+                    ...partyContactService.overlayPrimaryContact(c, summary?.primary),
+                    contact_persons_count: summary?.count || 0,
+                    called_date: latestByContact[c.id]?.called_date || null,
+                    visited_date: latestByContact[c.id]?.visited_date || null,
+                    call_on_date: latestByContact[c.id]?.call_on_date || null,
+                    interaction_remark: latestByContact[c.id]?.interaction_remark || null
+                };
+            }),
             total,
             page,
             limit
@@ -321,15 +404,17 @@ export async function listParties(orgId, query = {}, options = {}) {
     }
 
     return {
-        parties: rows.map(v => ({
-            ...v,
-            telephone_no: v.telephone_no || v.mobile || null,
-            contact_no: v.telephone_no || v.mobile || null,
-            web_site: v.website,
-            self_remark: v.remarks,
-            job_id: v.job_nature_id,
-            interactions: interactionsByContact[v.id] || []
-        })),
+        parties: rows.map(v => {
+            const summary = contactSummaries[v.id];
+            return {
+                ...partyContactService.overlayPrimaryContact(v, summary?.primary),
+                contact_persons_count: summary?.count || 0,
+                web_site: v.website,
+                self_remark: v.remarks,
+                job_id: v.job_nature_id,
+                interactions: interactionsByContact[v.id] || []
+            };
+        }),
         total,
         page,
         limit
@@ -365,14 +450,15 @@ export async function getPartyById(orgId, id, options = {}) {
     if (options.agentRead === true) return party;
 
     const interactions = await interactionService.getInteractionsForContact(id);
+    const contact_persons = await partyContactService.listContactPersons(orgId, id);
+    const primaryContact = contact_persons.find((cp) => cp.is_primary) || contact_persons[0] || null;
 
     const baseParty = {
-        ...party,
-        contact_no: party.telephone_no || party.mobile || null,
-        telephone: party.telephone_no || null,
+        ...partyContactService.overlayPrimaryContact(party, primaryContact),
         web_site: party.website,
         self_remark: party.remarks,
         job_id: party.job_nature_id,
+        contact_persons,
         interactions
     };
 
@@ -435,6 +521,11 @@ export async function createParty(orgId, data, options = {}) {
         );
 
         const [newId] = await connection('crm_contacts').insert(insertData);
+
+        await partyContactService.syncFromPartyPayload(connection, orgId, newId, data, {
+            userId: options.userId,
+            partyName: insertData.name
+        });
 
         await writePartyChangeLog(connection, {
             orgId,
@@ -521,6 +612,11 @@ export async function updateParty(orgId, id, data, options = {}) {
         updateData.updated_at = connection.fn.now();
 
         await connection('crm_contacts').where({ id, org_id: orgId }).update(updateData);
+
+        await partyContactService.syncFromPartyPayload(connection, orgId, Number(id), data, {
+            userId: options.userId,
+            partyName: updateData.name ?? existing.name
+        });
 
         await writePartyChangeLog(connection, {
             orgId,
@@ -695,6 +791,10 @@ export async function createProjectContact(orgId, projectId, data, options = {})
         await getScopedProject(trx, projectIdValue, orgId);
         const resolved = await resolveContactReferences(orgId, data, trx);
         const [contactId] = await trx('crm_contacts').insert(buildScopedContact(orgId, resolved, 'project', options));
+        await partyContactService.syncFromPartyPayload(trx, orgId, contactId, data, {
+            userId: options.userId,
+            partyName: resolved.name
+        });
         try {
             const [projectPartyId] = await trx('proj_parties').insert({ project_id: projectIdValue, contact_id: contactId });
             const contact = await trx('crm_contacts')

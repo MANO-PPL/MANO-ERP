@@ -506,6 +506,17 @@ export const VendorsList = () => {
                     const target = vendors.find((v) => v.id === id) || viewingVendor;
                     setReasonAction({ row: target, type: 'delete' });
                 }}
+                onUpdate={async () => {
+                    if (viewingVendor?.id && !String(viewingVendor.id).startsWith('temp_') && !isNaN(Number(viewingVendor.id))) {
+                        try {
+                            const res = await vendorApi.getById(viewingVendor.id);
+                            if (res?.vendor) setViewingVendor(res.vendor);
+                        } catch (err) {
+                            console.error('Failed to refresh viewing vendor:', err);
+                        }
+                    }
+                    fetchVendors(statusFilter);
+                }}
             />
 
             {/* ─── Add / Edit Vendor Modal ─── */}
