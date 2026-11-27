@@ -927,27 +927,6 @@ export async function getAvailableContactCandidates(orgId, projectId, query = {}
     return { parties: candidates, count: candidates.length };
 }
 
-export async function promoteContactToMaster(orgId, contactId, options = {}) {
-    const contactIdValue = positiveId(contactId, 'contact_id');
-    return db.transaction(async (trx) => {
-        const before = await getScopedContact(trx, contactIdValue, orgId);
-        await trx('crm_contacts')
-            .where({ id: contactIdValue, org_id: orgId })
-            .update({ scope: 'master', updated_by: options.userId || null, updated_at: trx.fn.now() });
-        const after = await getScopedContact(trx, contactIdValue, orgId);
-        await writePartyChangeLog(trx, {
-            orgId,
-            entityId: contactIdValue,
-            action: 'promote',
-            beforeData: { scope: before.scope },
-            afterData: { scope: after.scope },
-            reason: options.reason || 'Promoted project party to Master',
-            userId: options.userId || null
-        });
-        return after;
-    });
-}
-
 /**
  * Compatibility facade objects for callers (such as agentRuntime) expecting
  * clientService / vendorService method signatures.
@@ -971,8 +950,7 @@ export function createClientServiceFacade(interactionSvc) {
         linkContactToProject,
         linkContactsToProject,
         getAvailableContacts,
-        getAvailableContactCandidates,
-        promoteContactToMaster
+        getAvailableContactCandidates
     };
 }
 
@@ -1013,7 +991,6 @@ export default {
     linkContactsToProject,
     getAvailableContacts,
     getAvailableContactCandidates,
-    promoteContactToMaster,
     createClientServiceFacade,
     createVendorServiceFacade
 };

@@ -26,7 +26,6 @@ router.post('/', partyController.createParty);
 router.put('/:id', partyController.updateParty);
 router.post('/:id/archive', partyController.archiveParty);
 router.post('/:id/restore', partyController.restoreParty);
-router.patch('/:id/promote', partyController.promoteParty);
 router.delete('/', partyController.deleteParties);
 router.delete('/:id', partyController.deleteParty);
 router.use('/:id/interactions', partyInteractionRoutes);

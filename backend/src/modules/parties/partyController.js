@@ -73,15 +73,6 @@ export const restoreParty = catchAsync(async (req, res) => {
     res.json({ success: true, message: 'Party restored successfully', party });
 });
 
-export const promoteParty = catchAsync(async (req, res) => {
-    const id = parsePositiveId(req.params.id, 'contact_id');
-    const contact = await partyService.promoteContactToMaster(req.user.org_id, id, {
-        userId: req.user?.id,
-        reason: req.body?.reason || null
-    });
-    res.json({ success: true, contact, party: contact });
-});
-
 export const getPartyChangeLog = catchAsync(async (req, res) => {
     const id = parsePositiveId(req.params.id, 'Party ID');
     const logs = await partyService.listPartyChangeLog(req.user.org_id, id);
@@ -229,7 +220,6 @@ export default {
     updateParty,
     archiveParty,
     restoreParty,
-    promoteParty,
     getPartyChangeLog,
     deleteParty,
     deleteParties,

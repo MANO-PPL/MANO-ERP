@@ -4,7 +4,6 @@ import {
     Plus,
     SlidersHorizontal,
     CopyCheck,
-    Download,
     Eye,
     Edit3,
     Trash2
@@ -16,7 +15,6 @@ import ClientDetails from './ClientDetails';
 import ClientFilterDropdown from './ClientFilterDropdown';
 import AddEditClient from './AddEditClient';
 import ManageMetadataModal from '../../components/ManageMetadataModal';
-import ImportPartyFromProjectDialog from '../../components/ImportPartyFromProjectDialog';
 import PartyStatusFilter from '../../components/PartyStatusFilter';
 import PartyReasonModal from '../../components/PartyReasonModal';
 import { ExcelGrid } from '../../components/ExcelGrid';
@@ -66,7 +64,6 @@ export const ClientsList = () => {
     const [editingClient, setEditingClient] = useState(null);
     const [viewingClient, setViewingClient] = useState(null);
     const [isDuplicateModalOpen, setIsDuplicateModalOpen] = useState(false);
-    const [isImportFromProjectOpen, setIsImportFromProjectOpen] = useState(false);
     const [reasonAction, setReasonAction] = useState(null); // { row, type: 'archive' | 'restore' | 'delete' }
     const [isJobNatureModalOpen, setIsJobNatureModalOpen] = useState(false);
     const [isSectorModalOpen, setIsSectorModalOpen] = useState(false);
@@ -471,15 +468,6 @@ export const ClientsList = () => {
                                     <CopyCheck size={13} className="text-amber-500 stroke-[2.5]" />
                                     <span>Resolve Duplicates</span>
                                 </button>
-                                <button
-                                    type="button"
-                                    onClick={() => setIsImportFromProjectOpen(true)}
-                                    className="px-2.5 py-1.5 bg-gray-100 hover:bg-gray-200 dark:bg-white/5 dark:hover:bg-white/10 text-gray-700 dark:text-gray-300 border border-gray-200 dark:border-white/10 rounded-lg text-xs font-semibold transition-all cursor-pointer flex items-center gap-1.5"
-                                    title="Import Project-Scoped Clients to Master"
-                                >
-                                    <Download size={13} className="text-blue-500 stroke-[2.5]" />
-                                    <span>Import from Project</span>
-                                </button>
                                 <div className="relative">
                                     <button
                                         type="button"
@@ -600,13 +588,6 @@ export const ClientsList = () => {
                     onUpdate={fetchMetadata}
                 />
             )}
-
-            <ImportPartyFromProjectDialog
-                isOpen={isImportFromProjectOpen}
-                partyType="client"
-                onClose={() => setIsImportFromProjectOpen(false)}
-                onSuccess={() => fetchClients(statusFilter)}
-            />
 
             <PartyReasonModal
                 action={reasonAction}

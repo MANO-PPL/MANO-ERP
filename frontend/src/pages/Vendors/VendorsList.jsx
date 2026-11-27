@@ -4,7 +4,6 @@ import {
     Plus,
     SlidersHorizontal,
     CopyCheck,
-    Download,
     ChevronDown,
     Check
 } from 'lucide-react';
@@ -15,7 +14,6 @@ import VendorDetails from './VendorDetails';
 import VendorFilterDropdown from './VendorFilterDropdown';
 import AddEditVendor from './AddEditVendor';
 import ManageMetadataModal from '../../components/ManageMetadataModal';
-import ImportPartyFromProjectDialog from '../../components/ImportPartyFromProjectDialog';
 import PartyStatusFilter from '../../components/PartyStatusFilter';
 import PartyReasonModal from '../../components/PartyReasonModal';
 import { ExcelGrid } from '../../components/ExcelGrid';
@@ -73,7 +71,6 @@ export const VendorsList = () => {
     const [editingVendor, setEditingVendor] = useState(null);
     const [viewingVendor, setViewingVendor] = useState(null);
     const [isDuplicateModalOpen, setIsDuplicateModalOpen] = useState(false);
-    const [isImportFromProjectOpen, setIsImportFromProjectOpen] = useState(false);
     const [reasonAction, setReasonAction] = useState(null); // { row, type: 'archive' | 'restore' | 'delete' }
     const [isJobNatureModalOpen, setIsJobNatureModalOpen] = useState(false);
 
@@ -462,15 +459,6 @@ export const VendorsList = () => {
                                 </button>
                                 <button
                                     type="button"
-                                    onClick={() => setIsImportFromProjectOpen(true)}
-                                    className="px-2.5 py-1.5 bg-gray-100 hover:bg-gray-200 dark:bg-white/5 dark:hover:bg-white/10 text-gray-700 dark:text-gray-300 border border-gray-200 dark:border-white/10 rounded-lg text-xs font-semibold transition-all cursor-pointer flex items-center gap-1.5"
-                                    title="Import Project-Scoped Vendors to Master"
-                                >
-                                    <Download size={13} className="text-blue-500 stroke-[2.5]" />
-                                    <span>Import from Project</span>
-                                </button>
-                                <button
-                                    type="button"
                                     onClick={() => setIsJobNatureModalOpen(true)}
                                     className="p-1.5 hover:bg-gray-100 dark:hover:bg-white/5 text-gray-600 dark:text-gray-400 rounded-lg border border-gray-200 dark:border-white/10 transition cursor-pointer"
                                     title="Manage Job Natures"
@@ -549,13 +537,6 @@ export const VendorsList = () => {
                     onUpdate={fetchMetadata}
                 />
             )}
-
-            <ImportPartyFromProjectDialog
-                isOpen={isImportFromProjectOpen}
-                partyType="vendor"
-                onClose={() => setIsImportFromProjectOpen(false)}
-                onSuccess={() => fetchVendors(statusFilter)}
-            />
 
             <PartyReasonModal
                 action={reasonAction}
