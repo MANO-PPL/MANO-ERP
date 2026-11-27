@@ -596,11 +596,12 @@ export const ProjectDirectoryOrgChart = ({
 
     // Batch Save Handler connecting directly to syncDirectory backend API
     const handleSaveGridBatch = async (payload) => {
-        const { allRows, deleted } = payload;
+        const { allCurrentRows, allRows, deleted } = payload;
+        const sourceRows = Array.isArray(allCurrentRows) ? allCurrentRows : (allRows || []);
         const itemsToSync = [];
         let lastKnownCompany = '';
 
-        (allRows || []).forEach((gridRow, rowIndex) => {
+        sourceRows.forEach((gridRow, rowIndex) => {
             const stateRow = gridRows.find((r) => r.id === gridRow.id) || {};
             const row = {
                 ...stateRow,
@@ -905,25 +906,14 @@ export const ProjectDirectoryOrgChart = ({
                         customActions={
                             <div className="flex items-center gap-1.5">
                                 {canWrite && (
-                                    <>
-                                        <button
-                                            type="button"
-                                            onClick={handleAddCompany}
-                                            className="px-2.5 py-1.5 bg-indigo-50 hover:bg-indigo-100 dark:bg-indigo-950/40 dark:hover:bg-indigo-900/50 text-indigo-700 dark:text-indigo-300 border border-indigo-200 dark:border-indigo-800/60 rounded-lg text-xs font-bold transition-all cursor-pointer flex items-center gap-1.5 shadow-2xs"
-                                            title="Add a new company and manage its team members directly in the grid"
-                                        >
-                                            <span>+ Add Company & Team</span>
-                                        </button>
-
-                                        <button
-                                            type="button"
-                                            onClick={() => setIsLinkCrmModalOpen(true)}
-                                            className="px-2.5 py-1.5 bg-blue-50 hover:bg-blue-100 dark:bg-blue-950/40 dark:hover:bg-blue-900/50 text-blue-600 dark:text-blue-400 border border-blue-200 dark:border-blue-800/60 rounded-lg text-xs font-bold transition-all cursor-pointer flex items-center gap-1"
-                                        >
-                                            <UserPlus size={13} className="stroke-[2.5]" />
-                                            <span>Import from CRM</span>
-                                        </button>
-                                    </>
+                                    <button
+                                        type="button"
+                                        onClick={() => setIsLinkCrmModalOpen(true)}
+                                        className="px-2.5 py-1.5 bg-blue-50 hover:bg-blue-100 dark:bg-blue-950/40 dark:hover:bg-blue-900/50 text-blue-600 dark:text-blue-400 border border-blue-200 dark:border-blue-800/60 rounded-lg text-xs font-bold transition-all cursor-pointer flex items-center gap-1"
+                                    >
+                                        <UserPlus size={13} className="stroke-[2.5]" />
+                                        <span>Import from CRM</span>
+                                    </button>
                                 )}
                             </div>
                         }

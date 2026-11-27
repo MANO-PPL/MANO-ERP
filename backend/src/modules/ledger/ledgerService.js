@@ -1,6 +1,7 @@
 import { db } from '../../config/database.js';
 import AppError from '../../utils/AppError.js';
 import { validateTransaction, TXN_TYPES, TXN_STATUS, ROLES } from './ledgerValidation.js';
+import { applyPartyOverrides } from '../parties/partyRegistryService.js';
 
 function parseIntOrNull(val) {
     if (val === undefined || val === null || val === '') return null;
@@ -48,15 +49,15 @@ async function verifyPartyStockSufficiency(trx, projectId, orgId, linesToValidat
 
     const partyIds = Array.from(new Set(outflowLines.map(l => l.party_id)));
 
-    // Fetch party details (category) from proj_parties JOIN crm_contacts.
+    // Fetch party details (category + project overrides) from proj_parties JOIN crm_contacts.
     const partyDetails = await trx('proj_parties as pp')
         .join('crm_contacts as c', 'pp.contact_id', 'c.id')
         .whereIn('pp.id', partyIds)
-        .select('pp.id as pv_id', 'c.name', 'c.category');
+        .select('pp.id as pv_id', 'pp.overrides', 'c.name', 'c.category');
 
     const partyMap = {};
     partyDetails.forEach(party => {
-        partyMap[party.pv_id] = party;
+        partyMap[party.pv_id] = applyPartyOverrides(party);
     });
 
     for (const line of outflowLines) {
@@ -381,6 +382,7 @@ export async function getProjectParties(rawProjectId) {
             'pp.project_id',
             'pp.contact_id as party_id',
             'pp.contact_id as crm_contact_id',
+            'pp.overrides',
             'c.name',
             'c.category',
             'c.mobile',
@@ -389,7 +391,7 @@ export async function getProjectParties(rawProjectId) {
         .orderBy('c.category')
         .orderBy('c.name');
 
-    return parties;
+    return parties.map(applyPartyOverrides);
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

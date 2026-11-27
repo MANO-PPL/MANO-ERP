@@ -80,7 +80,7 @@ const CrmPartyAutoSuggestEditor = ({
     }, [isOpen, inputValue]);
 
     const trimmedInput = String(inputValue || '').trim();
-    const hasCustomOption = trimmedInput.length > 0;
+    const hasCustomOption = false;
 
     const filteredCrm = useMemo(() => {
         const q = trimmedInput.toLowerCase();
@@ -179,53 +179,47 @@ const CrmPartyAutoSuggestEditor = ({
                     } else if (e.key === 'Enter') {
                         e.preventDefault();
                         e.stopPropagation();
-                        if (hasCustomOption && highlightIndex === 0) {
-                            handleCommitCustomCompany(inputValue);
-                        } else if (hasCustomOption && highlightIndex > 0 && filteredCrm[highlightIndex - 1]) {
-                            handleSelectSuggestion(filteredCrm[highlightIndex - 1]);
-                        } else if (!hasCustomOption && filteredCrm[highlightIndex]) {
+                        if (filteredCrm[highlightIndex]) {
                             handleSelectSuggestion(filteredCrm[highlightIndex]);
-                        } else {
-                            handleCommitCustomCompany(inputValue);
                         }
                     } else if (e.key === 'Tab') {
-                        // On Tab, commit current input value and let default navigation proceed
-                        const finalVal = (inputValue || '').trim();
-                        onChange(finalVal);
-                        if (onChangeValue) {
-                            onChangeValue(rowIndex, 'name', finalVal);
-                        }
-                        if (onBlur) {
-                            onBlur(finalVal);
+                        const matched = filteredCrm.find(
+                            (c) => (c.name || '').trim().toLowerCase() === trimmedInput.toLowerCase()
+                        );
+                        if (matched) {
+                            handleSelectSuggestion(matched);
+                        } else {
+                            setInputValue(value || '');
+                            onChange(value || '');
+                            if (onBlur) onBlur(value || '');
                         }
                     } else if (e.key === 'Escape') {
                         e.preventDefault();
                         setIsOpen(false);
                         if (onBlur) {
-                            onBlur(inputValue);
+                            onBlur(value || '');
                         }
                     }
                 }}
                 onBlur={() => {
                     blurTimeoutRef.current = setTimeout(() => {
                         setIsOpen(false);
-                        const finalVal = (inputValue || '').trim();
-                        if (finalVal) {
-                            onChange(finalVal);
-                            if (onChangeValue) {
-                                onChangeValue(rowIndex, 'name', finalVal);
-                            }
-                        }
+                        const matched = filteredCrm.find(
+                            (c) => (c.name || '').trim().toLowerCase() === trimmedInput.toLowerCase()
+                        );
+                        const finalVal = matched ? (matched.name || '') : (value || '');
+                        setInputValue(finalVal);
+                        onChange(finalVal);
                         if (onBlur) {
                             onBlur(finalVal);
                         }
                     }, 150);
                 }}
                 className="w-full h-full px-2 text-xs bg-white dark:bg-[#161b22] text-gray-900 dark:text-white border-2 border-blue-500 rounded outline-none shadow-xs font-semibold"
-                placeholder="Type new company or select from CRM..."
+                placeholder="Select company from CRM..."
             />
 
-            {isOpen && coords.ready && (hasCustomOption || filteredCrm.length > 0) && createPortal(
+            {isOpen && coords.ready && (filteredCrm.length > 0 || trimmedInput.length > 0) && createPortal(
                 <div
                     style={{
                         position: 'fixed',
@@ -311,12 +305,11 @@ const CrmPartyAutoSuggestEditor = ({
                                 );
                             })}
                         </>
-                    ) : hasCustomOption ? (
-                        <div className="px-2.5 py-2 text-[11px] text-gray-400 dark:text-gray-500 italic flex items-center gap-1.5">
-                            <Check size={12} className="text-emerald-500 shrink-0" />
-                            <span>No CRM match. Press <strong>Enter</strong> to create as new company.</span>
+                    ) : (
+                        <div className="px-2.5 py-2 text-[11px] text-gray-400 dark:text-gray-500 italic">
+                            No matching CRM company found.
                         </div>
-                    ) : null}
+                    )}
                 </div>,
                 document.body
             )}

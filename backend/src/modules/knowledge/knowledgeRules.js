@@ -34,7 +34,7 @@ export const PAGE_DEFINITIONS = [
     route: '/projects/:id?tab=Dashboard',
     description: 'Project vitals, site location, timeline dates, budget gauge, and active project members.',
     icon: 'FileText',
-    primaryTables: ['proj_projects', 'proj_members', 'proj_summary', 'pdoc_parties']
+    primaryTables: ['proj_projects', 'proj_members', 'proj_summary', 'proj_parties']
   },
   {
     id: 'page:project_tasks',
@@ -74,7 +74,7 @@ export const PAGE_DEFINITIONS = [
     route: '/projects/:id?tab=General Documents',
     description: 'Minutes of Meeting (MOM), meeting agendas, participant attendance, stakeholder directory, and site notes.',
     icon: 'Calendar',
-    primaryTables: ['proj_meetings', 'proj_meetings_participants', 'proj_directory', 'pdoc_parties']
+    primaryTables: ['proj_meetings', 'proj_meetings_participants', 'crm_contact_persons', 'proj_parties']
   },
   {
     id: 'page:project_spreadsheets',
@@ -124,7 +124,7 @@ export const PAGE_DEFINITIONS = [
     route: '/projects/:id?tab=Contracts',
     description: 'Quantity surveys, vendor quotations, tender bidding evaluation documents, and issued work orders.',
     icon: 'Briefcase',
-    primaryTables: ['pdoc_parties', 'txn_transactions', 'res_resources']
+    primaryTables: ['proj_parties', 'txn_transactions', 'res_resources']
   },
   {
     id: 'page:project_quality',
@@ -204,7 +204,7 @@ export const PAGE_DEFINITIONS = [
     route: '/vendors',
     description: 'Material suppliers, trade subcontractors, manufacturer directory, GST details, contacts, and performance ratings.',
     icon: 'Truck',
-    primaryTables: ['crm_contacts', 'pdoc_parties', 'res_rates']
+    primaryTables: ['crm_contacts', 'proj_parties', 'res_rates']
   },
   {
     id: 'page:clients',
@@ -279,7 +279,7 @@ export const SUBPAGE_DEFINITIONS = [
     module: 'projects',
     route: '/projects/:id?tab=General Documents&view=directory',
     description: 'Key project team directory including resident engineers, safety supervisors, client reps, and emergency contacts.',
-    primaryTables: ['proj_directory', 'proj_projects']
+    primaryTables: ['crm_contact_persons', 'proj_projects']
   },
   {
     id: 'subpage:project_general_parties',
@@ -289,7 +289,7 @@ export const SUBPAGE_DEFINITIONS = [
     module: 'projects',
     route: '/projects/:id?tab=General Documents&view=party-list',
     description: 'Assigned subcontractor firms, material suppliers, engineering consultants, and role associations.',
-    primaryTables: ['pdoc_parties', 'crm_contacts', 'proj_projects']
+    primaryTables: ['proj_parties', 'crm_contacts', 'proj_projects']
   },
   {
     id: 'subpage:project_general_org_chart',
@@ -435,7 +435,7 @@ export const SUBPAGE_DEFINITIONS = [
     module: 'collaboration',
     route: '/projects/:id?tab=Transactions&subTab=party-hub',
     description: 'Vendor and contractor account statements, outstanding payment balances, and issued material stock reconciliation.',
-    primaryTables: ['txn_transactions', 'pdoc_parties', 'crm_contacts', 'proj_projects']
+    primaryTables: ['txn_transactions', 'proj_parties', 'crm_contacts', 'proj_projects']
   },
 
   // Planning Sub-Pages
@@ -571,7 +571,7 @@ export const SUBPAGE_DEFINITIONS = [
     module: 'projects',
     route: '/projects/:id?tab=Contracts&view=quotations',
     description: 'Price quotations submitted by trade subcontractors and material vendors for project scopes.',
-    primaryTables: ['pdoc_parties', 'crm_contacts', 'txn_transactions']
+    primaryTables: ['proj_parties', 'crm_contacts', 'txn_transactions']
   },
   {
     id: 'subpage:project_contracts_tender',
@@ -581,7 +581,7 @@ export const SUBPAGE_DEFINITIONS = [
     module: 'projects',
     route: '/projects/:id?tab=Contracts&view=tender',
     description: 'Official tender packages, specifications, technical evaluation criteria, and contract agreements.',
-    primaryTables: ['proj_projects', 'pdoc_parties']
+    primaryTables: ['proj_projects', 'proj_parties']
   },
   {
     id: 'subpage:project_contracts_orders',
@@ -591,7 +591,7 @@ export const SUBPAGE_DEFINITIONS = [
     module: 'projects',
     route: '/projects/:id?tab=Contracts&view=orders',
     description: 'Issued subcontractor work orders, service contracts, and material purchase order commitments.',
-    primaryTables: ['txn_transactions', 'pdoc_parties', 'proj_projects']
+    primaryTables: ['txn_transactions', 'proj_parties', 'proj_projects']
   },
 
   // Safety Sub-Pages
@@ -655,7 +655,7 @@ export const SUBPAGE_DEFINITIONS = [
     module: 'collaboration',
     route: '/projects/:id?tab=Billing&view=contractors',
     description: 'Running invoices submitted by subcontractors based on certified joint measurement sheets.',
-    primaryTables: ['txn_transactions', 'txn_transaction_lines', 'pdoc_parties']
+    primaryTables: ['txn_transactions', 'txn_transaction_lines', 'proj_parties']
   },
   {
     id: 'subpage:project_billing_certified_bills',
@@ -867,7 +867,7 @@ export const SCHEMA_DEFINITIONS = [
       { target: 'schema:proj_drawings', type: 'HAS_DRAWINGS', foreignKey: 'project_id' },
       { target: 'schema:proj_quality_checklists', type: 'HAS_CHECKLISTS', foreignKey: 'project_id' },
       { target: 'schema:proj_meetings', type: 'HAS_MEETINGS', foreignKey: 'project_id' },
-      { target: 'schema:pdoc_parties', type: 'HAS_PARTIES', foreignKey: 'project_id' },
+      { target: 'schema:proj_parties', type: 'HAS_PARTIES', foreignKey: 'project_id' },
       { target: 'schema:res_resources', type: 'PROJECT_RESOURCES', foreignKey: 'project_id' }
     ]
   },
@@ -895,14 +895,14 @@ export const SCHEMA_DEFINITIONS = [
     ]
   },
   {
-    id: 'schema:proj_directory',
-    table: 'proj_directory',
+    id: 'schema:crm_contact_persons',
+    table: 'crm_contact_persons',
     module: 'projects',
-    label: 'proj_directory',
-    description: 'Site contact directory including engineers, site supervisors, subcontractors, and authorities.',
-    keyColumns: ['id', 'org_id', 'project_id', 'name', 'role', 'phone', 'email'],
+    label: 'crm_contact_persons',
+    description: 'Contact persons (POCs) under CRM companies and project directory.',
+    keyColumns: ['id', 'contact_id', 'name', 'designation', 'department', 'telephone_no', 'mobile', 'email', 'is_primary'],
     relationships: [
-      { target: 'schema:proj_projects', type: 'DIRECTORY_FOR_PROJECT', foreignKey: 'project_id' }
+      { target: 'schema:crm_contacts', type: 'CONTACT_FOR_PARTY', foreignKey: 'contact_id' }
     ]
   },
 
@@ -1038,7 +1038,7 @@ export const SCHEMA_DEFINITIONS = [
     description: 'Master CRM directory storing vendors, material suppliers, trade contractors, clients, and developers.',
     keyColumns: ['id', 'org_id', 'name', 'category', 'email', 'mobile', 'location', 'sector_id', 'job_nature_id'],
     relationships: [
-      { target: 'schema:pdoc_parties', type: 'LINKED_IN_PROJECTS', foreignKey: 'contact_id' },
+      { target: 'schema:proj_parties', type: 'LINKED_IN_PROJECTS', foreignKey: 'contact_id' },
       { target: 'schema:crm_interactions', type: 'HAS_INTERACTIONS', foreignKey: 'contact_id' }
     ]
   },
@@ -1054,12 +1054,12 @@ export const SCHEMA_DEFINITIONS = [
     ]
   },
   {
-    id: 'schema:pdoc_parties',
-    table: 'pdoc_parties',
+    id: 'schema:proj_parties',
+    table: 'proj_parties',
     module: 'projects',
-    label: 'pdoc_parties',
+    label: 'proj_parties',
     description: 'Project-party bridge linking vendors, contractors, and clients to active project sites.',
-    keyColumns: ['id', 'org_id', 'project_id', 'contact_id', 'role_name', 'party_type'],
+    keyColumns: ['id', 'project_id', 'contact_id', 'overrides'],
     relationships: [
       { target: 'schema:proj_projects', type: 'ASSOCIATED_PROJECT', foreignKey: 'project_id' },
       { target: 'schema:crm_contacts', type: 'ASSOCIATED_CONTACT', foreignKey: 'contact_id' }

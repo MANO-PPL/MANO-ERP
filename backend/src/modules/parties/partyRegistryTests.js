@@ -71,7 +71,7 @@ async function createTestParty({ orgId, projectId, name, category, supplierOverr
         contact_id: contactId,
     };
     if (supplierOverride !== null && supplierOverride !== undefined) {
-        insertObj.supplier_override = supplierOverride ? 1 : 0;
+        insertObj.overrides = JSON.stringify({ category: supplierOverride ? 'Supplier' : 'Contractor' });
     }
 
     const [pvId] = await db('proj_parties').insert(insertObj);
@@ -128,11 +128,10 @@ export async function runPartyRegistryTestSuite({ targetCase = null, closeDb = f
     }
 
     try {
-        const hasOverrideColumn = await db.schema.hasColumn('proj_parties', 'supplier_override');
+        const hasOverrideColumn = await db.schema.hasColumn('proj_parties', 'overrides');
         if (!hasOverrideColumn) {
             throw new Error(
-                'Database migration required: column "supplier_override" does not exist on "proj_parties".\n' +
-                'Please execute migration backend/src/db/sql/003_party_supplier_override.sql before running this test suite.'
+                'Database migration required: column "overrides" does not exist on "proj_parties".'
             );
         }
 
@@ -158,7 +157,7 @@ export async function runPartyRegistryTestSuite({ targetCase = null, closeDb = f
             assert.strictEqual(res.isSupplier, false);
             assert.strictEqual(res.supplierSource, 'category');
 
-            const expectedKeys = ['pvId', 'projectId', 'contactId', 'name', 'category', 'isSupplier', 'supplierSource'].sort();
+            const expectedKeys = ['pvId', 'projectId', 'contactId', 'name', 'category', 'overrides', 'isSupplier', 'supplierSource'].sort();
             assert.deepStrictEqual(Object.keys(res).sort(), expectedKeys);
         });
 
@@ -303,13 +302,13 @@ export async function runPartyRegistryTestSuite({ targetCase = null, closeDb = f
             const [pvIdA] = await db('proj_parties').insert({
                 project_id: TEST_PROJECT_1,
                 contact_id: contactId,
-                supplier_override: null,
+                overrides: null,
             });
 
             const [pvIdB] = await db('proj_parties').insert({
                 project_id: TEST_PROJECT_2,
                 contact_id: contactId,
-                supplier_override: null,
+                overrides: null,
             });
 
             // Set override on Project A only
@@ -325,7 +324,7 @@ export async function runPartyRegistryTestSuite({ targetCase = null, closeDb = f
             assert.strictEqual(partyB.supplierSource, 'category');
 
             const rawB = await db('proj_parties').where({ id: pvIdB }).first();
-            assert.strictEqual(rawB.supplier_override, null);
+            assert.strictEqual(rawB.overrides, null);
         });
 
         // ─── 9. assertProjectParty with a party from another project -> PARTY_NOT_IN_PROJECT
@@ -447,9 +446,9 @@ export async function runPartyRegistryTestSuite({ targetCase = null, closeDb = f
             assert.ok(!projPvIds.includes(pOtherProj.pvId));
             assert.ok(!projPvIds.includes(pOtherOrg.pvId));
 
-            // Category filter: Contractor
+            // Category filter: Contractor (p2 is overridden to Supplier)
             const contractors = await partyRegistryService.listProjectParties(TEST_ORG_1, TEST_PROJECT_FILTER, { category: 'Contractor' });
-            assert.strictEqual(contractors.length, 2);
+            assert.strictEqual(contractors.length, 1);
             assert.ok(contractors.every(p => p.category === 'Contractor'));
 
             // isSupplier filter: true (Supplier category OR Contractor with override 1)
@@ -558,12 +557,12 @@ export async function runPartyRegistryTestSuite({ targetCase = null, closeDb = f
             const rowTargetAfter = await db('proj_parties').where({ id: targetParty.pvId }).first();
             const rowControlAfter = await db('proj_parties').where({ id: controlParty.pvId }).first();
 
-            // Verify target party row: only supplier_override changed
+            // Verify target party row: only overrides changed
             assert.strictEqual(rowTargetAfter.contact_id, rowTargetBefore.contact_id);
             assert.strictEqual(rowTargetAfter.project_id, rowTargetBefore.project_id);
             assert.strictEqual(new Date(rowTargetAfter.joined_at).getTime(), new Date(rowTargetBefore.joined_at).getTime());
-            assert.strictEqual(rowTargetBefore.supplier_override, null);
-            assert.strictEqual(rowTargetAfter.supplier_override, 1);
+            assert.strictEqual(rowTargetBefore.overrides, null);
+            assert.deepStrictEqual(partyRegistryService.parsePartyOverrides(rowTargetAfter.overrides), { category: 'Supplier' });
 
             // Verify control party row: completely identical
             assert.deepStrictEqual(rowControlAfter, rowControlBefore);

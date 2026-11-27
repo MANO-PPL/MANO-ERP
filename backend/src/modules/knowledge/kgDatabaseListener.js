@@ -16,9 +16,8 @@ export const TRACKED_TABLES = new Set([
   'proj_projects',
   'proj_members',
   'proj_summary',
-  'proj_directory',
-  'pdoc_parties',
   'proj_parties',
+  'crm_contact_persons',
 
   // Tasks, Planning & Schedule
   'proj_tasks',

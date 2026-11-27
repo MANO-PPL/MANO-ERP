@@ -1,126 +1,258 @@
 import { db } from '../../../config/database.js';
 import AppError from '../../../utils/AppError.js';
 import { findOrCreateJobNature } from '../../shared/jobNatureService.js';
+import partyContactService from '../../parties/partyContactService.js';
+import { applyPartyOverrides, saveProjectOverrides } from '../../parties/partyRegistryService.js';
+
+async function resolveProjectPartyContactId(connection, projectId, partyOrContactId) {
+    if (!partyOrContactId) return { partyId: null, contactId: null };
+    const pp = await connection('proj_parties')
+        .where({ project_id: projectId, id: partyOrContactId })
+        .orWhere({ project_id: projectId, contact_id: partyOrContactId })
+        .first();
+    if (!pp) return { partyId: null, contactId: null };
+    return { partyId: pp.id, contactId: pp.contact_id };
+}
+
+async function resolveOrCreateProjectParty(trx, projectId, { party_id, pv_id, company_name, category, address_line, orgId }) {
+    const requestedId = party_id || pv_id || null;
+    if (requestedId) {
+        const resolved = await resolveProjectPartyContactId(trx, projectId, requestedId);
+        if (resolved.partyId) return resolved;
+    }
+
+    const trimmedName = String(company_name || '').trim();
+    if (!trimmedName) return { partyId: null, contactId: null };
+
+    const existingParty = await trx('proj_parties as pp')
+        .join('crm_contacts as c', 'pp.contact_id', 'c.id')
+        .where('pp.project_id', projectId)
+        .whereRaw('LOWER(c.name) = ?', [trimmedName.toLowerCase()])
+        .select('pp.id', 'pp.contact_id')
+        .first();
+
+    if (existingParty) {
+        return { partyId: existingParty.id, contactId: existingParty.contact_id };
+    }
+
+    let crmContact = await trx('crm_contacts')
+        .whereRaw('LOWER(name) = ?', [trimmedName.toLowerCase()])
+        .where(function () {
+            if (orgId) this.where('org_id', orgId).orWhereNull('org_id');
+        })
+        .first();
+
+    if (!crmContact) {
+        const [newCrmId] = await trx('crm_contacts').insert({
+            org_id: orgId || null,
+            name: trimmedName,
+            category: category || 'Contractor',
+            scope: 'project',
+            address: address_line || null,
+            created_at: new Date(),
+            updated_at: new Date()
+        });
+        crmContact = { id: newCrmId };
+    }
+
+    const [newPartyId] = await trx('proj_parties').insert({
+        project_id: projectId,
+        contact_id: crmContact.id
+    });
+    return { partyId: newPartyId, contactId: crmContact.id };
+}
 
 export async function fetchProjectDirectory(projectId) {
     if (!projectId) throw new AppError('projectId is required', 400);
 
-    const directory = await db('proj_directory as pd')
-        .leftJoin('proj_parties as pp', 'pd.party_id', 'pp.id')
-        .leftJoin('crm_contacts as c', 'pp.contact_id', 'c.id')
+    const directory = await db('proj_parties as pp')
+        .join('crm_contacts as c', 'pp.contact_id', 'c.id')
+        .join('crm_contact_persons as cp', function () {
+            this.on('cp.contact_id', '=', 'c.id')
+                .andOnVal('cp.status', '=', 'active');
+        })
         .leftJoin('crm_job_nature as jn', 'c.job_nature_id', 'jn.id')
-        .where('pd.project_id', projectId)
+        .where('pp.project_id', projectId)
         .select([
-            'pd.id',
-            'pd.id as pd_id',
-            'pd.project_id',
-            'pd.party_id as party_id',
-            'pd.party_id as pv_id',
-            'pp.contact_id as contact_id',
+            'cp.id',
+            'cp.id as pd_id',
+            'pp.project_id',
+            'pp.id as party_id',
+            'pp.id as pv_id',
+            'pp.overrides as overrides',
+            'c.id as contact_id',
             'c.name as company_name',
             'c.category as category',
             'jn.job_name as job_nature',
-            'pd.contact_person',
-            'pd.designation',
-            'pd.responsibilities',
-            'pd.mobile_no',
-            'pd.email',
-            'pd.address_line',
-            'pd.created_at',
-            'pd.updated_at'
-        ]);
+            'cp.name as contact_person',
+            'cp.designation',
+            'cp.department as responsibilities',
+            db.raw('COALESCE(cp.mobile, cp.telephone_no) as mobile_no'),
+            'cp.email',
+            'c.address as address_line',
+            'cp.is_primary',
+            'cp.created_at',
+            'cp.updated_at'
+        ])
+        .orderBy('c.name', 'asc')
+        .orderBy('cp.is_primary', 'desc')
+        .orderBy('cp.id', 'asc');
 
-    return { directory, count: directory.length };
+    const enriched = directory.map(applyPartyOverrides);
+    return { directory: enriched, count: enriched.length };
 }
 
 export async function fetchDirectoryCount(projectId = null) {
-    const query = db('proj_directory');
+    const query = db('proj_parties as pp')
+        .join('crm_contact_persons as cp', function () {
+            this.on('cp.contact_id', '=', 'pp.contact_id')
+                .andOnVal('cp.status', '=', 'active');
+        });
     if (projectId) {
-        query.where('project_id', projectId);
+        query.where('pp.project_id', projectId);
     }
-    const result = await query.count('id as cnt').first();
+    const result = await query.countDistinct('cp.id as cnt').first();
     return result ? parseInt(result.cnt, 10) : 0;
 }
 
 export async function insertDirectoryItem(data) {
-    // Find party_id from proj_parties based on id or contact_id
-    let party_id = data.party_id || data.pv_id || null;
-    if (party_id) {
-        const v = await db('proj_parties')
-            .where({ project_id: data.project_id, id: party_id })
-            .orWhere({ project_id: data.project_id, contact_id: party_id })
-            .first();
-        if (v) party_id = v.id;
-    }
-
-    const [id] = await db('proj_directory').insert({
-        project_id: data.project_id,
-        party_id: party_id,
-        contact_person: data.contact_person,
-        designation: data.designation || null,
-        responsibilities: data.responsibilities || null,
-        mobile_no: data.mobile_no || null,
-        email: data.email || null,
-        address_line: data.address_line || null
+    return db.transaction(async (trx) => {
+        const { contactId } = await resolveProjectParty(trx, data.project_id, data);
+        if (!contactId) {
+            throw new AppError('Valid project party is required to add a directory contact', 400);
+        }
+        const party = await trx('crm_contacts').where({ id: contactId }).first();
+        const created = await partyContactService.addContactPerson(
+            party.org_id,
+            contactId,
+            {
+                name: data.contact_person || data.name,
+                designation: data.designation || null,
+                department: data.responsibilities || data.department || null,
+                mobile: data.mobile_no || data.mobile || null,
+                telephone_no: data.telephone_no || null,
+                email: data.email || null
+            },
+            { transaction: trx }
+        );
+        return { id: created.id, pd_id: created.id };
     });
+}
 
-    return { id, pd_id: id };
+async function resolveProjectParty(trx, projectId, data) {
+    const requestedId = data.party_id || data.pv_id || null;
+    if (requestedId) {
+        return resolveProjectPartyContactId(trx, projectId, requestedId);
+    }
+    if (data.contact_id) {
+        return resolveProjectPartyContactId(trx, projectId, data.contact_id);
+    }
+    return { partyId: null, contactId: null };
 }
 
 export async function updateDirectoryItem(projectId, id, data = {}) {
-    const updateData = {};
-    if (data.party_id !== undefined || data.pv_id !== undefined) {
-        let party_id = data.party_id || data.pv_id || null;
-        if (party_id) {
-            const v = await db('proj_parties')
-                .where({ project_id: projectId, id: party_id })
-                .orWhere({ project_id: projectId, contact_id: party_id })
-                .first();
-            if (v) party_id = v.id;
+    return db.transaction(async (trx) => {
+        const existing = await trx('crm_contact_persons as cp')
+            .join('proj_parties as pp', 'cp.contact_id', 'pp.contact_id')
+            .join('crm_contacts as c', 'cp.contact_id', 'c.id')
+            .where({ 'cp.id': id, 'pp.project_id': projectId })
+            .select('cp.id', 'cp.contact_id', 'c.org_id')
+            .first();
+        if (!existing) throw new AppError('Directory item not found', 404);
+
+        const payload = {};
+        if (data.contact_person !== undefined) payload.name = data.contact_person;
+        if (data.designation !== undefined) payload.designation = data.designation;
+        if (data.responsibilities !== undefined) payload.department = data.responsibilities;
+        if (data.mobile_no !== undefined) payload.mobile = data.mobile_no;
+        if (data.email !== undefined) payload.email = data.email;
+
+        if (Object.keys(payload).length > 0) {
+            await partyContactService.updateContactPerson(existing.org_id, existing.contact_id, existing.id, payload, { transaction: trx });
         }
-        updateData.party_id = party_id;
-    }
-    if (data.contact_person !== undefined) updateData.contact_person = data.contact_person;
-    if (data.designation !== undefined) updateData.designation = data.designation;
-    if (data.responsibilities !== undefined) updateData.responsibilities = data.responsibilities;
-    if (data.mobile_no !== undefined) updateData.mobile_no = data.mobile_no;
-    if (data.email !== undefined) updateData.email = data.email;
-    if (data.address_line !== undefined) updateData.address_line = data.address_line;
-
-    const affected = await db('proj_directory')
-        .where({ id, project_id: projectId })
-        .update(updateData);
-
-    if (affected === 0) throw new AppError('Directory item not found', 404);
-    return { affected };
+        if (data.address_line !== undefined) {
+            await trx('crm_contacts').where({ id: existing.contact_id }).update({ address: data.address_line || null, updated_at: trx.fn.now() });
+        }
+        return { affected: 1 };
+    });
 }
 
 export async function deleteDirectoryItem(projectId, id) {
-    const affectedRows = await db('proj_directory')
-        .where({ id, project_id: projectId })
-        .del();
+    return db.transaction(async (trx) => {
+        const existing = await trx('crm_contact_persons as cp')
+            .join('proj_parties as pp', 'cp.contact_id', 'pp.contact_id')
+            .join('crm_contacts as c', 'cp.contact_id', 'c.id')
+            .where({ 'cp.id': id, 'pp.project_id': projectId })
+            .select('cp.id', 'cp.contact_id', 'c.org_id')
+            .first();
+        if (!existing) throw new AppError('Directory item not found', 404);
 
-    if (affectedRows === 0) throw new AppError('Directory item not found', 404);
-    return { affectedRows };
+        await partyContactService.deleteContactPerson(existing.org_id, existing.contact_id, existing.id, { transaction: trx });
+        return { affectedRows: 1 };
+    });
+}
+
+async function deleteDirectoryItems(trx, projectId, deletedIds) {
+    if (!Array.isArray(deletedIds) || deletedIds.length === 0) return;
+    const numericIds = deletedIds.map(Number).filter(n => !isNaN(n));
+    if (numericIds.length === 0) return;
+
+    const toDelete = await trx('crm_contact_persons as cp')
+        .join('proj_parties as pp', 'cp.contact_id', 'pp.contact_id')
+        .join('crm_contacts as c', 'cp.contact_id', 'c.id')
+        .where('pp.project_id', projectId)
+        .whereIn('cp.id', numericIds)
+        .select('cp.id', 'cp.contact_id', 'c.org_id');
+
+    for (const row of toDelete) {
+        await partyContactService.deleteContactPerson(row.org_id, row.contact_id, row.id, { transaction: trx });
+    }
+}
+
+async function syncPartyMetadata(trx, projectId, partyId, contactId, { category, jobNature, addressLine, orgId }) {
+    const partyRec = await trx('crm_contacts as c')
+        .leftJoin('crm_job_nature as jn', 'c.job_nature_id', 'jn.id')
+        .where({ 'c.id': contactId })
+        .select('c.*', 'jn.job_name as master_job_nature')
+        .first();
+    const effectiveOrgId = partyRec?.org_id || orgId;
+
+    if (partyRec?.scope === 'master' && (category || jobNature)) {
+        const ppRow = await trx('proj_parties').where({ id: partyId, project_id: projectId }).first();
+        if (ppRow) {
+            await saveProjectOverrides(
+                trx,
+                ppRow,
+                {
+                    ...(category ? { category } : {}),
+                    ...(jobNature ? { job_nature: jobNature } : {})
+                },
+                { category: partyRec.category, job_nature: partyRec.master_job_nature }
+            );
+        }
+    } else if (partyRec?.scope !== 'master') {
+        if (jobNature) {
+            const jnId = await findOrCreateJobNature(effectiveOrgId, jobNature, trx);
+            if (jnId) {
+                await trx('crm_contacts').where({ id: contactId }).update({ job_nature_id: jnId, updated_at: new Date() });
+            }
+        }
+        if (addressLine) {
+            await trx('crm_contacts').where({ id: contactId }).update({ address: addressLine, updated_at: new Date() });
+        }
+    }
+
+    return effectiveOrgId;
 }
 
 export async function syncProjectDirectory(projectId, { items = [], deleted_ids = [] }, orgId) {
     if (!projectId) throw new AppError('projectId is required', 400);
 
     return await db.transaction(async (trx) => {
-        // 1. Delete removed directory items
-        if (Array.isArray(deleted_ids) && deleted_ids.length > 0) {
-            const numericIds = deleted_ids.map(Number).filter(n => !isNaN(n));
-            if (numericIds.length > 0) {
-                await trx('proj_directory')
-                    .where('project_id', projectId)
-                    .whereIn('id', numericIds)
-                    .del();
-            }
-        }
+        await deleteDirectoryItems(trx, projectId, deleted_ids);
 
-        // 2. Process incoming rows with smart company forward-filling for multiple personnel
         let lastPartyId = null;
+        let lastContactId = null;
         let lastCompanyName = null;
         let lastCategory = null;
 
@@ -137,106 +269,54 @@ export async function syncProjectDirectory(projectId, { items = [], deleted_ids 
 
             if (!companyName && !contactPerson) continue;
 
-            // Resolve or find party_id in proj_parties
             let partyId = item.party_id || item.pv_id || null;
+            let contactId = item.contact_id || null;
 
-            // Smart Blank Company Forward-Fill:
-            // When multiple team members are entered with subsequent company names blank,
-            // inherit the contractor details from the active company row above!
             if (!companyName && !partyId && contactPerson && lastPartyId) {
                 partyId = lastPartyId;
+                contactId = lastContactId;
                 companyName = lastCompanyName;
                 if (!category) category = lastCategory;
-            }
-
-            if (!partyId && companyName) {
-                const existingParty = await trx('proj_parties as pp')
-                    .join('crm_contacts as c', 'pp.contact_id', 'c.id')
-                    .where('pp.project_id', projectId)
-                    .whereRaw('LOWER(c.name) = ?', [String(companyName).trim().toLowerCase()])
-                    .select('pp.id')
-                    .first();
-
-                if (existingParty) {
-                    partyId = existingParty.id;
-                } else {
-                    let crmContact = await trx('crm_contacts')
-                        .whereRaw('LOWER(name) = ?', [String(companyName).trim().toLowerCase()])
-                        .where(function () {
-                            if (orgId) this.where('org_id', orgId).orWhereNull('org_id');
-                        })
-                        .first();
-
-                    if (!crmContact) {
-                        const [newCrmId] = await trx('crm_contacts').insert({
-                            org_id: orgId || null,
-                            name: String(companyName).trim(),
-                            category: category || 'Contractor',
-                            scope: 'project',
-                            contact_person: contactPerson || null,
-                            designation: designation,
-                            mobile: mobileNo,
-                            email: email,
-                            address: addressLine,
-                            created_at: new Date(),
-                            updated_at: new Date()
-                        });
-                        crmContact = { id: newCrmId };
-                    }
-
-                    const [newPartyId] = await trx('proj_parties').insert({
-                        project_id: projectId,
-                        contact_id: crmContact.id
-                    });
-                    partyId = newPartyId;
-                }
-            }
-
-            // Track active company context for subsequent rows
-            if (partyId) {
-                lastPartyId = partyId;
-                if (companyName) lastCompanyName = companyName;
-                if (category) lastCategory = category;
-
-                if (jobNature) {
-                    const partyRec = await trx('proj_parties').where({ id: partyId, project_id: projectId }).first();
-                    if (partyRec && partyRec.contact_id) {
-                        const jnId = await findOrCreateJobNature(orgId, jobNature, trx);
-                        if (jnId) {
-                            await trx('crm_contacts').where({ id: partyRec.contact_id }).update({ job_nature_id: jnId, updated_at: new Date() });
-                        }
-                    }
-                }
-            }
-
-            const dirId = item.id && !String(item.id).startsWith('temp_') ? Number(item.id) : null;
-
-            if (dirId && !isNaN(dirId)) {
-                await trx('proj_directory')
-                    .where({ id: dirId, project_id: projectId })
-                    .update({
-                        party_id: partyId,
-                        contact_person: contactPerson,
-                        designation: designation,
-                        responsibilities: responsibilities,
-                        mobile_no: mobileNo,
-                        email: email,
-                        address_line: addressLine,
-                        updated_at: new Date()
-                    });
-            } else if (contactPerson || designation || responsibilities) {
-                await trx('proj_directory').insert({
-                    project_id: projectId,
+            } else {
+                const resolved = await resolveOrCreateProjectParty(trx, projectId, {
                     party_id: partyId,
-                    contact_person: contactPerson,
-                    designation: designation,
-                    responsibilities: responsibilities,
-                    mobile_no: mobileNo,
-                    email: email,
+                    company_name: companyName,
+                    category,
                     address_line: addressLine,
-                    created_at: new Date(),
-                    updated_at: new Date()
+                    orgId
                 });
+                partyId = resolved.partyId;
+                contactId = resolved.contactId;
+            }
+
+            if (!contactId) continue;
+
+            lastPartyId = partyId;
+            lastContactId = contactId;
+            if (companyName) lastCompanyName = companyName;
+            if (category) lastCategory = category;
+
+            const effectiveOrgId = await syncPartyMetadata(trx, projectId, partyId, contactId, {
+                category,
+                jobNature,
+                addressLine,
+                orgId
+            });
+
+            if (contactPerson || designation || responsibilities || (item.id && !String(item.id).startsWith('temp_'))) {
+                await partyContactService.upsertContactPerson(
+                    effectiveOrgId,
+                    contactId,
+                    item.id,
+                    {
+                        name: (contactPerson || companyName || 'Primary Contact').trim(),
+                        designation,
+                        department: responsibilities,
+                        mobile: mobileNo,
+                        email
+                    },
+                    { transaction: trx }
+                );
             }
         }
 
@@ -250,7 +330,6 @@ export async function bulkAddPersonnelToParty(projectId, payload = {}, orgId) {
         party_id = null,
         company_name = '',
         category = 'Contractor',
-        job_nature = '',
         address_line = '',
         personnel = []
     } = payload;
@@ -260,66 +339,37 @@ export async function bulkAddPersonnelToParty(projectId, payload = {}, orgId) {
     }
 
     return await db.transaction(async (trx) => {
-        let partyId = party_id ? Number(party_id) : null;
-
-        // Resolve or create party in proj_parties
-        if (!partyId && company_name) {
-            const existingParty = await trx('proj_parties as pp')
-                .join('crm_contacts as c', 'pp.contact_id', 'c.id')
-                .where('pp.project_id', projectId)
-                .whereRaw('LOWER(c.name) = ?', [String(company_name).trim().toLowerCase()])
-                .select('pp.id')
-                .first();
-
-            if (existingParty) {
-                partyId = existingParty.id;
-            } else {
-                let crmContact = await trx('crm_contacts')
-                    .whereRaw('LOWER(name) = ?', [String(company_name).trim().toLowerCase()])
-                    .where(function () {
-                        if (orgId) this.where('org_id', orgId).orWhereNull('org_id');
-                    })
-                    .first();
-
-                if (!crmContact) {
-                    const [newCrmId] = await trx('crm_contacts').insert({
-                        org_id: orgId || null,
-                        name: String(company_name).trim(),
-                        category: category || 'Contractor',
-                        scope: 'project',
-                        address: address_line || null,
-                        created_at: new Date(),
-                        updated_at: new Date()
-                    });
-                    crmContact = { id: newCrmId };
-                }
-
-                const [newPartyId] = await trx('proj_parties').insert({
-                    project_id: projectId,
-                    contact_id: crmContact.id
-                });
-                partyId = newPartyId;
-            }
+        const { partyId, contactId } = await resolveOrCreateProjectParty(trx, projectId, {
+            party_id,
+            company_name,
+            category,
+            address_line,
+            orgId
+        });
+        if (!contactId) {
+            throw new AppError('Could not resolve project party for personnel', 400);
         }
+        const partyRec = await trx('crm_contacts').where({ id: contactId }).first();
+        const effectiveOrgId = partyRec?.org_id || orgId;
 
         const insertedIds = [];
         for (const person of personnel) {
             const contactPerson = person.contact_person || person.name || person.person || null;
             if (!contactPerson && !person.designation) continue;
 
-            const [newId] = await trx('proj_directory').insert({
-                project_id: projectId,
-                party_id: partyId,
-                contact_person: contactPerson,
-                designation: person.designation || person.role || null,
-                responsibilities: person.responsibilities || null,
-                mobile_no: person.mobile_no || person.telephone_no || person.phone || null,
-                email: person.email || null,
-                address_line: person.address_line || person.address || address_line || null,
-                created_at: new Date(),
-                updated_at: new Date()
-            });
-            insertedIds.push(newId);
+            const created = await partyContactService.addContactPerson(
+                effectiveOrgId,
+                contactId,
+                {
+                    name: contactPerson || company_name || 'Contact Person',
+                    designation: person.designation || person.role || null,
+                    department: person.responsibilities || null,
+                    mobile: person.mobile_no || person.telephone_no || person.phone || null,
+                    email: person.email || null
+                },
+                { transaction: trx }
+            );
+            insertedIds.push(created.id);
         }
 
         return {

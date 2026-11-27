@@ -216,9 +216,11 @@ export function createWriteService({ db, clients, vendors, resources, approvalSe
                     if (!await party.first('id')) fail('authorization_denied');
                 }
                 if (tool.name === 'directory.update') {
-                    const query = connection('proj_directory').where({ id: args.directoryId, project_id: args.projectId });
+                    const query = connection('crm_contact_persons as cp')
+                        .join('proj_parties as pp', 'cp.contact_id', 'pp.contact_id')
+                        .where({ 'cp.id': args.directoryId, 'pp.project_id': args.projectId });
                     if (lock) query.forUpdate();
-                    if (!await query.first('id')) fail('authorization_denied');
+                    if (!await query.first('cp.id')) fail('authorization_denied');
                 }
                 return { projectId: args.projectId, operation: tool.name };
             }
@@ -518,14 +520,42 @@ export function createWriteService({ db, clients, vendors, resources, approvalSe
             }
             if (tool.name === 'directory.create') {
                 const { projectId, partyId, ...data } = args;
-                const [id] = await trx('proj_directory').insert({ project_id: projectId, party_id: partyId || null, ...data, created_at: trx.fn.now(), updated_at: trx.fn.now() });
+                if (!partyId) fail('execution_failure', 'party_id_required');
+                const pp = await trx('proj_parties')
+                    .join('crm_contacts as c', 'proj_parties.contact_id', 'c.id')
+                    .where({ 'proj_parties.id': partyId, 'proj_parties.project_id': projectId })
+                    .orWhere({ 'proj_parties.contact_id': partyId, 'proj_parties.project_id': projectId })
+                    .select('proj_parties.contact_id', 'c.org_id')
+                    .first();
+                if (!pp) fail('execution_failure', 'project_party_not_found');
+                const name = String(data.contact_person || data.name || '').trim();
+                if (!name) fail('execution_failure', 'contact_person_required');
+                const [id] = await trx('crm_contact_persons').insert({
+                    contact_id: pp.contact_id,
+                    name,
+                    designation: data.designation || null,
+                    department: data.responsibilities || null,
+                    mobile: data.mobile_no || null,
+                    email: data.email || null,
+                    is_primary: 0,
+                    status: 'active',
+                    created_by: actor.userId || null,
+                    updated_by: actor.userId || null
+                });
                 if (!Number.isSafeInteger(Number(id)) || Number(id) < 1) fail('execution_failure', 'invalid_service_result');
                 return { id: Number(id) };
             }
             if (tool.name === 'directory.update') {
-                const updates = Object.fromEntries(Object.entries(args).filter(([key]) => !['projectId', 'directoryId'].includes(key)).map(([key, value]) => [key === 'partyId' ? 'party_id' : key, typeof value === 'string' ? value.trim() : value]));
-                updates.updated_at = trx.fn.now();
-                const changed = await trx('proj_directory').where({ id: args.directoryId, project_id: args.projectId }).update(updates);
+                const updates = { updated_at: trx.fn.now(), updated_by: actor.userId || null };
+                if (args.contact_person !== undefined) updates.name = String(args.contact_person).trim();
+                if (args.designation !== undefined) updates.designation = args.designation ? String(args.designation).trim() : null;
+                if (args.responsibilities !== undefined) updates.department = args.responsibilities ? String(args.responsibilities).trim() : null;
+                if (args.mobile_no !== undefined) updates.mobile = args.mobile_no ? String(args.mobile_no).trim() : null;
+                if (args.email !== undefined) updates.email = args.email ? String(args.email).trim() : null;
+                const changed = await trx('crm_contact_persons as cp')
+                    .join('proj_parties as pp', 'cp.contact_id', 'pp.contact_id')
+                    .where({ 'cp.id': args.directoryId, 'pp.project_id': args.projectId })
+                    .update(updates);
                 if (changed !== 1) fail('execution_failure', 'directory_update_not_applied');
                 return { id: args.directoryId };
             }

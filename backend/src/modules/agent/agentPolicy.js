@@ -69,7 +69,7 @@ export function createPolicy(db) {
             system(user, contactModule, edit);
             // Project-local contacts need a live project association as well as CRM permission.
             if (contact.scope === 'project') {
-                const links = await connection('pdoc_parties').where({ party_id: contact.id }).whereNull('deleted_at').select('project_id').limit(2);
+                const links = await connection('proj_parties').where({ contact_id: contact.id }).select('project_id').limit(2);
                 if (links.length !== 1) fail('authorization_denied');
                 projectId = Number(links[0].project_id);
             }

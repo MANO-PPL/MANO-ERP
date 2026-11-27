@@ -157,20 +157,19 @@ export async function fetchMeetingById(projectId, meetingId) {
     if (!meeting) throw new AppError('Meeting not found', 404);
 
     const participants = await db('proj_meetings_participants as pmp')
-        .join('proj_directory as pd', 'pmp.pd_id', 'pd.id')
-        .leftJoin('proj_parties as pp', 'pd.party_id', 'pp.id')
-        .leftJoin('crm_contacts as c', 'pp.contact_id', 'c.id')
+        .join('crm_contact_persons as cp', 'pmp.contact_person_id', 'cp.id')
+        .leftJoin('crm_contacts as c', 'cp.contact_id', 'c.id')
         .where('pmp.meeting_id', meetingId)
         .select([
             'pmp.id as participant_entry_id',
-            'pmp.pd_id',
-            'pd.id',
-            'pd.id as pd_id',
-            'pd.contact_person',
-            'pd.designation',
-            'pd.responsibilities',
-            'pd.mobile_no',
-            'pd.email',
+            'pmp.contact_person_id as pd_id',
+            'pmp.contact_person_id',
+            'cp.id',
+            'cp.name as contact_person',
+            'cp.designation',
+            'cp.department as responsibilities',
+            db.raw('COALESCE(cp.mobile, cp.telephone_no) as mobile_no'),
+            'cp.email',
             'c.name as company_name',
             'c.name as organization',
             'c.category as category'
@@ -248,8 +247,9 @@ export async function createMeeting(projectId, data) {
         }
         if (Array.isArray(data.participants)) {
             data.participants.forEach(p => {
-                if (typeof p === 'object' && p.pd_id) {
-                    attendanceMap[p.pd_id] = p.attended === false || p.attendance === 'absent' ? 'absent' : 'present';
+                const pid = typeof p === 'object' ? (p.contact_person_id ?? p.pd_id) : null;
+                if (pid) {
+                    attendanceMap[pid] = p.attended === false || p.attendance === 'absent' ? 'absent' : 'present';
                 }
             });
         }
@@ -267,14 +267,14 @@ export async function createMeeting(projectId, data) {
 
         meeting_id = id;
 
-        // Insert participants (array of pd_id integers or objects with pd_id)
+        // Insert participants (array of contact_person_id / pd_id integers or objects)
         if (Array.isArray(data.participants) && data.participants.length > 0) {
             const records = data.participants
-                .map(p => (typeof p === 'object' ? p.pd_id : p))
+                .map(p => (typeof p === 'object' ? (p.contact_person_id ?? p.pd_id) : p))
                 .filter(Boolean)
-                .map(pd_id => ({
+                .map(contact_person_id => ({
                     meeting_id,
-                    pd_id
+                    contact_person_id
                 }));
 
             if (records.length > 0) {
@@ -349,8 +349,9 @@ export async function updateMeeting(projectId, meetingId, data) {
             }
             if (Array.isArray(data.participants)) {
                 data.participants.forEach(p => {
-                    if (typeof p === 'object' && p.pd_id) {
-                        attendanceMap[p.pd_id] = p.attended === false || p.attendance === 'absent' ? 'absent' : 'present';
+                    const pid = typeof p === 'object' ? (p.contact_person_id ?? p.pd_id) : null;
+                    if (pid) {
+                        attendanceMap[pid] = p.attended === false || p.attendance === 'absent' ? 'absent' : 'present';
                     }
                 });
             }
@@ -374,11 +375,11 @@ export async function updateMeeting(projectId, meetingId, data) {
                 .del();
 
             const records = data.participants
-                .map(p => (typeof p === 'object' ? p.pd_id : p))
+                .map(p => (typeof p === 'object' ? (p.contact_person_id ?? p.pd_id) : p))
                 .filter(Boolean)
-                .map(pd_id => ({
+                .map(contact_person_id => ({
                     meeting_id: meetingId,
-                    pd_id
+                    contact_person_id
                 }));
 
             if (records.length > 0) {

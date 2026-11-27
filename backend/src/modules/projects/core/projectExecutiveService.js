@@ -1,5 +1,6 @@
 import { db as defaultDb } from '../../../config/database.js';
 import AppError from '../../../utils/AppError.js';
+import { applyPartyOverrides } from '../../parties/partyRegistryService.js';
 
 /**
  * Format a Date or date string to YYYY-MM-DD cleanly.
@@ -90,10 +91,11 @@ export async function getProjectExecutiveBriefing(orgId, projectId, connection =
     // 3. Fetch project parties & contacts
     let parties = [];
     try {
-        parties = await knex('proj_parties as pp')
+        const rawParties = await knex('proj_parties as pp')
             .join('crm_contacts as c', 'pp.contact_id', 'c.id')
             .where('pp.project_id', projectId)
             .select(
+                'pp.overrides',
                 'c.id as contact_id',
                 'c.name',
                 'c.category',
@@ -101,6 +103,7 @@ export async function getProjectExecutiveBriefing(orgId, projectId, connection =
                 'c.email'
             )
             .orderBy('c.name', 'asc');
+        parties = rawParties.map(applyPartyOverrides);
     } catch {
         parties = [];
     }

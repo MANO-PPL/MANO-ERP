@@ -147,7 +147,7 @@ export async function getProjects(orgId, userId, userType, options = {}) {
         FROM proj_parties pp
         JOIN crm_contacts c ON pp.contact_id = c.id
         WHERE pp.project_id = p.id 
-          AND LOWER(c.category) = 'client'
+          AND LOWER(COALESCE(JSON_UNQUOTE(JSON_EXTRACT(pp.overrides, '$.category')), c.category)) = 'client'
     ) as employer`);
 
     let projects = [];
@@ -228,7 +228,7 @@ export async function getProjectById(orgId, projectId, options = {}) {
                 FROM proj_parties pp
                 JOIN crm_contacts c ON pp.contact_id = c.id
                 WHERE pp.project_id = p.id 
-                  AND LOWER(c.category) = 'client'
+                  AND LOWER(COALESCE(JSON_UNQUOTE(JSON_EXTRACT(pp.overrides, '$.category')), c.category)) = 'client'
             ) as employer`)
         )
         .first();

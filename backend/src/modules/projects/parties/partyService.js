@@ -5,6 +5,7 @@ import {
     linkContactsToProject
 } from '../../parties/partyService.js';
 import { findOrCreateJobNature } from '../../shared/jobNatureService.js';
+import { applyPartyOverrides, saveProjectOverrides } from '../../parties/partyRegistryService.js';
 
 // Project parties are stored in proj_parties and resolved from CRM contacts.
 
@@ -41,6 +42,16 @@ export async function initializeProjectPartiesSchema() {
         if (!projIdx || projIdx.length === 0) {
             await db.raw('ALTER TABLE proj_parties ADD INDEX idx_proj_parties_project_id (project_id)');
         }
+
+        const hasOverrides = await db.schema.hasColumn('proj_parties', 'overrides');
+        if (!hasOverrides) {
+            await db.raw('ALTER TABLE proj_parties ADD COLUMN overrides JSON NULL');
+        }
+
+        const hasSupplierOverride = await db.schema.hasColumn('proj_parties', 'supplier_override');
+        if (hasSupplierOverride) {
+            await db.raw('ALTER TABLE proj_parties DROP COLUMN supplier_override');
+        }
     }
 }
 
@@ -61,6 +72,7 @@ export async function getProjectParties(projectId, fields, orgId, options = {}) 
         'pp.contact_id as party_id',
         'pp.contact_id as contact_id',
         'pp.joined_at as joined_at',
+        'pp.overrides as overrides',
         'c.category as category',
     ];
 
@@ -92,47 +104,49 @@ export async function getProjectParties(projectId, fields, orgId, options = {}) 
         .modify(query => {
             if (options.agentRead === true) {
                 query.where('c.org_id', orgId).limit(Math.min(options.limit || 20, 50)).offset(options.offset || 0);
-                if (options.category) query.where('c.category', options.category);
+                if (options.category) {
+                    query.whereRaw("COALESCE(JSON_UNQUOTE(JSON_EXTRACT(pp.overrides, '$.category')), c.category) = ?", [options.category]);
+                }
             }
         })
         .select(selectedFields)
         .orderBy('c.name', 'asc');
 
-    const partyIds = parties.map(p => p.id);
-    if (partyIds.length > 0) {
-        const dirEntries = await db('proj_directory')
-            .where('project_id', projectId)
-            .whereIn('party_id', partyIds)
+    const dirMap = {};
+    const contactIds = parties.map(p => p.contact_id).filter(Boolean);
+    if (contactIds.length > 0) {
+        const personEntries = await db('crm_contact_persons as cp')
+            .join('crm_contacts as c', 'cp.contact_id', 'c.id')
+            .where('cp.status', 'active')
+            .whereIn('cp.contact_id', contactIds)
             .select([
-                'id',
-                'id as pd_id',
-                'party_id',
-                'contact_person',
-                'designation',
-                'responsibilities',
-                'mobile_no',
-                'email',
-                'address_line',
-                'created_at',
-                'updated_at'
+                'cp.id',
+                'cp.id as pd_id',
+                'cp.contact_id',
+                'cp.name as contact_person',
+                'cp.designation',
+                'cp.department as responsibilities',
+                db.raw('COALESCE(cp.mobile, cp.telephone_no) as mobile_no'),
+                'cp.email',
+                'c.address as address_line',
+                'cp.is_primary',
+                'cp.created_at',
+                'cp.updated_at'
             ])
-            .orderBy('created_at', 'asc');
+            .orderBy('cp.is_primary', 'desc')
+            .orderBy('cp.id', 'asc');
 
-        const dirMap = {};
-        for (const d of dirEntries) {
-            if (!dirMap[d.party_id]) dirMap[d.party_id] = [];
-            dirMap[d.party_id].push(d);
+        for (const d of personEntries) {
+            if (!dirMap[d.contact_id]) dirMap[d.contact_id] = [];
+            dirMap[d.contact_id].push(d);
         }
+    }
 
-        for (const p of parties) {
-            p.persons = dirMap[p.id] || [];
-            p.person_count = (dirMap[p.id] || []).length;
-        }
-    } else {
-        for (const p of parties) {
-            p.persons = [];
-            p.person_count = 0;
-        }
+    for (let i = 0; i < parties.length; i++) {
+        parties[i] = applyPartyOverrides(parties[i]);
+        const list = (dirMap[parties[i].contact_id] || []).map(d => ({ ...d, party_id: parties[i].id }));
+        parties[i].persons = list;
+        parties[i].person_count = list.length;
     }
 
     return { parties, count: parties.length };
@@ -175,12 +189,6 @@ export async function removePartiesFromProject(projectId, ppIds) {
     const notFound = ppIds.filter(id => !existingIds.includes(id) && !existing.some(e => e.contact_id === id));
 
     return await db.transaction(async (trx) => {
-        // Safe cascade: delete any proj_directory records referencing these parties first
-        await trx('proj_directory')
-            .where('project_id', projectId)
-            .whereIn('party_id', existingIds)
-            .del();
-
         const deletedCount = await trx('proj_parties')
             .where('project_id', projectId)
             .whereIn('id', existingIds)
@@ -212,10 +220,6 @@ export async function syncProjectParties(projectId, { parties = [], deleted_ids 
                     .select('id');
                 const partyPks = partiesToDelete.map(p => p.id);
                 if (partyPks.length > 0) {
-                    await trx('proj_directory')
-                        .where('project_id', projectId)
-                        .whereIn('party_id', partyPks)
-                        .del();
                     await trx('proj_parties')
                         .where('project_id', projectId)
                         .whereIn('id', partyPks)
@@ -265,37 +269,55 @@ export async function syncProjectParties(projectId, { parties = [], deleted_ids 
             }
 
             if (contactId) {
-                // Update existing contact record
-                const updatePayload = {
-                    name,
-                    category,
-                    contact_person: contactPerson,
-                    designation,
-                    telephone_no: telephoneNo,
-                    mobile,
-                    email,
-                    address,
-                    remarks,
-                    updated_at: new Date()
-                };
-                if (jobNatureId !== null) updatePayload.job_nature_id = jobNatureId;
-
-                await trx('crm_contacts')
-                    .where({ id: contactId })
+                const existingMaster = await trx('crm_contacts as c')
+                    .leftJoin('crm_job_nature as jn', 'c.job_nature_id', 'jn.id')
+                    .where({ 'c.id': contactId })
                     .where(function () {
-                        if (orgId) this.where('org_id', orgId).orWhereNull('org_id');
+                        if (orgId) this.where('c.org_id', orgId).orWhereNull('c.org_id');
                     })
-                    .update(updatePayload);
+                    .select('c.*', 'jn.job_name as job_nature')
+                    .first();
 
-                // Ensure linked in proj_parties
-                const isLinked = await trx('proj_parties')
+                let linkedRow = await trx('proj_parties')
                     .where({ project_id: projectId, contact_id: contactId })
                     .first();
-                if (!isLinked) {
-                    await trx('proj_parties').insert({
+                if (!linkedRow) {
+                    const [newPpId] = await trx('proj_parties').insert({
                         project_id: projectId,
                         contact_id: contactId
                     });
+                    linkedRow = { id: newPpId, overrides: null };
+                }
+
+                if (existingMaster?.scope === 'master') {
+                    // Master party: only category and job_nature can be overridden per project
+                    await saveProjectOverrides(
+                        trx,
+                        linkedRow,
+                        { category, job_nature: jobNatureName },
+                        { category: existingMaster.category, job_nature: existingMaster.job_nature }
+                    );
+                } else {
+                    const updatePayload = {
+                        name,
+                        category,
+                        contact_person: contactPerson,
+                        designation,
+                        telephone_no: telephoneNo,
+                        mobile,
+                        email,
+                        address,
+                        remarks,
+                        updated_at: new Date()
+                    };
+                    if (jobNatureId !== null) updatePayload.job_nature_id = jobNatureId;
+
+                    await trx('crm_contacts')
+                        .where({ id: contactId })
+                        .where(function () {
+                            if (orgId) this.where('org_id', orgId).orWhereNull('org_id');
+                        })
+                        .update(updatePayload);
                 }
             } else {
                 // Check if contact with same name exists in org

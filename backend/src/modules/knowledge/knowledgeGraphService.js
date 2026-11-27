@@ -464,8 +464,8 @@ class KnowledgeGraphService {
 
       // 8. Project-Party Association Bridge
       try {
-        const parties = await knexClient('pdoc_parties')
-          .select('id', 'project_id', 'contact_id', 'role_name')
+        const parties = await knexClient('proj_parties')
+          .select('id', 'project_id', 'contact_id')
           .limit(40);
 
         for (const party of parties) {
@@ -476,7 +476,7 @@ class KnowledgeGraphService {
               source: projNodeId,
               target: contactNodeId,
               relationship: 'HAS_ASSIGNED_PARTY',
-              label: party.role_name || 'party',
+              label: 'party',
               partyId: party.id
             });
           }
@@ -656,8 +656,8 @@ class KnowledgeGraphService {
     } else if (table.startsWith('proj_meeting')) {
       pages.push('page:project_general_docs', 'subpage:project_general_meetings');
       module = 'projects';
-    } else if (table === 'proj_directory') {
-      pages.push('page:project_general_docs', 'subpage:project_general_directory', 'page:project_details');
+    } else if (table === 'crm_contact_persons') {
+      pages.push('page:project_general_docs', 'subpage:project_general_directory', 'page:project_details', 'page:clients', 'page:vendors');
       module = 'projects';
     } else if (table === 'proj_summary') {
       pages.push('page:project_details', 'page:project_wip', 'page:project_reports', 'subpage:project_reports_daily', 'subpage:project_reports_weekly', 'page:project_planning', 'subpage:project_planning_budget', 'page:project_phases');
@@ -704,7 +704,7 @@ class KnowledgeGraphService {
     } else if (table.startsWith('iam_') || table.startsWith('org_')) {
       pages.push('page:admin', 'page:project_settings', 'subpage:project_general_org_chart');
       module = 'admin';
-    } else if (table === 'pdoc_parties') {
+    } else if (table === 'proj_parties') {
       pages.push('page:project_details', 'page:vendors', 'page:project_general_docs', 'subpage:project_general_parties', 'page:project_contracts', 'subpage:project_contracts_quotations', 'page:project_transactions', 'subpage:project_txn_party_hub');
       module = 'projects';
     }

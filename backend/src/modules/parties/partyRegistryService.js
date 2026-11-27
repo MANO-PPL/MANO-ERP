@@ -7,15 +7,80 @@ import { PartyRegistryError, PartyRegistryErrorCodes } from './partyRegistryErro
  */
 export const SUPPLIER_CATEGORIES = ['Supplier'];
 
+export function parsePartyOverrides(raw) {
+    if (!raw) return {};
+    if (typeof raw === 'object') return { ...raw };
+    try {
+        const parsed = JSON.parse(raw);
+        return parsed && typeof parsed === 'object' ? parsed : {};
+    } catch {
+        return {};
+    }
+}
+
 /**
- * Computes supplier status from category and project override.
- * Definition: isSupplier = supplier_override if not NULL,
- * else SUPPLIER_CATEGORIES.includes(category) using EXACT comparison.
+ * Only category and job_nature can be overridden per project.
  */
-export function computePartySupplierStatus(category, supplierOverride) {
-    const hasOverride = supplierOverride !== null && supplierOverride !== undefined;
+export function buildProjectOverrides(existingRaw, incoming = {}, master = {}) {
+    const next = parsePartyOverrides(existingRaw);
+
+    if (incoming.category !== undefined) {
+        const val = incoming.category ? String(incoming.category).trim() : null;
+        if (!val || (master.category && val.toLowerCase() === String(master.category).trim().toLowerCase())) {
+            delete next.category;
+        } else {
+            next.category = val;
+        }
+    }
+
+    if (incoming.job_nature !== undefined) {
+        const val = incoming.job_nature ? String(incoming.job_nature).trim() : null;
+        if (!val || (master.job_nature && val.toLowerCase() === String(master.job_nature).trim().toLowerCase())) {
+            delete next.job_nature;
+        } else {
+            next.job_nature = val;
+        }
+    }
+
+    return Object.keys(next).length > 0 ? next : null;
+}
+
+/**
+ * Computes and persists project-level category/job_nature overrides on a proj_parties row.
+ */
+export async function saveProjectOverrides(connection, projPartyRow, incoming = {}, master = {}) {
+    const nextOverrides = buildProjectOverrides(projPartyRow.overrides, incoming, master);
+    await connection('proj_parties')
+        .where({ id: projPartyRow.id })
+        .update({ overrides: nextOverrides ? JSON.stringify(nextOverrides) : null });
+    return nextOverrides;
+}
+
+export function applyPartyOverrides(row) {
+    const ov = parsePartyOverrides(row.overrides);
+    return {
+        ...row,
+        category: ov.category || row.category,
+        job_nature: ov.job_nature || row.job_nature,
+        overrides: Object.keys(ov).length > 0 ? ov : null
+    };
+}
+
+/**
+ * Computes supplier status from category and project overrides.
+ */
+export function computePartySupplierStatus(category, overridesOrFlag) {
+    if (overridesOrFlag !== null && typeof overridesOrFlag === 'object') {
+        const hasCatOverride = Boolean(overridesOrFlag.category);
+        const effectiveCategory = hasCatOverride ? overridesOrFlag.category : category;
+        return {
+            isSupplier: SUPPLIER_CATEGORIES.includes(effectiveCategory),
+            supplierSource: hasCatOverride ? 'override' : 'category'
+        };
+    }
+    const hasOverride = overridesOrFlag !== null && overridesOrFlag !== undefined;
     const isSupplier = hasOverride
-        ? Boolean(supplierOverride)
+        ? Boolean(overridesOrFlag)
         : SUPPLIER_CATEGORIES.includes(category);
     const supplierSource = hasOverride ? 'override' : 'category';
     return { isSupplier, supplierSource };
@@ -46,7 +111,7 @@ export async function getParty(orgId, pvId, connection = db) {
             'pp.id as pvId',
             'pp.project_id as projectId',
             'pp.contact_id as contactId',
-            'pp.supplier_override as supplierOverride',
+            'pp.overrides as overrides',
             'c.name as name',
             'c.category as category'
         )
@@ -59,14 +124,20 @@ export async function getParty(orgId, pvId, connection = db) {
         );
     }
 
-    const { isSupplier, supplierSource } = computePartySupplierStatus(row.category, row.supplierOverride);
+    return formatRegistryParty(row);
+}
+
+function formatRegistryParty(row) {
+    const overrides = parsePartyOverrides(row.overrides);
+    const { isSupplier, supplierSource } = computePartySupplierStatus(row.category, overrides);
 
     return {
         pvId: Number(row.pvId),
         projectId: Number(row.projectId),
         contactId: Number(row.contactId),
         name: row.name,
-        category: row.category,
+        category: overrides.category || row.category,
+        overrides: Object.keys(overrides).length > 0 ? overrides : null,
         isSupplier,
         supplierSource,
     };
@@ -129,7 +200,7 @@ export async function getPartiesByIds(orgId, projectId, pvIds, connection = db) 
             'pp.id as pvId',
             'pp.project_id as projectId',
             'pp.contact_id as contactId',
-            'pp.supplier_override as supplierOverride',
+            'pp.overrides as overrides',
             'c.name as name',
             'c.category as category'
         );
@@ -175,13 +246,15 @@ export async function getPartiesByIds(orgId, projectId, pvIds, connection = db) 
     const resultMap = new Map();
     for (const id of distinctIds) {
         const row = foundMap.get(id);
-        const { isSupplier, supplierSource } = computePartySupplierStatus(row.category, row.supplierOverride);
+        const overrides = parsePartyOverrides(row.overrides);
+        const { isSupplier, supplierSource } = computePartySupplierStatus(row.category, overrides);
         resultMap.set(id, {
             pvId: Number(row.pvId),
             projectId: Number(row.projectId),
             contactId: Number(row.contactId),
             name: row.name,
-            category: row.category,
+            category: overrides.category || row.category,
+            overrides: Object.keys(overrides).length > 0 ? overrides : null,
             isSupplier,
             supplierSource,
         });
@@ -226,7 +299,7 @@ export async function listProjectParties(orgId, projectId, filters = {}, connect
             'pp.id as pvId',
             'pp.project_id as projectId',
             'pp.contact_id as contactId',
-            'pp.supplier_override as supplierOverride',
+            'pp.overrides as overrides',
             'c.name as name',
             'c.category as category'
         )
@@ -234,7 +307,8 @@ export async function listProjectParties(orgId, projectId, filters = {}, connect
         .orderBy('pp.id', 'asc');
 
     if (category !== undefined && category !== null && String(category).trim() !== '') {
-        query = query.where('c.category', String(category).trim());
+        const cat = String(category).trim();
+        query = query.whereRaw("COALESCE(JSON_UNQUOTE(JSON_EXTRACT(pp.overrides, '$.category')), c.category) = ?", [cat]);
     }
 
     if (search !== undefined && search !== null && String(search).trim() !== '') {
@@ -243,18 +317,7 @@ export async function listProjectParties(orgId, projectId, filters = {}, connect
     }
 
     const rows = await query;
-    let parties = rows.map(row => {
-        const { isSupplier: isSupp, supplierSource } = computePartySupplierStatus(row.category, row.supplierOverride);
-        return {
-            pvId: Number(row.pvId),
-            projectId: Number(row.projectId),
-            contactId: Number(row.contactId),
-            name: row.name,
-            category: row.category,
-            isSupplier: isSupp,
-            supplierSource,
-        };
-    });
+    let parties = rows.map(formatRegistryParty);
 
     if (isSupplier !== undefined && isSupplier !== null) {
         const targetIsSupplier = Boolean(isSupplier);
@@ -289,10 +352,39 @@ export async function isSupplier(orgId, pvId, connection = db) {
     return party.isSupplier;
 }
 
+export async function setPartyOverrides(orgId, pvId, incoming = {}, options = {}, connection = db) {
+    const numericOrgId = Number(orgId);
+    const numericPvId = Number(pvId);
+
+    const existing = await connection('proj_parties as pp')
+        .join('proj_projects as p', 'pp.project_id', 'p.id')
+        .join('crm_contacts as c', 'pp.contact_id', 'c.id')
+        .leftJoin('crm_job_nature as jn', 'c.job_nature_id', 'jn.id')
+        .where({ 'pp.id': numericPvId, 'p.org_id': numericOrgId, 'c.org_id': numericOrgId })
+        .select('pp.overrides', 'c.category', 'jn.job_name as job_nature')
+        .first();
+
+    if (!existing) {
+        throw new PartyRegistryError(
+            PartyRegistryErrorCodes.PARTY_NOT_FOUND,
+            `Party ${pvId} not found`
+        );
+    }
+
+    const next = buildProjectOverrides(existing.overrides, incoming, {
+        category: existing.category,
+        job_nature: existing.job_nature
+    });
+
+    await connection('proj_parties')
+        .where('id', numericPvId)
+        .update({ overrides: next ? JSON.stringify(next) : null });
+
+    return await getParty(numericOrgId, numericPvId, connection);
+}
+
 /**
- * Sets project-specific supplier override on proj_parties.
- * Value must be strictly true, false, or null.
- * Never modifies or deletes any other column or table.
+ * Compatibility helper: maps boolean supplier override to category override in proj_parties.overrides JSON.
  */
 export async function setSupplierOverride(orgId, pvId, value, options = {}, connection = db) {
     if (value !== true && value !== false && value !== null) {
@@ -304,16 +396,19 @@ export async function setSupplierOverride(orgId, pvId, value, options = {}, conn
 
     const numericOrgId = Number(orgId);
     const numericPvId = Number(pvId);
+    const current = await getParty(numericOrgId, numericPvId, connection);
+    const next = parsePartyOverrides(current.overrides);
 
-    // Verify party exists and belongs to caller organization
-    await getParty(numericOrgId, numericPvId, connection);
-
-    const overrideValue = value === null ? null : (value ? 1 : 0);
+    if (value === null) {
+        delete next.category;
+    } else {
+        next.category = value ? 'Supplier' : 'Contractor';
+    }
 
     await connection('proj_parties')
         .where('id', numericPvId)
         .update({
-            supplier_override: overrideValue
+            overrides: Object.keys(next).length > 0 ? JSON.stringify(next) : null
         });
 
     return await getParty(numericOrgId, numericPvId, connection);
@@ -321,11 +416,15 @@ export async function setSupplierOverride(orgId, pvId, value, options = {}, conn
 
 export default {
     SUPPLIER_CATEGORIES,
+    parsePartyOverrides,
+    buildProjectOverrides,
+    applyPartyOverrides,
     computePartySupplierStatus,
     getParty,
     getPartiesByIds,
     listProjectParties,
     assertProjectParty,
     isSupplier,
+    setPartyOverrides,
     setSupplierOverride,
 };

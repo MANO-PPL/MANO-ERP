@@ -169,6 +169,55 @@ export async function addContactPerson(orgId, partyId, data, options = {}) {
     return options.transaction ? run(options.transaction) : db.transaction(run);
 }
 
+/**
+ * Updates an existing contact person by ID or active name match, otherwise creates a new one.
+ */
+export async function upsertContactPerson(orgId, partyId, personId, data, options = {}) {
+    const run = async (trx) => {
+        const numericId = personId && !String(personId).startsWith('temp_') ? Number(personId) : null;
+        if (numericId && !isNaN(numericId)) {
+            const exists = await trx('crm_contact_persons').where({ id: numericId, contact_id: partyId }).first();
+            if (exists) {
+                return updateContactPerson(
+                    orgId,
+                    partyId,
+                    numericId,
+                    { ...data, name: data.name || exists.name },
+                    { ...options, transaction: trx }
+                );
+            }
+        }
+
+        const targetName = String(data.name || '').trim();
+        if (targetName) {
+            const existingByName = await trx('crm_contact_persons')
+                .where({ contact_id: partyId, status: 'active' })
+                .whereRaw('LOWER(TRIM(name)) = ?', [targetName.toLowerCase()])
+                .first();
+
+            if (existingByName) {
+                return updateContactPerson(
+                    orgId,
+                    partyId,
+                    existingByName.id,
+                    {
+                        name: targetName,
+                        designation: data.designation ?? existingByName.designation,
+                        department: data.department ?? existingByName.department,
+                        mobile: data.mobile ?? existingByName.mobile,
+                        email: data.email ?? existingByName.email
+                    },
+                    { ...options, transaction: trx }
+                );
+            }
+        }
+
+        return addContactPerson(orgId, partyId, data, { ...options, transaction: trx });
+    };
+
+    return options.transaction ? run(options.transaction) : db.transaction(run);
+}
+
 export async function updateContactPerson(orgId, partyId, personId, data, options = {}) {
     const run = async (trx) => {
         await assertScopedParty(trx, orgId, partyId);
@@ -395,6 +444,7 @@ export default {
     getContactCountsByPartyIds,
     overlayPrimaryContact,
     addContactPerson,
+    upsertContactPerson,
     updateContactPerson,
     setPrimaryContactPerson,
     deleteContactPerson,
