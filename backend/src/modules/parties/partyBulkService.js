@@ -5,6 +5,7 @@ import AppError from '../../utils/AppError.js';
 import { findOrCreateSector } from '../shared/sectorService.js';
 import { findOrCreateJobNature } from '../shared/jobNatureService.js';
 import { applyPartyScopeFilter, createParty, resolveCategory, writePartyChangeLog } from './partyService.js';
+import partyContactService from './partyContactService.js';
 import interactionService from '../interactions/interactionService.js';
 
 /**
@@ -262,7 +263,13 @@ export async function batchSaveParties(orgId, payload = {}, options = {}) {
             if (Object.keys(updateData).length > 0) {
                 const updQuery = trx('crm_contacts').where({ id: item.id, org_id: orgId });
                 applyPartyScopeFilter(updQuery, scopeMode, null);
-                await updQuery.update(updateData);
+                const affected = await updQuery.update(updateData);
+                if (affected > 0) {
+                    await partyContactService.syncFromPartyPayload(trx, orgId, Number(item.id), item, {
+                        userId: options.userId,
+                        partyName: updateData.name || item.name
+                    });
+                }
                 updatedCount++;
             }
         }
@@ -314,6 +321,11 @@ export async function batchSaveParties(orgId, payload = {}, options = {}) {
                     created_by: options.userId || null,
                     updated_by: options.userId || null
                 });
+                await partyContactService.syncFromPartyPayload(trx, orgId, newId, item, {
+                    userId: options.userId,
+                    partyName: String(partyName).trim()
+                });
+
                 await writePartyChangeLog(trx, {
                     orgId,
                     entityId: newId,
